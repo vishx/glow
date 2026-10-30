@@ -66,6 +66,9 @@ a { color: var(--accent); }
 .topbar > :last-child { justify-self: end; }
 .wordmark { margin: 0; font: 600 1.625rem/1 var(--font-display); letter-spacing: 0.4px; text-align: center; }
 .spacer { width: 44px; height: 44px; }
+.topbar.compact { height: 48px; grid-template-columns: auto 1fr auto; }
+.topbar.compact .wordmark { font-size: 1.375rem; }
+.topbar.compact .pill { min-height: 44px; padding: 0 var(--s4); }
 
 /* Buttons */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); width: 100%; min-height: 52px;
@@ -106,7 +109,7 @@ a { color: var(--accent); }
 
 /* Toast and live messages */
 .toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 64px); transform: translateX(-50%); z-index: 80;
-  max-width: min(92vw, 480px); padding: 10px var(--s4); border-radius: var(--r-btn); background: var(--surface-2); color: var(--text);
+  width: max-content; max-width: min(92vw, 480px); padding: 10px var(--s4); border-radius: var(--r-btn); background: var(--surface-2); color: var(--text);
   box-shadow: 0 0 0 1px var(--line); font-size: 0.9375rem; line-height: 1.375rem; text-align: center;
   opacity: 0; pointer-events: none; transition: opacity var(--t-result); }
 .toast.on { opacity: 1; pointer-events: auto; }
@@ -198,21 +201,26 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 /* Layout: the photo takes whatever height is left. Everything under it (view bar, demo bar,
    tabs, the chip/search slot and the tool row) has a fixed height, so switching categories
    never resizes the photo. */
-#editorScreen { max-width: 560px; --canvas: #18171b; --tools-h: calc(var(--s2) * 2 + 66px + 3.375rem); }
+#editorScreen { max-width: 560px; --canvas: #18171b; --tile-h: calc(8px + 40px + 4px + 1rem); --tools-h: calc(var(--s2) * 2 + 1rem + 2px + var(--tile-h)); }
 .canvas-col { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .stage { position: relative; flex: 1 1 auto; min-height: 160px; margin: 0 var(--gutter); border-radius: 16px; overflow: hidden;
   background: var(--canvas); touch-action: none; user-select: none; -webkit-user-select: none; }
 /* The frame is sized to the photo itself (contain), so both images, the divider and the
    labels line up with the picture, not with the empty canvas around it. */
-.frame { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
-.frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
-.frame img.alpha { background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px; }
+/* Inspection zoom: #view holds both pictures and is moved and scaled as one (transform only),
+   so Original and Edited stay pixel-aligned at any zoom. It never changes the picture itself. */
+.frame { position: absolute; inset: 0; overflow: hidden; }
+.frame.pannable { cursor: grab; } .frame.pannable:active { cursor: grabbing; }
+.view { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.view img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
+.view img.alpha { background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px; }
 #after { transition: opacity var(--t-result) ease-out; }
 #after.fade { opacity: 0; }
 .stage[data-view="original"] #after { opacity: 0; }
 .stage[data-view="edited"] #after { clip-path: none !important; }
 .stage[data-view="edited"].has-after #before { opacity: 0; }
-.divider { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 4px #0008; pointer-events: none; }
+/* --vx/--vy/--vw/--vh: the part of the photo that is visible right now (set by applyView). */
+.divider { position: absolute; top: var(--vy, 0px); height: var(--vh, 100%); left: 50%; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 4px #0008; pointer-events: none; }
 /* 26px visible knob inside a 44px target, three-quarters of the way down, clear of faces. */
 .handle { position: absolute; top: 75%; left: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border: 0; padding: 0; border-radius: 50%;
   background: none; display: grid; place-items: center; pointer-events: auto; cursor: ew-resize; touch-action: none; }
@@ -223,15 +231,29 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .stage:not([data-view="split"]) .divider, .stage:not(.has-after) .divider { display: none; }
 .tag { position: absolute; top: var(--s2); padding: 2px var(--s2); border-radius: 8px; background: rgb(18 16 20 / 0.72); color: #fff;
   font-size: 0.75rem; line-height: 1.125rem; font-weight: 600; pointer-events: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tag.left { left: var(--s2); } .tag.right { right: var(--s2); }
+.frame .tag { top: calc(var(--vy, 0px) + var(--s2)); }
+.tag.left { left: calc(var(--vx, 0px) + var(--s2)); } .tag.right { right: calc(100% - var(--vx, 0px) - var(--vw, 100%) + var(--s2)); }
 .frame.narrow .tag.bottom { display: none; }
 .frame.narrow .tag { font-size: 0.6875rem; max-width: 48%; }
-.frame .tag.bottom { top: auto; bottom: var(--s2); left: var(--s2); max-width: calc(100% - 112px); }
+.frame .tag.bottom { top: auto; bottom: calc(100% - var(--vy, 0px) - var(--vh, 100%) + var(--s2)); left: calc(var(--vx, 0px) + var(--s2)); max-width: calc(var(--vw, 100%) - 72px); }
+.frame.hinting .tag.bottom { display: none; }
 .tag:empty { display: none; }
-.history { position: absolute; right: var(--s2); bottom: var(--s2); display: flex; gap: var(--s1); }
-.history .icon-btn { border-radius: 50%; background: rgb(18 16 20 / 0.72); color: #fff; }
+.history { display: flex; gap: 0; flex: none; }
+.history .icon-btn { border-radius: 50%; color: var(--text); }
 .history .icon-btn svg { width: 20px; height: 20px; }
-.history .icon-btn:disabled { opacity: 0.45; }
+.history .icon-btn:disabled { opacity: 0.35; }
+/* Zoom in / out / fit: shown while the photo is being handled, while zoomed, or when focused. */
+.zoomctl { position: absolute; bottom: var(--s2); right: var(--s2); display: flex; flex-direction: column; gap: var(--s1); transition: opacity 0.2s ease-out; }
+.zoomctl .icon-btn { border-radius: 50%; background: rgb(18 16 20 / 0.62); color: #fff; }
+.zoomctl .icon-btn svg { width: 20px; height: 20px; }
+.zoomctl .icon-btn:disabled { opacity: 0.4; }
+.zoomctl:not(.show):not(:focus-within) { opacity: 0; pointer-events: none; }
+@media (hover: hover) { .stage:hover .zoomctl { opacity: 1; pointer-events: auto; } }
+.stage:not(.has-photo) .zoomctl { display: none; }
+.stage.cropping .zoomctl, .stage.cropping .zoom-hint { display: none; }
+.zoom-hint { position: absolute; left: 50%; bottom: var(--s2); transform: translateX(-50%); margin: 0; padding: 4px var(--s3); border-radius: 12px;
+  background: rgb(18 16 20 / 0.72); color: #fff; font-size: 0.8125rem; line-height: 1.125rem; white-space: nowrap; pointer-events: none; transition: opacity 0.4s ease-out; }
+.zoom-hint.gone { opacity: 0; }
 .busy { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: #fff; background: rgb(18 16 20 / 0.6); padding: var(--s5); }
 .busy p { margin: var(--s2) 0 0; font-size: 0.8125rem; color: #ffffffcc; }
 .spinner { width: 36px; height: 36px; margin: 0 auto var(--s3); border-radius: 50%; border: 3px solid #ffffff33; border-top-color: var(--accent); animation: spin 1.4s linear infinite; }
@@ -240,7 +262,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 #brush { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
 /* Crop and rotate: the photo moves under a fixed frame. Outside the frame is dimmed; the
    frame has a rule-of-thirds grid and corner/edge handles with 44px targets. */
-.stage.cropping .frame, .stage.cropping .history { display: none; }
+.stage.cropping .frame { display: none; }
 .crop-view { position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab; outline: none; }
 .crop-view:active { cursor: grabbing; }
 .crop-view:focus-visible .crop-box { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -275,25 +297,27 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .crop-tools .btn { flex: 1; }
 
 /* Under the photo: Original / Compare / Edited, and the credit chip. */
-.viewbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); padding: var(--s2) var(--gutter) 0; }
-.views { display: flex; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--control); }
-.views button { min-height: 44px; padding: 0 10px; border: 0; border-radius: 16px; background: none; color: var(--muted);
+/* One slim toolbar under the photo: Undo / Redo, then Original / Compare / Edited. */
+.viewbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); padding: var(--s1) calc(var(--gutter) - 6px) 0; }
+.views { display: flex; border-radius: 22px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--control); }
+.views button { min-height: 44px; padding: 0 clamp(8px, 2.6vw, 14px); border: 0; border-radius: 22px; background: none; color: var(--muted);
   font-size: 0.8125rem; font-weight: 600; transition: background var(--t-select), color var(--t-select); }
 .views button[aria-pressed="true"] { background: var(--text); color: var(--bg); font-weight: 700; }
 .views button:disabled { color: var(--control); cursor: default; }
 .credit-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 var(--s3); border: 0; border-radius: 22px; background: none;
   color: var(--text); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
-.credit-chip { margin-right: -8px; }
+.top-actions { display: flex; align-items: center; gap: var(--s1); }
+.top-actions .credit-chip { padding: 0 var(--s1); }
 .credit-chip span { padding: 4px var(--s3); border-radius: 999px; box-shadow: inset 0 0 0 1px var(--control); display: inline-flex; align-items: center; gap: 6px; }
 .credit-chip svg { width: 16px; height: 16px; color: var(--accent); }
 .credit-chip.demo span { box-shadow: inset 0 0 0 1px var(--accent); }
 
-/* Try a sample: says what the photo is and offers the way out. */
-.demobar { flex: none; display: flex; align-items: center; gap: var(--s3); margin: var(--s2) var(--gutter) 0; padding: var(--s1) var(--s1) var(--s1) var(--s3);
-  border-radius: var(--r-btn); background: var(--tint); box-shadow: inset 0 0 0 1px var(--control); }
-.demobar p { flex: 1 1 auto; min-width: 0; margin: 0; display: flex; flex-direction: column; font-size: 0.875rem; line-height: 1.25rem; }
-.demobar p span { color: var(--muted); font-size: 0.8125rem; }
-.demobar .btn { flex: 0 0 auto; }
+/* Try a sample: one slim row with a small label and the way out. */
+.demorow { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s2); min-height: 44px;
+  margin: var(--s1) var(--gutter) 0; padding-left: var(--s1); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.demorow p { margin: 0; color: var(--muted); font-size: 0.8125rem; line-height: 1.125rem; white-space: nowrap; }
+.demorow .link-btn { display: inline-flex; align-items: center; gap: 6px; margin-right: calc(-1 * var(--s3)); font-size: 0.875rem; }
+.demorow .link-btn svg { width: 18px; height: 18px; }
 
 /* AI job status: shows while an AI edit is running, can't be confirmed, failed, or came back late. */
 .jobbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); margin: var(--s2) var(--gutter) 0; padding: var(--s2) var(--s3);
@@ -324,26 +348,26 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .search:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
 
 /* The tools scroll on their own, inside a fixed height. */
-.tools { flex: none; height: calc(var(--tools-h) + env(safe-area-inset-bottom)); display: flex; align-items: flex-start; gap: var(--s4); overflow-x: auto; overflow-y: hidden;
+.tools { flex: none; height: calc(var(--tools-h) + env(safe-area-inset-bottom)); display: flex; align-items: flex-start; gap: var(--s2); overflow-x: auto; overflow-y: hidden;
   padding: var(--s2) var(--gutter) calc(var(--s2) + env(safe-area-inset-bottom)); scrollbar-width: none; scroll-padding: 0 var(--gutter); overscroll-behavior-x: contain; }
 .tools::after { content: ""; flex: none; width: 1px; } /* lets the last tool scroll fully into view */
 .group { flex: none; display: flex; flex-direction: column; gap: 2px; }
 .group-label { padding-left: var(--s2); font-size: 0.75rem; line-height: 1rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
 .group-items { display: flex; gap: var(--s1); }
-.tool { position: relative; flex: none; width: 80px; padding: 8px 4px 6px; border: 0; border-radius: var(--r-well); background: none; color: var(--muted);
-  font-size: 0.8125rem; line-height: 1.125rem; font-weight: 500; text-align: center; box-shadow: inset 0 0 0 2px transparent;
+.tool { position: relative; flex: none; width: 72px; padding: 4px 2px; border: 0; border-radius: var(--r-well); background: none; color: var(--muted);
+  font-size: 0.75rem; line-height: 1rem; font-weight: 500; text-align: center; box-shadow: inset 0 0 0 2px transparent;
   transition: background var(--t-select), box-shadow var(--t-select), color var(--t-select), transform var(--t-press-up); }
 .tool:active { transform: scale(0.98); transition-duration: var(--t-press-down); }
-.tool .well { position: relative; width: 48px; height: 48px; margin: 0 auto 4px; display: grid; place-items: center; border-radius: var(--r-well);
+.tool .well { position: relative; width: 40px; height: 40px; margin: 0 auto 4px; display: grid; place-items: center; border-radius: var(--r-well);
   background: var(--surface); color: var(--text); background-size: cover; background-position: center 30%; font-style: normal; box-shadow: inset 0 0 0 1px var(--line); }
-.tool .well svg { width: 24px; height: 24px; stroke-width: 1.6; }
-.tool .name { display: block; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tool .well svg { width: 22px; height: 22px; stroke-width: 1.6; }
+.tool .name { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* Selected: a 2px ring, bold label and a check, not color alone. */
 .tool[aria-pressed="true"] { background: var(--tint); box-shadow: inset 0 0 0 2px var(--accent); color: var(--text); font-weight: 700; }
 .tool[aria-pressed="true"] .well::before { content: ""; position: absolute; left: -5px; bottom: -5px; width: 16px; height: 16px; border-radius: 50%;
   background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 10px no-repeat;
   box-shadow: 0 0 0 2px var(--bg); }
-.tool .cost { position: absolute; top: -7px; right: -16px; padding: 0 5px; border-radius: 6px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--control);
+.tool .cost { position: absolute; top: -7px; right: -14px; padding: 0 5px; border-radius: 6px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--control);
   color: var(--text); font-size: 0.6875rem; line-height: 1rem; font-weight: 700; white-space: nowrap; }
 .empty-note { margin: 0; padding: var(--s2) var(--s2); color: var(--muted); font-size: 0.875rem; }
 
@@ -353,16 +377,20 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .tools-open .group-items { flex-wrap: wrap; }
 .tools-open .group-label { position: sticky; top: calc(-1 * var(--s2)); z-index: 1; background: var(--bg); padding: 4px var(--s2); }
 
-.panel { flex: none; margin-top: var(--s2); padding: var(--s4) var(--gutter) calc(var(--s3) + env(safe-area-inset-bottom)); background: var(--surface);
+.panel { flex: none; margin-top: var(--s1); padding: var(--s2) var(--gutter) calc(var(--s2) + env(safe-area-inset-bottom)); background: var(--surface);
   border-radius: var(--r-sheet) var(--r-sheet) 0 0; animation: rise var(--t-sheet) cubic-bezier(.2, .8, .2, 1); }
 @keyframes rise { from { transform: translateY(16px); opacity: 0; } }
-.editing-tool .tools { padding-bottom: var(--s2); height: var(--tools-h); }
-.panel-head { display: flex; align-items: center; gap: var(--s2); min-height: 44px; }
-.panel-head h2 { flex: 1; min-width: 0; }
+.editing-tool .tools { padding-bottom: var(--s2); height: calc(var(--s2) * 2 + var(--tile-h)); }
+.panel-head { display: flex; align-items: center; gap: var(--s1); min-height: 44px; }
+.panel-head h2 { flex: 0 1 auto; min-width: 0; margin-right: auto; font-size: 1.0625rem; line-height: 1.375rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-head .chip { display: block; flex: 0 3 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; padding: 2px var(--s2); }
+#collapseBtn svg { transition: transform 0.2s ease-out; }
+.panel.collapsed #collapseBtn svg { transform: rotate(180deg); }
+.panel.collapsed .panel-note, .panel.collapsed .panel-body { display: none; }
 .panel-head .chip { flex: none; }
-.panel-note { margin: 2px 0 0; color: var(--muted); font-size: 0.875rem; line-height: 1.25rem; }
+.panel-note { margin: 0; color: var(--muted); font-size: 0.8125rem; line-height: 1.125rem; }
 .panel-note:empty { display: none; }
-.panel-body { margin-top: var(--s2); display: grid; gap: var(--s2); }
+.panel-body { margin-top: var(--s1); display: grid; gap: var(--s1); }
 .panel-body:empty { display: none; }
 .panel .slider { grid-template-columns: auto 1fr 2.5rem; }
 .swatches { display: flex; flex-wrap: wrap; gap: var(--s2); }
@@ -374,15 +402,13 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .opt[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 .outfit-pick { display: flex; align-items: center; gap: var(--s3); }
 .outfit-pick img { width: 52px; height: 52px; object-fit: cover; border-radius: var(--r-well); }
-.panel-actions { display: grid; grid-template-columns: 1fr 2fr; gap: var(--s3); margin-top: var(--s3); }
+.panel-actions { display: grid; grid-template-columns: 1fr 2fr; gap: var(--s3); margin-top: var(--s2); }
+.panel-actions .btn { min-height: 44px; }
 
 /* While a tool is open on a phone, the categories step aside so the photo keeps its room. */
 @media (max-width: 959px) {
   .editing-tool .tabs, .editing-tool .slot { display: none; }
-  .editing-tool .demobar p span { display: none; }
-}
-@media (max-height: 700px) and (max-width: 959px) {
-  .editing-tool .demobar { display: none; }
+  .panel-collapsed .tools { display: none; }
 }
 @media (max-height: 600px) and (max-width: 959px) {
   .editing-tool .tools { display: none; }

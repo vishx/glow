@@ -109,7 +109,8 @@ document.querySelectorAll("[data-icon]").forEach((el) => setIcon(el, el.dataset.
 document.querySelectorAll("[data-icon-li]").forEach((li) => li.insertAdjacentHTML("afterbegin", icon(li.dataset.iconLi)));
 document.querySelectorAll("dialog [data-close]").forEach((b) => { setIcon(b, "close"); b.addEventListener("click", () => b.closest("dialog").close()); });
 [["camSettingsBtn", "settings"], ["homeSettingsBtn", "settings"], ["backBtn", "back"], ["undoBtn", "undo"], ["redoBtn", "redo"], ["favBtn", "star"],
-  ["camGallery", "gallery"], ["camFlip", "flip"], ["flashBtn", "flashoff"], ["obBack", "back"], ["expandBtn", "chevup"]].forEach(([id, n]) => setIcon($(id), n));
+  ["camGallery", "gallery"], ["camFlip", "flip"], ["flashBtn", "flashoff"], ["obBack", "back"], ["expandBtn", "chevup"],
+  ["zoomIn", "zoomin"], ["zoomOut", "zoomout"], ["zoomFit", "fit"], ["collapseBtn", "chevdown"]].forEach(([id, n]) => setIcon($(id), n));
 setIcon(document.querySelector("#handle i"), "compare");
 $("retakeBtn").innerHTML = icon("retake") + "<span>Retake</span>";
 const fmtTime = (d) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -322,6 +323,11 @@ async function openSample() {
   try { await openFile(new File([blob], "glow-ai-sample.png", { type: blob.type || "image/png" }), "AI-generated sample", { demo: true }); }
   catch (err) { exitDemo(); say(err.message, true); return; }
   $("alertLive").textContent = "AI-generated sample opened. Demo, no credits used.";
+  // The free demo is explained once; after that the slim Demo row is enough.
+  if (!localStorage.getItem("glow.demoExplained")) {
+    try { localStorage.setItem("glow.demoExplained", "1"); } catch {}
+    say("Free demo: AI tools show prepared previews. No credits used.");
+  }
   // Only offer previews whose files are really there, then warm up the first two.
   const ok = await Promise.all(demo.ready.map((id) => fetch(DEMO_DIR + demo.entry[id].result, { method: "HEAD" }).then((r) => r.ok).catch(() => false)));
   if (!demo) return;
@@ -484,7 +490,7 @@ function renderEditor() {
   $("tagLeft").textContent = hasAfter && (view === "split" || view === "original") ? "Original" : "";
   $("tagRight").textContent = hasAfter && view === "split" ? editedName : hasAfter && view === "edited" && editedName !== "Edited" ? editedName : "";
   $("demoBar").hidden = !ed.demo; $("tagSample").hidden = !ed.demo;
-  layoutFrame(); setSplit(ed.split);
+  setSplit(ed.split);
   if ($("frame").classList.contains("narrow") && view === "split") $("tagRight").textContent = editedName.replace(" preview", "");
   $("brush").hidden = !brushing;
   if (brushing) requestAnimationFrame(drawStrokes);
@@ -498,9 +504,19 @@ function renderEditor() {
   $("editorScreen").classList.toggle("tools-open", toolsOpen && cat === "all" && !sel);
   if (thumbFor !== committed()) { thumbFor = committed(); refreshThumb(); }
   renderTabs(); renderTools(); renderPanel(); renderCredits(); renderJob();
+  $("editorScreen").classList.toggle("panel-collapsed", !!sel && panelCollapsed);
+  $("panel").classList.toggle("collapsed", panelCollapsed);
+  if (screen === "editorScreen") maybeZoomHint();
   if (sel) { const tb = $("tools").querySelector(`.tool[data-tool="${CSS.escape(sel)}"]`); if (tb) tb.scrollIntoView({ block: "nearest", inline: "nearest" }); }
 }
-let thumbFor = null, toolsOpen = false;
+let thumbFor = null, toolsOpen = false, panelCollapsed = false;
+// Collapsing the panel leaves its title and Cancel / Apply, and gives the rest to the photo.
+$("collapseBtn").addEventListener("click", () => {
+  panelCollapsed = !panelCollapsed;
+  $("collapseBtn").setAttribute("aria-expanded", String(!panelCollapsed));
+  $("collapseBtn").setAttribute("aria-label", panelCollapsed ? "Show tool controls" : "Hide tool controls");
+  renderEditor();
+});
 // Checkerboard only behind pictures that really have transparent pixels.
 function markAlpha(img) {
   try {
@@ -511,46 +527,179 @@ function markAlpha(img) {
     for (let i = 3; i < d.length; i += 4) if (d[i] < 250) { img.classList.add("alpha"); return; }
   } catch {}
 }
-// Sizes the frame to the photo as shown (the edited picture when there is one), so the
-// divider and labels sit on the picture and both images stay aligned at any size.
-function layoutFrame() {
-  const st = $("stage"), a = $("after"), b = $("before");
-  const main = !a.hidden && a.naturalWidth ? a : b;
-  const W = st.clientWidth, H = st.clientHeight, f = $("frame");
-  if (!main.naturalWidth || !W || !H) { Object.assign(f.style, { left: "0px", top: "0px", width: W + "px", height: H + "px" }); return; }
-  const s = Math.min(W / main.naturalWidth, H / main.naturalHeight), w = Math.round(main.naturalWidth * s), h = Math.round(main.naturalHeight * s);
-  Object.assign(f.style, { left: Math.round((W - w) / 2) + "px", top: Math.round((H - h) / 2) + "px", width: w + "px", height: h + "px" });
-  f.classList.toggle("narrow", w < 220);
+// ---------- Inspection zoom ----------
+// Inspection zoom only changes how the photo is VIEWED: #view (both pictures) is moved and
+// scaled with a CSS transform. It never touches the history, ops, crop, edit settings or the
+// saved pixels, and never adds an undo step. Crop mode is different: its own gestures on
+// #cropView change the crop itself, so inspection zoom is switched off while cropping.
+// With the magic-erase brush, one finger draws and two fingers move the view.
+const insp = { z: 1, cx: 0.5, cy: 0.5, key: "" };   // zoom (1 = fit) and the picture point at the viewer's centre
+let vis = { x: 0, y: 0, w: 0, h: 0 }, zoomAnim = 0;
+const mainImg = () => { const a = $("after"); return !a.hidden && a.naturalWidth ? a : $("before"); };
+function fitRect() {
+  const st = $("stage"), m = mainImg(), W = st.clientWidth, H = st.clientHeight;
+  if (!m.naturalWidth || !W || !H) return { x: 0, y: 0, w: W, h: H, W, H, nw: 0, nh: 0 };
+  const s = Math.min(W / m.naturalWidth, H / m.naturalHeight), w = m.naturalWidth * s, h = m.naturalHeight * s;
+  return { x: (W - w) / 2, y: (H - h) / 2, w, h, W, H, nw: m.naturalWidth, nh: m.naturalHeight };
 }
-new ResizeObserver(() => { layoutFrame(); if (sel === "erase") drawStrokes(); if (cr) renderCrop(); }).observe($("stage"));
+// Up to about 2 screen pixels per photo pixel, at least 3x, at most 10x.
+const zoomMax = (F) => F.nw ? Math.max(3, Math.min(10, (F.nw / F.w) * 2)) : 1;
+// Once the photo is larger than the viewer it always covers it; smaller, it stays centred.
+function viewRect(F = fitRect()) {
+  insp.z = Math.max(1, Math.min(zoomMax(F), insp.z));
+  const w = F.w * insp.z, h = F.h * insp.z;
+  insp.cx = w <= F.W ? 0.5 : Math.max(F.W / 2 / w, Math.min(1 - F.W / 2 / w, insp.cx));
+  insp.cy = h <= F.H ? 0.5 : Math.max(F.H / 2 / h, Math.min(1 - F.H / 2 / h, insp.cy));
+  return { x: F.W / 2 - insp.cx * w, y: F.H / 2 - insp.cy * h, w, h };
+}
+function applyView() {
+  const F = fitRect(), f = $("frame"), st = $("stage");
+  const key = F.nw ? `${F.nw}x${F.nh}` : insp.key;
+  if (key !== insp.key) { insp.key = key; insp.z = 1; insp.cx = insp.cy = 0.5; }   // a new picture size starts at fit
+  const v = viewRect(F);
+  Object.assign($("view").style, { width: F.w + "px", height: F.h + "px", transform: `translate(${v.x}px, ${v.y}px) scale(${insp.z})` });
+  const x0 = Math.max(0, v.x), y0 = Math.max(0, v.y);
+  vis = { x: x0, y: y0, w: Math.min(F.W, v.x + v.w) - x0, h: Math.min(F.H, v.y + v.h) - y0 };
+  [["--vx", vis.x], ["--vy", vis.y], ["--vw", vis.w], ["--vh", vis.h]].forEach(([k, n]) => f.style.setProperty(k, n + "px"));
+  f.classList.toggle("narrow", vis.w < 220);
+  f.classList.toggle("pannable", insp.z > 1.001);
+  st.classList.toggle("has-photo", !!F.nw);
+  // The divider is a position on the visible photo; the edited picture is clipped at the same
+  // screen x, in the picture's own coordinates, so both halves meet exactly at the line.
+  const dx = vis.x + (vis.w * ed.split) / 100;
+  $("divider").style.left = dx + "px";
+  $("after").style.clipPath = st.dataset.view === "split" && v.w ? `inset(0 0 0 ${((dx - v.x) / v.w) * 100}%)` : "";
+  $("zoomIn").disabled = insp.z >= zoomMax(F) - 0.001; $("zoomOut").disabled = $("zoomFit").disabled = insp.z <= 1.001;
+  $("zoomCtl").classList.toggle("show", insp.z > 1.001 || Date.now() < zoomCtlUntil);
+  if (sel === "erase" && !$("brush").hidden) drawStrokes();
+}
+const layoutFrame = applyView;
+let zoomCtlUntil = 0, zoomCtlTimer = 0;
+function pokeZoomCtl() {
+  zoomCtlUntil = Date.now() + 2500; $("zoomCtl").classList.add("show");
+  clearTimeout(zoomCtlTimer); zoomCtlTimer = setTimeout(applyView, 2600);
+}
+const stagePt = (e) => { const r = $("stage").getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+// Zooms to z keeping the picture point under (x, y) where it is; `centre` brings it to the middle.
+function zoomTo(z, x, y, { centre = false, animate = false } = {}) {
+  const F = fitRect(); if (!F.nw) return;
+  const v = viewRect(F), px = (x - v.x) / v.w, py = (y - v.y) / v.h;
+  const z1 = Math.max(1, Math.min(zoomMax(F), z)), w = F.w * z1, h = F.h * z1;
+  const to = centre ? { z: z1, cx: px, cy: py } : { z: z1, cx: (F.W / 2 - (x - px * w)) / w, cy: (F.H / 2 - (y - py * h)) / h };
+  cancelAnimationFrame(zoomAnim);
+  if (!animate || reduceMotion()) { Object.assign(insp, to); applyView(); return; }
+  const from = { z: insp.z, cx: insp.cx, cy: insp.cy }, t0 = performance.now();
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / 200), e = 1 - (1 - k) ** 3;
+    insp.z = from.z + (to.z - from.z) * e; insp.cx = from.cx + (to.cx - from.cx) * e; insp.cy = from.cy + (to.cy - from.cy) * e;
+    applyView(); if (k < 1) zoomAnim = requestAnimationFrame(step);
+  };
+  zoomAnim = requestAnimationFrame(step);
+}
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const zoomBy = (k) => { const F = fitRect(); pokeZoomCtl(); zoomTo(insp.z * k, F.W / 2, F.H / 2, { animate: true }); };
+$("zoomIn").addEventListener("click", () => zoomBy(1.6));
+$("zoomOut").addEventListener("click", () => zoomBy(1 / 1.6));
+$("zoomFit").addEventListener("click", () => { pokeZoomCtl(); const F = fitRect(); zoomTo(1, F.W / 2, F.H / 2, { animate: true }); });
 function setSplit(pct) {
   ed.split = Math.max(0, Math.min(100, pct));
-  $("after").style.clipPath = $("stage").dataset.view === "split" ? `inset(0 0 0 ${ed.split}%)` : "";
-  $("divider").style.left = ed.split + "%";
+  applyView();
   $("handle").setAttribute("aria-valuenow", String(Math.round(ed.split)));
   $("handle").setAttribute("aria-valuetext", `${Math.round(ed.split)}% original`);
 }
 document.querySelector(".views").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-view]"); if (!b || b.disabled) return;
   if (b.dataset.view === "split" && ed.view !== "split") centerDividerOnFace();
-  ed.view = b.dataset.view; renderEditor();
+  ed.view = b.dataset.view; renderEditor();   // the zoom and position are kept across views
   if (ed.view === "split") $("alertLive").textContent = "Compare: drag the divider, or use the arrow keys on it.";
 });
 // Compare starts with the divider down the middle of the face when one is known (the
-// landmarks found by a face tool), otherwise down the middle of the photo.
+// landmarks found by a face tool) and in view, otherwise down the middle of the visible photo.
 function centerDividerOnFace() {
   const faces = faceCache.get(committed()) || faceCache.get(ed.pending ? ed.pending.data : "") || [];
-  ed.split = faces.length ? Math.max(5, Math.min(95, faces[0][1][0] * 100)) : 50;
+  ed.split = 50;
+  if (!faces.length) return;
+  const v = viewRect(), x = v.x + faces[0][1][0] * v.w;
+  if (x > vis.x && x < vis.x + vis.w && vis.w) ed.split = Math.max(5, Math.min(95, ((x - vis.x) / vis.w) * 100));
 }
-// Drag the divider (or anywhere on the photo) to compare; arrow keys move the handle.
-let dragging = false;
-const dragTo = (e) => { const r = $("frame").getBoundingClientRect(); setSplit(((e.clientX - r.left) / r.width) * 100); };
-$("stage").addEventListener("pointerdown", (e) => {
-  if (!$("stage").classList.contains("has-after") || $("stage").dataset.view !== "split" || e.target.closest(".history")) return;
-  dragging = true; $("stage").setPointerCapture(e.pointerId); dragTo(e);
+// Gestures on the photo. Pointers are re-based whenever one is added or lifted, so a pinch
+// that becomes a one-finger pan (or the reverse) never jumps. In Compare, dragging on the
+// divider line moves it; anywhere else one finger pans (once zoomed) and two fingers pinch.
+const navPtrs = new Map();
+let ng = null, divDrag = null, lastTap = null;
+function navBase() {
+  const pts = [...navPtrs.values()].slice(0, 2);
+  if (!pts.length) { ng = null; return; }
+  const F = fitRect(), v = viewRect(F), m = pts.length > 1 ? { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 } : pts[0];
+  ng = { ...(ng || { t: performance.now(), x0: m.x, y0: m.y, moved: 0, n: 0 }), F, z: insp.z, m, px: (m.x - v.x) / v.w, py: (m.y - v.y) / v.h,
+    d: pts.length > 1 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0 };
+  ng.n = Math.max(ng.n, pts.length);
+}
+function navMove() {
+  const pts = [...navPtrs.values()].slice(0, 2); if (!ng || !pts.length || !ng.F.nw) return;
+  const m = pts.length > 1 ? { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 } : pts[0];
+  const d = pts.length > 1 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0, F = ng.F;
+  ng.moved = Math.max(ng.moved, Math.hypot(m.x - ng.x0, m.y - ng.y0));
+  insp.z = Math.max(1, Math.min(zoomMax(F), ng.d && d ? (ng.z * d) / ng.d : ng.z));
+  const w = F.w * insp.z, h = F.h * insp.z;
+  insp.cx = (F.W / 2 - (m.x - ng.px * w)) / w; insp.cy = (F.H / 2 - (m.y - ng.py * h)) / h;
+  applyView();
+}
+function navDown(e) {
+  cancelAnimationFrame(zoomAnim); hideZoomHint();
+  navPtrs.set(e.pointerId, stagePt(e)); navBase(); pokeZoomCtl();
+}
+function navUp(e) {
+  if (!navPtrs.delete(e.pointerId)) return;
+  if (navPtrs.size) { navBase(); return; }
+  const g = ng; ng = null;
+  if (!g || e.type === "pointercancel" || g.n > 1 || g.moved > 10 || performance.now() - g.t > 300) { lastTap = null; return; }
+  const now = performance.now(), p = { x: g.x0, y: g.y0 };
+  if (lastTap && now - lastTap.t < 320 && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 30) {
+    lastTap = null;   // double-tap: close-up centred on the tap, or back to fit
+    if (insp.z > 1.05) zoomTo(1, p.x, p.y, { animate: true }); else zoomTo(Math.min(3, zoomMax(fitRect())), p.x, p.y, { centre: true, animate: true });
+  } else lastTap = { ...p, t: now };
+}
+const onDivider = (e) => $("stage").dataset.view === "split" && $("stage").classList.contains("has-after") &&
+  (e.target.closest("#handle") || Math.abs(stagePt(e).x - parseFloat($("divider").style.left || 0)) <= 22);
+$("frame").addEventListener("pointerdown", (e) => {
+  if (cr || (e.pointerType === "mouse" && e.button !== 0)) return;
+  $("frame").setPointerCapture(e.pointerId);
+  if (!navPtrs.size && divDrag == null && onDivider(e)) { divDrag = e.pointerId; hideZoomHint(); return; }
+  if (divDrag != null) { navPtrs.set(divDrag, stagePt(e)); divDrag = null; }   // a second finger turns a divider drag into a pinch
+  navDown(e);
 });
-$("stage").addEventListener("pointermove", (e) => { if (dragging) dragTo(e); });
-["pointerup", "pointercancel"].forEach((ev) => $("stage").addEventListener(ev, () => { dragging = false; }));
+$("frame").addEventListener("pointermove", (e) => {
+  if (divDrag === e.pointerId) { setSplit(((stagePt(e).x - vis.x) / vis.w) * 100); return; }
+  if (!navPtrs.has(e.pointerId)) return;
+  navPtrs.set(e.pointerId, stagePt(e)); navMove();
+});
+["pointerup", "pointercancel"].forEach((ev) => $("frame").addEventListener(ev, (e) => {
+  if (divDrag === e.pointerId) { divDrag = null; return; }
+  navUp(e);
+}));
+// Desktop: the wheel (or a trackpad pinch) zooms around the cursor, only over the photo.
+$("frame").addEventListener("wheel", (e) => {
+  if (cr || !fitRect().nw) return;
+  e.preventDefault(); pokeZoomCtl(); hideZoomHint();
+  const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY, p = stagePt(e);
+  zoomTo(insp.z * Math.exp(-d * (e.ctrlKey ? 0.01 : 0.0025)), p.x, p.y);
+}, { passive: false });
+$("frame").addEventListener("dblclick", (e) => e.preventDefault());
+// A one-time hint the first time a photo opens in the editor.
+let hintTimer = 0;
+function maybeZoomHint() {
+  if (localStorage.getItem("glow.zoomHint") || !$("zoomHint").hidden || $("toast").classList.contains("on") || !fitRect().nw) return;
+  try { localStorage.setItem("glow.zoomHint", "1"); } catch {}
+  $("zoomHint").hidden = false; $("zoomHint").classList.remove("gone"); $("frame").classList.add("hinting");
+  hintTimer = setTimeout(hideZoomHint, 3500);
+}
+function hideZoomHint() {
+  if ($("zoomHint").hidden) return;
+  clearTimeout(hintTimer); $("zoomHint").classList.add("gone");
+  setTimeout(() => { $("zoomHint").hidden = true; $("frame").classList.remove("hinting"); }, 400);
+}
+new ResizeObserver(() => { applyView(); if (sel === "erase") drawStrokes(); if (cr) renderCrop(); }).observe($("stage"));
 $("handle").addEventListener("keydown", (e) => {
   const step = e.shiftKey ? 10 : 2, k = e.key;
   if (k === "ArrowLeft" || k === "ArrowDown") setSplit(ed.split - step);
@@ -612,7 +761,7 @@ function renderTabs() {
   $("chips").hidden = !groups;
   $("searchBox").hidden = cat !== "all";
   // For You has no subgroups; its slot says what's there instead.
-  const note = cat === "foryou" ? (ed.demo ? (demo && demo.ready.length ? "Sample previews show one effect at a time."
+  const note = cat === "foryou" ? (ed.demo ? (demo && demo.ready.length ? "Try a prepared preview or a free tool."
     : "Prepared AI previews aren't available for the sample yet. Try the free tools.") : "Suggestions, your favorites and recent tools.") : "";
   $("slotNote").textContent = note; $("slotNote").hidden = !note;
   const open = toolsOpen && cat === "all";
@@ -644,7 +793,7 @@ function toolButton(t) {
 }
 function renderTools() {
   const groups = groupsFor(cat).map((g) => [g[0], g[1], g[2].filter((id) => TOOL[id] && demoOffers(id))]).filter((g) => g[2].length), box = $("tools");
-  if (!groups.length && ed.demo) { box.innerHTML = `<p class="empty-note">This tool group needs your own photo. Tap Try your own photo above.</p>`; return; }
+  if (!groups.length && ed.demo) { box.innerHTML = `<p class="empty-note">This tool group needs your own photo. Tap Use your photo above.</p>`; return; }
   if (!groups.length) { box.innerHTML = `<p class="empty-note">No tools match that search.</p>`; return; }
   renderToolGroups(box, groups, cat === "foryou" || cat === "all");
 }
@@ -1330,11 +1479,10 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && jo
 window.addEventListener("online", () => { if (jobActive() && !following) checkJob(); });
 
 // Magic-erase brush: strokes are kept in the committed photo's pixel coordinates.
+// imageRect follows the inspection zoom, so strokes land where the finger is at any zoom.
 function imageRect() {
-  const img = $("before"), st = $("stage").getBoundingClientRect();
-  const s = Math.min(st.width / img.naturalWidth, st.height / img.naturalHeight);
-  const w = img.naturalWidth * s, h = img.naturalHeight * s;
-  return { x: (st.width - w) / 2, y: (st.height - h) / 2, s, nw: img.naturalWidth, nh: img.naturalHeight };
+  const img = $("before"), F = fitRect(), v = viewRect(F);
+  return { x: v.x, y: v.y, s: v.w / img.naturalWidth, nw: img.naturalWidth, nh: img.naturalHeight };
 }
 function drawStrokes() {
   const cv = $("brush"), st = $("stage").getBoundingClientRect(), dpr = devicePixelRatio || 1;
@@ -1354,12 +1502,30 @@ function brushPoint(e) {
   const st = $("stage").getBoundingClientRect(), r = imageRect();
   return [(e.clientX - st.left - r.x) / r.s, (e.clientY - st.top - r.y) / r.s];
 }
+// One finger draws. A second finger drops the stroke it interrupted and both fingers move
+// the view instead (pinch and pan), until they are lifted.
+let painter = null;
 $("brush").addEventListener("pointerdown", (e) => {
-  e.stopPropagation(); painting = true; $("brush").setPointerCapture(e.pointerId);
+  e.stopPropagation(); $("brush").setPointerCapture(e.pointerId);
+  if (navPtrs.size) { navDown(e); return; }
+  if (painting) {
+    painting = false; strokes.pop(); drawStrokes();
+    navPtrs.set(painter.id, painter.p); painter = null; navDown(e); return;
+  }
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  painting = true; painter = { id: e.pointerId, p: stagePt(e) };
   strokes.push({ w: 28 / imageRect().s, pts: [brushPoint(e)] }); drawStrokes();
 });
-$("brush").addEventListener("pointermove", (e) => { if (!painting) return; strokes[strokes.length - 1].pts.push(brushPoint(e)); drawStrokes(); });
-["pointerup", "pointercancel"].forEach((ev) => $("brush").addEventListener(ev, () => { if (painting) { painting = false; renderPanel(); } }));
+$("brush").addEventListener("pointermove", (e) => {
+  if (navPtrs.has(e.pointerId)) { navPtrs.set(e.pointerId, stagePt(e)); navMove(); return; }
+  if (!painting || painter.id !== e.pointerId) return;
+  painter.p = stagePt(e); strokes[strokes.length - 1].pts.push(brushPoint(e)); drawStrokes();
+});
+["pointerup", "pointercancel"].forEach((ev) => $("brush").addEventListener(ev, (e) => {
+  if (navPtrs.has(e.pointerId)) { navUp(e); return; }
+  if (painting && painter.id === e.pointerId) { painting = false; painter = null; renderPanel(); }
+}));
+$("brush").addEventListener("wheel", (e) => { e.preventDefault(); const p = stagePt(e); zoomTo(insp.z * Math.exp(-e.deltaY * 0.0025), p.x, p.y); }, { passive: false });
 // The mask is drawn at the size of the image that is uploaded.
 function eraseMask(w, h) {
   const r = imageRect(), k = w / r.nw, c = newCanvas(w, h), ctx = c.getContext("2d");
@@ -1478,7 +1644,7 @@ function renderCredits() {
   chip.hidden = !a || (ed.demo && screen === "editorScreen"); $("homeCredits").hidden = !a;
   if (!a) return;
   const n = a.remaining;
-  chip.innerHTML = `<span>${icon("sparkle")}${n} AI credit${n === 1 ? "" : "s"}</span>`;
+  chip.innerHTML = `<span>${icon("sparkle")}${n}</span>`;
   chip.setAttribute("aria-label", `${balanceText(a)}. Details`);
   $("homeCredits").innerHTML = icon("sparkle") + `<span>${balanceText(a)}. On-device tools are always free.</span>` + icon("chevron");
 }

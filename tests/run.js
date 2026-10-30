@@ -334,7 +334,10 @@ test('demo: Try a sample opens the attached original with demo labels', async ({
   const o = await p.evaluate(async () => { const b = new Uint8Array(await ed.original.blob.arrayBuffer()); const h = await crypto.subtle.digest('SHA-256', b);
     return { w: ed.original.w, h: ed.original.h, sha: [...new Uint8Array(h)].map((x) => x.toString(16).padStart(2, '0')).join('') }; });
   eq(o, { w: 1122, h: 1402, sha: demoManifest.original.sha256 }, 'unchanged original');
-  assert(/Demo · No credits used/.test(await p.textContent('#demoBar')), 'demo label'); assert(/AI-generated sample/.test(await p.textContent('#demoBar')), 'source label');
+  eq((await p.textContent('#demoBar p')).trim(), 'Demo · Free preview', 'slim demo label'); assert(/AI-generated sample/.test(await p.textContent('#tagSample')) && await p.isVisible('#tagSample'), 'source label on the photo');
+  const row = await p.evaluate(() => { const r = $('demoBar').getBoundingClientRect(), b = $('demoOwnBtn').getBoundingClientRect(); return { h: r.height, bh: b.height, filled: getComputedStyle($('demoOwnBtn')).backgroundColor }; });
+  assert(row.h <= 50 && row.bh >= 44, 'one slim row with a 44px action: ' + JSON.stringify(row));
+  assert(/Free demo/.test(await p.textContent('#toast')), 'the free demo is explained once');
   assert(await p.isVisible('#demoOwnBtn'), 'Try your own photo'); assert(await p.isHidden('#balanceBtn'), 'no credit balance in the demo');
   eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].map((c) => c.textContent)), ['Preview', 'Preview'], 'AI tools offered = prepared ones');
   assert(/prepared preview, no credits/.test(await p.getAttribute('.tool[data-tool="pro"]', 'aria-label')), 'screen-reader label');
@@ -528,13 +531,13 @@ test('layout: charcoal canvas in both themes, photo contained, edited view first
   eq(await bg(), 'rgb(24, 23, 27)', 'dark');
   await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(24, 23, 27)', 'light');
   const st = await p.evaluate(() => ({ view: $('stage').dataset.view, disabled: [...document.querySelectorAll('.views button')].map((b) => b.disabled), radius: getComputedStyle($('stage')).borderTopLeftRadius,
-    fit: getComputedStyle($('before')).objectFit, frame: (() => { const f = $('frame').getBoundingClientRect(), s = $('stage').getBoundingClientRect(); return f.width <= s.width + 0.5 && f.height <= s.height + 0.5 && Math.abs(f.width / f.height - ed.original.w / ed.original.h) < 0.02; })() }));
+    fit: getComputedStyle($('before')).objectFit, frame: (() => { const f = $('view').getBoundingClientRect(), s = $('stage').getBoundingClientRect(); return f.width <= s.width + 0.5 && f.height <= s.height + 0.5 && Math.abs(f.width / f.height - ed.original.w / ed.original.h) < 0.02; })() }));
   eq(st, { view: 'edited', disabled: [true, true, true], radius: '16px', fit: 'contain', frame: true }, 'before any edit');
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending);
   eq(await p.evaluate(() => [$('stage').dataset.view, [...document.querySelectorAll('.views button')].map((b) => b.disabled)]), ['edited', [false, false, false]], 'comparison available once there is a preview');
   eq(await p.isVisible('#divider'), false, 'no divider outside Compare');
   await p.click('.views [data-view="split"]');
-  const d = await p.evaluate(() => { const h = $('handle').getBoundingClientRect(), k = $('handle').querySelector('i').getBoundingClientRect(), f = $('frame').getBoundingClientRect(), dv = $('divider').getBoundingClientRect();
+  const d = await p.evaluate(() => { const h = $('handle').getBoundingClientRect(), k = $('handle').querySelector('i').getBoundingClientRect(), f = $('view').getBoundingClientRect(), dv = $('divider').getBoundingClientRect();
     return { target: [Math.round(h.width), Math.round(h.height)], knob: Math.round(k.width), at: +(((h.top + h.height / 2) - f.top) / f.height).toFixed(2), line: Math.round(dv.width) }; });
   eq(d.target, [44, 44], 'handle touch target'); assert(d.knob >= 24 && d.knob <= 28, 'visible knob ' + d.knob); eq(d.line, 2, '2px divider');
   assert(Math.abs(d.at - 0.75) < 0.03, 'handle about 75% down: ' + d.at);
@@ -555,11 +558,11 @@ test('layout: transparent PNG shows a checkerboard only behind the picture', asy
   eq(await p.evaluate(() => $('before').classList.contains('alpha')), false, 'an opaque photo has no checkerboard');
 });
 
-test('layout: compact credit chip under the photo opens the credits sheet', async ({ p }) => {
+test('layout: compact credit chip in the header opens the credits sheet', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, fx('transparent.png'));
   await p.waitForFunction(() => !$('balanceBtn').hidden);
-  const c = await p.evaluate(() => { const r = $('balanceBtn').getBoundingClientRect(); return { text: $('balanceBtn').textContent, h: r.height, below: r.top >= $('stage').getBoundingClientRect().bottom }; });
-  eq(c.text, '3 AI credits', 'actual balance, short'); assert(c.h >= 44, 'touch target ' + c.h); assert(c.below, 'under the photo');
+  const c = await p.evaluate(() => { const r = $('balanceBtn').getBoundingClientRect(); return { text: $('balanceBtn').textContent, label: $('balanceBtn').getAttribute('aria-label'), h: r.height, top: r.bottom <= $('stage').getBoundingClientRect().top }; });
+  eq(c.text, '3', 'actual balance, compact'); assert(/3/.test(c.label) && /credit/.test(c.label), 'spoken label ' + c.label); assert(c.h >= 44, 'touch target ' + c.h); assert(c.top, 'in the header');
   await p.click('#balanceBtn'); assert(await p.evaluate(() => $('creditsSheet').open), 'opens the details sheet');
   assert(/midnight UTC/.test(await p.textContent('#creditsBody')), 'explains the real reset');
 });
@@ -626,7 +629,7 @@ test('retouch: Compare puts the divider on the face; Settings shows which build 
   await tool(p, 'retouch', 'face', 'fslim'); await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 });
   await p.fill('.panel input[type=range]', '100'); await settle(200); await idle(p);
   await p.click('.views [data-view="split"]');
-  const r = await p.evaluate(() => { const f = $('frame').getBoundingClientRect(), d = $('divider').getBoundingClientRect(), P = faceCache.get(committed())[0];
+  const r = await p.evaluate(() => { const f = $('view').getBoundingClientRect(), d = $('divider').getBoundingClientRect(), P = faceCache.get(committed())[0];
     return { x: d.left + d.width / 2, nose: f.left + P[1][0] * f.width, f: [f.left, f.right] }; });
   near(r.x, r.nose, 2, 'divider runs down the nose'); assert(r.x > r.f[0] && r.x < r.f[1], 'divider is on the photo');
   await p.click('#cancelBtn'); await p.click('#settingsBtn').catch(() => p.evaluate(() => openSettings()));
@@ -798,6 +801,121 @@ if (face) test('face: smooth skin previews at 2048px and saves at full size', as
   const s = imageSize(state.downloads[0].file), o = await p.evaluate(() => [ed.original.w, ed.original.h]);
   eq([s.w, s.h], o, 'face edit saved at the original size');
 });
+
+// ---------- Inspection zoom (Chromium touch emulation through CDP; not a real phone) ----------
+// Inspection zoom only changes how the photo is viewed: never ops, history, crop or saved pixels.
+async function touchpad(p) {
+  const c = await p.context().newCDPSession(p);
+  const T = async (type, pts) => { await c.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y, id]) => ({ x, y, id })) }); };
+  return { T, wait: () => p.waitForTimeout(80) };
+}
+const viewState = (p) => p.evaluate(() => {
+  const v = viewRect(), b = $('before').getBoundingClientRect(), a = $('after').getBoundingClientRect(), st = $('stage').getBoundingClientRect(), d = $('divider').getBoundingClientRect();
+  const clip = /inset\(0(?:px)? 0(?:px)? 0(?:px)? ([\d.]+)%\)/.exec($('after').style.clipPath);
+  return { z: insp.z, cx: insp.cx, cy: insp.cy, v, st: { x: st.left, y: st.top, w: st.width, h: st.height }, b: [b.left, b.top, b.width, b.height], a: [a.left, a.top, a.width, a.height],
+    divider: d.left + d.width / 2 - st.left, clipX: clip ? v.x + (+clip[1] / 100) * v.w : null, split: ed.split, hist: ed.hist.length, idx: ed.idx, pending: ed.pending && ed.pending.data,
+    ops: JSON.stringify(ed.hist.map((h) => h.op || null)), undo: $('undoBtn').disabled, redo: $('redoBtn').disabled };
+});
+test('zoom: pinch, pan, double-tap, wheel and buttons inspect the photo without changing the edit', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending); await idle(p);
+  await p.click('.views [data-view="split"]'); await settle(200);
+  const s0 = await viewState(p), { T, wait } = await touchpad(p);
+  eq(s0.z, 1, 'starts at fit'); near(s0.divider, s0.v.x + s0.v.w / 2, 1.5, 'divider starts mid-photo');
+  const cx = s0.st.x + s0.st.w / 2, cy = s0.st.y + s0.st.h * 0.4, mx = cx - s0.st.x, my = cy - s0.st.y;
+  const under = (s) => [(mx - s.v.x) / s.v.w, (my - s.v.y) / s.v.h];
+  // Pinch away from the divider: zooms around the fingers' midpoint.
+  const ox = -60;
+  await T('touchStart', [[cx + ox - 30, cy, 0], [cx + ox + 30, cy, 1]]);
+  for (let i = 1; i <= 6; i++) await T('touchMove', [[cx + ox - 30 - 10 * i, cy, 0], [cx + ox + 30 + 10 * i, cy, 1]]);
+  await wait(); const s1 = await viewState(p);
+  near(s1.z, 3, 0.05, 'pinch 60px to 180px zooms 3x');
+  const P0 = [(mx + ox - s0.v.x) / s0.v.w, (my - s0.v.y) / s0.v.h], P1 = [(mx + ox - s1.v.x) / s1.v.w, (my - s1.v.y) / s1.v.h];
+  near(P1[0], P0[0], 0.003, 'midpoint stays on the same picture point (x)'); near(P1[1], P0[1], 0.003, '(y)');
+  // Lift one finger: nothing jumps; the other pans 1:1.
+  await T('touchEnd', [[cx + ox + 90, cy, 1]]); await wait(); const s2 = await viewState(p);
+  near(s2.v.x, s1.v.x, 0.5, 'no jump when a finger lifts'); near(s2.z, s1.z, 0.001, 'zoom kept');
+  await T('touchMove', [[cx + ox - 90 + 25, cy + 20, 0]]); await wait(); await T('touchEnd', []); await wait();
+  const s3 = await viewState(p); near(s3.v.x - s2.v.x, 25, 0.5, 'one-finger pan x'); near(s3.v.y - s2.v.y, 20, 0.5, 'one-finger pan y');
+  // Original and edited stay aligned, and the edited side starts exactly at the divider.
+  eq(s3.a.map(Math.round), s3.b.map(Math.round), 'before and after aligned at 3x');
+  near(s3.clipX, s3.divider, 1, 'clip edge on the divider line while zoomed');
+  assert(s3.divider > Math.max(0, s3.v.x) && s3.divider < Math.min(s3.st.w, s3.v.x + s3.v.w), 'divider on the visible photo');
+  // Dragging the divider moves only the divider.
+  const dx = s3.st.x + s3.divider, dy = s3.st.y + s3.st.h * 0.3;
+  await T('touchStart', [[dx, dy, 0]]); await T('touchMove', [[dx - 40, dy, 0]]); await wait(); await T('touchEnd', []); await wait();
+  const s4 = await viewState(p); near(s4.divider, s3.divider - 40, 1.5, 'divider follows the finger'); near(s4.v.x, s3.v.x, 0.01, 'view did not pan'); eq(s4.z, s3.z, 'zoom unchanged');
+  near(s4.clipX, s4.divider, 1, 'still aligned with the divider');
+  // Switching views keeps the inspection position.
+  await p.click('.views [data-view="edited"]'); await p.click('.views [data-view="original"]'); await p.click('.views [data-view="split"]');
+  const s5 = await viewState(p); near(s5.v.x, s4.v.x, 0.01, 'position kept across views'); eq(s5.z, s4.z, 'zoom kept across views');
+  // Double-tap back to fit, then into a close-up centred on the tap.
+  const tap = async (x, y) => { await T('touchStart', [[x, y, 0]]); await T('touchEnd', []); await p.waitForTimeout(60); await T('touchStart', [[x, y, 0]]); await T('touchEnd', []); await settle(350); };
+  await tap(cx - 70, cy); eq((await viewState(p)).z, 1, 'double-tap returns to fit');
+  const f0 = await viewState(p), tx = cx - 70 - f0.st.x, picked = [(tx - f0.v.x) / f0.v.w, (my - f0.v.y) / f0.v.h];
+  await tap(cx - 70, cy); const s6 = await viewState(p);
+  near(s6.z, 3, 0.01, 'double-tap close-up'); near(s6.cx, picked[0], 0.002, 'centred on the tap (x)'); near(s6.cy, picked[1], 0.002, '(y)');
+  // Buttons and their accessible names.
+  eq(await p.evaluate(() => ['zoomIn', 'zoomOut', 'zoomFit'].map((id) => $(id).getAttribute('aria-label'))), ['Zoom in', 'Zoom out', 'Fit photo to screen'], 'button names');
+  await p.click('#zoomFit'); await settle(300); eq((await viewState(p)).z, 1, 'Fit');
+  assert(await p.isDisabled('#zoomOut'), 'Zoom out disabled at fit');
+  await p.click('#zoomIn'); await settle(300); near((await viewState(p)).z, 1.6, 0.01, 'Zoom in');
+  await p.click('#zoomOut'); await settle(300); near((await viewState(p)).z, 1, 0.01, 'Zoom out');
+  // Nothing about the edit changed.
+  const s7 = await viewState(p);
+  eq([s7.hist, s7.idx, s7.ops, s7.undo, s7.redo, s7.pending === s0.pending], [s0.hist, s0.idx, s0.ops, s0.undo, s0.redo, true], 'no history steps, same ops, same preview pixels');
+  await p.click('#zoomIn'); await settle(300);
+  await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
+  eq((({ w, h }) => [w, h])(imageSize(state.downloads[0].file)), [1122, 1402], 'saved at the photo size while zoomed in');
+  eq(await p.evaluate(() => ed.hist.length), s0.hist + 1, 'only Apply added a step');
+}, { viewport: { width: 390, height: 844 } });
+test('zoom: desktop wheel zooms around the cursor and the mouse pans; crop keeps its own gestures', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  const s0 = await viewState(p), x = s0.st.x + s0.v.x + s0.v.w * 0.35, y = s0.st.y + s0.st.h * 0.4;
+  const P0 = [(x - s0.st.x - s0.v.x) / s0.v.w, (y - s0.st.y - s0.v.y) / s0.v.h];
+  await p.mouse.move(x, y); await p.mouse.wheel(0, -300); await settle(100); await p.mouse.wheel(0, -300); await settle(150);
+  const s1 = await viewState(p); assert(s1.z > 1.3, 'wheel zooms in: ' + s1.z);
+  // While the zoomed photo is still narrower than the viewer it stays centred sideways, so only y is pinned then.
+  near((y - s1.st.y - s1.v.y) / s1.v.h, P0[1], 0.003, 'cursor stays on the same picture point (y)');
+  await p.mouse.down(); await p.mouse.move(x + 30, y + 10, { steps: 4 }); await p.mouse.up();
+  const s2 = await viewState(p); near(s2.v.x - s1.v.x, 30, 0.5, 'mouse drag pans');
+  eq(await p.evaluate(() => document.documentElement.style.touchAction || getComputedStyle(document.documentElement).touchAction), 'auto', 'page zoom is not disabled');
+  assert(!/user-scalable=no|maximum-scale=1/.test(await p.getAttribute('meta[name=viewport]', 'content')), 'viewport allows browser zoom');
+  // Crop mode: the inspection view and its controls step aside; crop gestures change the crop.
+  await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr);
+  eq(await p.evaluate(() => [getComputedStyle($('frame')).display, getComputedStyle($('zoomCtl')).display]), ['none', 'none'], 'no inspection zoom while cropping');
+}, { viewport: { width: 1280, height: 860 }, mobile: false, touch: false });
+test('zoom: with the erase brush one finger draws and two fingers navigate', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'edit', 'bg', 'erase'); await p.waitForFunction(() => sel === 'erase' && !$('brush').hidden);
+  const { T, wait } = await touchpad(p), s0 = await viewState(p), cx = s0.st.x + s0.st.w / 2, cy = s0.st.y + s0.st.h / 2;
+  await T('touchStart', [[cx, cy, 0]]); for (let i = 1; i <= 4; i++) await T('touchMove', [[cx + 8 * i, cy, 0]]); await wait(); await T('touchEnd', []); await wait();
+  eq(await p.evaluate(() => strokes.length), 1, 'one finger draws a stroke');
+  await T('touchStart', [[cx - 20, cy + 40, 0]]); await T('touchMove', [[cx - 10, cy + 40, 0]]); await wait();
+  await T('touchStart', [[cx - 10, cy + 40, 0], [cx + 40, cy + 40, 1]]);
+  for (let i = 1; i <= 5; i++) await T('touchMove', [[cx - 10 - 10 * i, cy + 40, 0], [cx + 40 + 10 * i, cy + 40, 1]]);
+  await wait(); await T('touchEnd', []); await wait();
+  const r = await p.evaluate(() => ({ n: strokes.length, z: insp.z, hist: ed.hist.length }));
+  eq(r.n, 1, 'the interrupted stroke is dropped'); assert(r.z > 1.8, 'two fingers zoomed: ' + r.z); eq(r.hist, s0.hist, 'no history step');
+  // Strokes stay on the same picture spot when zoomed: a new stroke lands under the finger.
+  await T('touchStart', [[cx, cy, 0]]); await T('touchEnd', []); await wait();
+  const pt = await p.evaluate(() => { const r = imageRect(), q = strokes[strokes.length - 1].pts[0], st = $('stage').getBoundingClientRect(); return [st.left + r.x + q[0] * r.s, st.top + r.y + q[1] * r.s]; });
+  near(pt[0], cx, 1, 'stroke under the finger (x)'); near(pt[1], cy, 1, '(y)');
+}, { viewport: { width: 390, height: 844 } });
+test('layout: photo-first editor, collapsible panel, no sideways scroll on small phones', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'retouch', 'face', 'fslim'); await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 });
+  const m = () => p.evaluate(() => ({ stage: $('stage').getBoundingClientRect().height, head: document.querySelector('#editorScreen .topbar').getBoundingClientRect().height,
+    apply: $('applyBtn').getBoundingClientRect().bottom <= innerHeight, small: [...document.querySelectorAll('#editorScreen button')].filter((b) => b.offsetParent && !b.closest('.views') && !b.classList.contains('tool') && !b.classList.contains('tab') && !b.classList.contains('subchip')).map((b) => [b.id || b.textContent.trim(), Math.round(b.getBoundingClientRect().height)]).filter(([, h]) => h < 44),
+    sideways: document.documentElement.scrollWidth > innerWidth }));
+  const a = await m();
+  assert(a.head <= 48, 'compact header ' + a.head); assert(a.apply, 'Apply reachable'); eq(a.small, [], 'touch targets at least 44px'); eq(a.sideways, false, 'no sideways scroll');
+  await p.click('#collapseBtn'); await settle(150);
+  const b = await m();
+  assert(b.stage > a.stage + 60, `collapsing gives the photo room: ${a.stage} -> ${b.stage}`); assert(b.apply, 'Apply still reachable');
+  eq(await p.getAttribute('#collapseBtn', 'aria-expanded'), 'false', 'collapse state is announced');
+  await p.click('#collapseBtn'); await settle(150); near((await m()).stage, a.stage, 1, 'expands again');
+}, { viewport: { width: 320, height: 640 } });
 
 // ---------- Runner ----------
 (async () => {

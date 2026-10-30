@@ -130,16 +130,21 @@
 
   <!-- Active editor -->
   <section class="screen" id="editorScreen" hidden aria-label="Photo editor">
-    <header class="topbar">
+    <header class="topbar compact">
       <button class="icon-btn" id="backBtn" aria-label="Back to Editor home"></button>
       <p class="wordmark" aria-hidden="true">Glow</p>
-      <button class="pill" id="saveBtn" disabled>Save</button>
+      <div class="top-actions">
+        <button class="credit-chip" id="balanceBtn" hidden></button>
+        <button class="pill" id="saveBtn" disabled>Save</button>
+      </div>
     </header>
     <div class="canvas-col">
       <div class="stage" id="stage" data-view="edited">
         <div class="frame" id="frame">
-          <img id="before" alt="">
-          <img id="after" alt="">
+          <div class="view" id="view">
+            <img id="before" alt="">
+            <img id="after" alt="">
+          </div>
           <div class="divider" id="divider">
             <button class="handle" id="handle" role="slider" aria-label="Compare original and edited" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><i></i></button>
           </div>
@@ -160,25 +165,30 @@
           </div>
           <p class="crop-hint" id="cropHint">Drag to reposition · Pinch to zoom</p>
         </div>
+        <div class="zoomctl" id="zoomCtl" role="group" aria-label="Photo zoom">
+          <button class="icon-btn" id="zoomIn" aria-label="Zoom in"></button>
+          <button class="icon-btn" id="zoomOut" aria-label="Zoom out"></button>
+          <button class="icon-btn" id="zoomFit" aria-label="Fit photo to screen"></button>
+        </div>
+        <p class="zoom-hint" id="zoomHint" hidden>Pinch or double-tap to zoom</p>
+        <div class="busy" id="busy" hidden><div><div class="spinner"></div><div id="busyText">Working…</div><p id="busyNote"></p></div></div>
+      </div>
+      <div class="viewbar">
         <div class="history">
           <button class="icon-btn" id="undoBtn" aria-label="Undo" disabled></button>
           <button class="icon-btn" id="redoBtn" aria-label="Redo" disabled></button>
         </div>
-        <div class="busy" id="busy" hidden><div><div class="spinner"></div><div id="busyText">Working…</div><p id="busyNote"></p></div></div>
-      </div>
-      <div class="viewbar">
         <div class="views" role="group" aria-label="View">
           <button data-view="original" aria-pressed="false">Original</button>
           <button data-view="split" aria-pressed="false">Compare</button>
           <button data-view="edited" aria-pressed="true">Edited</button>
         </div>
-        <button class="credit-chip" id="balanceBtn" hidden></button>
       </div>
     </div>
     <div class="side">
-      <div class="demobar" id="demoBar" hidden>
-        <p><strong>Demo · No credits used</strong><span>AI-generated sample</span></p>
-        <button class="btn small" id="demoOwnBtn">Try your own photo</button>
+      <div class="demorow" id="demoBar" hidden>
+        <p>Demo · Free preview</p>
+        <button class="link-btn" id="demoOwnBtn"><span data-icon="upload"></span>Use your photo</button>
       </div>
       <div class="jobbar" id="jobBar" role="status" hidden>
         <div class="spinner small" id="jobSpin" aria-hidden="true"></div>
@@ -207,6 +217,7 @@
           <h2 class="t-section" id="toolName"></h2>
           <span class="chip" id="cost"></span>
           <button class="icon-btn" id="favBtn" aria-pressed="false" aria-label="Add to favorites"></button>
+          <button class="icon-btn" id="collapseBtn" aria-expanded="true" aria-controls="panelBody" aria-label="Hide tool controls"></button>
         </div>
         <p class="panel-note" id="panelNote"></p>
         <div class="panel-body" id="panelBody"></div>
