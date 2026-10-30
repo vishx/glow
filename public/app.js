@@ -66,6 +66,7 @@ tool("outfit", "Try on", "Try on an outfit", "ai", "styles", { hint: "Pick a pho
 // AI step (Enhance, a new background, or her own words) runs first, then the free steps on top.
 tool("glowup", "Glow Up", "Glow Up", "glowup", "fix", { hint: "Tick what you want. AI is optional." });
 tool("custom", "Describe", "Describe an edit", "ai", "fix", { hint: "Say what to change. Her face is kept as hers." });
+tool("bgcolor", "Color", "Color background", "bg", "bg", { hint: "A plain studio color behind her." });
 tool("bgphoto", "Photo", "Your background", "bg", "bg", { hint: "Pick any photo as the background. She is matched to its light and color." });
 // AI backgrounds: a scene painted around her (only the background is repainted; she stays her own
 // pixels), and an HD cutout whose edges follow single hair strands.
@@ -115,16 +116,21 @@ const CATS = {
   retouch: [["glow", "Glow Up", ["glowup"]], ["skin", "Skin", ["fsmooth", "fblemish", "feyes", "fslim", "fnose"]],
     ["face", "Face", ["fundereye", "fauto", "ftone", "fskin", "fbigeyes", "fteeth", "retouch", "smile", "faces"]],
     ["makeup", "Makeup", ["fglam", "flips", "fblush", "flashes", "fliner", "fshadow", "fbrows", "feyecolor", "fcontour", "fhighlight", "fbronzer"]],
-    ["hair", "Hair", ["hcolor", "hair_waves", "hair_bob", "hair_pixie", "hair_bangs", "hair_curls", "hair_bun", "hair_braids", "hair_butterfly"]]],
+    ["hair", "Hair", ["hcolor"]]],
   looks: [["filters", "Filters", FILTER_IDS],
-    ["styles", "Styles", ["headshot", "fashion", "anime", "watercolor", "toon3d", "clay", "older", "younger"]],
-    ["outfits", "Outfits", ["outfit", "gown", "suit", "sundress", "street"]]],
+    ["styles", "Styles", ["headshot", "fashion"]],
+    ["outfits", "Outfits", ["outfit", "suit", "sundress"]]],
   edit: [["adjust", "Adjust", ["crop", "light", "contrast", "highlights", "shadows", "color", "vibrance", "warmth", "tint", "detail", "fade", "vignette", "grain"]],
-    ["enhance", "Enhance", ["pro", "enhance", "upscale", "relight", "golden", "colorize"]],
-    ["bg", "Background", ["bgscene", "bgphoto", "bgblur", "bgcut", "bgremove", "bgwhite", "bgblush", "bgsky"]]],
-  ai: [["gen", "AI tools", ["erase", "fill", "expand", "custom"]]],
+    ["enhance", "Enhance", ["pro", "enhance", "golden", "colorize"]],
+    ["bg", "Background", ["bgscene", "bgphoto", "bgblur", "bgremove", "bgcolor"]]],
+  ai: [["gen", "AI tools", ["erase", "fill", "custom"]]],
 };
-const ADVANCED = [["body", "Body (advanced)", ["bwaist", "bhips", "barms", "bslimlegs", "blegs"]], ["camlooks", "Camera looks", ["mylook"]]];
+const ADVANCED = [["camlooks", "Camera looks", ["mylook"]]];
+// Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
+// another tool, or (body reshaping) didn't fit Glow. Their code stays so saved drafts still replay.
+const RETIRED = ["smile", "relight", "older", "younger", "expand", "upscale", "faces", "bgcut", "bgwhite", "bgblush", "bgsky",
+  "anime", "watercolor", "toon3d", "clay", "gown", "street", "hair_waves", "hair_bob", "hair_pixie", "hair_bangs", "hair_curls",
+  "hair_bun", "hair_braids", "hair_butterfly", "bwaist", "bhips", "barms", "bslimlegs", "blegs"];
 const TAB_NAMES = { retouch: "Retouch", looks: "Looks", edit: "Edit", ai: "AI" };
 // Where a tool lives: its tab, or null for tools reached through Search only.
 function tabFor(id) {
@@ -215,7 +221,7 @@ function finishOnboarding(dest) {
   if (dest === "pick") { go("editor"); pickAndOpen(); }
   else if (dest === "sample") { go("editor"); openSample(); }
   else if (dest === "camera") go("camera");
-  else { const pref = store.get("glowStart") || "enhance"; go(pref === "last" ? store.get("glowLastDest") || "enhance" : pref); }
+  else go(store.get("glowLastDest") || "enhance");   // where you left off
 }
 $("obPick").addEventListener("click", () => finishOnboarding("pick"));
 $("obSample").addEventListener("click", () => finishOnboarding("sample"));
@@ -959,9 +965,9 @@ function renderTabs() {
 }
 // Remove, Fill and Expand are always listed under AI, even where they can't run (the sample, or
 // Fill before the server has it), with a badge saying why, instead of silently disappearing.
-const toolShown = (id) => demoOffers(id) || (ed.demo && CATS.ai[0][2].includes(id));
+const toolShown = (id) => !RETIRED.includes(id) && (demoOffers(id) || (ed.demo && CATS.ai[0][2].includes(id)));
 function toolBadge(t) {
-  if (ed.demo && t.kind === "ai") return demo && demo.ready.includes(t.id) ? ["Preview", ", prepared preview, no credits"] : ["Own photo", ", needs your own photo"];
+  if (ed.demo && t.kind === "ai") return demo && demo.ready.includes(t.id) ? ["Preview", ", prepared preview, no credits"] : [null, ", needs your own photo"];   // the panel explains; a badge on every tile was noise
   if (!aiLive(t.id)) return ["Soon", ", not available yet"];
   const cost = costOf(t);
   return cost ? [`AI · ${cost}`, `, uses ${credits(cost)}`] : [null, ", free"];
@@ -974,7 +980,9 @@ function toolButton(t) {
   b.setAttribute("aria-label", t.label + spoken);
   const well = document.createElement("i"); well.className = "well";
   if (t.kind === "filter") {
-    if (thumb) { well.style.backgroundImage = `url(${thumb})`; well.style.filter = t.filter.f; }
+    if (thumb) { well.style.backgroundImage = `url(${faceThumb || thumb})`; well.style.filter = t.filter.f; }
+  } else if (["adjust", "crop", "bg"].includes(t.kind)) {
+    well.innerHTML = icon(t.id);   // photo controls read better as icons than as faces
   } else {
     // Every other tool shows the face it will change, with the tool's icon on a small badge;
     // the sample's AI tools show their prepared result.
@@ -992,7 +1000,7 @@ function toolButton(t) {
 function renderTools() {
   const groups = groupsFor(cat).map((g) => [g[0], g[1], g[2].filter((id) => TOOL[id] && toolShown(id))]).filter((g) => g[2].length), box = $("tools");
   if (!groups.length && searching) { box.innerHTML = `<p class="empty-note">No tools match that search.</p>`; return; }
-  renderToolGroups(box, groups, searching);   // group names only in Search; a tab is one plain row
+  renderToolGroups(box, groups, true);   // group names show in Search and on wide screens; a phone tab is one plain row
   if (!searching) {
     // Search sits at the end of every row.
     const b = document.createElement("button"); b.className = "tool search-tile"; b.id = "searchBtn";
@@ -1193,6 +1201,16 @@ function glowRecipe() {
 }
 // Backgrounds: the photo she picked, and the AI scene (a preset or her own words).
 let bgPhoto = null, bgBlur = false, scenePick = "studio", sceneText = "";
+// Color background: four studio colors, each with a soft light falloff like a paper backdrop.
+const BG_COLORS = [["Ivory", "ivory", "#f7f1ea"], ["White", "white", "#ffffff"], ["Blush", "blush", "#f3dde2"], ["Black", "black", "#1a1518"]];
+let bgColorPick = "ivory";
+const colorFill = (id) => (ctx, w, h) => {
+  const hex = (BG_COLORS.find((c) => c[1] === id) || BG_COLORS[0])[2];
+  ctx.fillStyle = hex; ctx.fillRect(0, 0, w, h);
+  const g = ctx.createRadialGradient(w / 2, h * 0.35, 0, w / 2, h * 0.35, Math.max(w, h) * 0.8);
+  g.addColorStop(0, id === "black" ? "rgb(255 255 255 / 0.07)" : "rgb(255 255 255 / 0.35)"); g.addColorStop(1, "rgb(0 0 0 / 0.06)");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+};
 const SCENES = [["Studio", "studio", "a clean professional photo studio backdrop in soft warm beige with a gentle light gradient"],
   ["Beach", "beach", "a sunny tropical beach with a soft turquoise sea and sky, shallow depth of field"],
   ["City lights", "city", "a city street at night with warm bokeh lights, shallow depth of field"],
@@ -1424,6 +1442,9 @@ function buildPanel(t) {
     });
     row.append(b); body.append(row);
     body.append(options([["Sharp", false], ["Soft blur", true]], (v) => v === bgBlur, (v) => { bgBlur = v; renderPanel(true); preview(); }));
+  } else if (t.id === "bgcolor") {
+    const row = options(BG_COLORS.map(([label, id]) => [label, id]), (v) => v === bgColorPick, (v) => { bgColorPick = v; renderPanel(true); preview(); });
+    row.setAttribute("role", "group"); row.setAttribute("aria-label", "Background color"); body.append(row);
   } else if (t.id === "bgscene" && !ed.demo) {
     const row = options(SCENES.map(([label, id]) => [label, id]), (v) => v === scenePick, (v) => { scenePick = v; renderPanel(true); });
     row.setAttribute("role", "group"); row.setAttribute("aria-label", "Scene"); body.append(row);
@@ -1538,6 +1559,7 @@ function opFor(t) {
   if (t.kind === "filter" && filterAmt < 100) op.amt = filterAmt / 100;
   if (t.kind === "look") op.look = { ...(editorLooks().find((l) => l.id === lookPick) || PRESET_LOOKS[1]) };
   if (t.id === "bgphoto") { op.bg = bgPhoto; op.bgBlur = bgBlur; }
+  if (t.id === "bgcolor") op.bgColor = bgColorPick;
   if (t.id === "glowup") {
     op.glow = glowRecipe(); op.shades = { ...faceSet.shade }; op.styles = { ...faceSet.style };
     if (faceSel.boxes.length > 1) { const b = faceSel.boxes[faceSel.i]; op.face = [b.cx, b.cy]; }
@@ -1571,6 +1593,7 @@ async function computeOp(op, base) {
     if (t.id === "bgremove") return cutout(base);
     if (t.id === "bgblur") return backdrop(base, "blur");
     if (t.id === "bgphoto") return op.bg ? backdrop(base, op.bg, { match: true, blur: op.bgBlur }) : null;
+    if (t.id === "bgcolor") return backdrop(base, colorFill(op.bgColor));
     return backdrop(base, BG_FILLS[t.id]);
   }
   return null;
@@ -2344,27 +2367,31 @@ function renderCredits() {
   $("homeCredits").innerHTML = icon("sparkle") + `<span>${balanceText(a)}. On-device tools are always free.</span>` + icon("chevron");
 }
 function renderCreditsSheet() {
-  const a = account, p = (h) => `<p>${h}</p>`;
-  let html = "";
-  if (!a) html = p("Your balance will show once Glow can reach its server.");
+  // A balance card on top, then a few short facts. The rules are unchanged; only the layout is.
+  const a = account;
+  const fact = (ic, t, d) => `<li>${icon(ic)}<div><b>${t}</b>${d ? `<span>${d}</span>` : ""}</div></li>`;
+  const card = (n, of, sub, note) => `<div class="cr-card"><div class="cr-num"><b>${n}</b><span>${of}</span></div>` +
+    `<div class="cr-bar"><i style="width:${of ? Math.round(100 * Math.min(1, n / (+of.match(/\d+/)[0] || 1))) : 0}%"></i></div><p>${sub}</p>${note ? `<p class="cr-note">${note}</p>` : ""}</div>`;
+  let html = "", facts = [];
+  if (!a) html = `<div class="cr-card"><p>Your balance will show once Glow can reach its server.</p></div>`;
   else if (a.plan === "pro") {
-    html = p(`<b>${a.remaining} of ${a.quota} AI credits left.</b>`) +
-      p("Glow Pro includes 40 AI credits each week. Each credit comes back 7 days after you use it. Unused credits don't carry over. The yearly plan also has a limit of 80 credits in any 30 days.");
+    html = card(a.remaining, `of ${a.quota} AI credits left`, "Glow Pro includes 40 AI credits each week. Each credit comes back 7 days after you use it.",
+      "Unused credits don't carry over. The yearly plan also has a limit of 80 credits in any 30 days.");
   } else {
     const r = nextUtcMidnight(), mins = Math.max(1, Math.round((r - Date.now()) / 60000));
     const left = mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
-    html = p(`<b>${a.remaining} of ${a.quota} AI credits left today.</b>`) +
-      p(a.trialLeft !== undefined
-        ? `You get 3 AI credits a day for the everyday AI tools: Restore, Retouch, Remove, Face repair, Upscale, Colorize, 3D Toon, Clay, Older and Younger. They reset at midnight UTC, which is ${fmtTime(r)} your time (in ${left}). Unused credits don't carry over.`
-        : `You get 3 AI credits a day. They reset at midnight UTC, which is ${fmtTime(r)} your time (in ${left}). Unused credits don't carry over.`);
-    if (a.trialLeft !== undefined) html += p(`Premium AI tools (Enhance, Fill, Expand, Smile, Relight, Golden hour, hair, outfits and portrait styles) share 3 free premium credits, once, not each day: <b>${a.trialLeft} left</b>. Fill, Expand and the portrait styles use 2.`);
-    if (native && plugins.AdMob && a.adsLeft > 0) html += p(`Out of credits? You can watch a short ad for 1 more credit${a.trialLeft !== undefined ? " (for the daily tools)" : ""}, up to ${a.adsLeft} more today. Ads are always optional.`);
+    html = card(a.remaining, `of ${a.quota} AI credits left today`, `Resets at ${fmtTime(r)} (in ${left}). Unused credits don't carry over.`,
+      a.trialLeft !== undefined ? "Daily credits work with Restore, Retouch, Remove and Colorize." : "");
+    if (a.trialLeft !== undefined) facts.push(fact("sparkle", `${a.trialLeft} free premium ${a.trialLeft === 1 ? "try" : "tries"} left`,
+      "Enhance, Fill, Golden hour, outfits and portrait styles share 3 free premium credits, once, not each day. Fill and the portrait styles use 2."));
+    if (native && plugins.AdMob && a.adsLeft > 0) facts.push(fact("star", "Out of credits?",
+      `Watch a short ad for 1 more credit${a.trialLeft !== undefined ? " for the daily tools" : ""}, up to ${a.adsLeft} more today. Ads are always optional.`));
   }
-  html += p("Saving photos is free and unlimited. On the free plan, saves carry a small Glow mark. Credits are only for AI tools; on-device tools are always free.") +
-    p(`Most AI tools use 1 credit. Headshot, Fashion, Anime and Watercolor${CONFIG.pricingV2 ? ", Fill and Expand" : ""} use 2. Each tool shows its cost before you apply it.`) +
-    p("The camera, filters, face, makeup, body, hair color, background, light and color tools run on your device and are always free. Undo and redo never use credits.") +
-    p("If the AI service reports that an edit failed, its credit is returned automatically.");
-  $("creditsBody").innerHTML = html;
+  facts.push(fact("save", "Saving is free and unlimited", "On the free plan, saves carry a small Glow mark."),
+    fact("sliders", "On-device tools are always free", "Camera, filters, face, makeup, backgrounds, light and color. Undo and redo never use credits."),
+    fact("wand", `Most AI tools use 1 credit`, `Headshot and Fashion${CONFIG.pricingV2 ? " and Fill" : ""} use 2. Each tool shows its cost before you apply it.`),
+    fact("revert", "Failed edits are refunded", "If the AI service reports an edit failed, its credit comes back automatically."));
+  $("creditsBody").innerHTML = html + `<ul class="cr-facts">${facts.join("")}</ul>`;
   $("creditsPro").hidden = !!(a && a.plan === "pro");
 }
 function openCredits() { refreshAccount(); renderCreditsSheet(); $("creditsSheet").showModal(); }
@@ -2737,8 +2764,6 @@ $("camGallery").addEventListener("click", galleryToEditor);
 // ---------- Settings ----------
 function openSettings() {
   refreshAccount();
-  const start = store.get("glowStart") || "enhance";
-  document.querySelectorAll("#startSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.start === start)));
   $("saveOrigToggle").checked = store.get("glowSaveOrig") === "on";
   $("autoSaveToggle").checked = store.get("glowAutoSave") === "on";
   applyTheme(); showBuild();
@@ -2760,18 +2785,12 @@ async function showBuild() {
 }
 $("camSettingsBtn").addEventListener("click", openSettings);
 $("homeSettingsBtn").addEventListener("click", openSettings);
-$("startSeg").addEventListener("click", (e) => {
-  const b = e.target.closest("button"); if (!b) return;
-  store.set("glowStart", b.dataset.start);
-  document.querySelectorAll("#startSeg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-});
 $("themeSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { store.set("glowTheme", b.dataset.theme); applyTheme(); } });
 $("saveOrigToggle").addEventListener("change", (e) => store.set("glowSaveOrig", e.target.checked ? "on" : "off"));
 $("autoSaveToggle").addEventListener("change", (e) => store.set("glowAutoSave", e.target.checked ? "on" : "off"));
 $("autoSaveHelp").textContent = native && plugins.Media
-  ? "Off: after each photo you choose Save, Retake or Edit photo. On: each photo is saved to the Glow album as soon as you take it, and you can still edit or retake it. Edits are saved separately when you tap Save in the editor."
-  : "Off: after each photo you choose Save, Retake or Edit photo. On: each photo is downloaded to this device as soon as you take it. Browsers can't put photos straight into your photo library, so look in Downloads.";
-$("replayIntro").addEventListener("click", () => { $("settings").close(); showOnboarding(); });
+  ? "Each photo goes to the Glow album as soon as you take it. You can still edit or retake it."
+  : "Each photo downloads as soon as you take it. Look in Downloads; browsers can't save to your photo library.";
 $("goProBtn").addEventListener("click", () => { $("settings").close(); openPaywall(); });
 $("deleteAccount").addEventListener("click", async (e) => {
   e.preventDefault();
@@ -2954,8 +2973,7 @@ restoreDraft();
 // the welcome screen.
 function startApp() {
   store.set("glowOnboarded", "1");
-  const pref = store.get("glowStart") || "enhance";
-  go(pref === "last" ? store.get("glowLastDest") || "enhance" : pref);
+  go(store.get("glowLastDest") || "enhance");
 }
 startApp();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

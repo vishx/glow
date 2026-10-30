@@ -775,3 +775,40 @@ dialog.pw .links { justify-content: center; }
 #editorScreen #saveBtn.just-saved::before { content: ""; position: absolute; top: -6px; left: -6px; width: 14px; height: 14px; background: var(--rose);
   clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); animation: glow-twinkle 900ms ease-out both; pointer-events: none; }
 @keyframes glow-twinkle { 0% { transform: scale(0) rotate(0); opacity: 0; } 35% { transform: scale(1.2) rotate(30deg); opacity: 1; } 100% { transform: translate(-6px, -8px) scale(0) rotate(90deg); opacity: 0; } }
+
+/* Sheet and alert titles use the display serif, like every other title. */
+dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font-display); font-weight: 500; font-size: 1.5rem; line-height: 1.875rem;
+  font-variation-settings: "SOFT" 100, "WONK" 0; letter-spacing: -0.01em; }
+
+/* Credits sheet: a balance card, then short facts with icons */
+.cr-card { background: linear-gradient(160deg, var(--tint), transparent 70%), var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 18px 18px 16px; margin: 4px 0 14px; }
+.cr-card p { margin: 0; color: var(--muted); font-size: .875rem; line-height: 1.35rem; }
+.cr-card p.cr-note { margin-top: 6px; font-size: .8125rem; }
+.cr-num { display: flex; align-items: baseline; gap: 8px; }
+.cr-num b { font-family: var(--font-display); font-variation-settings: "SOFT" 100; font-weight: 500; font-size: 3rem; line-height: 1; color: var(--text); }
+.cr-num span { color: var(--text); font-weight: 600; font-size: .9375rem; }
+.cr-bar { height: 6px; border-radius: 3px; background: var(--surface-2); margin: 12px 0 10px; overflow: hidden; }
+.cr-bar i { display: block; height: 100%; border-radius: 3px; background: var(--champagne); }
+.cr-facts { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 14px; }
+.cr-facts li { display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: start; }
+.cr-facts svg { width: 36px; height: 36px; padding: 8px; border-radius: 12px; background: var(--blush); color: var(--rose); box-sizing: border-box; }
+.cr-facts b { display: block; font-size: .9375rem; line-height: 1.25rem; font-weight: 600; color: var(--text); }
+.cr-facts span { display: block; color: var(--muted); font-size: .8125rem; line-height: 1.2rem; margin-top: 2px; }
+
+/* Settings: plan card, quieter links */
+#settings .plan-card { background: linear-gradient(120deg, rgb(242 215 182 / .35), rgb(233 179 195 / .35)), var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 16px; margin: 4px 0 8px; display: grid; gap: 12px; }
+#settings .plan-card #planLine { margin: 0; font-family: var(--font-display); font-variation-settings: "SOFT" 100; font-size: 1.25rem; line-height: 1.6rem; color: var(--text); }
+#settings .plan-card .row { margin: 0; }
+#settings .plan-card .btn { flex: 1; }
+#settings .setting .fine { color: var(--muted); }
+#settings .links a { color: var(--muted); text-decoration: none; }
+#settings .links a.danger { color: var(--rose); }
+#settings .build-id { opacity: .6; }
+
+/* Group names: Search and wide screens only; a phone tab stays one clean row */
+#editorScreen:not(.tools-open) .group-label { display: none; }
+@media (min-width: 960px) {
+  #editorScreen .group-label { display: block !important; position: static; background: none; padding: 0 0 6px 2px; font-family: var(--font-display); font-variation-settings: "SOFT" 100; font-weight: 500; font-size: 1rem; line-height: 1.375rem; color: var(--text); }
+  #editorScreen .tools > .group:last-child .group-label { display: none !important; }
+}
+#editorScreen.tools-open .zoom-hint { display: none; }
