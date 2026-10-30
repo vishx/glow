@@ -20,9 +20,13 @@ function same(a: string, b: string) {
   return d === 0;
 }
 
-async function setPlan(ids: string[], plan: "pro" | "free", expires: string | null) {
+// Which plan was bought: the yearly plan has an extra monthly credit cap (migration 007).
+const periodOf = (productId?: string) => (/year|annual/i.test(productId ?? "") ? "yearly" : productId ? "weekly" : null);
+async function setPlan(ids: string[], plan: "pro" | "free", expires: string | null, period: string | null = null) {
   for (const id of ids) {
-    const { error } = await admin.from("profiles").upsert({ id, plan, plan_expires_at: plan === "pro" ? expires : null });
+    const row: Record<string, unknown> = { id, plan, plan_expires_at: plan === "pro" ? expires : null };
+    if (period) row.plan_period = period;
+    const { error } = await admin.from("profiles").upsert(row);
     // A user deleted since purchase has no auth row to reference; skip it.
     if (error && !/foreign key/i.test(error.message)) throw error;
   }
@@ -32,16 +36,16 @@ Deno.serve(async (req) => {
   if (!SECRET || !same(req.headers.get("Authorization") ?? "", `Bearer ${SECRET}`)) return new Response("unauthorized", { status: 401 });
   const { event } = await req.json().catch(() => ({}));
   if (!event) return new Response("bad request", { status: 400 });
-  if (Array.isArray(event.entitlement_ids) && !event.entitlement_ids.includes("pro")) return new Response("ignored", { status: 200 });
+  if (Array.isArray(event.entitlement_ids) && !event.entitlement_ids.some((e: string) => e === "pro" || e === "glow_pro")) return new Response("ignored", { status: 200 });
 
   try {
     if (event.type === "TRANSFER") {
       // "Restore purchases" on a new install moves the subscription to the new account.
       const from = uuids(event.transferred_from), to = uuids(event.transferred_to);
-      const { data } = await admin.from("profiles").select("plan, plan_expires_at").in("id", from.length ? from : ["00000000-0000-0000-0000-000000000000"])
+      const { data } = await admin.from("profiles").select("plan, plan_expires_at, plan_period").in("id", from.length ? from : ["00000000-0000-0000-0000-000000000000"])
         .eq("plan", "pro").order("plan_expires_at", { ascending: false }).limit(1);
-      const expires = data?.[0]?.plan_expires_at ?? null;
-      if (expires && new Date(expires) > new Date()) { await setPlan(to, "pro", expires); await setPlan(from, "free", null); }
+      const expires = data?.[0]?.plan_expires_at ?? null, period = data?.[0]?.plan_period ?? null;
+      if (expires && new Date(expires) > new Date()) { await setPlan(to, "pro", expires, period); await setPlan(from, "free", null); }
       console.log("revenuecat TRANSFER", from.join(","), "->", to.join(","), expires);
       return new Response("ok", { status: 200 });
     }
@@ -50,7 +54,7 @@ Deno.serve(async (req) => {
     if (!ids.length) return new Response("ignored", { status: 200 });
     const expires = event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null;
     if (event.type === "EXPIRATION") await setPlan(ids, "free", null);
-    else if (ACTIVE.has(event.type) && expires) await setPlan(ids, "pro", expires);
+    else if (ACTIVE.has(event.type) && expires) await setPlan(ids, "pro", expires, periodOf(event.new_product_id ?? event.product_id));
     else return new Response("ignored", { status: 200 });
     console.log("revenuecat", event.type, ids.join(","), expires);
     return new Response("ok", { status: 200 });

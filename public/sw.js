@@ -1,6 +1,10 @@
 // Caches the app shell so Glow opens instantly from the home screen.
-const CACHE = "glow-v1";
-const SHELL = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png"];
+const CACHE = "glow-v22";
+// The introduction's small photos are part of the shell. The full sample photo and its prepared
+// previews are cached as they are first fetched (below), so they work offline only after
+// someone has opened them once.
+const SHELL = ["/", "/styles.css", "/icons.js", "/platform.js", "/engine.js", "/livebeauty.js", "/app.js", "/enhance.js", "/enhance.css", "/splash/halo.webp", "/splash/core.webp", "/splash/sparkle.webp", "/manifest.json", "/icon-192.png", "/icon-512.png",
+  "/samples/demo-v2/intro.jpg", "/samples/demo-v2/thumb.jpg"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));

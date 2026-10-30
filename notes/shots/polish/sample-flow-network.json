@@ -1,0 +1,31 @@
+{
+  "kind": "mocked-browser",
+  "credits": {
+    "quota": 0,
+    "before": {
+      "used": 0,
+      "posts": 0
+    },
+    "after": {
+      "used": 0,
+      "posts": 0
+    }
+  },
+  "aiRequests": [],
+  "requests": [
+    "GET app.test/samples/demo/manifest.json",
+    "GET app.test/samples/demo/original.png",
+    "HEAD app.test/samples/demo/retouch.jpg",
+    "HEAD app.test/samples/demo/pro.jpg",
+    "HEAD app.test/samples/demo/relight.jpg",
+    "HEAD app.test/samples/demo/golden.jpg",
+    "HEAD app.test/samples/demo/hair_bob.jpg",
+    "HEAD app.test/samples/demo/toon3d.jpg",
+    "GET app.test/samples/demo/retouch.jpg",
+    "GET app.test/samples/demo/pro.jpg",
+    "GET app.test/samples/demo/relight.jpg",
+    "GET app.test/samples/demo/golden.jpg",
+    "GET app.test/samples/demo/hair_bob.jpg",
+    "GET app.test/samples/demo/toon3d.jpg"
+  ]
+}

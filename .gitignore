@@ -1,3 +1,6 @@
 node_modules/
 .DS_Store
 mobile/www/
+tests/.assets/
+tests/out/
+tools/demo/raw/
