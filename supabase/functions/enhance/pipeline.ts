@@ -18,11 +18,14 @@ const outfit = (clothes: string) => edit(`Change only the person's clothes to ${
 
 export type Mode = { model: string | string[]; input: Record<string, unknown>; needsMask?: boolean; needsExtra?: boolean; userPrompt?: string };
 export const MODES: Record<string, Mode> = {
-  enhance: { model: "sczhou/codeformer", input: { codeformer_fidelity: 0.7, background_enhance: true, face_upsample: true, upscale: 2 } },
+  // Enhance (the app's one-tap flow and the Restore tool): Real-ESRGAN sharpens and doubles the
+  // whole photo, and its GFPGAN pass restores the faces. CodeFormer was used before 2026-10-30 but
+  // its license (S-Lab 1.0) doesn't allow commercial use.
+  enhance: { model: "nightmareai/real-esrgan", input: { scale: 2, face_enhance: true } },
   upscale: { model: "nightmareai/real-esrgan", input: { scale: 4, face_enhance: false } },
   faces: { model: "tencentarc/gfpgan", input: { version: "v1.4", scale: 2 } },
   colorize: { model: "piddnad/ddcolor", input: { model_size: "large" } },
-  retouch: { model: "sczhou/codeformer", input: { codeformer_fidelity: 0.3, background_enhance: false, face_upsample: true, upscale: 1 } },
+  retouch: { model: "tencentarc/gfpgan", input: { version: "v1.4", scale: 1 } },
   headshot: { model: STYLE_MODELS, input: style("professional studio headshot photo, soft key light, smart business attire, neutral gray backdrop, sharp focus") },
   anime: { model: STYLE_MODELS, input: style("anime style illustration portrait, vibrant colors, clean line art, soft cel shading") },
   watercolor: { model: STYLE_MODELS, input: style("watercolor painting portrait, soft pastel washes, paper texture, delicate brush strokes") },

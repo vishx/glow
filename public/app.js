@@ -17,8 +17,8 @@ const CONFIG = {
   // Fill sends mode "fill" with a short prompt. Live since enhance v9 (2026-10-30, after migration 006).
   aiFill: true,
   // AI scene, HD cutout and Describe need the "bgscene", "bgcut" and "custom" modes on the
-  // server (enhance v10) and migration 008.
-  aiV10: false,
+  // server (enhance v10, live 2026-10-30) and migration 008 (run 2026-10-30).
+  aiV10: true,
   // Pricing v2 (migration 007): Fill and Expand cost 2 credits. Turn on only once 007 is applied,
   // so the cost shown always matches what the server charges. Applied on 2026-10-30.
   pricingV2: true,
@@ -192,16 +192,17 @@ let screen = "";
 function showScreen(id) {
   if (screen === "cameraScreen" && id !== "cameraScreen") stopCamera();
   screen = id;
-  ["onboarding", "cameraScreen", "editorHome", "editorScreen"].forEach((s) => { $(s).hidden = s !== id; });
-  const dest = id === "cameraScreen" ? "camera" : id === "editorHome" ? "editor" : "";
+  ["onboarding", "enhanceHome", "enhanceResult", "enhanceShare", "cameraScreen", "editorHome", "editorScreen"].forEach((s) => { $(s).hidden = s !== id; });
+  const dest = id === "cameraScreen" ? "camera" : id === "editorHome" ? "editor" : id === "enhanceHome" ? "enhance" : "";
   $("nav").hidden = !dest || (id === "cameraScreen" && !!cam.shot);
   $("nav").classList.toggle("dark", id === "cameraScreen");
   document.querySelectorAll("#nav button").forEach((b) => { if (b.dataset.dest === dest) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
   if (dest) store.set("glowLastDest", dest);
   if (id === "cameraScreen") enterCamera();
   if (id === "editorHome") renderHome();
+  if (id === "enhanceHome" && typeof renderEnhanceHome === "function") renderEnhanceHome();
 }
-function go(dest) { showScreen(dest === "camera" ? "cameraScreen" : "editorHome"); }
+function go(dest) { showScreen(dest === "camera" ? "cameraScreen" : dest === "enhance" ? "enhanceHome" : "editorHome"); }
 $("nav").addEventListener("click", (e) => { const b = e.target.closest("button[data-dest]"); if (b) { Platform.haptic(); go(b.dataset.dest); } });
 
 // ---------- Onboarding ----------
@@ -214,7 +215,7 @@ function finishOnboarding(dest) {
   if (dest === "pick") { go("editor"); pickAndOpen(); }
   else if (dest === "sample") { go("editor"); openSample(); }
   else if (dest === "camera") go("camera");
-  else { const pref = store.get("glowStart") || "last"; go(pref === "last" ? store.get("glowLastDest") || "camera" : pref); }
+  else { const pref = store.get("glowStart") || "enhance"; go(pref === "last" ? store.get("glowLastDest") || "enhance" : pref); }
 }
 $("obPick").addEventListener("click", () => finishOnboarding("pick"));
 $("obSample").addEventListener("click", () => finishOnboarding("sample"));
@@ -2343,6 +2344,7 @@ function showUsage(u) {
   $("goProBtn").hidden = account.plan === "pro";
   renderCredits();
   if (screen === "editorScreen") { renderPanel(); }
+  if (screen === "enhanceHome" && typeof renderEnhanceHome === "function") renderEnhanceHome();
   if ($("creditsSheet").open) renderCreditsSheet();
 }
 async function refreshAccount() {
@@ -2778,7 +2780,7 @@ $("camGallery").addEventListener("click", galleryToEditor);
 // ---------- Settings ----------
 function openSettings() {
   refreshAccount();
-  const start = store.get("glowStart") || "last";
+  const start = store.get("glowStart") || "enhance";
   document.querySelectorAll("#startSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.start === start)));
   $("saveOrigToggle").checked = store.get("glowSaveOrig") === "on";
   $("autoSaveToggle").checked = store.get("glowAutoSave") === "on";
@@ -2972,7 +2974,8 @@ $("adBtn").addEventListener("click", async () => {
 // Android back button: close a sheet, leave the photo review or the editor, then exit.
 if (native && plugins.App) plugins.App.addListener("backButton", () => {
   const open = document.querySelector("dialog[open]");
-  if (open) open.close();
+  if (open) { if (!(open.id === "enhSheet" && enh.busy)) open.close(); }
+  else if (typeof enhanceBack === "function" && enhanceBack()) {}
   else if (screen === "editorScreen") $("backBtn").click();
   else if (screen === "cameraScreen" && cam.shot) $("retakeBtn").click();
   else plugins.App.exitApp();
@@ -2989,9 +2992,13 @@ ensureSession().then(refreshAccount).catch((e) => say(e.message, true));
 setupPurchases();
 setupAds();
 restoreDraft();
+// Glow opens on Enhance, its main flow, unless Settings says otherwise. The Enhance screen is
+// its own welcome (sample before/after, Choose a photo, Try the sample); Settings can still show
+// the welcome screen.
 function startApp() {
-  if (!store.get("glowOnboarded")) showOnboarding();
-  else { const pref = store.get("glowStart") || "last"; go(pref === "last" ? store.get("glowLastDest") || "camera" : pref); }
+  store.set("glowOnboarded", "1");
+  const pref = store.get("glowStart") || "enhance";
+  go(pref === "last" ? store.get("glowLastDest") || "enhance" : pref);
 }
 startApp();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

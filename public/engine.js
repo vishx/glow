@@ -190,7 +190,7 @@ function cleanBackground(c, alpha, radius) {
   for (let i = 0; i < alpha.length; i++) d.data[i * 4 + 3] = Math.round((1 - alpha[i]) ** 2 * 255);
   tx.putImageData(d, 0, 0);
   const b = newCanvas(W, H), bx = b.getContext("2d", { willReadFrequently: true });
-  bx.filter = `blur(${Math.max(2, Math.round(radius))}px)`; bx.drawImage(t, 0, 0);
+  drawWith(bx, `blur(${Math.max(2, Math.round(radius))}px)`, (y) => y.drawImage(t, 0, 0));
   const bd = bx.getImageData(0, 0, W, H);   // un-premultiplied: the average of the background only
   for (let i = 0; i < alpha.length; i++) bd.data[i * 4 + 3] = 255;
   bx.putImageData(bd, 0, 0);
@@ -305,11 +305,81 @@ const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const smoothstep = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
 function newCanvas(w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
 function tracePoly(ctx, pts) { ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); }
+// Canvas filters (blur, brightness, contrast, saturate...) are not in every browser: Safari and
+// some phone web views ignore ctx.filter, which would leave every mask hard-edged and every
+// soft layer sharp, so edits would show lines and patches. drawWith() draws through the filter
+// when the browser has it, and otherwise draws to a layer and applies the same filter here.
+const FILTER_OK = (() => { try { const x = document.createElement("canvas").getContext("2d"); x.filter = "blur(2px)"; return x.filter === "blur(2px)"; } catch { return false; } })();
+function drawWith(ctx, f, draw) {
+  if (!f || f === "none") { draw(ctx); return; }
+  if (FILTER_OK && !globalThis.__glowSoftFilter) { ctx.filter = f; draw(ctx); ctx.filter = "none"; return; }
+  const layer = newCanvas(ctx.canvas.width, ctx.canvas.height), lx = layer.getContext("2d", { willReadFrequently: true });
+  for (const k of ["fillStyle", "strokeStyle", "lineWidth", "lineCap", "lineJoin"]) lx[k] = ctx[k];
+  draw(lx);
+  softFilter(lx, f);
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(layer, 0, 0); ctx.restore();
+}
+// The CSS filter functions Glow uses, done on the pixels (premultiplied blur, as browsers do).
+function softFilter(x, f) {
+  const W = x.canvas.width, H = x.canvas.height, img = x.getImageData(0, 0, W, H), d = img.data;
+  for (const [, name, arg] of f.matchAll(/([a-z-]+)\(([^)]*)\)/g)) {
+    const v = parseFloat(arg);
+    if (name === "blur") { boxBlurRGBA(d, W, H, v); continue; }
+    let m = null;   // a 3×3 color matrix, plus an offset for contrast
+    let off = 0;
+    if (name === "brightness") m = [v, 0, 0, 0, v, 0, 0, 0, v];
+    else if (name === "contrast") { m = [v, 0, 0, 0, v, 0, 0, 0, v]; off = 127.5 * (1 - v); }
+    else if (name === "saturate" || name === "grayscale") {
+      const s = name === "saturate" ? v : 1 - Math.min(1, v);
+      m = [0.213 + 0.787 * s, 0.715 - 0.715 * s, 0.072 - 0.072 * s, 0.213 - 0.213 * s, 0.715 + 0.285 * s, 0.072 - 0.072 * s, 0.213 - 0.213 * s, 0.715 - 0.715 * s, 0.072 + 0.928 * s];
+    } else if (name === "sepia") {
+      const k = 1 - Math.min(1, v);
+      m = [0.393 + 0.607 * k, 0.769 - 0.769 * k, 0.189 - 0.189 * k, 0.349 - 0.349 * k, 0.686 + 0.314 * k, 0.168 - 0.168 * k, 0.272 - 0.272 * k, 0.534 - 0.534 * k, 0.131 + 0.869 * k];
+    } else if (name === "hue-rotate") {
+      const a = (v * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+      m = [0.213 + c * 0.787 - sn * 0.213, 0.715 - c * 0.715 - sn * 0.715, 0.072 - c * 0.072 + sn * 0.928,
+        0.213 - c * 0.213 + sn * 0.143, 0.715 + c * 0.285 + sn * 0.14, 0.072 - c * 0.072 - sn * 0.283,
+        0.213 - c * 0.213 - sn * 0.787, 0.715 - c * 0.715 + sn * 0.715, 0.072 + c * 0.928 + sn * 0.072];
+    }
+    if (!m) continue;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      d[i] = m[0] * r + m[1] * g + m[2] * b + off; d[i + 1] = m[3] * r + m[4] * g + m[5] * b + off; d[i + 2] = m[6] * r + m[7] * g + m[8] * b + off;
+    }
+  }
+  x.putImageData(img, 0, 0);
+}
+// A Gaussian blur of standard deviation `sigma`, as three box blurs, on premultiplied RGBA.
+function boxBlurRGBA(d, W, H, sigma) {
+  if (!(sigma > 0.3)) return;
+  const n = W * H, ch = [0, 1, 2, 3].map(() => new Float32Array(n)), tmp = new Float32Array(Math.max(W, H));
+  for (let i = 0; i < n; i++) { const a = d[i * 4 + 3] / 255; ch[3][i] = a; for (let k = 0; k < 3; k++) ch[k][i] = d[i * 4 + k] * a; }
+  const r = Math.max(1, Math.round((Math.sqrt(4 * sigma * sigma + 1) - 1) / 2));   // three passes of width 2r+1 ≈ the Gaussian
+  const pass = (a, len, count, step, stride) => {
+    for (let line = 0; line < count; line++) {
+      const o = line * stride;
+      for (let rep = 0; rep < 3; rep++) {
+        let sum = 0;
+        for (let k = -r; k <= r; k++) sum += a[o + Math.min(len - 1, Math.max(0, k)) * step];
+        for (let j = 0; j < len; j++) {
+          tmp[j] = sum / (2 * r + 1);
+          sum += a[o + Math.min(len - 1, j + r + 1) * step] - a[o + Math.max(0, j - r) * step];
+        }
+        for (let j = 0; j < len; j++) a[o + j * step] = tmp[j];
+      }
+    }
+  };
+  for (const a of ch) { pass(a, W, H, 1, W); pass(a, H, W, W, 1); }
+  for (let i = 0; i < n; i++) {
+    const a = ch[3][i]; d[i * 4 + 3] = a * 255;
+    for (let k = 0; k < 3; k++) d[i * 4 + k] = a > 0.001 ? ch[k][i] / a : 0;
+  }
+}
 // A soft-edged white-on-transparent mask.
 function softMask(w, h, feather, draw) {
-  const m = newCanvas(w, h), ctx = m.getContext("2d");
-  ctx.filter = `blur(${Math.max(1, Math.round(feather))}px)`; ctx.fillStyle = "#fff";
-  draw(ctx); return m;
+  const m = newCanvas(w, h), ctx = m.getContext("2d", { willReadFrequently: true });
+  ctx.fillStyle = "#fff";
+  drawWith(ctx, `blur(${Math.max(1, Math.round(feather))}px)`, draw); return m;
 }
 // Paints `layer` onto ctx only where the mask is white.
 function blendMasked(ctx, layer, mask, alpha) {
@@ -317,7 +387,7 @@ function blendMasked(ctx, layer, mask, alpha) {
   tc.drawImage(layer, 0, 0); tc.globalCompositeOperation = "destination-in"; tc.drawImage(mask, 0, 0);
   ctx.save(); ctx.globalAlpha = clamp01(alpha); ctx.drawImage(t, 0, 0); ctx.restore();
 }
-function filtered(src, f) { const c = newCanvas(src.width, src.height), x = c.getContext("2d"); x.filter = f; x.drawImage(src, 0, 0); return c; }
+function filtered(src, f) { const c = newCanvas(src.width, src.height), x = c.getContext("2d", { willReadFrequently: true }); drawWith(x, f, (y) => y.drawImage(src, 0, 0)); return c; }
 function box(c, cx, cy, r) {
   const x0 = Math.max(0, Math.floor(cx - r)), y0 = Math.max(0, Math.floor(cy - r));
   return { x0, y0, w: Math.min(c.width, Math.ceil(cx + r)) - x0, h: Math.min(c.height, Math.ceil(cy + r)) - y0 };
@@ -522,7 +592,8 @@ function dab(ctx, c, rx, ry, ang, color, alpha, mode) {
   ctx.save(); ctx.globalCompositeOperation = mode; ctx.globalAlpha = clamp01(alpha);
   ctx.translate(c[0], c[1]); ctx.rotate(ang); ctx.scale(1, ry / rx);
   const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
-  gr.addColorStop(0, `rgba(${r},${g},${b},1)`); gr.addColorStop(0.55, `rgba(${r},${g},${b},0.55)`); gr.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  // A smooth bell-shaped falloff (many stops), so no ring shows where the gradient bends.
+  for (let k = 0; k <= 10; k++) { const t = k / 10; gr.addColorStop(t, `rgba(${r},${g},${b},${(Math.exp(-3.2 * t * t) * (1 - t * t)).toFixed(3)})`); }
   ctx.fillStyle = gr; ctx.fillRect(-rx, -rx, rx * 2, rx * 2); ctx.restore();
 }
 // A color moved to a given brightness by mixing toward black or white, so its hue holds and no
@@ -1036,7 +1107,7 @@ function glSmooth(srcCanvas, spread) {
 // shader's reach, so the seams match. `spread` scales the reach with the photo's size.
 // Returns null when WebGL isn't available.
 function beautyTiled(src, b, spread = 1) {
-  const W = src.width, H = src.height, T = 2048, m = Math.ceil(6 * spread) + 2;
+  const W = src.width, H = src.height, T = 1024, m = Math.ceil(6 * spread) + 2;
   const tile = newCanvas(1, 1), g = initGl(tile);
   if (!g) return null;
   const out = newCanvas(W, H), octx = out.getContext("2d");
@@ -1047,6 +1118,9 @@ function beautyTiled(src, b, spread = 1) {
       const w = x1 - x0, h = y1 - y0;
       piece.width = tile.width = w; piece.height = tile.height = h;
       pctx.drawImage(src, x0, y0, w, h, 0, 0, w, h);
+      // Some phones quietly give WebGL a smaller drawing buffer than asked; its output would then
+      // be shifted and scaled, and show as a seam. Use the plain path instead.
+      if (g.gl.drawingBufferWidth !== w || g.gl.drawingBufferHeight !== h) return null;
       g.gl.viewport(0, 0, w, h);
       g.gl.texImage2D(g.gl.TEXTURE_2D, 0, g.gl.RGB, g.gl.RGB, g.gl.UNSIGNED_BYTE, piece);
       drawBeauty(g, w / spread, h / spread, false, b);
@@ -1056,6 +1130,12 @@ function beautyTiled(src, b, spread = 1) {
   } finally { const lose = g.gl.getExtension("WEBGL_lose_context"); if (lose) lose.loseContext(); }
   // The shader works in RGB; put back any transparency the photo had.
   octx.globalCompositeOperation = "destination-in"; octx.drawImage(src, 0, 0);
+  // A last check that the GPU's picture lines up with the photo (a smoothed copy differs only
+  // in fine detail, so small thumbnails match); if not, the plain path is used.
+  const thumb = (cv) => { const t = newCanvas(48, Math.max(1, Math.round(48 * H / W))), tx = t.getContext("2d", { willReadFrequently: true }); tx.drawImage(cv, 0, 0, t.width, t.height); return tx.getImageData(0, 0, t.width, t.height).data; };
+  const ta = thumb(src), tb = thumb(out); let diff = 0;
+  for (let i = 0; i < ta.length; i += 4) diff += Math.abs(lum(ta[i], ta[i + 1], ta[i + 2]) - lum(tb[i], tb[i + 1], tb[i + 2]));
+  if (diff / (ta.length / 4) > 6) return null;
   return out;
 }
 // MediaPipe only needs a modest copy to find landmarks; results are in 0–1 coordinates.
@@ -1203,7 +1283,7 @@ async function hairColor(src, amt, color) {
   if (hairPx < conf.length * 0.005) throw new Error("Couldn't find hair in this photo.");
   mctx.putImageData(px, 0, 0);
   const mask = newCanvas(c.width, c.height), mk = mask.getContext("2d");
-  mk.filter = `blur(${Math.max(1, Math.round(c.width / 500))}px)`; mk.drawImage(mc, 0, 0, c.width, c.height);
+  drawWith(mk, `blur(${Math.max(1, Math.round(c.width / 500))}px)`, (y) => y.drawImage(mc, 0, 0, c.width, c.height));
   // Lift dark hair a little so the new color shows, then take the color's hue and saturation.
   const tint = filtered(c, "brightness(1.35) contrast(0.95)"), t = tint.getContext("2d");
   t.globalCompositeOperation = "color"; t.fillStyle = color; t.fillRect(0, 0, c.width, c.height);
@@ -1225,14 +1305,13 @@ async function backdrop(src, bg, o = {}) {
     // A soft blur is drawn a little larger than the frame, so its edges don't fade to dark.
     const p = await loadImg(bg), r = o.blur ? Math.round(Math.max(W, H) / 150) : 0;
     const k = Math.max((W + 4 * r) / p.naturalWidth, (H + 4 * r) / p.naturalHeight);
-    if (r) bx.filter = `blur(${r}px)`;
-    bx.drawImage(p, (W - p.naturalWidth * k) / 2, (H - p.naturalHeight * k) / 2, p.naturalWidth * k, p.naturalHeight * k); bx.filter = "none";
+    drawWith(bx, r ? `blur(${r}px)` : "none", (y) => y.drawImage(p, (W - p.naturalWidth * k) / 2, (H - p.naturalHeight * k) / 2, p.naturalWidth * k, p.naturalHeight * k));
   }
   const out = newCanvas(W, H), ox = out.getContext("2d", { willReadFrequently: true });
   ox.drawImage(back, 0, 0); ox.drawImage(subj, 0, 0);
   if (o.match) {
     const bd = bx.getImageData(0, 0, W, H).data, soft = newCanvas(W, H), sx = soft.getContext("2d", { willReadFrequently: true });
-    sx.filter = `blur(${Math.max(3, Math.round(Math.max(W, H) / 120))}px)`; sx.drawImage(back, 0, 0);
+    drawWith(sx, `blur(${Math.max(3, Math.round(Math.max(W, H) / 120))}px)`, (y) => y.drawImage(back, 0, 0));
     const sb = sx.getImageData(0, 0, W, H).data, d = ox.getImageData(0, 0, W, H), D = d.data;
     let mr = 0, mg = 0, mb = 0, n = 0, sr = 0, sg = 0, sbl = 0, sn = 0;
     for (let i = 0; i < alpha.length; i += 9) {
@@ -1245,7 +1324,7 @@ async function backdrop(src, bg, o = {}) {
     for (let i = 0; i < alpha.length; i++) ad.data[i * 4 + 3] = alpha[i] * 255;
     ax.putImageData(ad, 0, 0);
     const ab = newCanvas(W, H), abx = ab.getContext("2d", { willReadFrequently: true });
-    abx.filter = `blur(${Math.max(2, Math.round(Math.max(W, H) / 250))}px)`; abx.drawImage(ac, 0, 0);
+    drawWith(abx, `blur(${Math.max(2, Math.round(Math.max(W, H) / 250))}px)`, (y) => y.drawImage(ac, 0, 0));
     const inner = abx.getImageData(0, 0, W, H).data;
     for (let i = 0; i < alpha.length; i++) {
       const a = alpha[i]; if (a < 0.02) continue;
@@ -1284,7 +1363,7 @@ async function applyCutout(baseSrc, resultSrc) {
 function withFilterCanvas(srcEl, filterId, w = srcEl.width, h = srcEl.height) {
   const flt = FILTERS.find((f) => f.id === filterId) || FILTERS[0];
   const c = newCanvas(w, h), ctx = c.getContext("2d");
-  ctx.filter = flt.f; ctx.drawImage(srcEl, 0, 0, w, h); ctx.filter = "none";
+  drawWith(ctx, flt.f, (y) => y.drawImage(srcEl, 0, 0, w, h));
   if (flt.wash) { ctx.globalCompositeOperation = "soft-light"; ctx.fillStyle = flt.wash; ctx.fillRect(0, 0, w, h); }
   return c;
 }
@@ -1361,7 +1440,7 @@ const encode = (c, src) => (isPng(src) ? c.toDataURL("image/png") : c.toDataURL(
 // amt (0 to 1) blends the filtered picture over the original; 1 is the full filter.
 async function applyFilter(src, flt, amt = 1) {
   const img = await loadImg(src), c = canvasFor(img), ctx = c.getContext("2d");
-  ctx.filter = flt.f; ctx.drawImage(img, 0, 0, c.width, c.height); ctx.filter = "none";
+  drawWith(ctx, flt.f, (y) => y.drawImage(img, 0, 0, c.width, c.height));
   if (flt.wash) { ctx.globalCompositeOperation = "soft-light"; ctx.fillStyle = flt.wash; ctx.fillRect(0, 0, c.width, c.height); ctx.globalCompositeOperation = "source-over"; }
   if (amt >= 1) return encode(c, src);
   const out = newCanvas(c.width, c.height), o = out.getContext("2d");
@@ -1372,14 +1451,12 @@ async function applyFilter(src, flt, amt = 1) {
 async function adjust(src, kind, v) {
   const img = await loadImg(src), c = canvasFor(img), ctx = c.getContext("2d", { willReadFrequently: kind !== "light" && kind !== "color" });
   const t = v / 50;
-  if (kind === "light") ctx.filter = `brightness(${1 + t * 0.35}) contrast(${1 + t * 0.08})`;
-  if (kind === "color") ctx.filter = `saturate(${1 + t * 0.6})`;
-  ctx.drawImage(img, 0, 0, c.width, c.height); ctx.filter = "none";
+  const f = kind === "light" ? `brightness(${1 + t * 0.35}) contrast(${1 + t * 0.08})` : kind === "color" ? `saturate(${1 + t * 0.6})` : kind === "contrast" && t ? `contrast(${1 + t * 0.3})` : "none";
+  drawWith(ctx, f, (y) => y.drawImage(img, 0, 0, c.width, c.height));
   if (kind === "warmth" && t) {
     ctx.globalCompositeOperation = "soft-light"; ctx.globalAlpha = Math.abs(t) * 0.35;
     ctx.fillStyle = t > 0 ? "#ff9a3c" : "#3c8cff"; ctx.fillRect(0, 0, c.width, c.height);
   }
-  if (kind === "contrast" && t) { ctx.filter = `contrast(${1 + t * 0.3})`; ctx.drawImage(img, 0, 0, c.width, c.height); ctx.filter = "none"; }
   if (["highlights", "shadows", "vibrance", "fade", "grain"].includes(kind) && t) {
     const a = ctx.getImageData(0, 0, c.width, c.height), d = a.data, W = c.width;
     const soft = kind === "grain" && t < 0 ? filtered(c, `blur(${Math.max(1, Math.round(c.width / 700))}px)`).getContext("2d").getImageData(0, 0, c.width, c.height).data : null;
