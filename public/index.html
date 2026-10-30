@@ -144,6 +144,10 @@
       <div class="busy" id="busy" hidden><div><div class="spinner"></div><div id="busyText">Working…</div><p id="busyNote"></p></div></div>
     </div>
     <div class="side">
+      <div class="demobar" id="demoBar" hidden>
+        <p><strong>Demo · No credits used</strong><span>AI-generated sample</span></p>
+        <button class="btn small" id="demoOwnBtn">Try your own photo</button>
+      </div>
       <div class="jobbar" id="jobBar" role="status" hidden>
         <div class="spinner small" id="jobSpin" aria-hidden="true"></div>
         <p id="jobText"></p>
@@ -165,6 +169,7 @@
       <div class="chips" id="chips" role="group" aria-label="Tool groups"></div>
       <label class="search" id="searchBox" hidden><span data-icon="search"></span><span class="sr-only">Search tools</span>
         <input type="search" id="searchInput" placeholder="Search all tools" autocomplete="off"></label>
+      <p class="demo-note" id="demoNote" hidden>AI previews for the sample aren't ready yet. AI tools work on your own photo.</p>
       <div class="tools" id="tools" role="group" aria-label="Tools"></div>
       <div class="panel" id="panel" hidden role="region" aria-labelledby="toolName">
         <div class="panel-head">

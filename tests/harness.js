@@ -54,7 +54,7 @@ exports.launch = async (opts = {}) => {
   if (opts.onboarded !== false) await ctx.addInitScript((start) => { localStorage.setItem('glowOnboarded', '1'); if (start) localStorage.setItem('glowStart', start); }, opts.start || '');
   const p = await ctx.newPage();
   const state = { used: 0, plan: opts.plan || 'free', quota: opts.quota || 3, posts: [], polls: 0, lookups: 0, refunds: 0, errs: [], downloads: [],
-    ai: { ...defaultAi(), ...(opts.ai || {}) }, jobs: {} };
+    ai: { ...defaultAi(), ...(opts.ai || {}) }, jobs: {}, flaked: {}, authFail: !!opts.authFail };
   p.on('pageerror', (e) => state.errs.push('pageerror: ' + e.message));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|^INFO:|^W\d{4}|XNNPACK/.test(m.text())) state.errs.push('console: ' + m.text()); });
   p.on('download', async (d) => {
@@ -69,6 +69,7 @@ exports.launch = async (opts = {}) => {
     const ai = state.ai;
     if (u.host.endsWith('supabase.co')) {
       if (method === 'OPTIONS') return r.fulfill({ status: 200, headers: cors });
+      if (u.pathname.startsWith('/auth/v1/') && state.authFail) return r.fulfill({ status: 500, headers: cors, json: { error: 'down' } });
       if (u.pathname.startsWith('/auth/v1/')) return r.fulfill({ headers: cors, json: { access_token: 't', refresh_token: 'r', expires_at: Date.now() / 1000 + 3600, user: { id: 'u1' } } });
       if (u.pathname === '/functions/v1/account') return r.fulfill({ headers: cors, json: usage() });
       if (u.pathname === '/functions/v1/enhance') {
@@ -118,6 +119,11 @@ exports.launch = async (opts = {}) => {
       return r.fulfill({ path: path.join(assets, n), headers: cors });
     }
     if (u.host === 'app.test') {
+      const o = (opts.files || {})[u.pathname];
+      if (o === 404) return r.fulfill({ status: 404, body: '' });
+      if (o && o.flaky && method === 'GET' && (state.flaked[u.pathname] || 0) < o.flaky) { state.flaked[u.pathname] = (state.flaked[u.pathname] || 0) + 1; return r.fulfill({ status: 503, body: '' }); }
+      if (o && o.json) return r.fulfill({ json: o.json });
+      if (o) return r.fulfill({ path: o.path || o });
       if (u.pathname === '/__ai.jpg') return r.fulfill({ path: path.join(fixtures, 'ai-result.jpg'), headers: cors });
       const f = path.join(root, u.pathname === '/' ? 'index.html' : u.pathname); if (fs.existsSync(f)) return r.fulfill({ path: f }); return r.fulfill({ status: 404, body: '' });
     }

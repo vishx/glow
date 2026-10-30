@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "note": "Prepared results for Try a sample. The app offers only entries with status \"ready\" whose result file loads. Results are made once with tools/demo/generate.ts, which runs Glow's own enhance pipeline (same models, prompts and settings as users get) and records provenance here. Never put credentials or signed URLs in this file.",
+  "original": {
+    "file": "original.png",
+    "width": 1122,
+    "height": 1402,
+    "label": "AI-generated sample",
+    "sha256": "c2d25a5e098f018268d1b883c8b4ec496bd303dff4548fb82bf71ca0d1ffe193",
+    "source": "AI-generated adult portrait supplied by the Glow owner on 2026-10-30 for use as the in-app sample. Not a photo of a real person.",
+    "license": "Owner-supplied for use in Glow. The image generator and its terms were not stated; record them in SOURCE.md before release."
+  },
+  "previews": [
+    {
+      "tool": "retouch",
+      "title": "Retouch",
+      "status": "needs-generation",
+      "result": null,
+      "why": "Skin retouch, the AI counterpart of Remove blemishes",
+      "settings": {
+        "mode": "retouch",
+        "server": "supabase/functions/enhance (MODES.retouch)",
+        "models": [
+          "sczhou/codeformer"
+        ],
+        "input": "tools/demo/input.jpg: the original re-encoded as JPEG quality 90 at 1122 × 1402, matching what the app uploads for this photo",
+        "extra": {
+          "codeformer_fidelity": 0.3,
+          "background_enhance": false,
+          "face_upsample": true,
+          "upscale": 1
+        }
+      },
+      "credits": 1,
+      "provenance": null
+    },
+    {
+      "tool": "pro",
+      "title": "Enhance",
+      "status": "needs-generation",
+      "result": null,
+      "why": "Glow's main AI fix: color, light, skin and background",
+      "settings": {
+        "mode": "pro",
+        "server": "supabase/functions/enhance (MODES.pro)",
+        "models": [
+          "google/nano-banana",
+          "black-forest-labs/flux-kontext-pro"
+        ],
+        "input": "tools/demo/input.jpg: the original re-encoded as JPEG quality 90 at 1122 × 1402, matching what the app uploads for this photo",
+        "extra": {
+          "prompt": "MODES.pro prompt + SAME suffix",
+          "output_format": "jpg"
+        }
+      },
+      "credits": 1,
+      "provenance": null
+    },
+    {
+      "tool": "relight",
+      "title": "Relight",
+      "status": "needs-generation",
+      "result": null,
+      "why": "Soft studio light",
+      "settings": {
+        "mode": "relight",
+        "server": "supabase/functions/enhance (MODES.relight)",
+        "models": [
+          "google/nano-banana",
+          "black-forest-labs/flux-kontext-pro"
+        ],
+        "input": "tools/demo/input.jpg: the original re-encoded as JPEG quality 90 at 1122 × 1402, matching what the app uploads for this photo",
+        "extra": {
+          "prompt": "MODES.relight prompt + SAME suffix",
+          "output_format": "jpg"
+        }
+      },
+      "credits": 1,
+      "provenance": null
+    },
+    {
+      "tool": "golden",
+      "title": "Golden hour",
+      "status": "needs-generation",
+      "result": null,
+      "why": "Warm side light",
+      "settings": {
+        "mode": "golden",
+        "server": "supabase/functions/enhance (MODES.golden)",
+        "models": [
+          "google/nano-banana",
+          "black-forest-labs/flux-kontext-pro"
+        ],
+        "input": "tools/demo/input.jpg: the original re-encoded as JPEG quality 90 at 1122 × 1402, matching what the app uploads for this photo",
+        "extra": {
+          "prompt": "MODES.golden prompt + SAME suffix",
+          "output_format": "jpg"
+        }
+      },
+      "credits": 1,
+      "provenance": null
+    },
+    {
+      "tool": "hair_bob",
+      "title": "Sleek bob",
+      "status": "needs-generation",
+      "result": null,
+      "why": "One hairstyle",
+      "settings": {
+        "mode": "hair_bob",
+        "server": "supabase/functions/enhance (MODES.hair_bob)",
+        "models": [
+          "google/nano-banana",
+          "black-forest-labs/flux-kontext-pro"
+        ],
+        "input": "tools/demo/input.jpg: the original re-encoded as JPEG quality 90 at 1122 × 1402, matching what the app uploads for this photo",
+        "extra": {
+          "prompt": "hair('a sleek chin-length bob') + SAME suffix",
+          "output_format": "jpg"
+        }
+      },
+      "credits": 1,
+      "provenance": null
+    },
+    {
+      "tool": "toon3d",
+      "title": "3D Toon",
+      "status": "needs-generation",
+      "result": null,
+      "why": "One creative style (regenerates the picture, so framing can shift)",
+      "settings": {
+        "mode": "toon3d",
+        "server": "supabase/functions/enhance (MODES.toon3d)",
+        "models": [
+          "fofr/face-to-many"
+        ],
+        "input": "tools/demo/input.jpg: the original re-encoded as JPEG quality 90 at 1122 × 1402, matching what the app uploads for this photo",
+        "extra": {
+          "style": "3D",
+          "prompt": "a person"
+        }
+      },
+      "credits": 1,
+      "provenance": null
+    }
+  ]
+}

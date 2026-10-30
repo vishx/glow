@@ -3,3 +3,4 @@ node_modules/
 mobile/www/
 tests/.assets/
 tests/out/
+tools/demo/raw/

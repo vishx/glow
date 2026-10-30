@@ -309,14 +309,134 @@ test('a11y: control boundaries and inactive controls meet 3:1 in both themes', a
   test.contrast = { dark, light };
 });
 
-// ---------- Sample ----------
-test('sample: Try a sample opens the real editor', async ({ p }) => {
-  await p.goto('https://app.test/');
-  await p.click('#sampleBtn'); await p.waitForFunction(() => screen === 'editorScreen' && ed.hist.length === 1, null, { timeout: 15000 });
-  assert(await p.isVisible('.tool[data-tool]'), 'tools shown');
-  await tool(p, 'retouch', 'skin', 'fsmooth');
-  test.sampleFace = await p.evaluate(() => !!ed.pending);
+// ---------- Try a sample (demo) ----------
+// The shipped manifest has no prepared AI results yet, so these checks serve a test manifest
+// whose two "results" are tone changes of the sample (tests/fixtures/demo-test-*.jpg). They test
+// the demo path only; they are not Glow results and are never shipped.
+const demoManifest = (() => {
+  const m = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/samples/demo/manifest.json')));
+  for (const e of m.previews) if (e.tool === 'pro' || e.tool === 'relight') Object.assign(e, { status: 'ready', result: `test-${e.tool}.jpg` });
+  return m;
+})();
+const demoFiles = (extra = {}) => ({ '/samples/demo/manifest.json': { json: demoManifest }, '/samples/demo/test-pro.jpg': fx('demo-test-a.jpg'),
+  '/samples/demo/test-relight.jpg': fx('demo-test-b.jpg'), ...extra });
+async function openDemo(p) {
+  await p.goto('https://app.test/'); await p.click('#sampleBtn');
+  await p.waitForFunction(() => screen === 'editorScreen' && ed.demo && $('before').naturalWidth > 0, null, { timeout: 15000 });
+  await p.waitForFunction(() => demo && !demo.loading); await settle(300);
+}
+const credit = (state) => ({ used: state.used, posts: state.posts.length, polls: state.polls, lookups: state.lookups });
+
+test('demo: Try a sample opens the attached original with demo labels', async ({ p, state }) => {
+  await openDemo(p);
+  const o = await p.evaluate(async () => { const b = new Uint8Array(await ed.original.blob.arrayBuffer()); const h = await crypto.subtle.digest('SHA-256', b);
+    return { w: ed.original.w, h: ed.original.h, sha: [...new Uint8Array(h)].map((x) => x.toString(16).padStart(2, '0')).join('') }; });
+  eq(o, { w: 1122, h: 1402, sha: demoManifest.original.sha256 }, 'unchanged original');
+  assert(/Demo · No credits used/.test(await p.textContent('#demoBar')), 'demo label'); assert(/AI-generated sample/.test(await p.textContent('#demoBar')), 'source label');
+  assert(await p.isVisible('#demoOwnBtn'), 'Try your own photo'); assert(await p.isHidden('#balanceBtn'), 'no credit balance in the demo');
+  eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].map((c) => c.textContent)), ['Preview', 'Preview'], 'AI tools offered = prepared ones');
+  assert(/prepared preview, no credits/.test(await p.getAttribute('.tool[data-tool="pro"]', 'aria-label')), 'screen-reader label');
+  await p.screenshot({ path: path.join(__dirname, 'out', 'demo-open.png') });
+}, { files: demoFiles() });
+
+test('demo: prepared previews make no AI request, use no credits, and never stack', async ({ p, state }) => {
+  await openDemo(p); const before = credit(state);
+  for (let i = 0; i < 3; i++) for (const id of ['pro', 'relight']) {
+    await tool(p, 'foryou', null, id); await p.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x, id);
+    const v = await p.evaluate(() => ({ n: ed.hist.length, before: $('before').src === ed.hist[0].data, after: $('after').src === ed.hist[1].data, hidden: $('after').hidden, badge: $('previewBadge').textContent }));
+    eq(v, { n: 2, before: true, after: true, hidden: false, badge: 'Prepared preview' }, `${id}: original vs this result only`);
+  }
+  eq(credit(state), before, 'no enhance calls, credits unchanged'); eq(state.posts.length, 0, 'no POST');
+  assert(!(await p.evaluate(() => $('paywall').open)), 'no paywall');
+  assert(/one effect at a time/.test(await p.textContent('#panelNote')), 'states one effect at a time');
+  await p.screenshot({ path: path.join(__dirname, 'out', 'demo-prepared.png') });
+}, { files: demoFiles(), quota: 0 });
+
+test('demo: works with zero credits and with sign-in failing', async ({ p, state }) => {
+  await openDemo(p);
+  await tool(p, 'foryou', null, 'pro'); await p.waitForFunction(() => ed.idx === 1);
+  await p.click('#applyBtn'); await settle(300);
+  eq(await p.evaluate(() => [sel, ed.idx, $('paywall').open]), [null, 1, false], 'Done keeps the preview, no paywall');
+  eq(state.posts.length, 0, 'no AI request');
+}, { files: demoFiles(), quota: 0, authFail: true });
+
+test('demo: on-device tools stay interactive and reset the prepared preview', async ({ p, state }) => {
+  await openDemo(p);
+  await tool(p, 'foryou', null, 'pro'); await p.waitForFunction(() => ed.idx === 1);
+  await tool(p, 'edit', 'light', 'light');
+  eq(await p.evaluate(() => [ed.idx, ed.hist.length]), [0, 1], 'back to the original');
+  assert(/Back to the original/.test(await toast(p)), 'says so');
+  await p.fill('.panel input[type=range]', '20'); await idle(p); await p.click('#applyBtn'); await idle(p);
+  eq(await p.evaluate(() => ed.idx), 1, 'light applied on the original');
+  await tool(p, 'foryou', null, 'relight'); await p.waitForFunction(() => ed.idx === 1 && ed.hist[1].op.tool === 'relight');
+  eq(await p.evaluate(() => ed.hist.map((h) => h.op && h.op.tool)), [null, 'relight'], 'prepared preview starts from the original, light dropped');
+  eq(state.posts.length, 0, 'local edits never sent to AI');
+}, { files: demoFiles() });
+
+test('demo: a missing preview shows a useful message and Retry recovers', async ({ p, state }) => {
+  await openDemo(p);
+  await tool(p, 'foryou', null, 'relight'); await p.waitForFunction(() => demo.failed.relight);
+  assert(/Couldn't load this preview/.test(await p.textContent('#panelNote')), 'message'); eq(await p.textContent('#applyBtn'), 'Retry', 'retry action');
+  eq(await p.evaluate(() => ed.idx), 0, 'shows the original meanwhile');
+  await p.click('#applyBtn'); await p.waitForFunction(() => ed.idx === 1 && ed.hist[1].op.tool === 'relight');
+  eq(state.posts.length, 0, 'no AI request');
+}, { files: demoFiles({ '/samples/demo/test-relight.jpg': { path: fx('demo-test-b.jpg'), flaky: 2 /* the preload and the first tap fail */ } }) });
+
+test('demo: a preview whose file is gone is not offered', async ({ p }) => {
+  await openDemo(p);
+  eq(await p.evaluate(() => demo.ready), ['pro'], 'only previews that exist');
+}, { files: demoFiles({ '/samples/demo/test-relight.jpg': 404 }) });
+
+test('demo: shipped manifest with nothing prepared yet offers no AI tools and explains why', async ({ p, state }) => {
+  await openDemo(p);
+  eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].length), 0, 'no AI tiles');
+  assert(await p.isVisible('#demoNote') && /aren't ready yet/.test(await p.textContent('#demoNote')), 'note');
+  await p.click('.tab[data-cat="looks"]'); await p.click('.subchip[data-chip="styles"]');
+  assert(/needs your own photo/.test(await p.textContent('#tools')), 'AI-only group explains');
+  await p.screenshot({ path: path.join(__dirname, 'out', 'demo-shipped.png') });
+  eq(state.posts.length, 0, 'no AI request');
 });
+
+test('demo: Try your own photo exits the demo completely, then real AI is charged by the server', async ({ p, state }) => {
+  await openDemo(p);
+  const faceBefore = await p.evaluate(() => faceSet.amt.fsmooth);
+  await tool(p, 'retouch', 'skin', 'fsmooth'); await p.fill('.panel input[type=range]', '90'); await idle(p);
+  await tool(p, 'foryou', null, 'pro'); await p.waitForFunction(() => ed.idx === 1);
+  const fc = p.waitForEvent('filechooser'); await p.click('#demoOwnBtn'); await (await fc).setFiles(fx('phone-12mp-exif6.jpg'));
+  await p.waitForFunction(() => !ed.demo && ed.original && ed.original.w === 3024, null, { timeout: 15000 });
+  const s = await p.evaluate(() => ({ demo: !!demo, bar: $('demoBar').hidden, sel, n: ed.hist.length, badge: $('previewBadge').hidden, amt: faceSet.amt.fsmooth,
+    costs: [...document.querySelectorAll('.tool .cost')].map((c) => c.textContent) }));
+  eq([s.demo, s.bar, s.sel, s.n, s.badge], [false, true, null, 1, true], 'no demo state, labels gone, nothing selected, no sample result carried');
+  eq(s.amt, faceBefore, 'tool settings restored'); assert(s.costs.includes('AI · 1'), 'real pricing back: ' + s.costs);
+  eq(state.posts.length, 0, 'the last demo tool did not run');
+  await tool(p, 'foryou', null, 'pro');
+  assert(/Apply · 1 credit/.test(await p.textContent('#applyBtn')), 'shows the real cost first');
+  await p.click('#applyBtn'); await idle(p); await p.waitForFunction(() => ed.idx === 1, null, { timeout: 20000 });
+  eq([state.posts.length, state.used], [1, 1], 'real edit went to the server, which charged one credit');
+  const draft = await p.evaluate(async () => (await Drafts.get()).hist.map((h) => h.op && h.op.demo));
+  assert(!draft.includes(true), 'no sample result in the saved project');
+}, { files: demoFiles(), viewport: { width: 1280, height: 860 }, mobile: false, touch: false });
+
+test('demo: saving exports the shown result and names it as an AI-generated sample', async ({ p, state }) => {
+  await openDemo(p);
+  await tool(p, 'foryou', null, 'pro'); await p.waitForFunction(() => ed.idx === 1); await p.click('#applyBtn');
+  await p.click('#saveBtn'); assert(/AI-generated sample/.test(await p.textContent('#ask')), 'export flow says it is a sample');
+  await p.click('#ask .btn:has-text("Save sample")'); await downloads(state, 1);
+  assert(/^glow-ai-sample-/.test(state.downloads[0].name), 'file name: ' + state.downloads[0].name);
+  eq((({ w, h }) => [w, h])(imageSize(state.downloads[0].file)), [1122, 1402], 'shown result at its size');
+  eq(state.posts.length, 0, 'no AI request');
+}, { files: demoFiles(), viewport: { width: 1280, height: 860 }, mobile: false, touch: false });
+
+test('demo: phone layouts at 320 and 390 wide have no sideways scroll', async ({ p }) => {
+  for (const width of [390, 320]) {
+    await p.setViewportSize({ width, height: 720 }); await openDemo(p);
+    await tool(p, 'foryou', null, 'pro'); await p.waitForFunction(() => ed.idx === 1);
+    eq(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${width}px`);
+    const fits = await p.evaluate(() => ['demoOwnBtn', 'applyBtn', 'cancelBtn'].map((id) => { const r = $(id).getBoundingClientRect(); return r.height > 0 && r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1; }));
+    eq(fits, [true, true, true], `${width}px: Try your own photo, Cancel and Done fully on screen`);
+    await p.screenshot({ path: path.join(__dirname, 'out', `demo-${width}.png`) });
+  }
+}, { files: demoFiles() });
 
 // ---------- Face tools on a real portrait (only with GLOW_TEST_FACE) ----------
 if (face) test('face: smooth skin previews at 2048px and saves at full size', async ({ p, state }) => {
@@ -333,7 +453,8 @@ if (face) test('face: smooth skin previews at 2048px and saves at full size', as
   const results = [];
   for (const t of tests.filter((x) => x.name.includes(filter))) {
     const { start = 'editor', ...o } = t.opts;
-    const env = await launch({ start, ...o, viewport: o.viewport || (t.name.startsWith('export') || t.name.startsWith('ai') ? { width: 1280, height: 860 } : undefined), mobile: !(t.name.startsWith('export') || t.name.startsWith('ai')), touch: !(t.name.startsWith('export') || t.name.startsWith('ai')) });
+    const desk = t.name.startsWith('export') || t.name.startsWith('ai');
+    const env = await launch({ start, viewport: desk ? { width: 1280, height: 860 } : undefined, mobile: !desk, touch: !desk, ...o });
     const t0 = Date.now(); let err = null;
     try { await t.fn(env); if (env.state.errs.length) throw new Error('page errors: ' + env.state.errs.join(' | ')); }
     catch (e) { err = e; try { await env.p.screenshot({ path: path.join(__dirname, 'out', 'fail-' + t.name.replace(/\W+/g, '-').slice(0, 60) + '.png') }); } catch {} }
@@ -344,6 +465,6 @@ if (face) test('face: smooth skin previews at 2048px and saves at full size', as
   const failed = results.filter((r) => !r.ok).length;
   console.log(`\n${results.length - failed}/${results.length} passed. All checks are MOCKED browser simulations (fake camera, fake servers).`);
   if (!face) console.log('Face-tool check skipped: set GLOW_TEST_FACE to a portrait you have rights to.');
-  fs.writeFileSync(path.join(__dirname, 'out', 'results.json'), JSON.stringify({ kind: 'mocked-browser', at: new Date().toISOString(), results, contrast: test.contrast, sampleFaceFound: test.sampleFace }, null, 2));
+  fs.writeFileSync(path.join(__dirname, 'out', 'results.json'), JSON.stringify({ kind: 'mocked-browser', at: new Date().toISOString(), results, contrast: test.contrast }, null, 2));
   process.exit(failed ? 1 : 0);
 })();

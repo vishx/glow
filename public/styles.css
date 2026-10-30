@@ -217,6 +217,14 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner.small { width: 20px; height: 20px; margin: 0; border-width: 2px; border-color: var(--control); border-top-color: var(--accent); flex: none; }
 
+/* Try a sample: says it's a demo and offers the way out. */
+.demobar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); margin: var(--s2) var(--gutter) 0; padding: var(--s2) var(--s3);
+  border-radius: var(--r-btn); background: var(--tint); box-shadow: inset 0 0 0 1px var(--control); }
+.demobar p { flex: 1 1 10rem; margin: 0; display: flex; flex-direction: column; font-size: 0.875rem; line-height: 1.25rem; }
+.demobar p span { color: var(--muted); font-size: 0.8125rem; }
+.demobar .btn { flex: 0 0 auto; }
+.demo-note { flex: none; margin: var(--s2) var(--gutter) 0; color: var(--muted); font-size: 0.875rem; line-height: 1.25rem; }
+
 /* AI job status: shows while an AI edit is running, can't be confirmed, failed, or came back late. */
 .jobbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); margin: var(--s2) var(--gutter) 0; padding: var(--s2) var(--s3);
   border-radius: var(--r-btn); background: var(--surface); box-shadow: inset 0 0 0 1px var(--control); }
@@ -289,6 +297,8 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 /* Small phones: give the photo the room while a tool is open. */
 @media (max-height: 740px) {
   .editing-tool .tabs, .editing-tool .chips, .editing-tool .search { display: none; }
+  .editing-tool .demobar { flex-wrap: nowrap; padding: var(--s1) var(--s1) var(--s1) var(--s3); }
+  .editing-tool .demobar p span { display: none; }
 }
 @media (max-height: 620px) {
   .editing-tool .tools { display: none; }

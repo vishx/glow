@@ -206,6 +206,8 @@ async function readPhoto(blob, name) {
 }
 
 async function openPhoto(work, original, opts = {}) {
+  if (!opts.demo && demo) exitDemo();
+  ed.demo = !!opts.demo;
   ed.hist = [{ data: work, op: null }]; ed.idx = 0; ed.floor = 0; ed.pending = null; ed.savedIdx = 0;
   ed.original = original; ed.originalSaved = !!opts.originalSaved; ed.session = newSession();
   ed.name = opts.name || "Photo"; ed.shotStamp = opts.shotStamp || 0; lastCommitTool = null; cutoutCache = {}; strokes = [];
@@ -221,15 +223,15 @@ async function confirmReplace() {
       actions: [{ label: "Start a new edit", value: "go" }, { label: "Keep this one", value: "", kind: "ghost" }] });
     if (!c) return false;
   }
-  if (!unsaved()) return true;
+  if (!unsaved() || ed.demo) return true; // sample edits are only for trying things out
   const c = await ask({ title: "Start a new edit?", text: "Your current edit hasn't been saved.", actions: [
     { label: "Save it first", value: "save" }, { label: "Discard it", value: "discard", kind: "ghost" }, { label: "Keep editing", value: "", kind: "ghost" }] });
   if (c === "save") return saveEdit();
   return c === "discard";
 }
-async function openFile(f, name) {
+async function openFile(f, name, opts = {}) {
   const r = await readPhoto(f, name || f.name);
-  await openPhoto(r.work, r.original, { name: name || f.name });
+  await openPhoto(r.work, r.original, { name: name || f.name, ...opts });
 }
 async function pickAndOpen() {
   if (!(await confirmReplace())) return;
@@ -238,18 +240,104 @@ async function pickAndOpen() {
   try { await openFile(f); } catch (err) { say(err.message, true); }
 }
 $("pickBtn").addEventListener("click", pickAndOpen);
-$("sampleBtn").addEventListener("click", async () => {
+$("sampleBtn").addEventListener("click", openSample);
+
+// ---------- Try a sample: a free demo ----------
+// The sample is an AI-generated portrait. On-device tools work on it normally. AI tools show
+// results prepared once with Glow's real pipeline (see samples/demo/manifest.json), loaded as
+// static files: no AI request, no credits, no sign-in, no paywall. This is only a display
+// path; the server still enforces credits on every real AI request, whatever the app says.
+const DEMO_DIR = "/samples/demo/";
+const DEMO_FREE = ["fblemish", "fsmooth", "fauto", "light", "filter:glow", "bgblur"];
+let demo = null; // { manifest, ready: [toolId], entry: {toolId: entry}, cache: {toolId: dataURL}, failed: {toolId: true}, saved }
+const demoOffers = (id) => !ed.demo || TOOL[id].kind !== "ai" || (!!demo && demo.ready.includes(id));
+
+async function openSample() {
   if (!(await confirmReplace())) return;
+  let manifest = null;
+  try { const r = await fetch(DEMO_DIR + "manifest.json", { cache: "no-cache" }); if (r.ok) manifest = await r.json(); } catch {}
+  const file = (manifest && manifest.original && manifest.original.file) || "original.png";
+  let blob;
   try {
-    const blob = await (await fetch("/samples/sample.jpg")).blob();
-    await openFile(new File([blob], "glow-sample.jpg", { type: blob.type || "image/jpeg" }), "Sample");
-  } catch { say("Couldn't open the sample. Check your connection.", true); }
-});
+    const r = await fetch(DEMO_DIR + file); if (!r.ok) throw new Error();
+    blob = await r.blob();
+  } catch {
+    const c = await ask({ title: "Couldn't load the sample", text: "Check your connection and try again.", actions: [{ label: "Try again", value: "retry" }, { label: "Not now", value: "", kind: "ghost" }] });
+    if (c) openSample();
+    return;
+  }
+  // Settings people change while trying the sample don't stick to their own photos.
+  const saved = demo ? demo.saved : { amt: { ...faceSet.amt }, shade: { ...faceSet.shade }, toolAmt: { ...toolAmt } };
+  const entries = (manifest && manifest.previews) || [];
+  demo = { manifest, saved, entry: Object.fromEntries(entries.map((e) => [e.tool, e])), cache: {}, failed: {},
+    ready: entries.filter((e) => e.status === "ready" && e.result && TOOL[e.tool] && TOOL[e.tool].kind === "ai").map((e) => e.tool) };
+  cat = "foryou";
+  try { await openFile(new File([blob], "glow-ai-sample.png", { type: blob.type || "image/png" }), "AI-generated sample", { demo: true }); }
+  catch (err) { exitDemo(); say(err.message, true); return; }
+  $("alertLive").textContent = "AI-generated sample opened. Demo, no credits used.";
+  // Only offer previews whose files are really there, then warm up the first two.
+  const ok = await Promise.all(demo.ready.map((id) => fetch(DEMO_DIR + demo.entry[id].result, { method: "HEAD" }).then((r) => r.ok).catch(() => false)));
+  if (!demo) return;
+  demo.ready = demo.ready.filter((_, i) => ok[i]);
+  demo.ready.slice(0, 2).forEach((id) => demoAsset(id).catch(() => {}));
+  if (screen === "editorScreen") renderEditor();
+}
+async function demoAsset(id) {
+  if (demo.cache[id]) return demo.cache[id];
+  const r = await fetch(DEMO_DIR + demo.entry[id].result);
+  if (!r.ok) throw new Error("missing");
+  return (demo.cache[id] = await blobToData(await r.blob()));
+}
+function demoReset(msg) {
+  ed.hist = ed.hist.slice(0, 1); ed.idx = 0; ed.floor = 0; ed.savedIdx = 0; ed.pending = null;
+  if (msg) say(msg);
+}
+async function showDemoPreview(id) {
+  const t = TOOL[id], mine = ++previewToken;
+  demoReset(); sel = id; delete demo.failed[id]; demo.loading = id;
+  renderEditor();
+  try {
+    const data = await demoAsset(id);
+    if (mine !== previewToken || sel !== id || !ed.demo) return;
+    ed.hist.push({ data, full: data, op: { tool: id, fixed: true, demo: true } }); ed.idx = 1;
+    ed.view = "split"; ed.split = 50;
+    $("alertLive").textContent = `${t.title} prepared preview shown. Compare it with the original.`;
+  } catch {
+    if (mine !== previewToken || !demo) return;
+    demo.failed[id] = true;
+    $("alertLive").textContent = `Couldn't load the ${t.title} preview.`;
+  } finally {
+    if (demo && demo.loading === id) demo.loading = null;
+    if (mine === previewToken) renderEditor();
+  }
+}
+function demoPanelState(t) {
+  const chip = $("cost"), apply = $("applyBtn");
+  chip.textContent = "Prepared preview"; chip.className = "chip";
+  apply.disabled = false;
+  if (demo && demo.failed[t.id]) {
+    apply.textContent = "Retry";
+    $("panelNote").textContent = "Couldn't load this preview. Check your connection and try again.";
+  } else if (demo && demo.loading === t.id) {
+    apply.textContent = "Done"; apply.disabled = true;
+    $("panelNote").textContent = "Loading the prepared preview…";
+  } else {
+    apply.textContent = "Done";
+    $("panelNote").textContent = `A saved result from Glow's ${t.title} tool on this photo. Nothing is generated and no credits are used. Sample previews show one effect at a time.`;
+  }
+}
+function exitDemo() {
+  if (!demo) return;
+  Object.assign(faceSet.amt, demo.saved.amt); Object.assign(faceSet.shade, demo.saved.shade); saveFace();
+  Object.assign(toolAmt, demo.saved.toolAmt);
+  demo = null; ed.demo = false; sel = null; lastCommitTool = null;
+}
+$("demoOwnBtn").addEventListener("click", pickAndOpen);
 
 // ---------- Draft: keeps the session (and any AI job) through a refresh or the app closing ----------
 let draftWarn = false;
 async function saveDraft() {
-  if (!hasPhoto()) return Drafts.clear();
+  if (!hasPhoto() || ed.demo) return Drafts.clear(); // the sample is never kept as a project
   try {
     await Drafts.put({ v: 2, original: ed.original, hist: ed.hist.slice(0, ed.idx + 1), idx: ed.idx, floor: ed.floor, savedIdx: ed.savedIdx,
       originalSaved: ed.originalSaved, name: ed.name, session: ed.session, ts: Date.now() });
@@ -276,6 +364,7 @@ async function discardSession() {
       actions: [{ label: "Discard", value: "yes" }, { label: "Keep it", value: "", kind: "ghost" }] });
     if (!c) return;
   }
+  exitDemo();
   ed.hist = []; ed.idx = 0; ed.pending = null; sel = null; ed.session = "";
   await Drafts.clear(); renderHome(); say("Edit discarded.");
 }
@@ -303,7 +392,7 @@ function renderHome() {
   if (hasPhoto()) {
     $("resumeImg").src = committed();
     const j = job && job.session === ed.session ? ` · ${job.title}: ${JOB_SHORT[job.status]}` : "";
-    $("resumeMeta").textContent = (unsaved() ? "Not saved yet" : ed.idx > 0 ? "Saved" : "No edits yet") + j;
+    $("resumeMeta").textContent = ed.demo ? "AI-generated sample · Demo" : (unsaved() ? "Not saved yet" : ed.idx > 0 ? "Saved" : "No edits yet") + j;
   }
   $("recoveredCard").hidden = !recovered;
   if (recovered) {
@@ -331,7 +420,10 @@ function renderEditor() {
   st.classList.toggle("checker", /^data:image\/png/.test(after || "") && !brushing);
   st.dataset.view = brushing ? "original" : ed.view;
   document.querySelectorAll(".views button").forEach((v) => v.setAttribute("aria-pressed", String(v.dataset.view === ed.view)));
-  $("previewBadge").hidden = !ed.pending;
+  const prepared = !ed.pending && ed.idx > 0 && ed.hist[ed.idx].op && ed.hist[ed.idx].op.demo;
+  $("previewBadge").hidden = !ed.pending && !prepared;
+  $("previewBadge").textContent = prepared ? "Prepared preview" : "Preview";
+  $("demoBar").hidden = !ed.demo;
   setSplit(ed.split);
   $("brush").hidden = !brushing;
   if (brushing) requestAnimationFrame(drawStrokes);
@@ -397,6 +489,11 @@ $("redoBtn").addEventListener("click", () => {
 
 // ---------- Categories and tools ----------
 function groupsFor(c) {
+  if (c === "foryou" && ed.demo) {
+    const ready = demo ? demo.ready : [];
+    return [["demo", ready.length ? "Prepared AI previews" : "AI previews aren't prepared for the sample yet", ready.length ? ready : []],
+      ["free", "Free on-device", DEMO_FREE]];
+  }
   if (c === "foryou") {
     const g = [];
     if (favs.length) g.push(["fav", "Favorites", favs]);
@@ -433,26 +530,30 @@ function toolButton(t) {
   const b = document.createElement("button");
   b.className = "tool"; b.dataset.tool = t.id;
   b.setAttribute("aria-pressed", String(sel === t.id));
-  const cost = costOf(t);
-  b.setAttribute("aria-label", t.label + (cost ? `, uses ${credits(cost)}` : ", free"));
+  const cost = ed.demo ? 0 : costOf(t), prepared = ed.demo && t.kind === "ai";
+  b.setAttribute("aria-label", t.label + (prepared ? ", prepared preview, no credits" : cost ? `, uses ${credits(cost)}` : ", free"));
   const well = document.createElement("i"); well.className = "well";
   if (t.kind === "filter") {
     if (thumb) { well.style.backgroundImage = `url(${thumb})`; well.style.filter = t.filter.f; }
   } else well.innerHTML = icon(t.id);
-  if (cost) { const c = document.createElement("span"); c.className = "cost"; c.textContent = `AI · ${cost}`; c.setAttribute("aria-hidden", "true"); well.append(c); }
+  if (cost || prepared) { const c = document.createElement("span"); c.className = "cost"; c.textContent = prepared ? "Preview" : `AI · ${cost}`; c.setAttribute("aria-hidden", "true"); well.append(c); }
   const name = document.createElement("span"); name.className = "name"; name.textContent = t.label;
   b.append(well, name);
   return b;
 }
 function renderTools() {
-  const groups = groupsFor(cat), box = $("tools");
+  const groups = groupsFor(cat).map((g) => [g[0], g[1], g[2].filter((id) => TOOL[id] && demoOffers(id))]).filter((g) => g[2].length), box = $("tools");
+  $("demoNote").hidden = !(ed.demo && cat === "foryou" && demo && !demo.ready.length);
+  if (!groups.length && ed.demo) { box.innerHTML = `<p class="empty-note">This tool group needs your own photo. Tap Try your own photo above.</p>`; return; }
   if (!groups.length) { box.innerHTML = `<p class="empty-note">No tools match that search.</p>`; return; }
-  const showLabels = cat === "foryou" || cat === "all";
+  renderToolGroups(box, groups, cat === "foryou" || cat === "all");
+}
+function renderToolGroups(box, groups, showLabels) {
   box.replaceChildren(...groups.map(([, name, ids]) => {
     const g = document.createElement("div"); g.className = "group"; g.setAttribute("role", "group"); g.setAttribute("aria-label", name);
     if (showLabels) { const l = document.createElement("span"); l.className = "group-label"; l.textContent = name; l.setAttribute("aria-hidden", "true"); g.append(l); }
     const items = document.createElement("div"); items.className = "group-items";
-    items.append(...ids.filter((id) => TOOL[id]).map((id) => toolButton(TOOL[id])));
+    items.append(...ids.filter((id) => TOOL[id] && demoOffers(id)).map((id) => toolButton(TOOL[id])));
     g.append(items); return g;
   }));
 }
@@ -492,6 +593,13 @@ function selectTool(id) {
   sel = id; strokes = []; outfitData = null; cropSet = { ratio: 0, turns: 0 }; panelBuilt = null;
   lookPick = editorLooks().some((l) => l.id === lookId) ? lookId : "natural";
   if (id in toolAmt) toolAmt[id] = 0; // adjustments start from the committed photo
+  if (ed.demo && id) {
+    const t = TOOL[id];
+    // One effect at a time: a prepared preview always starts from the original, and so does
+    // an on-device tool picked while a prepared preview is showing.
+    if (t.kind === "ai") { showDemoPreview(id); return; }
+    if (ed.idx > 0 && ed.hist.some((h) => h.op && h.op.demo)) demoReset("Back to the original. Sample previews show one effect at a time.");
+  }
   renderEditor();
   if (id) {
     const t = TOOL[id];
@@ -587,6 +695,7 @@ function buildPanel(t) {
   }
 }
 function panelState(t) {
+  if (ed.demo && t.kind === "ai") return demoPanelState(t);
   const cost = costOf(t), chip = $("cost"), apply = $("applyBtn");
   let note = t.hint || "";
   if (!cost) { chip.textContent = "Free · on-device"; chip.className = "chip free"; }
@@ -685,6 +794,8 @@ function setBusy(on, text, note) {
 $("applyBtn").addEventListener("click", applyCurrent);
 async function applyCurrent() {
   const t = sel && TOOL[sel]; if (!t || busyNow) return;
+  // Sample: prepared previews are already showing. Nothing is generated or charged.
+  if (ed.demo && t.kind === "ai") { if (demo && demo.failed[t.id]) showDemoPreview(t.id); else { sel = null; renderEditor(); } return; }
   const cost = costOf(t);
   if (!cost) {
     let pend = ed.pending && ed.pending.tool === t.id ? ed.pending : null;
@@ -723,6 +834,7 @@ const rid = () => (crypto.randomUUID ? crypto.randomUUID() : newSession() + newS
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function startAiEdit(t) {
+  if (ed.demo) return; // never: the sample has no paid path at all
   const before = account ? account.remaining : null;
   setBusy(true, `${t.title}…`, "AI edits can take up to a minute.");
   $("alertLive").textContent = `${t.title} is running.`;
@@ -936,6 +1048,7 @@ async function renderExport() {
 }
 function exportNote(r) {
   if (r.preview) return ` Saved at ${r.w} × ${r.h}, the preview size, because the full-size version couldn't be made on this device.`;
+  if (r.ai && ed.demo) return ` Saved at ${r.w} × ${r.h}, the prepared preview's size.`;
   if (r.ai) return ` Saved at ${r.w} × ${r.h}, the size ${r.ai.title} returned.`;
   if (r.capped) return ` Saved at ${r.w} × ${r.h}, Glow's 16-megapixel limit.`;
   return ` Saved at ${r.w} × ${r.h}.`;
@@ -951,6 +1064,11 @@ async function saveEdit() {
   }
   if (ed.idx === 0) { say("Nothing to save yet. Apply a tool first."); return false; }
   if (savingEdit) return false;
+  if (ed.demo) {
+    const c = await ask({ title: "Save the AI-generated sample?", text: "This is Glow's sample photo, made with AI. It isn't a real person. The file name marks it as a sample.",
+      actions: [{ label: "Save sample", value: "yes" }, { label: "Cancel", value: "", kind: "ghost" }] });
+    if (!c) return false;
+  }
   savingEdit = true;
   setBusy(true, "Preparing the full-size photo…");
   let out;
@@ -965,8 +1083,8 @@ async function saveEdit() {
     const img = await loadImg(committed());
     out = { data: committed(), w: img.naturalWidth, h: img.naturalHeight, preview: true };
   }
-  const stamp = Date.now(), items = [{ data: out.data, name: `glow-${stamp}` }];
-  const withOrig = store.get("glowSaveOrig") === "on" && !ed.originalSaved && ed.original && ed.original.blob;
+  const stamp = Date.now(), items = [{ data: out.data, name: ed.demo ? `glow-ai-sample-${stamp}` : `glow-${stamp}` }];
+  const withOrig = !ed.demo && store.get("glowSaveOrig") === "on" && !ed.originalSaved && ed.original && ed.original.blob;
   if (withOrig) items.unshift({ blob: ed.original.blob, name: `glow-${stamp}-original` });
   try {
     const where = await Platform.savePhotos(items);
@@ -991,7 +1109,7 @@ function balanceText(a) { const n = a.remaining; return `${n} AI credit${n === 1
 function nextUtcMidnight() { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)); }
 function renderCredits() {
   const a = account;
-  $("balanceBtn").hidden = !a; $("homeCredits").hidden = !a;
+  $("balanceBtn").hidden = !a || (ed.demo && screen === "editorScreen"); $("homeCredits").hidden = !a;
   if (!a) return;
   $("balanceBtn").innerHTML = icon("sparkle") + `<span>${balanceText(a)}</span>`;
   $("balanceBtn").setAttribute("aria-label", `${balanceText(a)}. Details`);
