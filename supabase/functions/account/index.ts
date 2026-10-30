@@ -24,6 +24,15 @@ Deno.serve(async (req) => {
     return json({ deleted: true });
   }
 
+  // Pricing v2 (migration 007): the database works out the balance, including the free plan's
+  // one-time premium trial. Before 007 is applied this RPC doesn't exist and the old rules below apply.
+  const v2 = await admin.rpc("ai_allowance", { p_user: user.id }).maybeSingle();
+  if (!v2.error && v2.data) {
+    const a = v2.data as { plan: string; period: string | null; used: number; quota: number; remaining: number; trial_left: number; ads_left: number };
+    const { data: pe } = await admin.from("profiles").select("plan_expires_at").eq("id", user.id).maybeSingle();
+    return json({ plan: a.plan, period: a.period, expires: a.plan === "pro" ? pe?.plan_expires_at : null, used: a.used, quota: a.quota,
+      remaining: a.remaining, trialLeft: a.plan === "pro" ? undefined : a.trial_left, adsLeft: a.ads_left, v: 2 });
+  }
   const { data: p } = await admin.from("profiles").select("plan, plan_expires_at").eq("id", user.id).maybeSingle();
   const pro = p?.plan === "pro" && !!p.plan_expires_at && new Date(p.plan_expires_at) > new Date();
   const since = pro ? new Date(Date.now() - 7 * 864e5) : new Date(new Date().toISOString().slice(0, 10));

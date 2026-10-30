@@ -1301,6 +1301,23 @@ test('ai: Expand sends once on Generate and waits for Apply', async ({ p, state 
   eq(await p.evaluate(() => [ed.idx, job]), [1, null], 'Apply adds it');
 });
 
+test('ai: free plan v2 — premium tools use the one-time trial, cheap tools the daily credits', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await p.waitForFunction(() => !!account);
+  await p.evaluate(() => showUsage({ plan: 'free', used: 0, quota: 3, remaining: 3, trialLeft: 2, adsLeft: 1, v: 2 }));
+  await tool(p, 'edit', null, 'pro');
+  eq(await p.evaluate(() => [$('applyBtn').textContent, /2 of 3 free tries left/.test($('panelNote').textContent)]), ['Apply · 1 credit', true], 'premium: trial balance shown');
+  await p.evaluate(() => showUsage({ plan: 'free', pool: 'trial', used: 3, quota: 3, remaining: 0 }));
+  eq(await p.evaluate(() => [account.remaining, account.trialLeft]), [3, 0], 'a trial charge only moves the trial balance');
+  eq(await p.evaluate(() => [$('applyBtn').textContent, /used your 3 free tries/.test($('panelNote').textContent)]), ['Go Pro to keep using it', true], 'trial used up');
+  await p.click('#applyBtn'); await settle(200);
+  eq([await p.evaluate(() => $('paywall').open), state.posts.length], [true, 0], 'opens Glow Pro, sends nothing');
+  await p.evaluate(() => $('paywall').close());
+  await tool(p, 'ai', null, 'erase');
+  eq(await p.textContent('#applyBtn'), 'Generate · 1 credit', 'a low-cost tool still uses the daily credits');
+  eq(await p.evaluate(() => ['$4.99/week', '$49.99/year'].map((x) => document.body.innerHTML.includes(x))), [true, true], 'new prices on the paywall');
+});
+
 test('demo: Remove, Fill and Expand on the sample offer your own photo and never call the AI', async ({ p, state }) => {
   await openDemo(p);
   await p.click('.tab[data-cat="ai"]'); await p.click('.tool[data-tool="erase"]'); await settle(200);

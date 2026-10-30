@@ -73,6 +73,12 @@ const TOOL = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
 
 // AI cost per tool. Must match ai_edit_cost() on the server, which is what actually charges.
 const TWO_CREDITS = ["headshot", "anime", "watercolor", "fashion"];
+// Free plan (pricing v2): these AI tools cost Glow under a cent and get 3 free credits a day; every
+// other AI tool is premium, with 3 one-time trial credits. The server (migration 007) has the same list.
+const CHEAP_AI = ["erase", "enhance", "upscale", "faces", "colorize", "retouch", "toon3d", "clay", "older", "younger"];
+const trialTool = (t) => !!account && account.plan !== "pro" && account.trialLeft !== undefined && t.kind === "ai" && !CHEAP_AI.includes(t.id);
+// What this tool can draw on: the one-time trial for premium tools on the free plan, otherwise the usual balance.
+const balanceFor = (t) => (trialTool(t) ? account.trialLeft : account.remaining);
 const costOf = (t) => (t.kind !== "ai" ? 0 : TWO_CREDITS.includes(t.id) || (CONFIG.pricingV2 && ["fill", "expand"].includes(t.id)) ? 2 : 1);
 const credits = (n) => `${n} credit${n === 1 ? "" : "s"}`;
 
@@ -1253,15 +1259,17 @@ function panelState(t) {
     note = "Fill needs an update to Glow's AI server that isn't live yet. Nothing is sent or charged.";
   } else {
     const again = lastCommitTool === t.id;
-    const a = account, short = a && a.remaining < cost;
+    const a = account, trial = trialTool(t), have = a ? balanceFor(t) : 0, short = a && have < cost;
     if (short) {
-      apply.textContent = "Get more AI credits";
-      note = a.remaining
-        ? `This uses ${credits(cost)} and you have ${a.remaining} left.`
+      apply.textContent = trial ? "Go Pro to keep using it" : "Get more AI credits";
+      note = trial
+        ? (have ? `This uses ${credits(cost)} and you have ${have} free ${have === 1 ? "try" : "tries"} left.` : "You've used your 3 free tries of the premium AI tools. The other AI tools stay free every day.")
+        : have
+        ? `This uses ${credits(cost)} and you have ${have} left.`
         : `You're out of AI credits ${a.plan === "pro" ? "for now" : "for today"}. On-device tools are still free.`;
     } else {
       apply.textContent = `${again ? "Run again" : gen ? "Generate" : "Apply"} · ${credits(cost)}`;
-      const bal = a ? ` You have ${a.remaining} left ${a.plan === "pro" ? "this week" : "today"}.` : "";
+      const bal = !a ? "" : trial ? ` Premium tool: ${have} of 3 free tries left.` : ` You have ${have} left ${a.plan === "pro" ? "this week" : "today"}.`;
       note = again ? `Running it again makes a new version and uses another ${credits(cost).replace(/^1 /, "")}.${bal}` : `${note}${bal}`.trim();
     }
     if (jobActive()) { apply.disabled = true; note = `Wait for ${job.title} to finish, or check its status above. Glow runs one AI edit at a time so nothing is charged twice.`; }
@@ -1369,7 +1377,7 @@ async function applyCurrent() {
     return;
   }
   // AI: check the balance we know about first; the server makes the final call.
-  if (account && account.remaining < cost) {
+  if (account && balanceFor(t) < cost) {
     if (account.plan === "pro") say("You've used this week's AI credits. Each one comes back 7 days after it was used.", true); else openPaywall();
     return;
   }
@@ -2067,9 +2075,10 @@ function renderCreditsSheet() {
     const left = mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
     html = p(`<b>${a.remaining} of ${a.quota} AI credits left today.</b>`) +
       p(`You get 3 AI credits a day. They reset at midnight UTC, which is ${fmtTime(r)} your time (in ${left}). Unused credits don't carry over.`);
-    if (native && plugins.AdMob && a.adsLeft > 0) html += p(`Out of credits? You can watch a short ad for 1 more credit, up to ${a.adsLeft} more today. Ads are always optional.`);
+    if (a.trialLeft !== undefined) html += p(`Premium AI tools (Fill, Expand, Enhance, Smile, Relight, hair, outfits and portrait styles) come with 3 free tries in all: <b>${a.trialLeft} left</b>. Your daily credits work on the other AI tools.`);
+    if (native && plugins.AdMob && a.adsLeft > 0) html += p(`Out of credits? You can watch a short ad for 1 more credit${a.trialLeft !== undefined ? " (for the daily tools)" : ""}, up to ${a.adsLeft} more today. Ads are always optional.`);
   }
-  html += p("Most AI tools use 1 credit. Headshot, Fashion, Anime and Watercolor use 2. Each tool shows its cost before you apply it.") +
+  html += p(`Most AI tools use 1 credit. Headshot, Fashion, Anime and Watercolor${CONFIG.pricingV2 ? ", Fill and Expand" : ""} use 2. Each tool shows its cost before you apply it.`) +
     p("The camera, filters, face, makeup, body, hair color, background, light and color tools run on your device and are always free. Undo and redo never use credits.") +
     p("If the AI service reports that an edit failed, its credit is returned automatically.");
   $("creditsBody").innerHTML = html;
@@ -2081,6 +2090,9 @@ $("homeCredits").addEventListener("click", openCredits);
 $("creditsPro").addEventListener("click", () => { $("creditsSheet").close(); openPaywall(); });
 
 function showUsage(u) {
+  // A premium tool on the free plan draws on the one-time trial, not today's balance.
+  if (u && u.pool === "trial") u = { plan: u.plan, trialLeft: u.remaining };
+  else if (u && u.pool) { const { pool, ...rest } = u; u = rest; }
   account = { ...(account || {}), ...u };
   $("planLine").textContent = account.plan === "pro"
     ? `Glow Pro: ${account.remaining} of ${account.quota} AI credits left this week.`

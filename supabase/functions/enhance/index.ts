@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
     // Every AI edit uses credits (most tools 1, portrait styles 2), so no plan can cost more than it earns.
     const { data: quota, error: qErr } = await admin.rpc("consume_ai_edit", { p_user: user.id, p_mode: mode, p_ip: clientIp(req) }).single();
     if (qErr) throw qErr;
-    const usage = { plan: quota.plan, used: quota.used, quota: quota.quota, remaining: quota.remaining };
+    const usage = { plan: quota.plan, used: quota.used, quota: quota.quota, remaining: quota.remaining, pool: quota.pool };
     if (quota.ok && requestId) {
       const { error: dup } = await admin.from("ai_usage").update({ client_request_id: requestId }).eq("id", quota.usage_id);
       if (dup) {
@@ -104,8 +104,10 @@ Deno.serve(async (req) => {
         .lt("created_at", new Date(Date.now() - 2 * 864e5).toISOString()).then(() => {});
     }
     if (!quota.ok) {
-      const msg = quota.remaining > 0 ? `This style uses 2 AI credits and you have ${quota.remaining} left.` : quota.plan === "pro"
-        ? "You've used this week's 40 AI credits. They refresh over the next few days."
+      const msg = quota.remaining > 0 ? `This tool uses 2 AI credits and you have ${quota.remaining} left.` : quota.plan === "pro"
+        ? "You've used your AI credits for now. They refresh over the next few days."
+        : quota.pool === "trial"
+        ? "You've used your 3 free tries of the premium AI tools. Go Pro to keep using them; the other AI tools stay free every day."
         : "You've used today's free AI credits. Go Pro for 40 a week, or come back tomorrow.";
       return json({ error: msg, limit: true, usage }, 429);
     }
