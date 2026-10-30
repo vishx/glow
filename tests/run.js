@@ -1467,6 +1467,28 @@ test('glowup: an AI step runs first, her face is checked, then the free steps go
   eq([state.posts.length, state.used], [1, 1], 'one request');
 });
 
+test('seams: smoothing never uses a GPU picture that is shifted; without canvas blur, edits match the browser blur', async ({ p }) => {
+  await p.goto('https://app.test/'); await settle(300);
+  const r = await p.evaluate(async () => {
+    const orig = await loadImg('/samples/demo-v2/original.png'), c = canvasFor(orig); c.getContext('2d').drawImage(orig, 0, 0, c.width, c.height);
+    const base = c.toDataURL('image/jpeg', 0.95);
+    // A phone that gives WebGL a smaller drawing buffer than asked (as some do).
+    const proto = WebGLRenderingContext.prototype, d = Object.getOwnPropertyDescriptor(proto, 'drawingBufferHeight');
+    Object.defineProperty(proto, 'drawingBufferHeight', { configurable: true, get() { return Math.round(d.get.call(this) * 0.8); } });
+    let shifted; try { shifted = beautyTiled(c, { smooth: 100, bright: 0, warm: 0 }, 2); } finally { Object.defineProperty(proto, 'drawingBufferHeight', d); }
+    const ok = beautyTiled(c, { smooth: 100, bright: 0, warm: 0 }, 2);
+    glow = glowDefaults(); for (const k in glow.on) glow.on[k] = true; glow.look = 'soft';
+    const native = await glowUp(base, glowRecipe());
+    globalThis.__glowSoftFilter = true; let soft; try { soft = await glowUp(base, glowRecipe()); } finally { globalThis.__glowSoftFilter = false; }
+    const px = async (s) => { const im = await loadImg(s), k = newCanvas(270, 360), x = k.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0, 270, 360); return x.getImageData(0, 0, 270, 360).data; };
+    const [a, b] = await Promise.all([px(native), px(soft)]); let sum = 0, worst = 0;
+    for (let i = 0; i < a.length; i += 4) { const v = Math.abs(lum(a[i], a[i + 1], a[i + 2]) - lum(b[i], b[i + 1], b[i + 2])); sum += v; worst = Math.max(worst, v); }
+    return { shifted: shifted === null, ok: !!ok, mean: sum / (a.length / 4), worst };
+  });
+  eq([r.shifted, r.ok], [true, true], 'a short drawing buffer is refused; a normal one is used');
+  assert(r.mean < 2 && r.worst < 40, `the no-filter path matches: mean ${r.mean.toFixed(2)}, worst ${r.worst.toFixed(1)}`);
+});
+
 test('enhance: Colorize is offered only for black-and-white photos', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await p.waitForFunction(() => photoColorful === true);

@@ -17,8 +17,8 @@ const CONFIG = {
   // Fill sends mode "fill" with a short prompt. Live since enhance v9 (2026-10-30, after migration 006).
   aiFill: true,
   // AI scene, HD cutout and Describe need the "bgscene", "bgcut" and "custom" modes on the
-  // server (enhance v10) and migration 008.
-  aiV10: false,
+  // server (enhance v10, live 2026-10-30) and migration 008 (run 2026-10-30).
+  aiV10: true,
   // Pricing v2 (migration 007): Fill and Expand cost 2 credits. Turn on only once 007 is applied,
   // so the cost shown always matches what the server charges. Applied on 2026-10-30.
   pricingV2: true,
