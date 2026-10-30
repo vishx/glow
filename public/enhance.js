@@ -194,8 +194,8 @@ function showEnhResult() {
   fitEnhFrame();
   // The reveal: the line sweeps in from the right edge to the middle.
   const f = $("enhFrame");
-  f.classList.remove("reveal"); setSplit(100);
-  requestAnimationFrame(() => requestAnimationFrame(() => { f.classList.add("reveal"); setSplit(50); setTimeout(() => f.classList.remove("reveal"), 950); }));
+  f.classList.remove("reveal"); enhSetSplit(100);
+  requestAnimationFrame(() => requestAnimationFrame(() => { f.classList.add("reveal"); enhSetSplit(50); setTimeout(() => f.classList.remove("reveal"), 950); }));
   $("enhDownload").classList.remove("ready"); void $("enhDownload").offsetWidth; $("enhDownload").classList.add("ready");
   $("alertLive").textContent = "Your enhanced photo is ready.";
 }
@@ -214,7 +214,7 @@ function fitEnhFrame() {
 }
 addEventListener("resize", fitEnhFrame);
 
-function setSplit(v) {
+function enhSetSplit(v) {
   enh.split = Math.max(0, Math.min(100, v));
   $("enhFrame").style.setProperty("--split", enh.split + "%");
   $("enhKnob").setAttribute("aria-valuenow", String(Math.round(enh.split)));
@@ -222,14 +222,14 @@ function setSplit(v) {
 (function compareDrag() {
   const f = $("enhFrame");
   let id = null;
-  const at = (e) => { const r = f.getBoundingClientRect(); setSplit(((e.clientX - r.left) / r.width) * 100); };
+  const at = (e) => { const r = f.getBoundingClientRect(); enhSetSplit(((e.clientX - r.left) / r.width) * 100); };
   f.addEventListener("pointerdown", (e) => { id = e.pointerId; f.setPointerCapture(id); f.classList.remove("reveal"); at(e); });
   f.addEventListener("pointermove", (e) => { if (e.pointerId === id) at(e); });
   const end = (e) => { if (e.pointerId === id) id = null; };
   f.addEventListener("pointerup", end); f.addEventListener("pointercancel", end);
   $("enhKnob").addEventListener("keydown", (e) => {
     const d = { ArrowLeft: -5, ArrowRight: 5, Home: -100, End: 100 }[e.key];
-    if (d === undefined) return; e.preventDefault(); setSplit(enh.split + d);
+    if (d === undefined) return; e.preventDefault(); enhSetSplit(enh.split + d);
   });
 })();
 

@@ -85,7 +85,7 @@
       "height": 1448,
       "aligned": true,
       "sha256": "212a6e7874b070fa5454febaf32ecd5608e889ddcff13bff87625cb94791b672",
-      "assetVersion": 3
+      "assetVersion": 2
     },
     {
       "tool": "faces",
@@ -160,7 +160,7 @@
       "height": 1448,
       "aligned": true,
       "sha256": "3ff5198cee2de7fd3e1f07520e4c44c6637bca4157797699406f252ec372a896",
-      "assetVersion": 3
+      "assetVersion": 2
     },
     {
       "tool": "golden",
