@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
   if (!SECRET || !same(req.headers.get("Authorization") ?? "", `Bearer ${SECRET}`)) return new Response("unauthorized", { status: 401 });
   const { event } = await req.json().catch(() => ({}));
   if (!event) return new Response("bad request", { status: 400 });
-  if (Array.isArray(event.entitlement_ids) && !event.entitlement_ids.includes("pro")) return new Response("ignored", { status: 200 });
+  if (Array.isArray(event.entitlement_ids) && !event.entitlement_ids.some((e: string) => e === "pro" || e === "glow_pro")) return new Response("ignored", { status: 200 });
 
   try {
     if (event.type === "TRANSFER") {
