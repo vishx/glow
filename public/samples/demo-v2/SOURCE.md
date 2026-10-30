@@ -22,26 +22,28 @@ compares against `original.png` itself.
 
 ## Prepared AI previews
 
-`manifest.json` lists the AI tools that can show a prepared result on the sample. None ship
-yet: the results made from the earlier sample were removed, and new ones must be made from
-this exact original. The app offers an entry only when its status is `ready`, it is marked
-`aligned: true` (same size and framing as the original) and its file loads. The tests also
-check that each shipped result has the original's size and records `originalSha256` equal to
-this original's hash.
+On 2026-10-30, with the owner's approval (about $1.05 of Replicate credit), every Glow AI tool
+except Try on (it needs an outfit photo) was run once on this exact original by
+`tools/demo/all/all-tools.ts`, in a one-off GitHub Actions job (run 41081284106 on the
+`demo-gen` branch). It reached Replicate through a temporary Supabase function that checked the
+job's GitHub OIDC token, so the Replicate token never left Supabase; the function was retired
+right after. The raw results and their provenance are on the `demo-gen` branch under
+`tools/demo/all/out/`.
 
-To make them (each run is billed to the Replicate account whose token is used, so only with
-the owner's go-ahead):
+Each result was put in the original's frame with a uniform scale only, never a stretch. The
+image-editing model returns 864 x 1184 with the sides trimmed, so those results are scaled to
+the original's height and placed where they match best, and the thin side strips (at most 28 px)
+come from the original; `fit` in `manifest.json` records this for each one. Then the eye region
+was compared with the original: only results whose eyes moved 4 px or less ship here.
 
-1. `REPLICATE_API_TOKEN=… deno run --allow-env --allow-net --allow-read --allow-write tools/demo/generate.ts`
-   - This uses `supabase/functions/enhance/pipeline.ts`: the same models, prompts and settings
-     that users get.
-   - The input is `tools/demo/input.jpg`: this original as the app uploads it, a JPEG at
-     quality 90, 1086 × 1448.
-   - The script records the original's hash, the model, version, prediction id and time. It
-     never writes a URL or a token.
-2. `python3 tools/demo/optimize.py`
-   - Fits each result to the original's size only when its framing already matches.
-   - Results that the model reframed are kept out of the app.
+Shipped (11): Enhance, Restore, Face repair, AI retouch, Golden hour, Colorize, Pixie cut,
+Business suit, Summer dress, 3D Toon, Clay.
+
+Not shipped as previews: the hair styles other than Pixie, Smile, Relight, Gown and Streetwear
+(the model moved or reframed the face), Headshot, Fashion, Anime and Watercolor (new pictures
+with a different composition), Older and Younger (the model returns a square face crop), Upscale
+(its point is the larger size), Remove and Fill (they need marks on the photo), and Expand (its
+result filled the new area with unrelated pictures; see the run notes).
 
 The JPEGs under `tests/fixtures/demo-test-*.jpg` are tone changes made for the tests only.
 They are not Glow results and are never shipped.

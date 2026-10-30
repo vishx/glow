@@ -326,6 +326,7 @@ test('a11y: control boundaries and inactive controls meet 3:1 in both themes', a
 // the demo path only; they are not Glow results and are never shipped.
 const demoManifest = (() => {
   const m = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/samples/demo-v2/manifest.json')));
+  if (!m.previews.some((e) => e.tool === 'relight')) m.previews.push({ tool: 'relight', title: 'Relight' });
   for (const e of m.previews) Object.assign(e, e.tool === 'pro' || e.tool === 'relight' ? { status: 'ready', result: `test-${e.tool}.jpg`, aligned: true } : { status: 'needs-generation', result: null });
   return m;
 })();
