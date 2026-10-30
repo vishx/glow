@@ -139,18 +139,18 @@
         "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
         "model": "tencentarc/gfpgan",
         "version": null,
-        "predictionId": "q5ppj2t4chrmw0d1hs4893n6tr",
-        "generatedAt": "2026-10-30T19:27:46Z",
+        "predictionId": "cc5kvxqk0srmt0d1hsbs0x30v4",
+        "generatedAt": "2026-10-30T19:44:58Z",
         "metrics": {
-          "total_time": 4.1
+          "total_time": 10.5
         },
         "pipeline": "supabase/functions/enhance/pipeline.ts",
         "run": "tools/demo/refresh/refresh.py through the live enhance function (v11), GitHub Actions"
       },
       "fit": "resized",
       "rawSize": [
-        543,
-        724
+        2172,
+        2896
       ],
       "faceShiftPx": [
         0,
@@ -159,7 +159,7 @@
       "width": 1086,
       "height": 1448,
       "aligned": true,
-      "sha256": "3e56baa009875b739f713837781acc2ead6bbe08e405ed0c1054c561c836d115",
+      "sha256": "3ff5198cee2de7fd3e1f07520e4c44c6637bca4157797699406f252ec372a896",
       "assetVersion": 3
     },
     {
