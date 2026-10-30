@@ -1,0 +1,439 @@
+{
+  "enhance": {
+    "file": "enhance.png",
+    "model": "sczhou/codeformer",
+    "version": "cc4956dd26fa5a7185d5660cc9100fab1b8070a1d1654a8bb5eb6d443b020bb2",
+    "predictionId": "eq26wdqgn1rmy0d1hnq8g43fcr",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:31:03.219Z",
+    "metrics": {
+      "predict_time": 41.732441091,
+      "total_time": 41.812082032
+    },
+    "prompt": null
+  },
+  "upscale": {
+    "file": "upscale.png",
+    "model": "nightmareai/real-esrgan",
+    "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+    "predictionId": "py7vpgwwe1rga0d1hnqs93fxmg",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:31:20.117Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 14.428569209,
+      "total_time": 14.514708757
+    },
+    "prompt": null
+  },
+  "faces": {
+    "file": "faces.png",
+    "model": "tencentarc/gfpgan",
+    "version": "0fbacf7afc6c144e5be9767cff80f25aff23e52b0708f17e20f9879b2f21516c",
+    "predictionId": "d80bt0yyxdrmy0d1hnqrp89y0g",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:31:26.013Z",
+    "metrics": {
+      "predict_time": 3.905079678,
+      "total_time": 3.9401374479999998
+    },
+    "prompt": null
+  },
+  "colorize": {
+    "file": "colorize.png",
+    "model": "piddnad/ddcolor",
+    "version": "ca494ba129e44e45f661d6ece83c4c98a9a7c774309beca01429b58fce8aa695",
+    "predictionId": "vtyck11masrmw0d1hnr8khwtag",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:31:44.193Z",
+    "metrics": {
+      "predict_time": 0.46187001,
+      "total_time": 0.495600716
+    },
+    "prompt": null
+  },
+  "retouch": {
+    "file": "retouch.png",
+    "model": "sczhou/codeformer",
+    "version": "cc4956dd26fa5a7185d5660cc9100fab1b8070a1d1654a8bb5eb6d443b020bb2",
+    "predictionId": "7jb9thvnasrmr0d1hnr93qdj6m",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:32:05.131Z",
+    "metrics": {
+      "predict_time": 4.53496872,
+      "total_time": 4.56880333
+    },
+    "prompt": null
+  },
+  "headshot": {
+    "file": "headshot.webp",
+    "model": "zsxkib/instant-id",
+    "version": "2e4785a4d80dadf580077b2244c8d7c05d8e3faac04a04c02d8e099dd2876789",
+    "predictionId": "e9g3q36bf5rmt0d1hnr803cms0",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:34:20.447Z",
+    "metrics": {
+      "predict_time": 12.915773057,
+      "total_time": 115.881101517
+    },
+    "prompt": null
+  },
+  "anime": {
+    "file": "anime.webp",
+    "model": "zsxkib/instant-id",
+    "version": "2e4785a4d80dadf580077b2244c8d7c05d8e3faac04a04c02d8e099dd2876789",
+    "predictionId": "v67gcycwa1rmw0d1hns89yepv4",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:34:35.058Z",
+    "metrics": {
+      "predict_time": 13.101373009,
+      "total_time": 13.138101005
+    },
+    "prompt": null
+  },
+  "watercolor": {
+    "file": "watercolor.webp",
+    "model": "zsxkib/instant-id",
+    "version": "2e4785a4d80dadf580077b2244c8d7c05d8e3faac04a04c02d8e099dd2876789",
+    "predictionId": "tpm5jaenvsrmy0d1hns89exx1r",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:34:49.341Z",
+    "metrics": {
+      "predict_time": 13.232702745,
+      "total_time": 13.278542089
+    },
+    "prompt": null
+  },
+  "fashion": {
+    "file": "fashion.webp",
+    "model": "zsxkib/instant-id",
+    "version": "2e4785a4d80dadf580077b2244c8d7c05d8e3faac04a04c02d8e099dd2876789",
+    "predictionId": "w409w68e49rmw0d1hnsv4bn8mm",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:35:03.355Z",
+    "metrics": {
+      "predict_time": 12.824435901,
+      "total_time": 12.877365297
+    },
+    "prompt": null
+  },
+  "toon3d": {
+    "file": "toon3d.png",
+    "model": "fofr/face-to-many",
+    "version": "a07f252abbbd832009640b27f063ea52d87d7a23a185ca165bec23b5adc8deaf",
+    "predictionId": "trqt8ka5thrmr0d1hnssgx6fqr",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:35:14.097Z",
+    "metrics": {
+      "predict_time": 6.536812591,
+      "total_time": 8.879183927
+    },
+    "prompt": null
+  },
+  "clay": {
+    "file": "clay.png",
+    "model": "fofr/face-to-many",
+    "version": "a07f252abbbd832009640b27f063ea52d87d7a23a185ca165bec23b5adc8deaf",
+    "predictionId": "3zkdvvkee9rmr0d1hnstdperh8",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:35:30.055Z",
+    "metrics": {
+      "predict_time": 6.823011845,
+      "total_time": 14.770366756
+    },
+    "prompt": null
+  },
+  "older": {
+    "file": "older.png",
+    "model": "yuval-alaluf/sam",
+    "version": "9222a21c181b707209ef12b5e0d7e94c994b58f01c7b2fec075d2e892362f13c",
+    "predictionId": "g6y25sxe49rge0d1hnsv9np4xg",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:35:54.332Z",
+    "metrics": {
+      "predict_time": 22.696107169,
+      "total_time": 22.76378499
+    },
+    "prompt": null
+  },
+  "younger": {
+    "file": "younger.png",
+    "model": "yuval-alaluf/sam",
+    "version": "9222a21c181b707209ef12b5e0d7e94c994b58f01c7b2fec075d2e892362f13c",
+    "predictionId": "kaffh4rcqnrg80d1hntbtrh4c0",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:36:22.587Z",
+    "metrics": {
+      "predict_time": 12.446883611,
+      "total_time": 26.804325894
+    },
+    "prompt": null
+  },
+  "erase": {
+    "file": "erase.png",
+    "model": "allenhooo/lama",
+    "version": "cdac78a1bec5b23c07fd29692fb70baa513ea403a39e643c48ec5edadb15fe72",
+    "predictionId": "gpshxmbx9hrge0d1hnt8th29kr",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:36:25.999Z",
+    "metrics": {
+      "predict_time": 1.44517939,
+      "total_time": 1.495614135
+    },
+    "prompt": null
+  },
+  "pro": {
+    "file": "pro.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "knpb3pp29drmr0d1hntay5x26g",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:36:51.879Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 9.737981193,
+      "total_time": 9.789362869
+    },
+    "prompt": null
+  },
+  "smile": {
+    "file": "smile.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "zcpwh6zaydrmw0d1hnt8x8bcpm",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:37:00.607Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.072177869,
+      "total_time": 8.142445798
+    },
+    "prompt": null
+  },
+  "relight": {
+    "file": "relight.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "gc4vssj871rmt0d1hntrc89wzr",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:37:24.995Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.641551197,
+      "total_time": 8.664609159
+    },
+    "prompt": null
+  },
+  "golden": {
+    "file": "golden.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "mq7ta1587srmy0d1hntvrf8wk0",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:37:49.803Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.420371307,
+      "total_time": 8.44876613
+    },
+    "prompt": null
+  },
+  "hair_waves": {
+    "file": "hair_waves.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "38a763r8gsrmw0d1hnv8v6w6dr",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:38:13.747Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.140532055,
+      "total_time": 8.175604327
+    },
+    "prompt": null
+  },
+  "hair_bob": {
+    "file": "hair_bob.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "sb0wmcv639rmw0d1hnvbm4s6g0",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:38:37.954Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.391972653,
+      "total_time": 8.424493472
+    },
+    "prompt": null
+  },
+  "hair_pixie": {
+    "file": "hair_pixie.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "1jg0gwe4sxrmw0d1hnv95qhtnc",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:39:02.443Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.587856021,
+      "total_time": 8.631561372
+    },
+    "prompt": null
+  },
+  "hair_bangs": {
+    "file": "hair_bangs.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "yjqyk7h46srmy0d1hnvsvk1q3w",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:39:26.301Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.03471012,
+      "total_time": 8.07315114
+    },
+    "prompt": null
+  },
+  "hair_curls": {
+    "file": "hair_curls.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "ygwpjzm1ahrmr0d1hnvsjnb1vm",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:39:50.451Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.20650154,
+      "total_time": 8.427354302
+    },
+    "prompt": null
+  },
+  "hair_bun": {
+    "file": "hair_bun.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "5svwwaezmhrmr0d1hnvsqwkpgr",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:40:14.240Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.024897521,
+      "total_time": 8.073802189
+    },
+    "prompt": null
+  },
+  "hair_braids": {
+    "file": "hair_braids.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "y0s30csx5srmr0d1hnwb7jwpmr",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:40:39.079Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.205859732,
+      "total_time": 8.243349053
+    },
+    "prompt": null
+  },
+  "hair_butterfly": {
+    "file": "hair_butterfly.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "yz26ptwx81rmw0d1hnwaqbb76g",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:41:03.744Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.883293766,
+      "total_time": 8.963766254
+    },
+    "prompt": null
+  },
+  "gown": {
+    "file": "gown.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "m81b8mqxt5rmr0d1hnwacc3qfw",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:41:28.776Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.705983703,
+      "total_time": 8.75214758
+    },
+    "prompt": null
+  },
+  "suit": {
+    "file": "suit.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "a2cd2xv0e5rmw0d1hnwr8zawyc",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:41:53.434Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.68697611,
+      "total_time": 8.719527731
+    },
+    "prompt": null
+  },
+  "sundress": {
+    "file": "sundress.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "tmpnnne13nrmr0d1hnwtzx3wpr",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:42:17.720Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.197570373,
+      "total_time": 8.235689987
+    },
+    "prompt": null
+  },
+  "street": {
+    "file": "street.jpg",
+    "model": "google/nano-banana",
+    "version": null,
+    "predictionId": "6w9qm78yzdrmw0d1hnx8vz503c",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:42:41.746Z",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 8.262343391,
+      "total_time": 8.290312549
+    },
+    "prompt": null
+  },
+  "expand": {
+    "file": "expand.jpg",
+    "model": "black-forest-labs/flux-fill-pro",
+    "version": "41c767bcbfffe54ef8f05eb4d0100f9314790f7fc43a7b88d73ec06839deddb9",
+    "predictionId": "xakvqaj7ndrmr0d1hnx9sxqabm",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:43:05.146Z",
+    "metrics": {
+      "image_count": 1,
+      "image_output_count": 1,
+      "predict_time": 20.295242016,
+      "total_time": 20.329829443
+    },
+    "prompt": null
+  },
+  "fill": {
+    "file": "fill.jpg",
+    "model": "black-forest-labs/flux-fill-pro",
+    "version": "41c767bcbfffe54ef8f05eb4d0100f9314790f7fc43a7b88d73ec06839deddb9",
+    "predictionId": "yvav4cn0wnrmy0d1hnxb1tp780",
+    "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "generatedAt": "2026-10-30T15:43:24.408Z",
+    "metrics": {
+      "image_count": 1,
+      "image_output_count": 1,
+      "predict_time": 17.075876912,
+      "total_time": 17.107067323
+    },
+    "prompt": "a delicate thin gold necklace with a small pendant"
+  }
+}
