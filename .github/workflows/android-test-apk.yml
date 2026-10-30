@@ -43,7 +43,7 @@ jobs:
         working-directory: mobile
         run: |
           npm ci
-          ./build-web.sh
+          bash build-web.sh
           npx cap sync android
 
       - name: Build debug APK
