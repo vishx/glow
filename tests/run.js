@@ -4,7 +4,7 @@
 // phone, a real camera, Replicate, RevenueCat or the deployed Supabase functions.
 // Usage: npm test            (all)       npm test -- export      (names containing "export")
 const fs = require('fs'), path = require('path');
-const { launch, imageSize, fixtures, face, ready } = require('./harness');
+const { launch, imageSize, fixtures, face, faceVideo, ready } = require('./harness');
 
 const missing = ready();
 if (missing.length) { console.error('Setup needed:\n  ' + missing.join('\n  ')); process.exit(2); }
@@ -1531,6 +1531,74 @@ test('makeup: any color from the picker or the photo, a style per tool, and Save
   await p.click('#panelBody .opt:has-text("Gloss")'); await settle(100);
   eq(await p.evaluate(() => faceSet.style.flips), 'gloss', 'style chosen');
 });
+
+// ---------- Live beauty camera ----------
+// The fake camera shows the sample portrait (tests/.assets/face.y4m). Headless Chromium runs the
+// face model on its CPU, far slower than a phone, so these check behavior, not speed.
+const liveOpts = (init) => ({ start: 'camera', args: faceVideo ? ['--use-file-for-fake-video-capture=' + faceVideo] : [], init });
+const faceLive = async (p) => { await p.goto('https://app.test/'); await camLive(p); await p.waitForFunction(() => liveFace.seen >= 1, null, { timeout: 60000 }); };
+// Mean color of a box (fractions of the canvas) of the live preview, read straight from the canvas.
+const camPixels = (p, box) => p.evaluate((b) => {
+  const c = $('camCanvas'), t = newCanvas(c.width, c.height), x = t.getContext('2d'); x.drawImage(c, 0, 0);
+  const d = x.getImageData(b[0] * c.width, b[1] * c.height, b[2] * c.width, b[3] * c.height).data; let r = 0, g = 0, bl = 0;
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; bl += d[i + 2]; }
+  const n = d.length / 4; return [r / n, g / n, bl / n];
+}, box);
+// The lips' box in the preview, from the tracked points (the front camera is mirrored on screen).
+const lipBox = (p) => p.evaluate(() => {
+  const c = $('camCanvas'), P = liveFace.pts, xs = FACE.lipsOut.map((i) => P[i][0]), ys = FACE.lipsOut.map((i) => P[i][1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), w = x1 - x0;
+  const mx = cam.facing === 'user' ? c.width - x1 : x0;
+  return [(mx + w * 0.3) / c.width, (y0 + (y1 - y0) * 0.6) / c.height, (w * 0.4) / c.width, ((y1 - y0) * 0.3) / c.height];
+});
+
+if (faceVideo) test('camera live: follows the face, puts the look on it, and hold shows the original', async ({ p }) => {
+  await faceLive(p);
+  eq(await p.evaluate(() => [!!cam.gl.live, liveFace.pts.length, liveFace.failed]), [true, 478, false], 'live shader, 478 tracked points');
+  await p.evaluate(() => { useLook(PRESET_LOOKS[0]); Object.assign(beauty, { lips: 100, lipShade: '#c0392b' }); });
+  await settle(1500);
+  const box = await lipBox(p), lipsOn = await camPixels(p, box);
+  await p.evaluate(() => { useLook(PRESET_LOOKS[0]); }); await settle(1500);
+  const lipsOff = await camPixels(p, box);
+  assert(lipsOn[0] - lipsOn[2] > lipsOff[0] - lipsOff[2] + 15, `red lipstick makes the lips redder: ${lipsOn.map(Math.round)} vs ${lipsOff.map(Math.round)}`);
+  // A spot on the background stays untouched by face-only effects.
+  await p.evaluate(() => { Object.assign(beauty, { lips: 100, blush: 100, brows: 100, eyes: 100, slim: 100, nose: 100, smooth: 100 }); });
+  await settle(1500);
+  const bgOn = await camPixels(p, [0.02, 0.9, 0.06, 0.06]);
+  await p.evaluate(() => { useLook(PRESET_LOOKS[0]); }); await settle(1200);
+  const bgOff = await camPixels(p, [0.02, 0.9, 0.06, 0.06]);
+  assert(bgOn.every((v, i) => Math.abs(v - bgOff[i]) < 4), `background unchanged by face effects: ${bgOn.map(Math.round)} vs ${bgOff.map(Math.round)}`);
+  // Press and hold: the untouched frame, with an "Original" label; letting go brings the look back.
+  await p.evaluate(() => useLook(PRESET_LOOKS[3]));
+  await p.dispatchEvent('#camCanvas', 'pointerdown', { bubbles: true }); await settle(600);
+  eq(await p.evaluate(() => [cam.compare, $('camCompare').hidden]), [true, false], 'holding shows the original');
+  await p.dispatchEvent('#camCanvas', 'pointerup', { bubbles: true }); await settle(100);
+  eq(await p.evaluate(() => [cam.compare, $('camCompare').hidden]), [false, true], 'letting go brings the look back');
+  // The photo keeps the look, and the untouched frame is kept as the original.
+  await p.click('#shutter'); await p.waitForSelector('#reviewControls:not([hidden])');
+  eq(await p.evaluate(() => [!!cam.shot.processed, cam.shot.look, cam.shot.processed !== cam.shot.raw]), [true, 'Glam', true], 'photo has the Glam look');
+  eq(await p.evaluate(() => [liveFace.pts, __liveTracks()]), [null, 0], 'camera and tracking stop while reviewing');
+}, liveOpts());
+
+if (faceVideo) test('camera live: Adjust tabs, one makeup part at a time, and looks remember face settings', async ({ p }) => {
+  await faceLive(p);
+  await p.click('.look.adjust'); await p.click('[data-adj="face"]');
+  eq(await p.evaluate(() => ['adjSkin', 'adjFace', 'adjMakeup', 'adjFilter'].map((id) => $(id).hidden)), [true, false, true, true], 'only Face shows');
+  await p.locator('#sEyes').fill('60');
+  eq(await p.evaluate(() => [beauty.eyes, lookId]), [60, 'custom'], 'Eye size changes the look');
+  await p.click('[data-adj="makeup"]'); await p.click('[data-part="blush"]');
+  eq(await p.textContent('#sMakeupName'), 'Blush', 'blush slider');
+  eq(await p.locator('#swMakeup .cam-swatch').count(), 4, 'blush shades');
+  await p.click('#swMakeup .cam-swatch:nth-child(2)');
+  eq(await p.evaluate(() => beauty.blushShade), '#ff7f98', 'shade picked');
+  await p.click('.look.add');
+  const saved = await p.evaluate(() => myLooks[myLooks.length - 1]);
+  eq([saved.eyes, saved.blushShade], [60, '#ff7f98'], 'saved look keeps face and makeup settings');
+  // A look saved before these settings existed starts them at zero.
+  await p.evaluate(() => { myLooks.push({ id: 'myold', name: 'Old look', smooth: 40, bright: 10, warm: 0, filter: 'none' }); useLook(myLooks[myLooks.length - 1]); });
+  eq(await p.evaluate(() => [beauty.smooth, beauty.eyes, beauty.lips, beauty.blushShade]), [40, 0, 0, '#f4a28c'], 'old look: face settings off');
+  eq(await p.evaluate(() => $('adjNote').hidden), true, 'no note while a face is in view');
+}, liveOpts());
 
 // ---------- Runner ----------
 (async () => {

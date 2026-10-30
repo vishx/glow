@@ -2470,12 +2470,16 @@ async function call(path, opts = {}, retried) {
 
 // ---------- Camera ----------
 // Looks: one-tap beauty settings, remembered between sessions.
+// Face reshape and makeup (livebeauty.js) only touch the face the camera is following.
 const PRESET_LOOKS = [
   { id: "original", name: "Original", smooth: 0, bright: 0, warm: 0, filter: "none" },
-  { id: "natural", name: "Natural", smooth: 25, bright: 15, warm: 10, filter: "none" },
-  { id: "softglam", name: "Soft Glam", smooth: 55, bright: 30, warm: 25, filter: "glow" },
-  { id: "glam", name: "Glam", smooth: 75, bright: 40, warm: 35, filter: "warm" },
-];
+  { id: "natural", name: "Natural", smooth: 25, bright: 15, warm: 10, filter: "none", lips: 20, blush: 15, brows: 15 },
+  { id: "softglam", name: "Soft Glam", smooth: 55, bright: 30, warm: 25, filter: "glow", eyes: 20, slim: 20, nose: 10,
+    lips: 40, blush: 35, brows: 30, lipShade: "#b5485d", blushShade: "#e86a8a" },
+  { id: "glam", name: "Glam", smooth: 75, bright: 40, warm: 35, filter: "warm", eyes: 30, slim: 30, nose: 20,
+    lips: 60, blush: 40, brows: 45, lipShade: "#c0392b", blushShade: "#ff7f98", browShade: "#3b2a20" },
+].map((l) => ({ ...LIVE_DEFAULTS, ...l }));
+const LOOK_KEYS = ["smooth", "bright", "warm", "filter", ...Object.keys(LIVE_DEFAULTS)];
 const beauty = { ...PRESET_LOOKS[1] };
 let myLooks = [];
 try { myLooks = JSON.parse(store.get("glowLooks") || "[]"); } catch {}
@@ -2490,14 +2494,33 @@ try {
 } catch {}
 const lookName = () => (allLooks().find((l) => l.id === lookId) || { name: "Custom look" }).name;
 function saveBeauty() { store.set("glowBeauty", JSON.stringify(beauty)); store.set("glowLook", lookId); store.set("glowLooks", JSON.stringify(myLooks)); }
-function useLook(l) { lookId = l.id; Object.assign(beauty, { smooth: l.smooth, bright: l.bright, warm: l.warm, filter: l.filter }); saveBeauty(); renderLooks(); }
+// Looks saved before the face settings existed have none of them, so those start at zero.
+function useLook(l) { lookId = l.id; Object.assign(beauty, LIVE_DEFAULTS, Object.fromEntries(LOOK_KEYS.filter((k) => k in l).map((k) => [k, l[k]]))); saveBeauty(); renderLooks(); }
 
 const cam = { stream: null, facing: store.get("glowFacing") || "user", gl: null, raf: 0, state: "", torch: false, shot: null, thumb: "", gen: 0, opened: 0 };
-const isOriginalLook = () => !beauty.smooth && !beauty.bright && !beauty.warm && beauty.filter === "none";
+const isOriginalLook = () => !beauty.smooth && !beauty.bright && !beauty.warm && beauty.filter === "none" && LIVE_KEYS.every((k) => !beauty[k]);
+const SLIDERS = [["sSmooth", "smooth"], ["sBright", "bright"], ["sWarm", "warm"], ["sEyes", "eyes"], ["sSlim", "slim"], ["sNose", "nose"]];
+// Makeup shows one part at a time (one slider and its shades), so the preview stays large.
+const MAKEUP_PARTS = { lips: ["Lips", "lipShade"], blush: ["Blush", "blushShade"], brows: ["Brows", "browShade"] };
+let makeupPart = "lips";
 function renderLooks() {
   const live = !!cam.gl;
   $("camLooks").hidden = !live;
-  ["sSmooth", "sBright", "sWarm"].forEach((id, i) => { const v = beauty[["smooth", "bright", "warm"][i]]; $(id).value = v; $(id).nextElementSibling.textContent = v; $(id).setAttribute("aria-valuetext", `${v} percent`); });
+  SLIDERS.forEach(([id, k]) => { const v = beauty[k] || 0; $(id).value = v; $(id).nextElementSibling.textContent = v; $(id).setAttribute("aria-valuetext", `${v} percent`); });
+  const [partName, sk] = MAKEUP_PARTS[makeupPart], mv = beauty[makeupPart] || 0;
+  document.querySelectorAll("#makeupParts [role=radio]").forEach((r) => { const on = r.dataset.part === makeupPart; r.setAttribute("aria-checked", String(on)); r.tabIndex = on ? 0 : -1; });
+  $("sMakeupName").textContent = partName; $("swMakeup").setAttribute("aria-label", `${partName} shade`);
+  $("sMakeup").value = mv; $("sMakeup").nextElementSibling.textContent = mv; $("sMakeup").setAttribute("aria-valuetext", `${mv} percent`);
+  $("swMakeup").replaceChildren(...LIVE_SHADES[makeupPart].map((hex, i) => {
+    const b = document.createElement("button"); b.className = "cam-swatch"; b.style.background = hex;
+    b.setAttribute("aria-label", `Shade ${i + 1}`); b.setAttribute("aria-pressed", String(beauty[sk] === hex));
+    b.addEventListener("click", () => {
+      beauty[sk] = hex; if (!beauty[makeupPart]) beauty[makeupPart] = 40;
+      lookId = "custom"; saveBeauty(); renderLooks();
+    });
+    return b;
+  }));
+  renderAdjNote();
   const flt = FILTERS.find((f) => f.id === beauty.filter) || FILTERS[0];
   $("camCanvas").style.filter = flt.f === "none" ? "" : flt.f;
   const chip = (text, on, cls, fn) => {
@@ -2522,7 +2545,7 @@ function renderLooks() {
     })),
     ...(lookId === "custom" ? [chip("Custom", true, "", () => {}), chip("Save look", null, "add", () => {
       const n = myLooks.length ? `My Look ${myLooks.length + 1}` : "My Look";
-      const l = { id: "my" + Date.now(), name: n, smooth: beauty.smooth, bright: beauty.bright, warm: beauty.warm, filter: beauty.filter };
+      const l = { id: "my" + Date.now(), name: n, ...Object.fromEntries(LOOK_KEYS.map((k) => [k, beauty[k]])) };
       myLooks = [...myLooks, l].slice(-4); useLook(l); say(`Saved as "${n}". It's also in Editor under My Look.`);
     })] : []),
     adjustBtn,
@@ -2531,11 +2554,62 @@ function renderLooks() {
     beauty.filter = f.id; lookId = "custom"; saveBeauty(); renderLooks();
   })));
 }
-[["sSmooth", "smooth"], ["sBright", "bright"], ["sWarm", "warm"]].forEach(([id, k]) => $(id).addEventListener("input", (e) => {
+document.querySelectorAll("#makeupParts [role=radio]").forEach((r, i, all) => {
+  r.addEventListener("click", () => { makeupPart = r.dataset.part; renderLooks(); });
+  r.addEventListener("keydown", (e) => {
+    const d = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0; if (!d) return;
+    e.preventDefault(); makeupPart = all[(i + d + all.length) % all.length].dataset.part; renderLooks();
+    document.querySelector(`#makeupParts [data-part="${makeupPart}"]`).focus();
+  });
+});
+$("sMakeup").addEventListener("input", (e) => {
+  beauty[makeupPart] = +e.target.value; e.target.nextElementSibling.textContent = e.target.value; e.target.setAttribute("aria-valuetext", `${e.target.value} percent`);
+  if (lookId !== "custom") { lookId = "custom"; renderLooks(); }
+  saveBeauty();
+});
+SLIDERS.forEach(([id, k]) => $(id).addEventListener("input", (e) => {
   beauty[k] = +e.target.value; e.target.nextElementSibling.textContent = e.target.value; e.target.setAttribute("aria-valuetext", `${e.target.value} percent`);
   if (lookId !== "custom") { lookId = "custom"; renderLooks(); }
   saveBeauty();
 }));
+
+// Adjust has four tabs; only one group of controls shows at a time, to keep the photo large.
+function showAdjTab(name, focus) {
+  document.querySelectorAll("#adjustPanel [role=tab]").forEach((t) => {
+    const on = t.dataset.adj === name;
+    t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1;
+    $(t.getAttribute("aria-controls")).hidden = !on;
+    if (on && focus) t.focus();
+  });
+  renderAdjNote();
+}
+document.querySelectorAll("#adjustPanel [role=tab]").forEach((t, i, all) => {
+  t.addEventListener("click", () => showAdjTab(t.dataset.adj));
+  t.addEventListener("keydown", (e) => {
+    const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0; if (!d) return;
+    e.preventDefault(); showAdjTab(all[(i + d + all.length) % all.length].dataset.adj, true);
+  });
+});
+// Face and Makeup need the face model and a face in view; say so instead of a slider that does nothing.
+function renderAdjNote() {
+  const tab = (document.querySelector("#adjustPanel [aria-selected=true]") || {}).dataset;
+  const faceTab = tab && (tab.adj === "face" || tab.adj === "makeup");
+  const msg = !faceTab || cam.state !== "live" ? ""
+    : liveFace.failed ? "Face effects couldn't load. Check your connection, then reopen the camera."
+    : !cam.gl || !cam.gl.live ? "Face effects aren't available on this device."
+    : !liveFace.finder ? "Getting face effects ready…"
+    : !liveFace.seen ? "Point the camera at a face to see these." : "";
+  if ($("adjNote").textContent !== msg) $("adjNote").textContent = msg;
+  $("adjNote").hidden = !msg;
+}
+// Press and hold the preview to see the camera without the look.
+let compareTimer = 0;
+const endCompare = () => { clearTimeout(compareTimer); cam.compare = false; $("camCompare").hidden = true; };
+$("viewfinder").addEventListener("pointerdown", (e) => {
+  if (cam.state !== "live" || cam.shot || !cam.gl || e.target.closest(".vf-state")) return;
+  compareTimer = setTimeout(() => { cam.compare = true; $("camCompare").hidden = false; }, 150);
+});
+["pointerup", "pointercancel", "pointerleave"].forEach((n) => $("viewfinder").addEventListener(n, endCompare));
 
 function camState(kind) {
   cam.state = kind;
@@ -2551,6 +2625,7 @@ function camState(kind) {
   }[kind];
   $("camState").hidden = !S;
   $("shutter").disabled = kind !== "live";
+  renderAdjNote();
   if (kind !== "live") $("camFlip").hidden = true;
   if (!S) return;
   setIcon($("camStateArt"), S[0]); $("camStateTitle").textContent = S[1]; $("camStateText").textContent = S[2]; $("camStateBtn").textContent = S[3];
@@ -2581,7 +2656,8 @@ async function startCamera() {
   stopCamera();
   const gen = cam.gen;
   camState("starting");
-  cam.gl = cam.gl || initGl($("camCanvas"));
+  cam.gl = cam.gl || initLive($("camCanvas")) || initGl($("camCanvas"));
+  if (cam.gl && cam.gl.live) liveFinder().then(renderAdjNote);
   renderLooks();
   $("camNote").hidden = !!cam.gl;
   $("camNote").textContent = "Live looks aren't available on this device. Your photo is captured as is; tap Edit photo afterwards to add looks, filters and retouching.";
@@ -2609,7 +2685,7 @@ function stopCamera() {
   cam.gen++;
   cancelAnimationFrame(cam.raf);
   if (cam.stream) cam.stream.getTracks().forEach((t) => t.stop());
-  cam.stream = null;
+  cam.stream = null; resetFace(); endCompare();
   const v = $("camVideo"); if (v.srcObject) { v.pause(); v.srcObject = null; }
 }
 function drawFrame() {
@@ -2617,7 +2693,13 @@ function drawFrame() {
   if (!cam.stream) return;
   if (v.videoWidth) {
     if (c.width !== v.videoWidth) { c.width = v.videoWidth; c.height = v.videoHeight; if (cam.gl) cam.gl.gl.viewport(0, 0, c.width, c.height); }
-    if (cam.gl) {
+    if (cam.gl && cam.gl.live) {
+      const seen = liveFace.seen > 0;
+      // The Original look (no smoothing, reshape or makeup) needs no face tracking.
+      if (beauty.smooth || LIVE_KEYS.some((k) => beauty[k])) trackFace(v); else resetFace();
+      drawLive(cam.gl, v, c.width, c.height, cam.facing === "user", beauty, cam.compare);
+      if (seen !== liveFace.seen > 0) renderAdjNote();
+    } else if (cam.gl) {
       const { gl } = cam.gl;
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, v);
       drawBeauty(cam.gl, c.width, c.height, cam.facing === "user", beauty);
