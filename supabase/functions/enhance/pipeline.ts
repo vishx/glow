@@ -71,6 +71,20 @@ export const MODES: Record<string, Mode> = {
     needsMask: true,
     userPrompt: "{p}, blending naturally with the rest of the photo, matching lighting, perspective and texture",
   },
+  // Background scene: repaints only the background (the mask is everything but the person,
+  // made on the phone), so she keeps her own face, hair and clothes.
+  bgscene: {
+    model: ["black-forest-labs/flux-fill-pro", "black-forest-labs/flux-fill-dev"],
+    input: { prompt: "a clean professional photo studio backdrop, soft natural light, photorealistic, matching the person's lighting and perspective", output_format: "jpg" },
+    needsMask: true,
+    userPrompt: "{p}, a photorealistic background behind the person, matching their lighting, perspective and camera focus, no extra people",
+  },
+  // Describe / Glow Up "your words": her own request, as a careful photo edit. The phone puts her
+  // own face back if the model moved it.
+  custom: { ...edit("Make this photo look its best"), userPrompt: "Edit this photo: {p}." + SAME },
+  // HD cutout: a matting model whose edge follows single hair strands. The phone applies the
+  // result to the full-size photo and adds the background.
+  bgcut: { model: ["men1scus/birefnet", "851-labs/background-remover", "lucataco/remove-bg"], input: {} },
 };
 
 // A user prompt is plain text: one line, at most 200 characters, no control characters.

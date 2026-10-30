@@ -414,7 +414,7 @@ test('demo: with no prepared previews, no AI tools are offered and the note expl
   eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].length), 0, 'no AI tiles');
   await p.click('.tab[data-cat="ai"]');
   eq(await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => [b.dataset.tool, b.querySelector('.cost') && b.querySelector('.cost').textContent])),
-    [['erase', 'Own photo'], ['fill', 'Own photo'], ['expand', 'Own photo']], 'Remove, Fill and Expand stay listed, marked as needing your own photo');
+    [['erase', 'Own photo'], ['fill', 'Own photo'], ['expand', 'Own photo'], ['custom', 'Own photo']], 'Remove, Fill, Expand and Describe stay listed, marked as needing your own photo');
   await p.click('.tab[data-cat="looks"]');
   assert(!(await p.$$eval('#tools .tool', (x) => x.some((b) => /uses \d credit/.test(b.getAttribute('aria-label'))))), 'no AI tool offered as chargeable on the sample');
   eq(state.posts.length, 0, 'no AI request');
@@ -437,7 +437,8 @@ test('demo: the shipped prepared previews are all there, match the manifest, and
   const shipped = fs.readdirSync(dir).filter((f) => /\.(jpe?g|png|webp)$/i.test(f)).sort();
   eq(shipped, [...new Set(['intro.jpg', 'thumb.jpg', m.original.file, ...(m.intro ? [m.intro.file] : []), ...ready.map((e) => e.result)])].sort(), 'no stray or old result images');
   await openDemo(p); const before = credit(state);
-  for (const e of ready) {
+  // Colorize is only offered for black-and-white photos, so the color sample doesn't show it.
+  for (const e of ready.filter((x) => x.tool !== 'colorize')) {
     await tool(p, 'foryou', null, e.tool); await p.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x && $('after').naturalWidth > 0, e.tool, { timeout: 15000 });
     eq(await p.evaluate(() => [ed.hist.length, $('after').naturalWidth, $('after').naturalHeight]), [2, e.width, e.height], `${e.tool}: shown alone, at its size`);
   }
@@ -946,13 +947,13 @@ test('layout: on phones the idle editor reserves no panel space, and a closed to
   await p.click('#cancelBtn'); await box('closed');
   for (const n of ['cancelled', 'closed']) eq(sizes[n], sizes.home, 'closing gives the room back: ' + n);
 }, { viewport: { width: 390, height: 844 } });
-test('layout: the default Retouch row is Smooth, Blemish, Eyes, Face, Nose; the other tools follow on scroll', async ({ p }) => {
+test('layout: the default Retouch row is Glow Up, Smooth, Blemish, Eyes, Face; the other tools follow on scroll', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   const r = await p.evaluate(() => { const box = document.querySelector('#editorScreen .side > .tools').getBoundingClientRect();
     const tiles = [...document.querySelectorAll('#tools .tool[data-tool]')].map((b) => ({ id: b.dataset.tool, name: b.querySelector('.name').textContent, r: b.getBoundingClientRect() }));
     return { first: tiles.slice(0, 5).map((t) => t.name), visible: tiles.filter((t) => t.r.right <= box.right + 1).map((t) => t.name), all: tiles.map((t) => t.id) }; });
-  eq(r.first, ['Smooth', 'Blemish', 'Eyes', 'Face', 'Nose'], 'default row');
-  eq(r.visible.slice(0, 5), ['Smooth', 'Blemish', 'Eyes', 'Face', 'Nose'], 'all five on screen at 390 wide');
+  eq(r.first, ['Glow Up', 'Smooth', 'Blemish', 'Eyes', 'Face'], 'default row');
+  eq(r.visible.slice(0, 5), ['Glow Up', 'Smooth', 'Blemish', 'Eyes', 'Face'], 'all five on screen at 390 wide');
   for (const id of ['fundereye', 'fauto', 'fbigeyes', 'fteeth', 'retouch', 'smile', 'faces', 'flips', 'hcolor']) assert(r.all.includes(id), id + ' still in the Retouch tab');
 }, { viewport: { width: 390, height: 740 } });
 test('layout: at 390x740 the sample portrait shows wide and whole, with a small badge and no extra rows', async ({ p }) => {
@@ -1101,12 +1102,12 @@ test('nav: four tabs file every tool once, body tools only through Search, one r
     eq(r, ['searchBtn', 0], `${cat}: Search is the last tile and no body tools are listed`);
   }
   await p.click('.tab[data-cat="edit"]');
-  eq((await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => b.dataset.tool))).slice(0, 5), ['crop', 'light', 'color', 'warmth', 'detail'], 'Crop, Light, Color, Warmth, Detail first');
+  eq((await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => b.dataset.tool))).slice(0, 5), ['crop', 'light', 'contrast', 'highlights', 'shadows'], 'Crop, Light, Contrast, Highlights, Shadows first');
   await p.click('.tool[data-tool="crop"]'); await p.waitForFunction(() => !!cr);
   eq(await p.evaluate(() => [sel, $('panelBody').querySelectorAll('.tool').length]), ['crop', 0], 'one tap from Edit to the crop controls');
   await p.click('#cancelBtn');
   await p.click('.tab[data-cat="ai"]');
-  eq(await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => b.dataset.tool)), ['erase', 'fill', 'expand'], 'AI: Remove, Fill, Expand only');
+  eq(await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => b.dataset.tool)), ['erase', 'fill', 'expand', 'custom'], 'AI: Remove, Fill, Expand, Describe');
   await settle(400);
   const pill = await p.evaluate(() => { const t = document.querySelector('.tab[aria-selected="true"]'); return [t.dataset.cat, getComputedStyle(t.firstElementChild).backgroundColor !== 'rgba(0, 0, 0, 0)']; });
   eq(pill, ['ai', true], 'the open tab sits on a pill');
@@ -1346,6 +1347,147 @@ test('demo: Remove, Fill and Expand on the sample offer your own photo and never
   eq(await p.evaluate(() => ed.idx), 0, 'nothing applied on the sample');
   eq(state.posts.length, 0, 'no AI request');
 }, { files: demoFiles() });
+
+// ---------- Backgrounds, Adjust, makeup colors (on-device; AI parts use the mocked server) ----------
+// The color of one pixel, at a fraction of the picture's width and height.
+const pxAt = (p, src, fx, fy) => p.evaluate(async ([s, x, y]) => {
+  const img = await loadImg(s), c = newCanvas(img.naturalWidth, img.naturalHeight), k = c.getContext('2d'); k.drawImage(img, 0, 0);
+  return [...k.getImageData(Math.floor(x * c.width), Math.floor(y * c.height), 1, 1).data];
+}, [src, fx, fy]);
+const nearPx = (a, b, tol) => a.slice(0, 3).every((v, i) => Math.abs(v - b[i]) <= tol);
+
+test('bg: on-device backgrounds keep her own pixels, replace the backdrop, and swap instead of stacking', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  const base = await p.evaluate(() => committed());
+  await tool(p, 'edit', null, 'bgwhite'); await p.waitForFunction(() => ed.pending && ed.pending.tool === 'bgwhite', null, { timeout: 30000 }); await idle(p);
+  const white = await p.evaluate(() => ed.pending.data);
+  assert(nearPx(await pxAt(p, white, 0.03, 0.04), [255, 255, 255], 6), 'the corner is the new white backdrop');
+  { const a = await pxAt(p, white, 0.5, 0.3), b = await pxAt(p, base, 0.5, 0.3); assert(nearPx(a, b, 8), 'her face is her own pixels (JPEG tolerance): ' + a + ' vs ' + b); }
+  await p.click('.tool[data-tool="bgsky"]'); await p.waitForFunction(() => ed.pending && ed.pending.tool === 'bgsky', null, { timeout: 30000 }); await idle(p);
+  eq(await p.evaluate(() => [ed.idx, ed.hist.length]), [0, 1], 'Sky replaces White instead of stacking on it');
+  // Your photo: any picture becomes the backdrop.
+  await p.click('.tool[data-tool="bgphoto"]'); await settle(200);
+  eq(await p.evaluate(() => [ed.idx, $('applyBtn').disabled]), [0, true], 'switching discards Sky; nothing to apply before a photo is picked');
+  const fc = p.waitForEvent('filechooser'); await p.click('#panelBody .outfit-pick button'); await (await fc).setFiles(fx('coords-600x400.png'));
+  await p.waitForFunction(() => ed.pending && ed.pending.tool === 'bgphoto', null, { timeout: 30000 }); await idle(p);
+  const mine = await p.evaluate(() => ed.pending.data);
+  assert(!nearPx(await pxAt(p, mine, 0.03, 0.04), await pxAt(p, base, 0.03, 0.04), 20), 'the picked photo is behind her');
+  assert(nearPx(await pxAt(p, mine, 0.5, 0.3), await pxAt(p, base, 0.5, 0.3), 12), 'her face stays (only a light color match)');
+  await p.click('#applyBtn'); await settle(150);
+  eq(await p.evaluate(() => [ed.idx, ed.hist[1].op.tool, !!ed.hist[1].op.bg]), [1, 'bgphoto', true], 'applied as one step that remembers the photo');
+});
+
+test('ai: AI scene costs 2 credits, sends the background mask and the scene, and keeps her own pixels', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await p.evaluate(() => { CONFIG.aiV10 = true; renderEditor(); });   // once the server has the modes
+  await tool(p, 'edit', null, 'bgscene');
+  eq(await p.textContent('#applyBtn'), 'Generate · 2 credits', 'cost shown before sending');
+  eq(state.posts.length, 0, 'opening it sends nothing');
+  await p.click('#panelBody .opt:has-text("Beach")');
+  const req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
+  await p.click('#applyBtn'); const body = JSON.parse((await req).postData());
+  eq([body.mode, /beach/.test(body.prompt), body.mask.startsWith('data:image/png')], ['bgscene', true, true], 'mode, scene and mask');
+  const mask = body.mask;
+  assert(nearPx(await pxAt(p, mask, 0.03, 0.04), [255, 255, 255], 1) && nearPx(await pxAt(p, mask, 0.5, 0.3), [0, 0, 0], 1), 'the mask is the background only');
+  await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
+  const base = await p.evaluate(() => committed()), shown = await p.evaluate(() => job.result.data);
+  assert(nearPx(await pxAt(p, shown, 0.5, 0.3), await pxAt(p, base, 0.5, 0.3), 4), 'her face is her own pixels');
+  eq([state.used, await p.evaluate(() => ed.idx)], [1, 0], 'one request, waiting for Apply');
+});
+
+test('ai: HD cutout costs 1 credit and turns the AI edge into a full-size transparent cutout', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await p.evaluate(() => { CONFIG.aiV10 = true; renderEditor(); });   // once the server has the modes
+  await tool(p, 'edit', null, 'bgcut');
+  eq(await p.textContent('#applyBtn'), 'Apply · 1 credit', 'everyday 1-credit tool');
+  await p.click('#applyBtn'); await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
+  eq(state.posts, ['bgcut'], 'one request');
+  const full = await p.evaluate(() => job.result.full || job.result.data), base = await p.evaluate(() => committed());
+  eq((await pxAt(p, full, 0.02, 0.02))[3], 0, 'outside the edge is transparent');
+  const mid = await pxAt(p, full, 0.5, 0.5);
+  eq(mid[3], 255, 'inside the edge is solid');
+  assert(nearPx(mid, await pxAt(p, base, 0.5, 0.5), 4), 'and keeps the photo\'s own pixels');
+}, { files: { '/__ai.jpg': { path: fx('ai-cutout-mask.png') } } });
+
+test('adjust: the full Adjust set changes the photo, and grain is the same every time', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  eq(await p.evaluate(() => CATS.edit[0][2]), ['crop', 'light', 'contrast', 'highlights', 'shadows', 'color', 'vibrance', 'warmth', 'tint', 'detail', 'fade', 'vignette', 'grain'], 'Adjust tools');
+  const r = await p.evaluate(async () => {
+    const base = committed(), out = {};
+    for (const k of ['contrast', 'highlights', 'shadows', 'vibrance', 'tint', 'fade', 'vignette', 'grain']) out[k] = [(await adjust(base, k, 40)) !== base, (await adjust(base, k, -40)) !== base];
+    out.same = (await adjust(base, 'grain', 30)) === (await adjust(base, 'grain', 30));
+    return out;
+  });
+  for (const [k, v] of Object.entries(r)) if (k !== 'same') eq(v, [true, true], k + ' works both ways');
+  eq(r.same, true, 'grain is repeatable, so the full-size save matches the preview');
+  await tool(p, 'edit', null, 'vignette');
+  await p.fill('#panelBody input[type=range]', '30'); await p.dispatchEvent('#panelBody input[type=range]', 'change');
+  await p.waitForFunction(() => ed.pending && ed.pending.op.value === 30); await idle(p);
+});
+
+test('looks: a second filter replaces the first instead of stacking on it', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  const ids = await p.evaluate(() => FILTER_IDS.slice(1, 3));
+  await tool(p, 'looks', null, ids[0]); await p.waitForFunction((id) => ed.pending && ed.pending.tool === id, ids[0]); await idle(p);
+  await p.click(`.tool[data-tool="${ids[1]}"]`); await p.waitForFunction((id) => ed.pending && ed.pending.tool === id, ids[1]); await idle(p);
+  eq(await p.evaluate(() => [ed.idx, ed.hist.length]), [0, 1], 'only the newest filter is shown');
+});
+
+test('glowup: the checklist previews the ticked free steps, applies them as one step, and saves My routine', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  eq(await p.evaluate(() => CATS.retouch[0][2][0]), 'glowup', 'Glow Up leads Retouch');
+  await tool(p, 'retouch', null, 'glowup'); await p.waitForFunction(() => ed.pending && ed.pending.tool === 'glowup', null, { timeout: 60000 }); await idle(p);
+  eq(await p.evaluate(() => ed.pending.op.glow.face.map((x) => x[0])), ['fsmooth', 'fblemish', 'ftone', 'fundereye', 'feyes', 'fteeth'], 'the default ticks');
+  eq(await p.evaluate(() => [$('applyBtn').textContent, $('cost').textContent]), ['Apply', 'Free'], 'free with no AI step');
+  await p.click('#panelBody .opt.check:has-text("Lips")'); await p.click('#panelBody .opt.check:has-text("Under-eyes")');
+  await p.waitForFunction(() => ed.pending && ed.pending.op.glow.face.some((x) => x[0] === 'flips'), null, { timeout: 60000 }); await idle(p);
+  eq(await p.evaluate(() => ed.pending.op.glow.face.map((x) => x[0]).includes('fundereye')), false, 'unticking takes a step out');
+  await p.click('#saveRoutine'); await p.click('#applyBtn'); await settle(200);
+  eq(await p.evaluate(() => [ed.idx, ed.hist[1].op.tool]), [1, 'glowup'], 'one Undo step');
+  eq(state.posts.length, 0, 'no AI request');
+  await p.reload(); await p.waitForFunction(() => typeof glow !== 'undefined');
+  eq(await p.evaluate(() => [glow.on.flips, glow.on.fundereye]), [true, false], 'My routine is the starting point next time');
+});
+
+test('glowup: an AI step runs first, her face is checked, then the free steps go on top as their own Undo step', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await p.evaluate(() => { CONFIG.aiV10 = true; });
+  await tool(p, 'retouch', null, 'glowup'); await idle(p);
+  await p.click('#panelBody .opt:has-text("Your words")'); await settle(100);
+  eq(await p.evaluate(() => [$('applyBtn').textContent, $('applyBtn').disabled]), ['Glow Up · 2 credits', true], 'cost shown; waits for her words');
+  await p.fill('#glowWords', 'warmer and less tired');
+  eq(await p.evaluate(() => $('applyBtn').disabled), false, 'ready once she has written something');
+  const req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
+  await p.click('#applyBtn'); const body = JSON.parse((await req).postData());
+  eq([body.mode, body.prompt], ['custom', 'warmer and less tired'], 'mode and her words');
+  await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 60000 });
+  eq(await p.evaluate(() => [typeof job.faceKept, !!job.glow]), ['boolean', true], 'her face was checked; the free steps wait');
+  await p.click('#applyBtn'); await p.waitForFunction(() => ed.idx === 2 && !busyNow, null, { timeout: 60000 });
+  eq(await p.evaluate(() => [ed.hist[1].op.fixed, ed.hist[2].op.tool, !!ed.hist[2].op.glow]), [true, 'glowup', true], 'AI step, then the free steps');
+  eq([state.posts.length, state.used], [1, 1], 'one request');
+});
+
+test('enhance: Colorize is offered only for black-and-white photos', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await p.waitForFunction(() => photoColorful === true);
+  await tool(p, 'edit', null, 'colorize');
+  eq(await p.evaluate(() => [$('applyBtn').disabled, /black-and-white/.test($('panelNote').textContent)]), [true, true], 'a color photo: off, with the reason');
+  eq(state.posts.length, 0, 'nothing sent');
+});
+
+test('makeup: any color from the picker or the photo, a style per tool, and Save my look', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'retouch', null, 'flips');
+  const names = await p.$$eval('#panelBody .opt', (b) => b.map((x) => x.textContent));
+  eq(names.slice(0, 5), ['Satin', 'Matte', 'Gloss', 'Shimmer', 'Ombré'], 'lip finishes');
+  await p.click('#panelBody .swatch.more >> nth=0'); await settle(100);
+  eq(await p.evaluate(() => [!!picking, $('applyBtn').disabled, document.querySelectorAll('#panelBody .color-slider').length]), [true, true, 3], 'the picker: three sliders, Apply waits for Done');
+  await p.fill('#panelBody .color-slider input[type=range] >> nth=0', '200'); await settle(80);
+  await p.click('#pickDone'); await settle(150);
+  eq(await p.evaluate(() => [picking, faceSet.custom.flips && faceSet.custom.flips.length, faceSet.shade.flips === faceSet.custom.flips[0]]), [null, 1, true], 'the new color is kept and chosen');
+  await p.click('#panelBody .opt:has-text("Gloss")'); await settle(100);
+  eq(await p.evaluate(() => faceSet.style.flips), 'gloss', 'style chosen');
+});
 
 // ---------- Runner ----------
 (async () => {

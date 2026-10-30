@@ -16,6 +16,9 @@ const CONFIG = {
   publicUrl: "https://glow-photo-enhancer.vercel.app",
   // Fill sends mode "fill" with a short prompt. Live since enhance v9 (2026-10-30, after migration 006).
   aiFill: true,
+  // AI scene, HD cutout and Describe need the "bgscene", "bgcut" and "custom" modes on the
+  // server (enhance v10) and migration 008.
+  aiV10: false,
   // Pricing v2 (migration 007): Fill and Expand cost 2 credits. Turn on only once 007 is applied,
   // so the cost shown always matches what the server charges. Applied on 2026-10-30.
   pricingV2: true,
@@ -30,18 +33,20 @@ const tool = (id, label, title, kind, cat, extra = {}) => TOOLS.push({ id, label
 tool("mylook", "My Look", "My Look", "look", "fix", { hint: "Gives this photo one of your camera looks." });
 tool("pro", "Enhance", "Enhance", "ai", "fix", { hint: "A photographer-style edit: color, light, skin and background." });
 tool("enhance", "Restore", "Restore", "ai", "fix", { hint: "Sharpens and repairs old, blurry or low-quality photos." });
-tool("faces", "Face repair", "Face repair", "ai", "fix", { hint: "Restores blurry or damaged faces." });
+tool("faces", "Repair", "Face repair", "ai", "fix", { hint: "Restores blurry or damaged faces." });
 tool("retouch", "Retouch", "AI retouch", "ai", "fix", { hint: "Evens skin and tone while keeping texture." });
 tool("smile", "Smile", "Add a smile", "ai", "fix", { hint: "Works best on a clear, front-facing photo." });
 tool("relight", "Relight", "Relight", "ai", "fix", { hint: "Soft, flattering studio light." });
-tool("golden", "Golden hour", "Golden hour", "ai", "fix", { hint: "Warm, low sunlight." });
-tool("upscale", "Upscale 4×", "Upscale 4×", "ai", "fix", { hint: "Makes the photo 4 times larger with sharper detail." });
+tool("golden", "Golden", "Golden hour", "ai", "fix", { hint: "Warm, low sunlight." });
+tool("upscale", "Upscale", "Upscale 4×", "ai", "fix", { hint: "Makes the photo 4 times larger with sharper detail." });
 tool("colorize", "Colorize", "Colorize", "ai", "fix", { hint: "Adds natural color to black-and-white photos." });
-const FACE_TOOLS = [["fauto", "Auto", "Auto beauty"], ["fsmooth", "Smooth", "Smooth skin"], ["fblemish", "Blemish", "Remove blemishes"],
-  ["fundereye", "Under-eye", "Brighten under-eyes"], ["fteeth", "Teeth", "Whiten teeth"], ["feyes", "Eyes", "Brighten eyes"],
+const FACE_TOOLS = [["fauto", "Auto", "Auto beauty"], ["fsmooth", "Smooth", "Smooth skin"], ["fblemish", "Blemish", "Blemishes"],
+  ["fundereye", "Under-eye", "Under-eyes"], ["fteeth", "Teeth", "Whiten teeth"], ["feyes", "Eyes", "Brighten eyes"],
   ["fbigeyes", "Eye size", "Eye size", 1], ["fslim", "Face", "Face shape", 1], ["fnose", "Nose", "Nose shape", 1],
-  ["flips", "Lips", "Lip color"], ["fblush", "Blush", "Cheek blush"], ["fbrows", "Brows", "Fill brows"], ["fshadow", "Eyeshadow", "Eyeshadow"],
-  ["fliner", "Liner", "Eyeliner"], ["fglam", "Full glam", "Full glam"]];
+  ["ftone", "Even tone", "Even tone"], ["fskin", "Finish", "Skin finish"],
+  ["fglam", "Looks", "Makeup looks"], ["flips", "Lips", "Lip color"], ["fblush", "Blush", "Blush"], ["flashes", "Lashes", "Lashes"],
+  ["fliner", "Liner", "Eyeliner"], ["fshadow", "Shadow", "Eyeshadow"], ["fbrows", "Brows", "Brows"], ["feyecolor", "Eye color", "Eye color"],
+  ["fcontour", "Contour", "Contour"], ["fhighlight", "Highlight", "Highlighter"], ["fbronzer", "Bronzer", "Bronzer"]];
 FACE_TOOLS.forEach(([id, label, title, reshape]) => tool(id, label, title, "face", "face", { reshape: !!reshape }));
 tool("hcolor", "Color", "Hair color", "hair", "hair");
 [["hair_waves", "Waves", "Long waves"], ["hair_bob", "Bob", "Sleek bob"], ["hair_pixie", "Pixie", "Pixie cut"], ["hair_bangs", "Bangs", "Curtain bangs"],
@@ -55,8 +60,17 @@ tool("outfit", "Try on", "Try on an outfit", "ai", "styles", { hint: "Pick a pho
   ["headshot", "Headshot", "Headshot"], ["fashion", "Fashion", "Fashion shoot"], ["anime", "Anime", "Anime"], ["watercolor", "Watercolor", "Watercolor"],
   ["toon3d", "3D Toon", "3D Toon"], ["clay", "Clay", "Clay"], ["older", "Older", "Make older"], ["younger", "Younger", "Make younger"]]
   .forEach(([id, label, title]) => tool(id, label, title, "ai", "styles", { hint: SELFIE_HINT }));
-[["bgblur", "Portrait blur", "Portrait blur"], ["bgremove", "Cutout", "Remove background"], ["bgwhite", "White", "White background"],
+[["bgblur", "Blur", "Portrait blur"], ["bgremove", "Cutout", "Cutout"], ["bgwhite", "White", "White background"],
   ["bgblush", "Blush", "Blush background"], ["bgsky", "Sky", "Sky background"]].forEach(([id, label, title]) => tool(id, label, title, "bg", "bg"));
+// Glow Up: one checklist of fixes, run together. The free steps run on the phone; at most one
+// AI step (Enhance, a new background, or her own words) runs first, then the free steps on top.
+tool("glowup", "Glow Up", "Glow Up", "glowup", "fix", { hint: "Tick what you want. AI is optional." });
+tool("custom", "Describe", "Describe an edit", "ai", "fix", { hint: "Say what to change. Her face is kept as hers." });
+tool("bgphoto", "Photo", "Your background", "bg", "bg", { hint: "Pick any photo as the background. She is matched to its light and color." });
+// AI backgrounds: a scene painted around her (only the background is repainted; she stays her own
+// pixels), and an HD cutout whose edges follow single hair strands.
+tool("bgscene", "AI scene", "AI background", "ai", "bg", { hint: "Pick a scene or describe one. Only the background changes." });
+tool("bgcut", "HD cutout", "HD cutout", "ai", "bg", { hint: "A precise cutout, down to the hair. Then pick any background for free." });
 // Generative tools: Remove and Fill repaint only the area you mark; Expand adds new scene around
 // the photo. Your own pixels outside the marked or new area are put back exactly afterwards.
 tool("erase", "Remove", "Remove", "ai", "ai", { hint: "Paint over what to remove. Only the marked area changes.", mask: true });
@@ -67,18 +81,27 @@ tool("light", "Light", "Light", "adjust", "edit");
 tool("color", "Color", "Color", "adjust", "edit");
 tool("warmth", "Warmth", "Warmth", "adjust", "edit");
 tool("detail", "Detail", "Detail", "adjust", "edit");
+tool("contrast", "Contrast", "Contrast", "adjust", "edit");
+tool("highlights", "Highlights", "Highlights", "adjust", "edit");
+tool("shadows", "Shadows", "Shadows", "adjust", "edit");
+tool("vibrance", "Vibrance", "Vibrance", "adjust", "edit");
+tool("tint", "Tint", "Tint", "adjust", "edit");
+tool("fade", "Fade", "Fade", "adjust", "edit");
+tool("vignette", "Vignette", "Vignette", "adjust", "edit");
+tool("grain", "Grain", "Grain", "adjust", "edit", { hint: "Left smooths noise, right adds film grain." });
 FILTERS.filter((f) => f.id !== "none").forEach((f) => tool("filter:" + f.id, f.name, `${f.name} filter`, "filter", "filters", { filter: f }));
 const TOOL = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
 
 // AI cost per tool. Must match ai_edit_cost() on the server, which is what actually charges.
-const TWO_CREDITS = ["headshot", "anime", "watercolor", "fashion"];
+const TWO_CREDITS = ["headshot", "anime", "watercolor", "fashion", "bgscene", "custom"];
 // Free plan (pricing v2): these AI tools cost Glow under a cent and get 3 free credits a day; every
 // other AI tool is premium, with 3 one-time trial credits. The server (migration 007) has the same list.
-const CHEAP_AI = ["erase", "enhance", "upscale", "faces", "colorize", "retouch", "toon3d", "clay", "older", "younger"];
-const trialTool = (t) => !!account && account.plan !== "pro" && account.trialLeft !== undefined && t.kind === "ai" && !CHEAP_AI.includes(t.id);
+const CHEAP_AI = ["erase", "enhance", "upscale", "faces", "colorize", "retouch", "toon3d", "clay", "older", "younger", "bgcut"];
+const aiOf = (t) => (t && t.id === "glowup" ? (glow.ai && !ed.demo ? TOOL[glow.ai] : null) : t);
+const trialTool = (t) => (t = aiOf(t) || t, !!account) && account.plan !== "pro" && account.trialLeft !== undefined && t.kind === "ai" && !CHEAP_AI.includes(t.id);
 // What this tool can draw on: the one-time trial for premium tools on the free plan, otherwise the usual balance.
 const balanceFor = (t) => (trialTool(t) ? account.trialLeft : account.remaining);
-const costOf = (t) => (t.kind !== "ai" ? 0 : TWO_CREDITS.includes(t.id) || (CONFIG.pricingV2 && ["fill", "expand"].includes(t.id)) ? 2 : 1);
+const costOf = (t) => (t.id === "glowup" ? (aiOf(t) ? costOf(aiOf(t)) : 0) : t.kind !== "ai" ? 0 : TWO_CREDITS.includes(t.id) || (CONFIG.pricingV2 && ["fill", "expand"].includes(t.id)) ? 2 : 1);
 const credits = (n) => `${n} credit${n === 1 ? "" : "s"}`;
 
 const ORIGINAL_CATS = [["fix", "Fix"], ["face", "Face"], ["hair", "Hair"], ["body", "Body"], ["styles", "Styles"], ["bg", "Backdrop"], ["edit", "Edit"], ["ai", "AI"], ["filters", "Filters"]];
@@ -89,30 +112,30 @@ const FILTER_IDS = TOOLS.filter((t) => t.kind === "filter").map((t) => t.id);
 // other paid tools sit with their task and carry the same credit badge.
 const CATS = {
   // The first five are the default row (as in the approved design); the rest follow on scroll.
-  retouch: [["skin", "Skin", ["fsmooth", "fblemish", "feyes", "fslim", "fnose"]],
-    ["face", "Face", ["fundereye", "fauto", "fbigeyes", "fteeth", "retouch", "smile", "faces"]],
-    ["makeup", "Makeup", ["flips", "fblush", "fbrows", "fshadow", "fliner", "fglam"]],
+  retouch: [["glow", "Glow Up", ["glowup"]], ["skin", "Skin", ["fsmooth", "fblemish", "feyes", "fslim", "fnose"]],
+    ["face", "Face", ["fundereye", "fauto", "ftone", "fskin", "fbigeyes", "fteeth", "retouch", "smile", "faces"]],
+    ["makeup", "Makeup", ["fglam", "flips", "fblush", "flashes", "fliner", "fshadow", "fbrows", "feyecolor", "fcontour", "fhighlight", "fbronzer"]],
     ["hair", "Hair", ["hcolor", "hair_waves", "hair_bob", "hair_pixie", "hair_bangs", "hair_curls", "hair_bun", "hair_braids", "hair_butterfly"]]],
-  looks: [["filters", "Filters", ["mylook", ...FILTER_IDS]],
+  looks: [["filters", "Filters", FILTER_IDS],
     ["styles", "Styles", ["headshot", "fashion", "anime", "watercolor", "toon3d", "clay", "older", "younger"]],
     ["outfits", "Outfits", ["outfit", "gown", "suit", "sundress", "street"]]],
-  edit: [["adjust", "Adjust", ["crop", "light", "color", "warmth", "detail"]],
+  edit: [["adjust", "Adjust", ["crop", "light", "contrast", "highlights", "shadows", "color", "vibrance", "warmth", "tint", "detail", "fade", "vignette", "grain"]],
     ["enhance", "Enhance", ["pro", "enhance", "upscale", "relight", "golden", "colorize"]],
-    ["bg", "Background", ["bgblur", "bgremove", "bgwhite", "bgblush", "bgsky"]]],
-  ai: [["gen", "AI tools", ["erase", "fill", "expand"]]],
+    ["bg", "Background", ["bgscene", "bgphoto", "bgblur", "bgcut", "bgremove", "bgwhite", "bgblush", "bgsky"]]],
+  ai: [["gen", "AI tools", ["erase", "fill", "expand", "custom"]]],
 };
-const ADVANCED = [["body", "Body (advanced)", ["bwaist", "bhips", "barms", "bslimlegs", "blegs"]]];
+const ADVANCED = [["body", "Body (advanced)", ["bwaist", "bhips", "barms", "bslimlegs", "blegs"]], ["camlooks", "Camera looks", ["mylook"]]];
 const TAB_NAMES = { retouch: "Retouch", looks: "Looks", edit: "Edit", ai: "AI" };
 // Where a tool lives: its tab, or null for tools reached through Search only.
 function tabFor(id) {
   for (const [c, groups] of Object.entries(CATS)) for (const [, , ids] of groups) if (ids.includes(id)) return [c, null];
   return null;
 }
-const SUGGESTED = ["pro", "fauto", "relight", "bgblur"];
+const SUGGESTED = ["glowup", "pro", "fauto", "bgblur"];
 // Remove, Fill and Expand: the marked or new area only, never auto-run, and Glow's server must
 // have the mode. Fill needs the "fill" mode from supabase/functions/enhance (not yet live).
 const MASK_TOOLS = ["erase", "fill"];
-const aiLive = (id) => id !== "fill" || CONFIG.aiFill;
+const aiLive = (id) => (id === "glowup" ? !glow.ai || aiLive(glow.ai) : (id !== "fill" || CONFIG.aiFill) && (!["bgscene", "bgcut", "custom"].includes(id) || CONFIG.aiV10));
 const CROPS = [["Free", "free"], ["Original", 0], ["Square", 1], ["4:5", 4 / 5], ["3:4", 3 / 4], ["9:16", 9 / 16], ["16:9", 16 / 9]];
 
 // ---------- Small UI helpers ----------
@@ -215,7 +238,7 @@ try { favs = JSON.parse(store.get("glowFavs") || "[]"); recent = JSON.parse(stor
 let lastCommitTool = null;  // the AI tool behind the latest commit, to disclose a repeat charge
 let outfitData = null, strokes = [], painting = false, busyNow = false, thumb = "";
 // Remove / Fill: brush size (screen pixels), paint or erase marks, and Fill's optional prompt.
-let brushSize = 28, brushMode = "paint", fillPrompt = "";
+let brushSize = 28, brushMode = "paint", fillPrompt = "", customText = "";
 // A finished Remove / Fill / Expand result waits, unapplied, until the person applies or discards
 // it. It is kept with the job (in IndexedDB), so leaving the tool, the editor or the app never
 // loses paid work; reopening the tool (or Review in the status bar) shows it again.
@@ -229,11 +252,12 @@ const unsaved = () => hasPhoto() && ed.idx > 0 && ed.savedIdx !== ed.idx;
 const newSession = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 // Tool settings. Reshaping tools start at 0, so nothing is reshaped unless the user asks.
-const toolAmt = { light: 0, color: 0, warmth: 0, detail: 0 };
+const toolAmt = { light: 0, color: 0, warmth: 0, detail: 0, contrast: 0, highlights: 0, shadows: 0, vibrance: 0, tint: 0, fade: 0, vignette: 0, grain: 0 };
 for (const t of TOOLS) if (t.reshape) faceSet.amt[t.id] = 0;
 try {
   const s = JSON.parse(store.get("glowFace2") || "null") || { shade: (JSON.parse(store.get("glowFace") || "{}").shade) || {} };
-  Object.assign(faceSet.amt, s.amt || {}); Object.assign(faceSet.shade, s.shade || {});
+  Object.assign(faceSet.amt, s.amt || {}); Object.assign(faceSet.shade, s.shade || {}); Object.assign(faceSet.style, s.style || {});
+  Object.assign(faceSet.custom, s.custom || {}); if (Array.isArray(s.mine)) faceSet.mine = s.mine;
 } catch {}
 const saveFace = () => store.set("glowFace2", JSON.stringify(faceSet));
 let lookPick = null;
@@ -260,12 +284,24 @@ async function openPhoto(work, original, opts = {}) {
   ed.demo = !!opts.demo;
   ed.hist = [{ data: work, op: null }]; ed.idx = 0; ed.floor = 0; ed.pending = null; ed.savedIdx = 0;
   ed.original = original; ed.originalSaved = !!opts.originalSaved; ed.session = newSession();
-  ed.name = opts.name || "Photo"; ed.shotStamp = opts.shotStamp || 0; lastCommitTool = null; cutoutCache = {}; strokes = [];
+  ed.name = opts.name || "Photo"; ed.shotStamp = opts.shotStamp || 0; lastCommitTool = null; cutoutCache = {}; matteCache.clear(); strokes = [];
   if (opts.processed) { ed.hist.push({ data: opts.processed.data, full: opts.processed.full, op: { tool: "camlook", fixed: true, label: opts.processed.label } }); ed.idx = 1; }
   if (opts.savedAlready) ed.savedIdx = ed.idx;
   sel = null; ed.view = "edited"; ed.split = 50; toolsOpen = false;
+  photoColorful = false; checkColorful(work);
   showScreen("editorScreen");
   renderEditor(); saveDraft();
+}
+// Colorize is only for black-and-white photos: a color photo has clearly colored pixels.
+let photoColorful = false;
+async function checkColorful(src) {
+  try {
+    const img = await loadImg(src), c = canvasFor(img, 64), x = c.getContext("2d");
+    x.drawImage(img, 0, 0, c.width, c.height);
+    const d = x.getImageData(0, 0, c.width, c.height).data; let colored = 0;
+    for (let i = 0; i < d.length; i += 4) if (Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2]) > 24) colored++;
+    if (ed.hist[0] && ed.hist[0].data === src) { photoColorful = colored > d.length / 4 * 0.08; if (sel) renderPanel(true); }
+  } catch {}
 }
 async function confirmReplace() {
   if (jobActive() && job.session === ed.session) {
@@ -317,11 +353,11 @@ async function openSample() {
     return;
   }
   // Settings people change while trying the sample don't stick to their own photos.
-  const saved = demo ? demo.saved : { amt: { ...faceSet.amt }, shade: { ...faceSet.shade }, toolAmt: { ...toolAmt } };
+  const saved = demo ? demo.saved : { amt: { ...faceSet.amt }, shade: { ...faceSet.shade }, style: { ...faceSet.style }, toolAmt: { ...toolAmt } };
   const entries = (manifest && manifest.previews) || [];
   demo = { manifest, saved, entry: Object.fromEntries(entries.map((e) => [e.tool, e])), cache: {}, failed: {},
     // Only results that line up with the original (same size and framing) are offered.
-    ready: entries.filter((e) => e.status === "ready" && e.result && e.aligned === true && TOOL[e.tool] && TOOL[e.tool].kind === "ai").map((e) => e.tool) };
+    ready: entries.filter((e) => e.status === "ready" && e.result && e.aligned === true && e.tool !== "colorize" && TOOL[e.tool] && TOOL[e.tool].kind === "ai").map((e) => e.tool) };
   cat = "retouch";
   try { await openFile(new File([blob], "glow-ai-sample.png", { type: blob.type || "image/png" }), "AI-generated sample", { demo: true }); }
   catch (err) { exitDemo(); say(err.message, true); return; }
@@ -390,7 +426,7 @@ function demoPanelState(t) {
 function demoSaveTag() { const op = ed.hist[ed.idx].op; return op && op.demo ? `prepared-preview-${op.tool}-` : ""; }
 function exitDemo() {
   if (!demo) return;
-  Object.assign(faceSet.amt, demo.saved.amt); Object.assign(faceSet.shade, demo.saved.shade); saveFace();
+  Object.assign(faceSet.amt, demo.saved.amt); Object.assign(faceSet.shade, demo.saved.shade); Object.assign(faceSet.style, demo.saved.style || {}); saveFace();
   Object.assign(toolAmt, demo.saved.toolAmt);
   demo = null; ed.demo = false; sel = null; lastCommitTool = null;
 }
@@ -770,7 +806,7 @@ function navMove() {
 }
 function navDown(e) {
   cancelAnimationFrame(zoomAnim); hideZoomHint();
-  navPtrs.set(e.pointerId, stagePt(e)); navBase(); pokeZoomCtl();
+  navPtrs.set(e.pointerId, stagePt(e)); navBase();
 }
 function navUp(e) {
   if (!navPtrs.delete(e.pointerId)) return;
@@ -787,6 +823,7 @@ const onDivider = (e) => $("stage").dataset.view === "split" && $("stage").class
   (e.target.closest("#handle") || Math.abs(stagePt(e).x - parseFloat($("divider").style.left || 0)) <= 22);
 $("frame").addEventListener("pointerdown", (e) => {
   if (cr || (e.pointerType === "mouse" && e.button !== 0)) return;
+  if (dropper) { e.preventDefault(); dropColor(e); return; }
   $("frame").setPointerCapture(e.pointerId);
   if (!navPtrs.size && divDrag == null && onDivider(e)) { divDrag = e.pointerId; divPt = stagePt(e); hideZoomHint(); return; }
   if (divDrag != null) { navPtrs.set(divDrag, divPt); divDrag = null; }   // a second finger turns a divider drag into a pinch
@@ -1001,7 +1038,10 @@ function discardPending() { if (ed.pending) { ed.pending = null; previewToken++;
 // Undo step (one per tool visit, never one per slider move). Cancel and Escape discard it.
 function selectTool(id, opts = {}) {
   if (cr && !opts.discard && cropChanged() && !busyNow) { applyCrop().then(() => { if (id) selectTool(id); }); return; }
-  if (ed.pending && ed.pending.tool !== id && !opts.discard) {
+  // Trying one filter (or background) after another swaps it: they never pile up on each other.
+  const swap = (k) => k === "filter" || k === "look" ? "filter" : k === "bg" ? "bg" : null;
+  if (ed.pending && id && TOOL[id] && ed.pending.tool !== id && !opts.discard && swap(TOOL[ed.pending.tool].kind) && swap(TOOL[ed.pending.tool].kind) === swap(TOOL[id].kind)) discardPending();
+  else if (ed.pending && ed.pending.tool !== id && !opts.discard) {
     const p = ed.pending, t = TOOL[p.tool];
     commit(p.data, t, p.op); previewToken++;
     say(`${t.title} kept. Undo removes it.`);
@@ -1010,7 +1050,8 @@ function selectTool(id, opts = {}) {
   if (cr) closeCrop();
   if (id !== sel) { panelCollapsed = false; filterAmt = 100; }   // a newly opened tool always shows its controls
   if (searching && id) { searching = false; $("searchInput").value = ""; $("editorScreen").classList.remove("tools-open"); const home = tabFor(id); if (home) cat = home[0]; }
-  sel = id; strokes = []; outfitData = null; toolsOpen = false; panelBuilt = null; reshapeNote = null;
+  sel = id; strokes = []; outfitData = null; toolsOpen = false; panelBuilt = null; reshapeNote = null; picking = null;
+  dropper = false; $("stage").classList.remove("dropping");
   lookPick = editorLooks().some((l) => l.id === lookId) ? lookId : "natural";
   if (id in toolAmt) toolAmt[id] = 0; // adjustments start from the committed photo
   if (ed.demo && id) {
@@ -1029,6 +1070,7 @@ function selectTool(id, opts = {}) {
     if (t.kind === "face" && t.reshape) checkReshape(id);
     if (t.kind === "face" || t.kind === "body" || t.kind === "hair") { if ((faceSet.amt[id] ?? 50) > 0) preview(); return; }
     if (t.kind === "look") { preview(); return; }
+    if (t.kind === "glowup") { ensureFaces(); preview(); return; }
     if (t.kind === "filter" || t.kind === "bg") preview();
   }
 }
@@ -1053,9 +1095,16 @@ async function applyResult() {
       actions: [{ label: "Use it", value: "yes" }, { label: "Not now", value: "", kind: "ghost" }] });
     if (!c || !resultReady()) return;
   }
+  const then = job.glow;
   job = null; saveJob();
   commit(r.data, t, { tool: t.id, fixed: true }, r.full); strokes = []; if (sel === t.id) sel = null;
   renderEditor(); say(`${t.title} applied. Undo removes it.`); Platform.haptic();
+  if (then) {
+    // Glow Up: now the free steps, on top of the AI result, as their own Undo step.
+    setBusy(true, "Glow Up…");
+    try { const data = await computeOp(then, committed()); if (data && data !== committed()) commit(data, t, then); say("Glow Up applied: the AI step and your free steps are separate Undo steps."); }
+    catch (err) { say(err.message, true); } finally { setBusy(false); renderEditor(); }
+  }
 }
 $("favBtn").addEventListener("click", () => {
   if (!sel) return;
@@ -1085,6 +1134,159 @@ function swatches(list, current, onPick) {
   }));
   return box;
 }
+// Glow Up: what she ticked. Saved as "My routine" when she asks, and used as the starting point.
+const GLOW_ITEMS = [
+  ["Skin", [["fsmooth", "Smooth skin", 0.5, true], ["fblemish", "Blemishes", 0.7, true], ["ftone", "Even tone", 0.45, true], ["fundereye", "Under-eyes", 0.6, true]]],
+  ["Eyes and smile", [["feyes", "Brighter eyes", 0.5, true], ["fteeth", "Whiter teeth", 0.5, true], ["flashes", "Lashes", 0.45, false], ["fliner", "Liner", 0.45, false], ["feyecolor", "Eye color", 0.55, false]]],
+  ["Makeup", [["flips", "Lips", 0.5, false], ["fblush", "Blush", 0.45, false], ["fbrows", "Brows", 0.4, false], ["fcontour", "Contour", 0.4, false], ["fhighlight", "Highlighter", 0.4, false]]],
+];
+const GLOW_AI = [["No AI", null], ["Enhance", "pro"], ["New background", "bgscene"], ["Your words", "custom"]];
+const glowDefaults = () => ({ on: Object.fromEntries(GLOW_ITEMS.flatMap(([, items]) => items.map(([id, , , on]) => [id, on]))), look: null, slim: false, light: true, ai: null, words: "", strength: 60 });
+let glow = glowDefaults();
+try { const g = JSON.parse(store.get("glowRoutine") || "null"); if (g && g.on) glow = { ...glowDefaults(), ...g, on: { ...glowDefaults().on, ...g.on }, words: "" }; } catch {}
+// The free part as a recipe: [tool, strength, shade, style] per ticked step, plus face shape and light.
+function glowRecipe() {
+  const k = glow.strength / 60, face = [];
+  for (const [, items] of GLOW_ITEMS) for (const [id, , amt] of items) if (glow.on[id]) face.push([id, Math.min(1, amt * k), null, null]);
+  if (glow.look) face.push(["fglam", Math.min(1, 0.45 * k), null, glow.look]);
+  return { face, slim: glow.slim ? Math.min(1, 0.4 * k) : 0, light: glow.light };
+}
+// Backgrounds: the photo she picked, and the AI scene (a preset or her own words).
+let bgPhoto = null, bgBlur = false, scenePick = "studio", sceneText = "";
+const SCENES = [["Studio", "studio", "a clean professional photo studio backdrop in soft warm beige with a gentle light gradient"],
+  ["Beach", "beach", "a sunny tropical beach with a soft turquoise sea and sky, shallow depth of field"],
+  ["City lights", "city", "a city street at night with warm bokeh lights, shallow depth of field"],
+  ["Café", "cafe", "a cozy, stylish café interior with warm light, softly out of focus"],
+  ["Garden", "garden", "a lush flower garden in soft daylight, softly out of focus"],
+  ["Sunset", "sunset", "a golden sunset sky over the sea with a warm glow"],
+  ["Paris", "paris", "a Paris street with the Eiffel Tower in the distance, softly out of focus"],
+  ["Luxury", "luxury", "an elegant luxury hotel lobby with marble and warm lights, softly out of focus"]];
+const scenePrompt = () => sceneText.trim().slice(0, 200) || SCENES.find((x) => x[1] === scenePick)[2];
+// Colors: the curated shades, then the ones she made herself, then "+" for any other color and
+// a dropper to take a color from the photo.
+let picking = null;    // the open color picker: { tool, h, s, l, was }
+let dropper = false;   // the next tap on the photo picks a color from it
+function colorRow(t) {
+  const row = swatches([...SHADES[t.id], ...(faceSet.custom[t.id] || [])], faceSet.shade[t.id], (c) => { faceSet.shade[t.id] = c; saveFace(); renderPanel(true); preview(); });
+  row.classList.add("color-row");
+  const add = document.createElement("button"); add.className = "swatch more"; add.setAttribute("aria-label", "Any color"); add.innerHTML = `<i>${icon("plus")}</i>`;
+  add.addEventListener("click", () => { const [h, s2, l] = hexToHsl(faceSet.shade[t.id]); picking = { tool: t.id, h, s: s2, l, was: faceSet.shade[t.id] }; dropper = false; renderPanel(true); });
+  const drop = document.createElement("button"); drop.className = "swatch more"; drop.id = "dropperBtn"; drop.setAttribute("aria-label", "Pick a color from the photo");
+  drop.setAttribute("aria-pressed", String(dropper)); drop.innerHTML = `<i>${icon("dropper")}</i>`;
+  drop.addEventListener("click", () => { dropper = !dropper; $("stage").classList.toggle("dropping", dropper); drop.setAttribute("aria-pressed", String(dropper)); if (dropper) say("Tap the photo to pick its color."); });
+  row.prepend(add, drop);
+  return row;
+}
+const hexOf = (r, g, b) => "#" + [r, g, b].map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("");
+function hexToHsl(hex) {
+  const [r, g, b] = [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16) / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  if (!d) return [0, 0, Math.round(l * 100)];
+  const s = d / (1 - Math.abs(2 * l - 1)), h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [Math.round(((h * 60) + 360) % 360), Math.round(s * 100), Math.round(l * 100)];
+}
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return hexOf(f(0) * 255, f(8) * 255, f(4) * 255);
+}
+// Keeps a color she chose for this tool (newest first, up to 8).
+function keepColor(id, c) {
+  if (SHADES[id].includes(c)) return;
+  faceSet.custom[id] = [c, ...(faceSet.custom[id] || []).filter((x) => x !== c)].slice(0, 8);
+}
+// The picker: hue, richness and shade, each a slider whose track shows the colors it gives.
+function colorPicker(t, body) {
+  const p = picking, tracks = () => {
+    body.querySelector(".cs-h").style.setProperty("--track", "linear-gradient(90deg, " + [0, 60, 120, 180, 240, 300, 360].map((h) => hslToHex(h, Math.max(40, p.s), Math.min(60, Math.max(40, p.l)))).join(", ") + ")");
+    body.querySelector(".cs-s").style.setProperty("--track", `linear-gradient(90deg, ${hslToHex(p.h, 0, p.l)}, ${hslToHex(p.h, 100, p.l)})`);
+    body.querySelector(".cs-l").style.setProperty("--track", `linear-gradient(90deg, ${hslToHex(p.h, p.s, 8)}, ${hslToHex(p.h, p.s, 50)}, ${hslToHex(p.h, p.s, 92)})`);
+    const sw = $("pickSwatch"); if (sw) sw.style.background = hslToHex(p.h, p.s, p.l);
+  };
+  const live = () => { tracks(); faceSet.shade[t.id] = hslToHex(p.h, p.s, p.l); clearTimeout(adjustTimer); adjustTimer = setTimeout(preview, 150); };
+  for (const [label, key, min, max, cls] of [["Color", "h", 0, 359, "cs-h"], ["Richness", "s", 0, 100, "cs-s"], ["Shade", "l", 8, 92, "cs-l"]]) {
+    const sl = slider(label, min, max, p[key], (v) => { p[key] = v; live(); }, (v) => { p[key] = v; live(); }, () => "");
+    sl.classList.add("color-slider", cls); body.append(sl);
+  }
+  const sw = document.createElement("i"); sw.id = "pickSwatch"; sw.className = "pick-swatch head-extra"; sw.setAttribute("aria-hidden", "true");
+  const done = document.createElement("button"); done.className = "link-btn head-extra"; done.id = "pickDone"; done.textContent = "Done";
+  done.addEventListener("click", () => { const c = hslToHex(p.h, p.s, p.l); faceSet.shade[t.id] = c; keepColor(t.id, c); saveFace(); picking = null; renderPanel(true); preview(); });
+  $("collapseBtn").before(sw, done);
+  tracks();
+}
+// The Glow Up checklist: tick boxes in groups, a look, face shape, light, one optional AI step.
+function glowPanel(body) {
+  const again = () => { renderPanel(true); clearTimeout(adjustTimer); adjustTimer = setTimeout(preview, 150); };
+  body.append(slider("Strength", 10, 100, glow.strength, (v) => { glow.strength = v; clearTimeout(adjustTimer); adjustTimer = setTimeout(preview, 200); }, (v) => { glow.strength = v; preview(); }));
+  const group = (name, items) => {
+    const g = document.createElement("div"); g.className = "glow-group"; g.setAttribute("role", "group"); g.setAttribute("aria-label", name);
+    const h = document.createElement("span"); h.className = "glow-label"; h.textContent = name;
+    const row = document.createElement("div"); row.className = "opts glow-opts";
+    row.append(...items.map(([label, on, flip]) => {
+      const b = document.createElement("button"); b.className = "opt check"; b.textContent = label; b.setAttribute("aria-pressed", String(!!on));
+      b.addEventListener("click", () => { flip(); again(); }); return b;
+    }));
+    g.append(h, row); body.append(g);
+  };
+  for (const [name, items] of GLOW_ITEMS) group(name, items.map(([id, label]) => [label, glow.on[id], () => { glow.on[id] = !glow.on[id]; }]));
+  group("Face and light", [["Slimmer face", glow.slim, () => { glow.slim = !glow.slim; }], ["Light and color", glow.light, () => { glow.light = !glow.light; }]]);
+  const looks = STYLES.fglam.filter(([, v]) => v !== "mine");
+  const lg = document.createElement("div"); lg.className = "glow-group";
+  const ll = document.createElement("span"); ll.className = "glow-label"; ll.textContent = "Makeup look";
+  const lrow = options([["None", null], ...looks], (v) => v === glow.look, (v) => { glow.look = v; again(); });
+  lrow.setAttribute("role", "group"); lrow.setAttribute("aria-label", "Makeup look"); lg.append(ll, lrow); body.append(lg);
+  if (!ed.demo) {
+    const ag = document.createElement("div"); ag.className = "glow-group";
+    const al = document.createElement("span"); al.className = "glow-label"; al.textContent = "AI step (optional, runs first)";
+    const arow = options(GLOW_AI.map(([label, id]) => [id ? `${label} · ${costOf(TOOL[id])}` : label, id]), (v) => v === glow.ai, (v) => { glow.ai = v; renderPanel(true); });
+    arow.setAttribute("role", "group"); arow.setAttribute("aria-label", "AI step"); ag.append(al, arow); body.append(ag);
+    if (glow.ai === "bgscene") {
+      const row = options(SCENES.map(([label, id]) => [label, id]), (v) => v === scenePick, (v) => { scenePick = v; sceneText = ""; renderPanel(true); });
+      row.setAttribute("aria-label", "Scene"); body.append(row);
+    }
+    if (glow.ai === "custom") {
+      const l = document.createElement("label"); l.className = "prompt";
+      const inp = document.createElement("input"); inp.type = "text"; inp.id = "glowWords"; inp.maxLength = 200; inp.autocomplete = "off";
+      inp.placeholder = "e.g. warmer, less tired, softer light"; inp.value = glow.words;
+      inp.addEventListener("input", () => { glow.words = inp.value; panelState(TOOL.glowup); });
+      l.append(Object.assign(document.createElement("span"), { className: "sr-only", textContent: "What else to change" }), inp); body.append(l);
+    }
+  }
+  const save = document.createElement("button"); save.className = "btn quiet small"; save.id = "saveRoutine"; save.textContent = "Save as my routine";
+  save.addEventListener("click", () => { store.set("glowRoutine", JSON.stringify({ ...glow, words: "" })); say("Saved. Glow Up starts with your routine next time."); });
+  body.append(save);
+}
+// Takes the color under a tap on the photo (a small average, so one stray pixel doesn't count).
+async function dropColor(e) {
+  dropper = false; $("stage").classList.remove("dropping");
+  const t = sel && TOOL[sel]; if (!t || !SHADES[t.id]) return;
+  const v = viewRect(), pt = stagePt(e), fx = (pt.x - v.x) / v.w, fy = (pt.y - v.y) / v.h;
+  if (!(fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1)) { renderPanel(true); return; }
+  const img = await loadImg(committed()), c = document.createElement("canvas"); c.width = c.height = 5;
+  const x = c.getContext("2d", { willReadFrequently: true });
+  x.drawImage(img, fx * img.naturalWidth - 2, fy * img.naturalHeight - 2, 5, 5, 0, 0, 5, 5);
+  const d = x.getImageData(0, 0, 5, 5).data; let r = 0, g = 0, b = 0;
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+  const col = hexOf(r / 25, g / 25, b / 25);
+  faceSet.shade[t.id] = col; keepColor(t.id, col); saveFace(); renderPanel(true); preview();
+  say("Color picked from the photo.");
+}
+// Save my look: the makeup steps on this photo become "My look" in Looks, for any photo.
+function saveMyLook() {
+  const steps = [];
+  for (const h of ed.hist.slice(1, ed.idx + 1)) {
+    const op = h.op; if (!op || op.revert) { if (op && op.revert) steps.length = 0; continue; }
+    if (MAKEUP_TOOLS.includes(op.tool)) steps.push([op.tool, op.amt, (op.shades || {})[op.tool] || null, (op.styles || {})[op.tool] || null]);
+    else if (op.tool === "fglam") {
+      const name = (op.styles || {}).fglam;
+      if (name === "mine") steps.push(...(op.mine || []).map(([id, k, sh, st]) => [id, clamp(k * op.amt / 0.6), sh, st]));
+      else steps.push(...(LOOKS[name] || []).map(([id, k, sh, st]) => [id, clamp(k * op.amt * 1.6), sh, st]));
+    }
+  }
+  if (!steps.length) { say("Apply some makeup to this photo first (Lips, Lashes, Blush…), then save it as your look.", true); return; }
+  faceSet.mine = steps; faceSet.style.fglam = "mine"; saveFace(); renderPanel(true); preview();
+  say("Saved as My look. Open Looks on any photo and choose My look.");
+}
+const clamp = (v) => Math.max(0, Math.min(1, v));
 function options(list, isOn, onPick) {
   const box = document.createElement("div"); box.className = "opts";
   box.append(...list.map(([label, v]) => {
@@ -1124,10 +1326,19 @@ function buildPanel(t) {
   body.replaceChildren(); document.querySelectorAll(".panel-head .head-extra").forEach((b) => b.remove());
   $("favBtn").hidden = t.kind === "crop";
 
-  if (t.kind === "face" || t.kind === "body" || t.kind === "hair") {
+  if ((t.kind === "face" || t.kind === "hair") && picking && picking.tool === t.id) colorPicker(t, body);
+  else if (t.kind === "face" || t.kind === "body" || t.kind === "hair") {
     body.append(slider("Strength", 0, 100, faceSet.amt[t.id] ?? 50, null, (v) => { faceSet.amt[t.id] = v; saveFace(); preview(); }));
-    const shades = SHADES[t.id];
-    if (shades) body.append(swatches(shades, faceSet.shade[t.id], (c) => { faceSet.shade[t.id] = c; saveFace(); renderPanel(true); preview(); }));
+    if (STYLES[t.id]) {
+      const row = options(STYLES[t.id], (v) => v === faceSet.style[t.id], (v) => { faceSet.style[t.id] = v; saveFace(); renderPanel(true); preview(); });
+      row.setAttribute("role", "group"); row.setAttribute("aria-label", "Style");
+      if (t.id === "fglam") {
+        const save = document.createElement("button"); save.className = "opt save-look"; save.textContent = "+ Save my look";
+        save.addEventListener("click", saveMyLook); row.append(save);
+      }
+      body.append(row);
+    }
+    if (SHADES[t.id]) body.append(colorRow(t));
   } else if (t.kind === "filter") {
     // How much of the filter to use; 100 is the full filter (what earlier versions applied).
     body.append(slider("Strength", 0, 100, filterAmt, (v) => {
@@ -1155,6 +1366,32 @@ function buildPanel(t) {
     $("collapseBtn").before(rot, rs);
   } else if (t.kind === "look") {
     body.append(options(editorLooks().map((l) => [l.name, l.id]), (v) => v === lookPick, (v) => { lookPick = v; renderPanel(true); preview(); }));
+  } else if (t.kind === "glowup") {
+    glowPanel(body);
+  } else if (t.id === "custom" && !ed.demo) {
+    const l = document.createElement("label"); l.className = "prompt";
+    const inp = document.createElement("input"); inp.type = "text"; inp.id = "customPrompt"; inp.maxLength = 200; inp.autocomplete = "off";
+    inp.placeholder = "e.g. golden hour light, a red dress, less tired eyes"; inp.value = customText;
+    inp.addEventListener("input", () => { customText = inp.value; panelState(t); });
+    l.append(Object.assign(document.createElement("span"), { className: "sr-only", textContent: "Describe the edit" }), inp); body.append(l);
+  } else if (t.id === "bgphoto") {
+    const row = document.createElement("div"); row.className = "outfit-pick";
+    if (bgPhoto) { const im = document.createElement("img"); im.src = bgPhoto; im.alt = "Background you picked"; row.append(im); }
+    const b = document.createElement("button"); b.className = "btn quiet small"; b.textContent = bgPhoto ? "Change photo" : "Choose a background photo";
+    b.addEventListener("click", async () => {
+      const f = await Platform.pickPhoto("outfitFile");
+      if (f) { try { bgPhoto = await loadAndShrink(f); } catch (err) { say(err.message, true); } renderPanel(true); preview(); }
+    });
+    row.append(b); body.append(row);
+    body.append(options([["Sharp", false], ["Soft blur", true]], (v) => v === bgBlur, (v) => { bgBlur = v; renderPanel(true); preview(); }));
+  } else if (t.id === "bgscene" && !ed.demo) {
+    const row = options(SCENES.map(([label, id]) => [label, id]), (v) => v === scenePick, (v) => { scenePick = v; renderPanel(true); });
+    row.setAttribute("role", "group"); row.setAttribute("aria-label", "Scene"); body.append(row);
+    const l = document.createElement("label"); l.className = "prompt";
+    const inp = document.createElement("input"); inp.type = "text"; inp.id = "scenePrompt"; inp.maxLength = 200; inp.autocomplete = "off";
+    inp.placeholder = "Or describe your own, e.g. a rooftop in Paris at sunset"; inp.value = sceneText;
+    inp.addEventListener("input", () => { sceneText = inp.value; });
+    l.append(Object.assign(document.createElement("span"), { className: "sr-only", textContent: "Describe a background (optional)" }), inp); body.append(l);
   } else if (t.id === "outfit") {
     const row = document.createElement("div"); row.className = "outfit-pick";
     if (outfitData) { const im = document.createElement("img"); im.src = outfitData; im.alt = "Outfit you picked"; row.append(im); }
@@ -1190,11 +1427,11 @@ function panelState(t) {
   $("cancelBtn").textContent = reviewing() ? "Discard" : "Cancel";
   if (ed.demo && t.kind === "ai") return demoPanelState(t);
   const cost = costOf(t), chip = $("cost"), apply = $("applyBtn");
-  const gen = MASK_TOOLS.includes(t.id) || t.id === "expand";
+  const gen = MASK_TOOLS.includes(t.id) || t.id === "expand" || t.id === "bgscene";
   let note = t.hint || "";
-  if (!cost) { chip.textContent = "Free · on-device"; chip.className = "chip free"; }
+  if (!cost) { chip.textContent = "Free"; chip.className = "chip free"; chip.title = "Free · runs on your device"; }
   else { chip.textContent = `AI · ${credits(cost)}`; chip.className = "chip"; }
-  const blocked = t.reshape && t.kind === "face" && reshapeNote && reshapeNote.tool === t.id ? reshapeNote : null;
+  const blocked = t.kind === "face" && reshapeNote && reshapeNote.tool === t.id ? reshapeNote : null;
   if (blocked) note = blocked.msg === null ? "Finding the face…" : blocked.msg || note;
   if (t.kind === "crop") note = "";
   if ($("clearMarks")) $("clearMarks").disabled = !strokes.length;
@@ -1204,7 +1441,10 @@ function panelState(t) {
   if (!cost) {
     apply.textContent = "Apply";
     if (t.kind === "adjust") apply.disabled ||= !ed.pending;
+    if (t.id === "bgphoto" && !bgPhoto) apply.disabled = true;
     if (t.reshape) apply.disabled ||= !(faceSet.amt[t.id] > 0) || !!(blocked && blocked.msg !== "");
+    else if (blocked && blocked.msg) apply.disabled = true;
+    if (picking) apply.disabled = true;   // Done (in the title row) closes the picker first
     if (t.kind === "crop") apply.disabled ||= !cropChanged();
     const sl = $("panelBody").querySelector(".slider input");
     if (sl && t.reshape && t.kind === "face") sl.disabled = !!(blocked && blocked.msg);
@@ -1219,7 +1459,7 @@ function panelState(t) {
   } else if (!aiLive(t.id)) {
     chip.textContent = "Not available yet"; chip.className = "chip";
     apply.textContent = "Not available yet"; apply.disabled = true;
-    note = "Fill needs an update to Glow's AI server that isn't live yet. Nothing is sent or charged.";
+    note = `${t.label} needs an update to Glow's AI server that isn't live yet. Nothing is sent or charged.`;
   } else {
     const again = lastCommitTool === t.id;
     const a = account, trial = trialTool(t), have = a ? balanceFor(t) : 0, short = a && have < cost;
@@ -1238,6 +1478,9 @@ function panelState(t) {
     if (jobActive()) { apply.disabled = true; note = `Wait for ${job.title} to finish, or check its status above. Glow runs one AI edit at a time so nothing is charged twice.`; }
     else if (resultReady()) { apply.disabled = true; note = `Apply or discard the ${job.title} result first (in the bar above).`; }
     if (t.id === "outfit" && !outfitData && !short) apply.disabled = true;
+    if (t.id === "custom" && !customText.trim()) apply.disabled = true;
+    if (t.id === "glowup" && !short) { apply.textContent = apply.textContent.replace(/^(Apply|Run again)/, "Glow Up"); if (glow.ai === "custom" && !glow.words.trim()) apply.disabled = true; }
+    if (t.id === "colorize" && photoColorful) { apply.disabled = true; note = "Colorize is for black-and-white photos. This photo already has color."; }
     if (MASK_TOOLS.includes(t.id) && !strokes.some((x) => !x.erase) && !short) apply.disabled = true;
   }
   $("panelNote").textContent = note; fitDock();
@@ -1248,23 +1491,34 @@ function panelState(t) {
 let previewToken = 0;
 function opFor(t) {
   const op = { tool: t.id };
-  if (t.kind === "face" || t.kind === "body" || t.kind === "hair") { op.amt = (faceSet.amt[t.id] ?? 50) / 100; op.shades = { ...faceSet.shade }; }
+  if (t.kind === "face" || t.kind === "body" || t.kind === "hair") { op.amt = (faceSet.amt[t.id] ?? 50) / 100; op.shades = { ...faceSet.shade }; op.styles = { ...faceSet.style }; }
+  if (t.id === "fglam" && faceSet.style.fglam === "mine") op.mine = (faceSet.mine || []).map((x) => [...x]);
   if (t.kind === "face" && faceSel.boxes.length > 1) { const b = faceSel.boxes[faceSel.i]; op.face = [b.cx, b.cy]; }
   if (t.kind === "adjust") op.value = toolAmt[t.id];
   if (t.kind === "filter" && filterAmt < 100) op.amt = filterAmt / 100;
   if (t.kind === "look") op.look = { ...(editorLooks().find((l) => l.id === lookPick) || PRESET_LOOKS[1]) };
+  if (t.id === "bgphoto") { op.bg = bgPhoto; op.bgBlur = bgBlur; }
+  if (t.id === "glowup") {
+    op.glow = glowRecipe(); op.shades = { ...faceSet.shade }; op.styles = { ...faceSet.style };
+    if (faceSel.boxes.length > 1) { const b = faceSel.boxes[faceSel.i]; op.face = [b.cx, b.cy]; }
+  }
   return op;
 }
 async function computeOp(op, base) {
   const t = TOOL[op.tool];
   if (t.kind === "face" || t.kind === "body" || t.kind === "hair") {
-    const keep = { ...faceSet.shade };
-    Object.assign(faceSet.shade, op.shades);
+    const keep = { ...faceSet.shade }, keepStyle = { ...faceSet.style }, keepMine = faceSet.mine;
+    Object.assign(faceSet.shade, op.shades); Object.assign(faceSet.style, op.styles || STYLE_DEFAULTS); if (op.mine) faceSet.mine = op.mine;
     try {
       if (t.kind === "face") return await faceEdit(base, t.id, op.amt, op.face);
       if (t.kind === "body") return await bodyEdit(base, t.id, op.amt);
       return await hairColor(base, op.amt, op.shades.hcolor);
-    } finally { Object.assign(faceSet.shade, keep); }
+    } finally { Object.assign(faceSet.shade, keep); Object.assign(faceSet.style, keepStyle); faceSet.mine = keepMine; }
+  }
+  if (t.kind === "glowup") {
+    const keep = { ...faceSet.shade }, keepStyle = { ...faceSet.style };
+    Object.assign(faceSet.shade, op.shades || {}); Object.assign(faceSet.style, op.styles || STYLE_DEFAULTS);
+    try { return await glowUp(base, op.glow, op.face); } finally { Object.assign(faceSet.shade, keep); Object.assign(faceSet.style, keepStyle); }
   }
   if (t.kind === "filter") return applyFilter(base, t.filter, op.amt ?? 1);
   if (t.kind === "adjust") return op.value ? adjust(base, t.id, op.value) : null;
@@ -1274,25 +1528,24 @@ async function computeOp(op, base) {
   }
   if (t.kind === "look") return applyLook(base, op.look);
   if (t.kind === "bg") {
-    const cut = await cutout(base);
-    if (t.id === "bgremove") return cut;
-    if (t.id === "bgblur") return composite(base, cut, (ctx, w, h, img) => {
-      ctx.filter = `blur(${Math.round(Math.max(w, h) / 90)}px)`; ctx.drawImage(img, -20, -20, w + 40, h + 40); ctx.filter = "none";
-    });
-    return composite(base, cut, BG_FILLS[t.id]);
+    if (t.id === "bgremove") return cutout(base);
+    if (t.id === "bgblur") return backdrop(base, "blur");
+    if (t.id === "bgphoto") return op.bg ? backdrop(base, op.bg, { match: true, blur: op.bgBlur }) : null;
+    return backdrop(base, BG_FILLS[t.id]);
   }
   return null;
 }
 async function preview() {
   const t = sel && TOOL[sel]; if (!t || costOf(t) || t.kind === "crop") return;
   const token = ++previewToken, base = committed();
-  if (t.kind === "face") { await ensureFaces(); if (token !== previewToken || sel !== t.id) return; }
+  if (t.kind === "face" || t.kind === "glowup") { await ensureFaces(); if (token !== previewToken || sel !== t.id) return; }
   const op = opFor(t);
   const slow = setTimeout(() => { if (token === previewToken) setBusy(true, t.kind === "face" || t.kind === "body" || t.kind === "hair" || t.kind === "bg" ? "Finding the details…" : "Working…"); }, 250);
   try {
     const out = await computeOp(op, base);
     if (token !== previewToken || sel !== t.id) return;
     ed.pending = out && out !== base ? { tool: t.id, data: out, op } : null;
+    if (!t.reshape && reshapeNote && reshapeNote.tool === t.id) reshapeNote = null;
     if (ed.pending) { if (ed.view === "original") ed.view = "edited"; $("alertLive").textContent = `${t.title} preview ready. Apply to keep it.`; }
   } catch (err) {
     if (token === previewToken) {
@@ -1600,6 +1853,19 @@ async function startAiEdit(t) {
       const prompt = t.id === "fill" ? fillPrompt.trim().slice(0, 200) : "";
       body = { image: up, mode: t.id, mask, prompt: prompt || undefined };
       keep = { mask };   // to put every unmarked pixel back afterwards
+    } else if (t.id === "glowup") {
+      // Glow Up's AI step runs first; the free steps go on top when she applies the result.
+      const up = await uploadable(base), mode = glow.ai;
+      if (mode === "bgscene") { const mask = await sceneMask(up); body = { image: up, mode, mask, prompt: scenePrompt() }; keep = { mask }; }
+      else body = { image: up, mode, prompt: mode === "custom" ? glow.words.trim().slice(0, 200) : undefined };
+      keep.glow = opFor(t); keep.keepFace = mode !== "bgscene";
+    } else if (t.id === "custom") {
+      body = { image: await uploadable(base), mode: "custom", prompt: customText.trim().slice(0, 200) }; keep = { keepFace: true };
+    } else if (t.id === "bgscene") {
+      // Only the background (and the soft edge of her hair) is repainted; she stays her own pixels.
+      const up = await uploadable(base), mask = await sceneMask(up);
+      body = { image: up, mode: "bgscene", mask, prompt: scenePrompt() };
+      keep = { mask };
     } else if (t.id === "expand") {
       const x = await expandInputs(base); body = { image: x.image, mode: "expand", mask: x.mask };
     } else body = { image: await uploadable(base), mode: t.id, extra: t.id === "outfit" ? outfitData : undefined };
@@ -1694,6 +1960,14 @@ async function settleJob(res) {
   const mineHere = mine.session === ed.session && hasPhoto() && ed.hist.length > mine.baseIdx;
   if (mineHere && mine.mask) {
     try { const fb = await renderExport(mine.baseIdx); full = await protectComposite(fb.data, full, mine.mask); } catch { mine.unblended = true; }
+  }
+  // Her face stays hers: if the AI moved or redrew it, her own face goes back in.
+  if (mineHere && mine.keepFace) {
+    try { const fb = await renderExport(mine.baseIdx), r = await restoreFace(fb.data, full); full = r.data; mine.faceKept = r.moved; } catch {}
+  }
+  // HD cutout: the AI's edge, applied to the full-size photo.
+  if (mineHere && mine.tool === "bgcut") {
+    try { const fb = await renderExport(mine.baseIdx); full = await applyCutout(fb.data, full); } catch { mine.unblended = true; }
   }
   const data = await shrinkData(full, 2048);
   if (mineHere) {

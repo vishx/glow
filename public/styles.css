@@ -278,7 +278,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .zoomctl .icon-btn svg { width: 20px; height: 20px; }
 .zoomctl .icon-btn:disabled { opacity: 0.4; }
 .zoomctl:not(.show):not(:focus-within) { opacity: 0; pointer-events: none; }
-@media (hover: hover) { .stage:hover .zoomctl { opacity: 1; pointer-events: auto; } }
+@media (hover: hover) and (pointer: fine) { .stage:hover .zoomctl { opacity: 1; pointer-events: auto; } }
 .stage:not(.has-photo) .zoomctl { display: none; }
 .stage.cropping .zoomctl, .stage.cropping .zoom-hint { display: none; }
 .zoom-hint { position: absolute; left: 50%; bottom: var(--s2); transform: translateX(-50%); margin: 0; padding: 4px var(--s3); border-radius: 12px;
@@ -442,6 +442,21 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .opts { display: flex; gap: var(--s2); overflow-x: auto; scrollbar-width: none; }
 .opt { flex: none; min-height: 44px; padding: 0 var(--s4); border: 0; border-radius: 22px; background: var(--surface-2); color: var(--text); font-size: 0.875rem; font-weight: 600; }
 .opt[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.opt.save-look { background: none; box-shadow: inset 0 0 0 1px var(--control); color: var(--accent); }
+/* One scrolling row of colors: "+" (any color), the dropper, the curated shades, then her own. */
+.color-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: var(--s1); }
+.color-row::-webkit-scrollbar, .opts::-webkit-scrollbar { display: none; }
+.swatch { flex: none; }
+.swatch.more i { display: grid; place-items: center; background: var(--surface-2); color: var(--text); }
+.swatch.more svg { width: 18px; height: 18px; }
+.swatch.more[aria-pressed="true"] i { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.color-slider input::-webkit-slider-runnable-track { height: 12px; border-radius: 6px; background: var(--track, var(--control)); box-shadow: inset 0 0 0 1px var(--line); }
+.color-slider input::-moz-range-track { height: 12px; border-radius: 6px; background: var(--track, var(--control)); }
+.color-slider input::-moz-range-progress { background: transparent; }
+.color-slider input::-webkit-slider-thumb { margin-top: -6px; }
+.panel .color-slider { grid-template-columns: 5.5rem 1fr 0; }
+.pick-swatch { flex: none; width: 28px; height: 28px; border-radius: 50%; box-shadow: 0 0 0 1px var(--control); }
+.stage.dropping, .stage.dropping * { cursor: crosshair; }
 .outfit-pick { display: flex; align-items: center; gap: var(--s3); }
 .outfit-pick img { width: 52px; height: 52px; object-fit: cover; border-radius: var(--r-well); }
 .brush-row { display: flex; align-items: center; gap: var(--s2); }
@@ -498,6 +513,11 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
   #editorScreen.panel-collapsed .side { height: auto; min-height: 0; }
   #editorScreen.tools-open .side { height: min(68dvh, calc(var(--dock-h) + 300px)); max-height: none; }   /* the expanded catalog scrolls inside */
   #editorScreen.panel-collapsed .side > .panel { flex: none; }
+  /* Every open tool's panel is the same height (title, three rows of controls, buttons), so the
+     photo never changes size when moving from one tool to another. */
+  #editorScreen .side > .panel:not(.collapsed) { display: flex; flex-direction: column;
+    min-height: min(62dvh, calc(var(--s2) * 3 + 44px + var(--s1) + 44px * 3 + var(--s1) * 2 + 44px + env(safe-area-inset-bottom))); }
+  #editorScreen .side > .panel:not(.collapsed) .panel-actions { margin-top: auto; padding-top: var(--s2); }
 }
 @media (max-width: 959px) and (max-height: 600px) { #editorScreen { --dock-h: 14rem; } }
 /* Phones held sideways: the same side-by-side layout, so the photo isn't squeezed into a strip.
@@ -598,3 +618,13 @@ dialog .stack { display: grid; gap: var(--s3); margin-top: var(--s4); }
 #editorScreen #saveBtn { position: relative; min-height: 34px; padding: 0 var(--s4); border-radius: 17px; font-size: 0.9375rem; }
 #editorScreen #saveBtn::after { content: ""; position: absolute; inset: -5px -2px; }
 .search-tile .well svg { color: var(--muted); }
+
+/* Glow Up checklist: groups of tick chips that wrap, in a body that scrolls on short screens. */
+.panel-body:has(.glow-group) { grid-auto-rows: max-content; max-height: calc(44px * 3 + var(--s1) * 2); overflow-y: auto; overscroll-behavior: contain; padding-bottom: var(--s1); }
+.glow-group { display: grid; gap: 6px; }
+.glow-label { font-size: 0.75rem; font-weight: 700; color: var(--muted); letter-spacing: 0.02em; }
+.glow-opts { flex-wrap: wrap; overflow: visible; }
+.opt.check { display: inline-flex; align-items: center; gap: 6px; }
+.opt.check::before { content: ""; width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1.5px currentColor; flex: none; }
+.opt.check[aria-pressed="true"]::before { content: "✓"; box-shadow: none; width: 14px; height: auto; font-weight: 800; line-height: 1; text-align: center; }
+#saveRoutine { justify-self: start; }
