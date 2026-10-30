@@ -1,32 +1,32 @@
 /* One-tap Enhance: the launch animation, the Enhance home, the pick sheet, Result and Share.
    Uses the tokens from styles.css; Result and Share are always dark so the photo leads. */
 
-/* ---------- Launch animation (about 1.4 s; reduced motion: a short fade) ---------- */
-#splash { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; overflow: hidden;
-  background: radial-gradient(120% 80% at 50% 42%, #2c2228 0%, #17121a 55%, #0e0b10 100%); color: #f0b8cc;
-  transition: opacity 320ms ease-out, visibility 0s linear 320ms; }
-#splash.out { opacity: 0; visibility: hidden; pointer-events: none; }
-#splash .sp-mark { display: grid; justify-items: center; gap: 18px; transition: transform 380ms cubic-bezier(.5, 0, .75, 0); }
-#splash.out .sp-mark { transform: scale(1.18); }
-#splash svg.sp-cam { width: 132px; height: 132px; overflow: visible; }
-#splash .sp-body, #splash .sp-lens { fill: none; stroke: #f0b8cc; stroke-width: 40; stroke-linecap: round; stroke-linejoin: round; }
-#splash .sp-body { stroke-dasharray: 1900; stroke-dashoffset: 1900; animation: sp-draw 620ms cubic-bezier(.65, 0, .35, 1) 80ms forwards; }
-#splash .sp-lens { stroke-dasharray: 620; stroke-dashoffset: 620; transform-origin: 512px 546px; animation: sp-draw 520ms cubic-bezier(.65, 0, .35, 1) 220ms forwards, sp-lens 520ms ease-out 220ms both; }
-#splash .sp-glint { fill: #fff4f7; transform-box: fill-box; transform-origin: center; transform: scale(0); animation: sp-glint 520ms cubic-bezier(.3, 1.6, .5, 1) 560ms forwards; }
-#splash .sp-bloom { position: absolute; width: 60vmax; height: 60vmax; border-radius: 50%; opacity: 0; pointer-events: none;
-  background: radial-gradient(circle, rgb(240 184 204 / 0.32) 0%, rgb(240 184 204 / 0.08) 35%, transparent 65%); animation: sp-bloom 900ms ease-out 520ms forwards; }
-#splash .sp-word { margin: 0; font: 600 2.75rem/1 var(--font-display); color: #faf5f7; letter-spacing: 0.4em; opacity: 0; transform: translateY(8px);
-  animation: sp-word 560ms cubic-bezier(.2, .8, .2, 1) 640ms forwards; }
-@keyframes sp-draw { to { stroke-dashoffset: 0; } }
-@keyframes sp-lens { from { transform: scale(.6); } to { transform: scale(1); } }
-@keyframes sp-glint { 0% { transform: scale(0) rotate(-90deg); } 100% { transform: scale(1) rotate(0deg); } }
-@keyframes sp-bloom { 0% { opacity: 0; transform: scale(.4); } 45% { opacity: 1; } 100% { opacity: .55; transform: scale(1); } }
-@keyframes sp-word { to { opacity: 1; transform: none; letter-spacing: 0.06em; } }
+/* ---------- Launch animation: Aperture (about 1.1 s; reduced motion: a short fade) ----------
+   Starts on the same frame as the iPhone launch image (the icon's lens on ink), then the sparkle glints,
+   the iris opens onto the app's own color and we fly through the lens. Only transform and opacity move,
+   so it stays smooth while the app is still starting. */
+#splash { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; overflow: hidden; background: #121014;
+  --sp-size: 42vmin; }
+#splash.ios { --sp-size: 26vmax; }
+#splash .sp-lens { position: relative; width: var(--sp-size); aspect-ratio: 1; }
+#splash .sp-lens > * { position: absolute; inset: 0; width: 100%; height: 100%; }
+#splash .sp-light { opacity: 0; }
+#splash .sp-light polygon { fill: var(--bg); }
+#splash .sp-spark { transform-origin: 33% 33%; }
+#splash.go .sp-spark { animation: sp-spark 420ms cubic-bezier(.3, 1.5, .5, 1) both; }
+#splash.go .sp-iris { animation: sp-iris 440ms cubic-bezier(.6, 0, .2, 1) 120ms both; }
+#splash.go .sp-light { animation: sp-iris 440ms cubic-bezier(.6, 0, .2, 1) 120ms both, sp-in 220ms ease-out 300ms both; }
+#splash.go .sp-lens { animation: sp-fly 520ms cubic-bezier(.55, 0, .85, .25) 360ms both; }
+#splash.go { animation: sp-out 220ms ease-out 830ms both; }
+#splash.out { animation: sp-out 200ms ease-out both; }
+@keyframes sp-spark { 0% { transform: scale(1) rotate(0); } 45% { transform: scale(1.5) rotate(45deg); } 100% { transform: scale(1) rotate(90deg); } }
+@keyframes sp-iris { to { transform: scale(1.55) rotate(-60deg); } }
+@keyframes sp-in { to { opacity: 1; } }
+@keyframes sp-fly { to { transform: scale(24); } }
+@keyframes sp-out { to { opacity: 0; visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) {
-  #splash .sp-body, #splash .sp-lens { stroke-dashoffset: 0; animation: none; }
-  #splash .sp-glint { transform: none; animation: none; }
-  #splash .sp-word { opacity: 1; transform: none; letter-spacing: 0.06em; animation: none; }
-  #splash .sp-bloom { display: none; }
+  #splash.go .sp-lens, #splash.go .sp-lens > * { animation: none; }
+  #splash.go { animation-delay: 150ms; }
 }
 
 /* ---------- Enhance home ---------- */

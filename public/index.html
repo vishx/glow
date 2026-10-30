@@ -21,16 +21,14 @@
 <link rel="stylesheet" href="enhance.css">
 </head>
 <body>
-<!-- Launch animation: the Glow mark draws itself, then the app shows through (enhance.js removes it). -->
+<!-- Launch animation: the icon's lens opens and the app shows through (enhance.js removes it). -->
 <div id="splash" aria-hidden="true">
-  <div class="sp-bloom"></div>
-  <div class="sp-mark">
-    <svg class="sp-cam" viewBox="244 300 536 440" style="width:150px;height:123px">
-      <path class="sp-body" d="M330 392 H382 L420 340 H604 L642 392 H694 A56 56 0 0 1 750 448 V652 A56 56 0 0 1 694 708 H330 A56 56 0 0 1 274 652 V448 A56 56 0 0 1 330 392 Z"/>
-      <circle class="sp-lens" cx="512" cy="546" r="98"/>
-      <path class="sp-glint" d="M652 410 C657 437 664 444 690 449 C664 454 657 461 652 488 C647 461 640 454 614 449 C640 444 647 437 652 410 Z"/>
-    </svg>
-    <p class="sp-word">Glow</p>
+  <div class="sp-lens">
+    <img class="sp-halo" src="splash/halo.webp" alt="">
+    <img src="splash/core.webp" alt="">
+    <svg class="sp-iris" viewBox="0 0 1024 1024"><defs><clipPath id="spClip"><circle cx="512" cy="512" r="184"/></clipPath></defs><polygon points="532,436 588,492 568,568 492,588 436,532 456,456" fill="#130A0F" stroke="#fff" stroke-opacity="0.28" stroke-width="3"/><line x1="588" y1="492" x2="744" y2="648" stroke="#fff" stroke-opacity="0.13" stroke-width="3" clip-path="url(#spClip)"/><line x1="568" y1="568" x2="510" y2="781" stroke="#fff" stroke-opacity="0.13" stroke-width="3" clip-path="url(#spClip)"/><line x1="492" y1="588" x2="278" y2="645" stroke="#fff" stroke-opacity="0.13" stroke-width="3" clip-path="url(#spClip)"/><line x1="436" y1="532" x2="280" y2="376" stroke="#fff" stroke-opacity="0.13" stroke-width="3" clip-path="url(#spClip)"/><line x1="456" y1="456" x2="514" y2="243" stroke="#fff" stroke-opacity="0.13" stroke-width="3" clip-path="url(#spClip)"/><line x1="532" y1="436" x2="746" y2="379" stroke="#fff" stroke-opacity="0.13" stroke-width="3" clip-path="url(#spClip)"/></svg>
+    <svg class="sp-iris sp-light" viewBox="0 0 1024 1024"><polygon points="532,436 588,492 568,568 492,588 436,532 456,456"/></svg>
+    <img class="sp-spark" src="splash/sparkle.webp" alt="">
   </div>
 </div>
 <div id="app">
