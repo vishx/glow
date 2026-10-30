@@ -1,10 +1,51 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Glow app icon concept: warm charcoal, blush camera outline, four-point glint by the lens. No lettering. iOS and Android apply their own corner masks. -->
-  <defs><radialGradient id="g" cx="0.5" cy="0.38" r="0.75"><stop offset="0" stop-color="#2a2226"/><stop offset="1" stop-color="#141114"/></radialGradient></defs>
-  <rect width="1024" height="1024" fill="url(#g)"/>
-  <g fill="none" stroke="#f0b8cc" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M330 392 H382 L420 340 H604 L642 392 H694 A56 56 0 0 1 750 448 V652 A56 56 0 0 1 694 708 H330 A56 56 0 0 1 274 652 V448 A56 56 0 0 1 330 392 Z"/>
-    <circle cx="512" cy="546" r="98"/>
-  </g>
-  <path d="M652 410 C657 437 664 444 690 449 C664 454 657 461 652 488 C647 461 640 454 614 449 C640 444 647 437 652 410 Z" fill="#fff4f7"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF7F4"/><stop offset="0.3" stop-color="#FADCDD"/><stop offset="0.62" stop-color="#F0B7B6"/><stop offset="0.85" stop-color="#F9D4CF"/><stop offset="1" stop-color="#E8A2A4"/></linearGradient>
+ <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="0.6"><stop offset="0.15" stop-color="#fff" stop-opacity="0"/><stop offset="0.32" stop-color="#fff" stop-opacity="0.85"/><stop offset="0.45" stop-color="#fff" stop-opacity="0"/><stop offset="0.7" stop-color="#fff" stop-opacity="0"/><stop offset="0.82" stop-color="#fff" stop-opacity="0.5"/><stop offset="0.95" stop-color="#fff" stop-opacity="0"/></linearGradient>
+ <filter id="brush"><feTurbulence type="fractalNoise" baseFrequency="0.002 0.9" numOctaves="2" seed="4"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="linear" slope="0" intercept="0.10"/></feComponentTransfer><feComposite in2="SourceGraphic" operator="in"/></filter>
+ <linearGradient id="rg" x1="0.15" y1="0.05" x2="0.85" y2="0.95"><stop offset="0" stop-color="#FFF6F0"/><stop offset="0.25" stop-color="#E9BFAF"/><stop offset="0.5" stop-color="#A9685F"/><stop offset="0.72" stop-color="#F3D2C4"/><stop offset="1" stop-color="#B97A70"/></linearGradient>
+ <linearGradient id="chrome" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.35" stop-color="#E4DDE0"/><stop offset="0.55" stop-color="#9A9095"/><stop offset="0.8" stop-color="#EDE8EA"/><stop offset="1" stop-color="#8E868A"/></linearGradient>
+ <radialGradient id="barrel" cx="0.45" cy="0.4" r="0.6"><stop offset="0" stop-color="#5A4250"/><stop offset="0.7" stop-color="#2A1E25"/><stop offset="1" stop-color="#1A1216"/></radialGradient>
+ <radialGradient id="glass" cx="0.42" cy="0.38" r="0.65"><stop offset="0" stop-color="#8A4E6C"/><stop offset="0.6" stop-color="#3E2232"/><stop offset="1" stop-color="#1A0F15"/></radialGradient>
+ <radialGradient id="iris" cx="0.42" cy="0.38" r="0.62"><stop offset="0" stop-color="#F08AA6" stop-opacity="0.8"/><stop offset="0.5" stop-color="#B04468" stop-opacity="0.6400000000000001"/><stop offset="1" stop-color="#241419" stop-opacity="0"/></radialGradient>
+ <radialGradient id="pupil" cx="0.4" cy="0.35" r="0.7"><stop offset="0" stop-color="#4A3340"/><stop offset="1" stop-color="#0E090B"/></radialGradient>
+ <radialGradient id="shine" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#fff" stop-opacity="0.95"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+ <filter id="b40" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="40"/></filter>
+ <filter id="b26" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="26"/></filter>
+ <filter id="b14" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="14"/></filter>
+ <clipPath id="gc"><circle cx="512" cy="512" r="184"/></clipPath><filter id="b2" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="2"/></filter><filter id="b6"><feGaussianBlur stdDeviation="6"/></filter>
+</defs>
+<rect width="1024" height="1024" fill="url(#bg)"/><rect width="1024" height="1024" fill="url(#sweep)"/><rect width="1024" height="1024" fill="#fff" filter="url(#brush)" transform="rotate(-35 512 512) scale(1.5) translate(-170 -170)"/>
+<ellipse cx="522" cy="552" rx="312" ry="312" fill="#6B2E42" opacity="0.35" filter="url(#b40)"/>
+<!-- iridescent halo -->
+<linearGradient id="halo" x1="0" y1="0.2" x2="1" y2="0.8"><stop offset="0" stop-color="#C99BFF"/><stop offset="0.45" stop-color="#FF86B0"/><stop offset="1" stop-color="#FFC09C"/></linearGradient>
+<circle cx="512" cy="512" r="342" fill="none" stroke="url(#halo)" stroke-width="140" filter="url(#b40)"/>
+<circle cx="512" cy="512" r="330" fill="none" stroke="url(#halo)" stroke-width="70" filter="url(#b26)"/>
+<circle cx="512" cy="512" r="320" fill="none" stroke="url(#halo)" stroke-width="30" filter="url(#b14)"/>
+<circle cx="512" cy="512" r="316" fill="none" stroke="#fff" stroke-opacity="0.6" stroke-width="16" filter="url(#b6)" stroke-opacity="0.9"/>
+<!-- rings -->
+<circle cx="512" cy="512" r="312" fill="url(#rg)"/>
+<circle cx="512" cy="512" r="311" fill="none" stroke="#fff" stroke-opacity="0.7" stroke-width="3"/>
+<circle cx="512" cy="512" r="282" fill="#2A1C22"/>
+<circle cx="512" cy="512" r="274" fill="url(#chrome)"/>
+<circle cx="512" cy="512" r="256" fill="url(#rg)" opacity="0.9"/>
+<circle cx="512" cy="512" r="246" fill="url(#barrel)"/>
+<circle cx="512" cy="512" r="234" fill="none" stroke="#fff" stroke-opacity="0.06" stroke-width="2"/><circle cx="512" cy="512" r="224" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="2"/><circle cx="512" cy="512" r="214" fill="none" stroke="#fff" stroke-opacity="0.06" stroke-width="2"/><circle cx="512" cy="512" r="204" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="2"/><circle cx="512" cy="512" r="194" fill="none" stroke="#fff" stroke-opacity="0.06" stroke-width="2"/>
+<circle cx="512" cy="512" r="184" fill="url(#glass)"/>
+<g opacity="1" filter="url(#b14)">
+ <ellipse cx="450" cy="476" rx="62" ry="86" fill="#E9A2F2"/>
+ <ellipse cx="584" cy="546" rx="62" ry="86" fill="#FFB49C"/>
+ <ellipse cx="522" cy="434" rx="70" ry="34" fill="#FF8FB5"/>
+</g>
+<circle cx="512" cy="512" r="184" fill="url(#iris)"/>
+<circle cx="512" cy="512" r="144" fill="none" stroke="#fff" stroke-opacity="0.12" stroke-width="3"/>
+<circle cx="512" cy="512" r="77" fill="url(#pupil)"/>
+<circle cx="512" cy="512" r="77" fill="none" stroke="#F3A3B8" stroke-opacity="0.35" stroke-width="3"/>
+<polygon points="532,436 588,492 568,568 492,588 436,532 456,456" fill="#130A0F" stroke="#fff" stroke-opacity="0.28" stroke-width="3"/><line x1="588" y1="492" x2="744" y2="648" stroke="#fff" stroke-opacity="0.13" stroke-width="3" clip-path="url(#gc)"/><line x1="568" y1="568" x2="510" y2="781" stroke="#fff" stroke-opacity="0.13" stroke-width="3" clip-path="url(#gc)"/><line x1="492" y1="588" x2="278" y2="645" stroke="#fff" stroke-opacity="0.13" stroke-width="3" clip-path="url(#gc)"/><line x1="436" y1="532" x2="280" y2="376" stroke="#fff" stroke-opacity="0.13" stroke-width="3" clip-path="url(#gc)"/><line x1="456" y1="456" x2="514" y2="243" stroke="#fff" stroke-opacity="0.13" stroke-width="3" clip-path="url(#gc)"/><line x1="532" y1="436" x2="746" y2="379" stroke="#fff" stroke-opacity="0.13" stroke-width="3" clip-path="url(#gc)"/>
+<!-- glass reflection arc -->
+<path d="M346,492 A166,166 0 0 1 492,346" stroke="#fff" stroke-opacity="0.7" stroke-width="18" stroke-linecap="round" fill="none" filter="url(#b6)"/>
+<!-- flare on the rim, drawn as Glow's four-point sparkle -->
+<circle cx="338" cy="338" r="110" fill="url(#shine)" opacity="0.9"/>
+<path d="M168,338 L508,338" stroke="#fff" stroke-width="4" stroke-opacity="0.75" filter="url(#b2)"/><path d="M338,168 L338,508" stroke="#fff" stroke-width="4" stroke-opacity="0.75" filter="url(#b2)"/>
+<path d="M338.0,254.0 Q346.9,329.1 422.0,338.0 Q346.9,346.9 338.0,422.0 Q329.1,346.9 254.0,338.0 Q329.1,329.1 338.0,254.0 Z" fill="#fff"/>
+<path d="M668,783 A312,312 0 0 0 799,631" stroke="#fff" stroke-opacity="0.5" stroke-width="6" fill="none" stroke-linecap="round" filter="url(#b6)"/>
 </svg>
