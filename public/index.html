@@ -16,7 +16,7 @@
 <link rel="apple-touch-icon" href="/icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Cormorant+Garamond:wght@600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght,SOFT,WONK@9..144,400..600,0..100,0..1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="enhance.css">
 </head>
@@ -105,7 +105,7 @@
   <section class="screen" id="onboarding" hidden aria-label="Welcome to Glow">
     <div class="ob-slide" id="obSlide">
       <div class="ob-photo" role="img" aria-label="AI-generated sample portrait"><img src="/samples/demo-v2/intro.jpg" alt=""><span class="tag bottom">AI-generated sample</span></div>
-      <h1>Your light. Your look.</h1>
+      <h1>Your light, your <em>look</em>.</h1>
       <p>Edit a photo you love, or try Glow on the sample first.</p>
     </div>
     <div class="ob-actions" id="obActions">
@@ -376,21 +376,27 @@
   </div>
 </dialog>
 
-<dialog class="sheet" id="paywall" aria-labelledby="pwTitle">
-  <div class="sheet-head"><h2 class="t-h" id="pwTitle">More room to create</h2><button class="icon-btn" data-close aria-label="Close"></button></div>
-  <p class="pw-sub">Glow Pro · 40 AI credits each week</p>
+<dialog class="sheet pw" id="paywall" aria-labelledby="pwTitle">
+  <div class="pw-hero" aria-hidden="true">
+    <img class="pw-b" src="/samples/demo-v2/pw-before.jpg" alt="" decoding="async">
+    <img class="pw-a" src="/samples/demo-v2/pw-after.jpg" alt="" decoding="async">
+    <i class="pw-seam"></i><span class="pw-tag l">Before</span><span class="pw-tag r">After</span>
+  </div>
+  <button class="icon-btn pw-x" data-close aria-label="Close"></button>
+  <span class="pw-chip">Glow Pro</span>
+  <h2 class="t-h" id="pwTitle">Every photo, <em>at its best</em>.</h2>
   <ul class="perks" id="perks">
-    <li data-icon-li="check">40 AI credits a week for every AI tool, premium ones included (yearly: up to 80 a month)</li>
-    <li data-icon-li="check">Use them on any AI tool: Enhance, styles, hair, try-on, erase and expand</li>
-    <li data-icon-li="check">No ads</li>
-    <li data-icon-li="check">Camera, filters and on-device tools stay free for everyone</li>
+    <li data-icon-li="sparkle">40 AI credits every week</li>
+    <li data-icon-li="wand">Every premium AI tool</li>
+    <li data-icon-li="check">No ads, no Glow mark</li>
   </ul>
   <div class="plans" id="plans" role="radiogroup" aria-label="Plan">
-    <button class="plan" role="radio" aria-checked="true" data-plan="yearly"><span class="radio" aria-hidden="true"></span><span style="flex:1"><b>Yearly</b><small id="yearlyNote">About $4.17 a month, billed yearly</small></span><span class="price" id="priceYearly">$49.99/year</span><em>Save 81%</em></button>
-    <button class="plan" role="radio" aria-checked="false" data-plan="weekly"><span class="radio" aria-hidden="true"></span><span style="flex:1"><b>Weekly</b><small>Billed every week</small></span><span class="price" id="priceWeekly">$4.99/week</span></button>
+    <button class="plan" role="radio" aria-checked="true" data-plan="yearly"><em>Save 81%</em><b>Yearly</b><span class="price" id="priceYearly">$49.99/year</span><small id="yearlyNote">About $4.17 a month, billed yearly</small></button>
+    <button class="plan" role="radio" aria-checked="false" data-plan="weekly"><b>Weekly</b><span class="price" id="priceWeekly">$4.99/week</span><small>Billed every week</small></button>
   </div>
-  <button class="btn" id="buyBtn" style="margin-top:16px">Continue with yearly</button>
-  <button class="btn ghost" id="adBtn" style="margin-top:12px" hidden>Watch a short ad for 1 AI credit</button>
+  <button class="btn" id="buyBtn">Continue with yearly</button>
+  <button class="btn ghost" id="adBtn" hidden>Watch a short ad for 1 AI credit</button>
+  <p class="pw-free">Yearly gives up to 80 credits a month. Camera, filters and on-device tools stay free for everyone.</p>
   <p class="fine" id="pwNote"></p>
   <div class="links"><button id="restoreBtn2">Restore purchases</button><a href="/terms.html" target="_blank" rel="noopener">Terms</a><a href="/privacy.html" target="_blank" rel="noopener">Privacy</a></div>
 </dialog>

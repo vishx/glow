@@ -1,38 +1,42 @@
-/* Glow design system: soft luxury. Shared by Camera, Editor, onboarding and sheets. */
+/* Glow design system: Blush & Ink (porcelain and blush, ink-black actions, champagne only for Pro and AI). Shared by Camera, Editor, onboarding and sheets. */
 
 /* Tokens. Dark is the default; light follows the system unless the user picks one in Settings.
    --line is for decorative dividers only; --control (3:1 or better on every surface) outlines
    anything you can press, drag or type into. */
 :root, .dark {
   color-scheme: dark;
-  --bg: #121014; --surface: #201b21; --surface-2: #2a242b; --line: #3d343f; --control: #857682;
-  --text: #faf5f7; --muted: #bfb2bc; --accent: #f0b8cc; --on-accent: #28131e;
-  --tint: rgb(240 184 204 / 0.12); --free: #9fd8b0; --danger: #ffa3a3; --scrim: rgb(18 16 20 / 0.72);
-  --checker-a: #2a232b; --checker-b: #201b21; --viewer: #1d1a1f; --blush: rgb(240 184 204 / 0.16);
+  --bg: #141013; --surface: #1d171b; --surface-2: #261f23; --line: #3a2f35; --control: #8a7a82;
+  --text: #f8f1f3; --muted: #b9a9b0; --accent: #f8eef1; --on-accent: #1d181b;
+  --tint: rgb(242 165 187 / 0.10); --free: #9fd8b0; --danger: #ffa3a3; --scrim: rgb(20 16 19 / 0.72);
+  --checker-a: #2a2226; --checker-b: #1d171b; --viewer: #141013; --blush: rgb(242 165 187 / 0.18);
+  --rose: #f2a5bb; --glass: rgb(29 23 27 / 0.62); --toast-bg: #f8eef1; --toast-fg: #1d181b;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
-    --bg: #faf7f2; --surface: #fffdf9; --surface-2: #f2ece5; --line: #e6ddd3; --control: #857770;
-    --text: #2b2629; --muted: #6c6166; --accent: #6f3a5a; --on-accent: #ffffff;
-    --tint: rgb(111 58 90 / 0.08); --free: #2c6e48; --danger: #b3261e; --scrim: rgb(43 38 41 / 0.45);
-    --checker-a: #ece5dd; --checker-b: #fffdf9; --viewer: #f1ebe3; --blush: #f6e1e8;
+    --bg: #fbf7f5; --surface: #fffdfc; --surface-2: #f4ebe8; --line: #eadfdb; --control: #8a7c82;
+    --text: #1d181b; --muted: #6c6066; --accent: #1d181b; --on-accent: #ffffff;
+    --tint: rgb(246 217 223 / 0.55); --free: #2c6e48; --danger: #b3261e; --scrim: rgb(29 24 27 / 0.45);
+    --checker-a: #efe5e1; --checker-b: #fffdfc; --viewer: #fbf7f5; --blush: #f6d9df;
+    --rose: #b04468; --glass: rgb(255 253 252 / 0.74); --toast-bg: #1d181b; --toast-fg: #fbf7f5;
   }
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #faf7f2; --surface: #fffdf9; --surface-2: #f2ece5; --line: #e6ddd3; --control: #857770;
-  --text: #2b2629; --muted: #6c6166; --accent: #6f3a5a; --on-accent: #ffffff;
-  --tint: rgb(111 58 90 / 0.08); --free: #2c6e48; --danger: #b3261e; --scrim: rgb(43 38 41 / 0.45);
-  --checker-a: #ece5dd; --checker-b: #fffdf9; --viewer: #f1ebe3; --blush: #f6e1e8;
+  --bg: #fbf7f5; --surface: #fffdfc; --surface-2: #f4ebe8; --line: #eadfdb; --control: #8a7c82;
+  --text: #1d181b; --muted: #6c6066; --accent: #1d181b; --on-accent: #ffffff;
+  --tint: rgb(246 217 223 / 0.55); --free: #2c6e48; --danger: #b3261e; --scrim: rgb(29 24 27 / 0.45);
+  --checker-a: #efe5e1; --checker-b: #fffdfc; --viewer: #fbf7f5; --blush: #f6d9df;
+  --rose: #b04468; --glass: rgb(255 253 252 / 0.74); --toast-bg: #1d181b; --toast-fg: #fbf7f5;
 }
 :root {
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
   --gutter: 16px;
-  --r-btn: 16px; --r-well: 14px; --r-card: 20px; --r-sheet: 28px;
+  --r-btn: 26px; --r-well: 14px; --r-card: 20px; --r-sheet: 28px;
   --t-select: 140ms; --t-press-down: 80ms; --t-press-up: 120ms; --t-sheet: 260ms; --t-result: 180ms;
-  --font: Manrope, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-display: "Cormorant Garamond", Georgia, serif;
+  --font: Figtree, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: Fraunces, "Iowan Old Style", Georgia, serif;
+  --champagne: linear-gradient(120deg, #f2d7b6, #e9b3c3);
   --nav-h: 64px;
 }
 @media (min-width: 600px) { :root { --gutter: 24px; } }
@@ -628,3 +632,101 @@ dialog .stack { display: grid; gap: var(--s3); margin-top: var(--s4); }
 .opt.check::before { content: ""; width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1.5px currentColor; flex: none; }
 .opt.check[aria-pressed="true"]::before { content: "✓"; box-shadow: none; width: 14px; height: auto; font-weight: 800; line-height: 1; text-align: center; }
 #saveRoutine { justify-self: start; }
+
+/* ---------- Blush & Ink ----------
+   One strong color (ink) for actions, blush for soft highlights, rose for small accents,
+   champagne only for Pro and AI. Display type is Fraunces with its soft axis. */
+.t-display, .wordmark, .ob-slide h1, .t-h, #splash .sp-word, .enh-hero .cap h1 {
+  font-family: var(--font-display); font-weight: 500; font-variation-settings: "SOFT" 100, "WONK" 0; letter-spacing: -0.01em; }
+.wordmark { letter-spacing: 0; }
+.t-h em, .t-display em, .ob-slide h1 em { font-style: italic; font-variation-settings: "SOFT" 100, "WONK" 1; color: var(--rose); }
+.topbar.compact .wordmark { color: var(--text); }
+.wordmark .spark { background: var(--rose); }
+a, .link-btn, .links a, .links button, .toast-act { color: var(--rose); }
+
+/* Actions are pills; they press in a little and spring back. */
+.btn.quiet { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.btn, .pill, .icon-btn, .tool, .look, .tab { transition-timing-function: cubic-bezier(.3, .7, .4, 1.4); }
+.btn:active, .pill:active, .icon-btn:active, .tool:active { transform: scale(0.96); }
+.chip { color: var(--rose); box-shadow: inset 0 0 0 1px currentColor; }
+
+/* Toasts: a small ink pill, never a red-bordered banner. */
+.toast { background: var(--toast-bg); color: var(--toast-fg); box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.45); border-radius: 999px; padding: 10px 18px; }
+.toast.err { box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.45); }
+.toast .toast-act { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Save waits quietly, then wakes up with a small pop once there is something to save. */
+#editorScreen #saveBtn:disabled { opacity: 1; background: var(--surface-2); color: var(--muted); }
+#editorScreen #saveBtn:not(:disabled) { animation: glow-pop 420ms cubic-bezier(.3, .7, .4, 1.4); }
+@keyframes glow-pop { 0% { transform: scale(0.92); } 55% { transform: scale(1.06); } 100% { transform: scale(1); } }
+
+/* Tools: blush squircles with rose icons instead of outlined circles; photo tiles keep their picture. */
+.tool:not(.thumb) .well { border-radius: 16px; background: var(--blush); box-shadow: none; color: var(--rose); }
+.tool .well svg { stroke-width: 1.9; }
+.tool.thumb .well { border-radius: 14px; box-shadow: none; }
+.tool[aria-pressed="true"] { background: none; box-shadow: none; color: var(--text); }
+.tool[aria-pressed="true"] .well { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+.tool[aria-pressed="true"] .well::before { left: auto; right: -6px; bottom: auto; top: -6px; z-index: 1; }
+.tool .cost { background: var(--champagne); box-shadow: none; color: #1d181b; border-radius: 999px; }
+
+/* Tabs: text-first, the open one sits on a blush pill; no hairline above. */
+.tabs { border-top: 0; }
+.tab[aria-selected="true"] { color: var(--text); }
+.tab[aria-selected="true"] svg { color: var(--rose); }
+.nav { border-top: 0; }
+.nav button[aria-current="page"] span { text-decoration: none; }
+.nav button[aria-current="page"] svg { color: var(--rose); }
+
+/* Sheets: softer settled shadow and a springier entrance. */
+dialog.sheet[open] { animation: sheet 320ms cubic-bezier(.2, 1.1, .3, 1); }
+dialog::backdrop { background: rgb(20 16 19 / 0.55); backdrop-filter: blur(2px); }
+.seg button[aria-pressed="true"] { box-shadow: 0 0 0 1.5px var(--text); }
+
+/* Welcome: the portrait is the cover, the headline does the talking. */
+.ob-photo { border-radius: 28px; box-shadow: 0 24px 48px -28px rgb(60 20 40 / 0.45); }
+.ob-slide h1 { font-size: 2.375rem; line-height: 2.5rem; }
+@media (max-height: 640px) { .ob-slide h1 { font-size: 1.875rem; line-height: 2.125rem; } }
+
+/* Paywall: show the result first, three short perks, two plan cards side by side. */
+dialog.pw { padding-top: 0; overflow-x: hidden; }
+.pw-hero { position: relative; margin: 0 calc(-1 * var(--gutter)) var(--s4); aspect-ratio: 780 / 503; max-height: 34dvh; width: calc(100% + 2 * var(--gutter)); overflow: hidden; background: var(--viewer); }
+.pw-hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+.pw-hero .pw-a { clip-path: inset(0 0 0 50%); animation: pw-wipe 6s ease-in-out infinite; }
+.pw-seam { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 12px rgb(255 255 255 / 0.9); animation: pw-seam 6s ease-in-out infinite; }
+.pw-hero::after { content: ""; position: absolute; inset: auto 0 0; height: 36%; background: linear-gradient(transparent, var(--surface)); }
+.pw-tag { position: absolute; bottom: 22%; z-index: 1; padding: 3px 10px; border-radius: 999px; background: rgb(29 24 27 / 0.5); color: #fff;
+  font-size: 0.6875rem; line-height: 1rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.pw-tag.l { left: var(--s3); } .pw-tag.r { right: var(--s3); }
+@keyframes pw-wipe { 0%, 12% { clip-path: inset(0 0 0 85%); } 50%, 62% { clip-path: inset(0 0 0 15%); } 100% { clip-path: inset(0 0 0 85%); } }
+@keyframes pw-seam { 0%, 12% { left: 85%; } 50%, 62% { left: 15%; } 100% { left: 85%; } }
+.pw-x { position: absolute; top: var(--s3); right: var(--s3); z-index: 2; border-radius: 50%; background: var(--glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.pw-chip { display: inline-block; margin-top: calc(-1 * var(--s5)); position: relative; padding: 4px 12px; border-radius: 999px; background: var(--champagne); color: #1d181b;
+  font-size: 0.6875rem; line-height: 1rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+dialog.pw .t-h { margin: var(--s2) 0 var(--s3); font-size: 2rem; line-height: 2.25rem; }
+dialog.pw .perks { color: var(--text); font-weight: 500; }
+dialog.pw .perks li { align-items: center; margin: var(--s2) 0; }
+dialog.pw .perks svg { box-sizing: content-box; width: 18px; height: 18px; padding: 6px; border-radius: 10px; background: var(--blush); color: var(--rose); }
+dialog.pw .plans { grid-template-columns: 1fr 1fr; gap: var(--s3); margin-top: var(--s4); }
+dialog.pw .plan { display: grid; align-content: start; justify-items: start; gap: 2px; min-height: 0; padding: var(--s4) var(--s3) var(--s3); border-radius: 20px;
+  background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--line); transition: box-shadow var(--t-select), transform var(--t-press-up); }
+dialog.pw .plan b { font-size: 0.9375rem; }
+dialog.pw .plan .price { font-size: 1.25rem; line-height: 1.75rem; font-variant-numeric: tabular-nums; }
+dialog.pw .plan small { font-size: 0.75rem; line-height: 1rem; }
+dialog.pw .plan[aria-checked="true"] { background: var(--surface); box-shadow: inset 0 0 0 2px var(--accent), 0 12px 24px -16px rgb(29 24 27 / 0.6); }
+dialog.pw .plan em { top: -10px; left: var(--s3); right: auto; border-radius: 999px; padding: 2px 8px; letter-spacing: 0.04em; }
+dialog.pw #buyBtn { margin-top: var(--s4); position: relative; overflow: hidden; }
+dialog.pw #buyBtn::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.16) 50%, transparent 70%);
+  transform: translateX(-100%); animation: pw-shine 3.4s ease-in-out 1s infinite; }
+@keyframes pw-shine { 0% { transform: translateX(-100%); } 40%, 100% { transform: translateX(100%); } }
+dialog.pw #adBtn { margin-top: var(--s3); }
+dialog.pw .pw-free { margin: var(--s3) 0 0; font-size: 0.8125rem; line-height: 1.125rem; text-align: center; }
+dialog.pw .fine { text-align: center; }
+dialog.pw .links { justify-content: center; }
+@media (prefers-reduced-motion: reduce) { .pw-hero .pw-a { clip-path: inset(0 0 0 50%); } .pw-seam { left: 50%; } }
+
+/* Fixed-light chips on the photo keep ink text in both themes; the selected-tool check uses rose. */
+.sample-badge { color: #1d181b; }
+.tool[aria-pressed="true"] .well::before { background-color: var(--rose); }
+/* Quieter utility row and glass zoom buttons. (The photo sits on the page itself: --viewer matches --bg.) */
+.util-row .sep, .utils .sep, i.sep { opacity: 0; }
+.zoomctl .icon-btn { background: var(--glass); color: var(--text); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
