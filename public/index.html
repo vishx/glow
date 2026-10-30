@@ -58,14 +58,40 @@
         </div>
       </div>
       <p class="vf-note" id="camNote" hidden></p>
+      <p class="vf-pill" id="camCompare" hidden>Original</p>
     </div>
     <div class="cam-controls" id="camControls">
       <div id="liveControls">
         <div class="adjust-panel" id="adjustPanel" hidden>
-          <label class="slider">Smooth skin <input type="range" min="0" max="100" id="sSmooth"><output for="sSmooth" aria-hidden="true"></output></label>
-          <label class="slider">Brighten <input type="range" min="0" max="100" id="sBright"><output for="sBright" aria-hidden="true"></output></label>
-          <label class="slider">Warmth <input type="range" min="0" max="100" id="sWarm"><output for="sWarm" aria-hidden="true"></output></label>
-          <div class="looks" id="camFilters" style="padding:4px 0 0;justify-content:flex-start" aria-label="Filters"></div>
+          <div class="adj-tabs" role="tablist" aria-label="Adjust">
+            <button role="tab" id="adjTabSkin" data-adj="skin" aria-selected="true" aria-controls="adjSkin">Skin</button>
+            <button role="tab" id="adjTabFace" data-adj="face" aria-selected="false" aria-controls="adjFace" tabindex="-1">Face</button>
+            <button role="tab" id="adjTabMakeup" data-adj="makeup" aria-selected="false" aria-controls="adjMakeup" tabindex="-1">Makeup</button>
+            <button role="tab" id="adjTabFilter" data-adj="filter" aria-selected="false" aria-controls="adjFilter" tabindex="-1">Filter</button>
+          </div>
+          <div class="adj-group" id="adjSkin" role="tabpanel" aria-labelledby="adjTabSkin">
+            <label class="slider">Smooth skin <input type="range" min="0" max="100" id="sSmooth"><output for="sSmooth" aria-hidden="true"></output></label>
+            <label class="slider">Brighten <input type="range" min="0" max="100" id="sBright"><output for="sBright" aria-hidden="true"></output></label>
+            <label class="slider">Warmth <input type="range" min="0" max="100" id="sWarm"><output for="sWarm" aria-hidden="true"></output></label>
+          </div>
+          <div class="adj-group" id="adjFace" role="tabpanel" aria-labelledby="adjTabFace" hidden>
+            <label class="slider">Eye size <input type="range" min="0" max="100" id="sEyes"><output for="sEyes" aria-hidden="true"></output></label>
+            <label class="slider">Slim face <input type="range" min="0" max="100" id="sSlim"><output for="sSlim" aria-hidden="true"></output></label>
+            <label class="slider">Nose <input type="range" min="0" max="100" id="sNose"><output for="sNose" aria-hidden="true"></output></label>
+          </div>
+          <div class="adj-group" id="adjMakeup" role="tabpanel" aria-labelledby="adjTabMakeup" hidden>
+            <div class="adj-parts" id="makeupParts" role="radiogroup" aria-label="Makeup">
+              <button role="radio" data-part="lips" aria-checked="true">Lips</button>
+              <button role="radio" data-part="blush" aria-checked="false" tabindex="-1">Blush</button>
+              <button role="radio" data-part="brows" aria-checked="false" tabindex="-1">Brows</button>
+            </div>
+            <label class="slider"><span id="sMakeupName">Lips</span> <input type="range" min="0" max="100" id="sMakeup"><output for="sMakeup" aria-hidden="true"></output></label>
+            <div class="swatches" id="swMakeup" role="group" aria-label="Lips shade"></div>
+          </div>
+          <div class="adj-group" id="adjFilter" role="tabpanel" aria-labelledby="adjTabFilter" hidden>
+            <div class="looks" id="camFilters" style="padding:4px 0 0;justify-content:flex-start" aria-label="Filters"></div>
+          </div>
+          <p class="adj-note" id="adjNote" hidden></p>
         </div>
         <div class="looks" id="camLooks" role="group" aria-label="Looks"></div>
         <div class="capture-row">
@@ -325,6 +351,7 @@
 <script src="icons.js"></script>
 <script src="platform.js"></script>
 <script src="engine.js"></script>
+<script src="livebeauty.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

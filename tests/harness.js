@@ -10,6 +10,9 @@ let mp = process.env.GLOW_MEDIAPIPE;
 if (!mp) { mp = path.resolve(__dirname, '../node_modules/@mediapipe/tasks-vision'); if (!fs.existsSync(path.join(mp, 'vision_bundle.mjs'))) mp = null; }
 const faceEnv = process.env.GLOW_TEST_FACE || path.join(assets, 'face.jpg');
 exports.face = fs.existsSync(faceEnv) ? faceEnv : null;
+// A short portrait video for the fake camera (made by setup.sh from the sample portrait), for the live face checks.
+const faceVideo = path.join(assets, 'face.y4m');
+exports.faceVideo = fs.existsSync(faceVideo) ? faceVideo : null;
 exports.fixtures = fixtures;
 exports.ready = () => {
   const missing = [];
@@ -26,7 +29,7 @@ exports.ready = () => {
 const defaultAi = () => ({ server: 'current', post: 'ok', polls: ['succeeded'], dropPolls: 0, dropPost: false, failure: null });
 
 exports.launch = async (opts = {}) => {
-  const args = ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
+  const args = ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', ...(opts.args || [])];
   const browser = await chromium.launch({ args });
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true, acceptDownloads: true, serviceWorkers: 'block', viewport: opts.viewport || { width: 390, height: 844 },
     hasTouch: opts.touch !== false, isMobile: opts.mobile !== false, deviceScaleFactor: opts.dpr || 2, colorScheme: opts.scheme || 'dark', reducedMotion: opts.reducedMotion ? 'reduce' : 'no-preference', recordVideo: opts.recordVideo,

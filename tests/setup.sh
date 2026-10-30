@@ -12,4 +12,9 @@ fetch selfie_segmenter.tflite "$base/image_segmenter/selfie_segmenter/float16/la
 fetch face_landmarker.task "$base/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
 fetch pose_landmarker_lite.task "$base/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
 fetch hair_segmenter.tflite "$base/image_segmenter/hair_segmenter/float32/latest/hair_segmenter.tflite"
+# The live camera checks show the fake camera a gently moving portrait (the app's own sample).
+if command -v ffmpeg >/dev/null && [ ! -s tests/.assets/face.y4m ]; then
+  ffmpeg -loglevel error -y -loop 1 -i public/samples/demo-v2/original.png -t 3 -r 15 \
+    -vf "scale=720:-2,crop=720:960:0:'(ih-960)/2+10*sin(2*PI*t/3)',format=yuv420p" tests/.assets/face.y4m
+fi
 echo "Ready. Optional: set GLOW_TEST_FACE=/path/to/portrait.jpg to also run the face-tool checks."

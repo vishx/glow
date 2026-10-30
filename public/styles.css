@@ -628,3 +628,19 @@ dialog .stack { display: grid; gap: var(--s3); margin-top: var(--s4); }
 .opt.check::before { content: ""; width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1.5px currentColor; flex: none; }
 .opt.check[aria-pressed="true"]::before { content: "✓"; box-shadow: none; width: 14px; height: auto; font-weight: 800; line-height: 1; text-align: center; }
 #saveRoutine { justify-self: start; }
+
+/* ---------- Live beauty camera: Adjust tabs, shade swatches, hold to compare ---------- */
+.adj-tabs { display: flex; gap: var(--s1); margin: 0 0 var(--s1); }
+.adj-tabs button { flex: 1; min-height: 40px; border: 0; border-radius: 20px; background: transparent; color: #ffffffb3; font-size: 0.875rem; font-weight: 600; }
+.adj-tabs button[aria-selected="true"] { background: #ffffff1f; color: #fff; }
+.adj-group { display: grid; gap: var(--s1); }
+.swatches { display: flex; gap: var(--s2); padding: 0 0 var(--s1) calc(6.5rem + var(--s2)); }
+.swatch { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #000; box-shadow: 0 0 0 1px #ffffff55; padding: 0; }
+.swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent); }
+.adj-note { margin: 0; color: #ffffffb3; font-size: 0.8125rem; text-align: center; }
+.vf-pill { position: absolute; top: var(--s3); left: 50%; transform: translateX(-50%); margin: 0; padding: 4px var(--s3); border-radius: 14px;
+  background: var(--scrim); color: #fff; font-size: 0.8125rem; font-weight: 600; pointer-events: none; }
+.adj-parts { display: flex; gap: var(--s2); }
+.adj-parts button { min-height: 36px; padding: 0 var(--s3); border: 0; border-radius: 18px; background: transparent; box-shadow: inset 0 0 0 1px #ffffff55;
+  color: #fff; font-size: 0.8125rem; font-weight: 600; }
+.adj-parts button[aria-checked="true"] { background: #fff; color: #000; box-shadow: none; }
