@@ -736,3 +736,19 @@ dialog.pw .links { justify-content: center; }
 .tool.photo .glyph { position: absolute; right: -5px; bottom: -5px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
   background: linear-gradient(var(--blush), var(--blush)), var(--bg); color: var(--rose); box-shadow: 0 0 0 2px var(--bg); }
 .tool.photo .glyph svg { width: 13px; height: 13px; stroke-width: 2.2; }
+
+/* Phones: Undo, Redo, Compare, Share and More float on a glass pill over the bottom of the
+   photo, so the photo gets the row's height back. Labels stay for screen readers. */
+@media (max-width: 959px) and (min-height: 601px) {
+  #editorScreen .canvas-col { position: relative; }
+  #editorScreen:not(.viewer-expanded) .viewbar { position: absolute; left: 50%; bottom: var(--s3); z-index: 6; transform: translateX(-50%);
+    gap: 2px; padding: 3px; border-radius: 999px; background: var(--glass); -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2);
+    box-shadow: 0 10px 28px -14px rgb(0 0 0 / 0.45), inset 0 0 0 1px rgb(255 255 255 / 0.14); }
+  #editorScreen .viewbar > .sep { display: none; }
+  #editorScreen .viewbar .util, #editorScreen .viewbar .more, #editorScreen .viewbar .demo-own { flex: none; }
+  #editorScreen .viewbar .util { width: 44px; min-height: 44px; border-radius: 50%; color: var(--text); }
+  #editorScreen .viewbar .util.on { background: var(--text); color: var(--bg); }
+  #editorScreen .viewbar .util > span + span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  #editorScreen .stage.cropping ~ .viewbar { display: none; }
+  #editorScreen .zoomctl, #editorScreen .zoom-hint { bottom: calc(var(--s3) + 56px); }
+}
