@@ -1,5 +1,1 @@
-{
-  "cleanUrls": true,
-  "buildCommand": "printf '{\"sha\":\"%s\",\"ref\":\"%s\",\"env\":\"%s\"}' \"$VERCEL_GIT_COMMIT_SHA\" \"$VERCEL_GIT_COMMIT_REF\" \"$VERCEL_ENV\" > build.json",
-  "outputDirectory": "."
-}
+{ "cleanUrls": true }

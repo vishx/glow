@@ -1875,14 +1875,19 @@ function openSettings() {
   applyTheme(); showBuild();
   $("settings").showModal();
 }
-// Which build this is, so a test on a phone can be matched to a commit. build.json is written
-// by the Vercel build (vercel.json); FEATURES names what this code contains either way.
+// Which build this is, so a test on a phone can be matched to a commit. The fingerprint is a
+// hash of the app's own files as served (tools/fingerprint.js computes the same from a checkout),
+// so it identifies the code actually running, whichever URL or cache it came from.
 const FEATURES = "reshape-v2 · crop-v2";
+const BUILD_FILES = ["/index.html", "/app.js", "/engine.js", "/styles.css"];
 async function showBuild() {
-  let b = null;
-  try { const r = await fetch("/build.json", { cache: "no-store" }); if (r.ok) b = await r.json(); } catch {}
-  const sha = b && b.sha ? b.sha.slice(0, 7) : "";
-  $("buildId").textContent = sha ? `Build ${sha} · ${b.env || "?"} · ${b.ref || "?"} · ${FEATURES}` : `Build: local copy (no deployment info) · ${FEATURES}`;
+  let fp = "";
+  try {
+    const texts = await Promise.all(BUILD_FILES.map((f) => fetch(f, { cache: "no-store" }).then((r) => (r.ok ? r.text() : Promise.reject()))));
+    const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texts.join("\n")));
+    fp = [...new Uint8Array(d)].slice(0, 4).map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {}
+  $("buildId").textContent = `Build ${fp || "unknown"} · ${FEATURES} · ${location.host || "app"}`;
 }
 $("camSettingsBtn").addEventListener("click", openSettings);
 $("homeSettingsBtn").addEventListener("click", openSettings);
