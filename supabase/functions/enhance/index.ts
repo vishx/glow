@@ -1,6 +1,9 @@
 // Runs Glow's AI tools on Replicate with the app owner's token, and enforces
 // each user's plan limits. POST starts an edit (counts against the limit);
-// GET ?id=... checks on one that is still running.
+// GET ?id=... checks on one that is still running, and GET ?request=... finds an edit by the
+// app's own request id when the app never heard the job id. Neither GET ever charges.
+// Every answer says whether the credit was returned (`refunded`), so the app only claims a
+// refund the server confirmed. Needs migration 006 (ai_usage.client_request_id).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -127,6 +130,28 @@ async function modelInfo(model: string | string[]): Promise<ModelInfo> {
 const clientIp = (req: Request) =>
   req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || null;
 const lastOutput = (o: unknown) => (Array.isArray(o) ? o[o.length - 1] : o) ?? null;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// The state of one charged edit, read fresh from Replicate. Free to call any number of times.
+async function jobStatus(row: { id: number; prediction_id: string | null; refunded: boolean }) {
+  // Charged, but Replicate hasn't given an id yet (or starting it failed and was refunded).
+  if (!row.prediction_id) {
+    return row.refunded
+      ? { id: null, status: "failed", output: null, error: "The edit couldn't be started.", refunded: true }
+      : { id: null, status: "starting", output: null, error: null, refunded: false };
+  }
+  try {
+    const p = await rep(`/predictions/${row.prediction_id}`);
+    let refunded = row.refunded;
+    // An edit that fails partway through doesn't count against the limit.
+    if ((p.status === "failed" || p.status === "canceled") && !refunded) { await admin.rpc("refund_ai_edit", { p_usage: row.id }); refunded = true; }
+    return { id: p.id, status: p.status, output: lastOutput(p.output), error: p.error ?? null, refunded };
+  } catch (e) {
+    // A brand-new prediction can briefly 404 before Replicate can read it back.
+    if (e instanceof HttpError && e.status === 404) return { id: row.prediction_id, status: "starting", output: null, error: null, refunded: row.refunded };
+    throw e;
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -138,26 +163,27 @@ Deno.serve(async (req) => {
 
   try {
     if (req.method === "GET") {
-      const id = new URL(req.url).searchParams.get("id") ?? "";
-      if (!/^[a-z0-9]+$/i.test(id)) return json({ error: "Bad id" }, 400);
+      const q = new URL(req.url).searchParams, id = q.get("id"), request = q.get("request");
       // Only the user who started an edit can check on it.
-      const { data: row } = await admin.from("ai_usage").select("id, refunded")
-        .eq("prediction_id", id).eq("user_id", user.id).maybeSingle();
+      let sel = admin.from("ai_usage").select("id, prediction_id, refunded").eq("user_id", user.id);
+      if (id && /^[a-z0-9]+$/i.test(id)) sel = sel.eq("prediction_id", id);
+      else if (request && UUID.test(request)) sel = sel.eq("client_request_id", request);
+      else return json({ error: "Bad id" }, 400);
+      const { data: row } = await sel.maybeSingle();
+      // For ?request=, 404 means the edit never reached this point, so nothing was charged.
       if (!row) return json({ error: "Not found" }, 404);
-      try {
-        const p = await rep(`/predictions/${id}`);
-        // An edit that fails partway through doesn't count against the limit.
-        if ((p.status === "failed" || p.status === "canceled") && !row.refunded) await admin.rpc("refund_ai_edit", { p_usage: row.id });
-        return json({ status: p.status, output: lastOutput(p.output), error: p.error ?? null });
-      } catch (e) {
-        // A brand-new prediction can briefly 404 before Replicate can read it back.
-        if (e instanceof HttpError && e.status === 404) return json({ status: "starting", output: null, error: null });
-        throw e;
-      }
+      return json(await jobStatus(row));
     }
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-    const { image, mode, mask, extra } = await req.json().catch(() => ({}));
+    const { image, mode, mask, extra, request_id } = await req.json().catch(() => ({}));
+    const requestId = typeof request_id === "string" && UUID.test(request_id) ? request_id : null;
+    // A resent request is the same edit: answer with it instead of charging again.
+    if (requestId) {
+      const { data: row } = await admin.from("ai_usage").select("id, prediction_id, refunded")
+        .eq("user_id", user.id).eq("client_request_id", requestId).maybeSingle();
+      if (row) return json(await jobStatus(row));
+    }
     const cfg = MODES[mode];
     if (!cfg) return json({ error: "Unknown tool" }, 400);
     const okImage = typeof image === "string" &&
@@ -170,6 +196,17 @@ Deno.serve(async (req) => {
     const { data: quota, error: qErr } = await admin.rpc("consume_ai_edit", { p_user: user.id, p_mode: mode, p_ip: clientIp(req) }).single();
     if (qErr) throw qErr;
     const usage = { plan: quota.plan, used: quota.used, quota: quota.quota, remaining: quota.remaining };
+    if (quota.ok && requestId) {
+      const { error: dup } = await admin.from("ai_usage").update({ client_request_id: requestId }).eq("id", quota.usage_id);
+      if (dup) {
+        // Two copies of the same request raced; keep the first one and return this charge.
+        await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
+        const { data: row } = await admin.from("ai_usage").select("id, prediction_id, refunded")
+          .eq("user_id", user.id).eq("client_request_id", requestId).maybeSingle();
+        if (row) return json(await jobStatus(row));
+        throw dup;
+      }
+    }
     // IP addresses are only needed for today's free limit; clear older ones now and then.
     if (Math.random() < 0.05) {
       admin.from("ai_usage").update({ ip: null }).not("ip", "is", null)
@@ -201,8 +238,9 @@ Deno.serve(async (req) => {
       });
       console.log("started", mode, info.model, p.id, p.status, p.error ?? "");
       await admin.from("ai_usage").update({ prediction_id: p.id }).eq("id", quota.usage_id);
-      if (p.status === "failed" || p.status === "canceled") await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
-      return json({ id: p.id, status: p.status, output: lastOutput(p.output), error: p.error ?? null, usage });
+      const failed = p.status === "failed" || p.status === "canceled";
+      if (failed) await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
+      return json({ id: p.id, status: p.status, output: lastOutput(p.output), error: p.error ?? null, refunded: failed, usage });
     } catch (e) {
       await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
       throw e;
