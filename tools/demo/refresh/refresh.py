@@ -23,7 +23,7 @@ buf = io.BytesIO(); orig.save(buf, "JPEG", quality=90)
 image = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 m = json.load(open(D + "manifest.json"))
 
-for mode in ["enhance", "retouch"]:
+for mode in (os.environ.get("MODES") or "enhance retouch").split():
     t = time.time()
     r = req(U + "/functions/v1/enhance", {"image": image, "mode": mode, "request_id": str(uuid.uuid4())}, tok)
     while r.get("status") not in ("succeeded", "failed", "canceled"):
