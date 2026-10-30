@@ -5,7 +5,7 @@ const H = require('./harness');
 const path = require('path'), fs = require('fs');
 const out = process.argv[2] || path.join(__dirname, 'out', 'review');
 fs.mkdirSync(out, { recursive: true });
-const PORTRAIT = path.join(__dirname, '../public/samples/demo/original.png');
+const PORTRAIT = path.join(__dirname, '../public/samples/demo-v2/original.png');
 (async () => {
   const { browser, p, state } = await H.launch({ start: 'editor' });
   await p.goto('https://app.test/');

@@ -5,7 +5,7 @@ const path = require('path'), fs = require('fs');
 const out = process.argv[2] || path.join(__dirname, 'out', 'editor');
 const tag = process.argv[3] || 'shot';
 fs.mkdirSync(out, { recursive: true });
-const PORTRAIT = path.join(__dirname, '../public/samples/demo/original.png');
+const PORTRAIT = path.join(__dirname, '../public/samples/demo-v2/original.png');
 async function run(name, opts) {
   const { browser, p } = await H.launch({ start: 'editor', ...opts });
   const vp = opts.viewport || { width: 390, height: 844 };

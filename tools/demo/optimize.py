@@ -2,13 +2,13 @@
 #   python3 tools/demo/optimize.py
 # For every manifest entry with status "generated": if the result has the original's aspect
 # ratio (within 2%), it is resized to exactly the original's size so before/after lines up;
-# otherwise it keeps its own frame and the entry is marked "aligned": false. Saved as a
+# otherwise it keeps its own frame, is marked "aligned": false and status "unaligned", and the app never offers it. Saved as a
 # progressive JPEG, quality 88. Needs Pillow. The raw model output is kept out of the app.
 import hashlib, json, os, shutil
 from PIL import Image
 
 here = os.path.dirname(os.path.abspath(__file__))
-demo = os.path.join(here, "..", "..", "public", "samples", "demo")
+demo = os.path.join(here, "..", "..", "public", "samples", "demo-v2")
 raw_dir = os.path.join(here, "raw")
 os.makedirs(raw_dir, exist_ok=True)
 path = os.path.join(demo, "manifest.json")
@@ -25,7 +25,8 @@ for e in m["previews"]:
     out = f"{e['tool']}.jpg"
     im.save(os.path.join(demo, out), quality=88, progressive=True, optimize=True)
     shutil.move(src, os.path.join(raw_dir, e["raw"]))
-    e.update(status="ready", result=out, width=im.width, height=im.height, aligned=aligned,
+    # A reframed result can't be compared with the original, so it is never offered.
+    e.update(status="ready" if aligned else "unaligned", result=out, width=im.width, height=im.height, aligned=aligned,
              sha256=hashlib.sha256(open(os.path.join(demo, out), "rb").read()).hexdigest())
     del e["raw"]
     print(f"{e['tool']}: {out} {im.width}x{im.height} aligned={aligned}")

@@ -12,9 +12,9 @@ const prep = !!process.env.PREP;
 const fx = (f) => path.join(__dirname, 'fixtures', f);
 let files = {};
 if (prep) {
-  const m = JSON.parse(require('fs').readFileSync(path.join(__dirname, '../public/samples/demo/manifest.json')));
+  const m = JSON.parse(require('fs').readFileSync(path.join(__dirname, '../public/samples/demo-v2/manifest.json')));
   for (const e of m.previews) Object.assign(e, e.tool === 'pro' || e.tool === 'relight' ? { status: 'ready', result: `test-${e.tool}.jpg` } : { status: 'needs-generation', result: null });
-  files = { '/samples/demo/manifest.json': { json: m }, '/samples/demo/test-pro.jpg': fx('demo-test-a.jpg'), '/samples/demo/test-relight.jpg': fx('demo-test-b.jpg') };
+  files = { '/samples/demo-v2/manifest.json': { json: m }, '/samples/demo-v2/test-pro.jpg': fx('demo-test-a.jpg'), '/samples/demo-v2/test-relight.jpg': fx('demo-test-b.jpg') };
 }
 const tag = `${scheme}-${W}x${Ht}` + (prep ? '-TESTASSET' : '');
 (async () => {

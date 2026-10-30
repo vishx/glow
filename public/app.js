@@ -40,7 +40,7 @@ tool("upscale", "Upscale 4×", "Upscale 4×", "ai", "fix", { hint: "Makes the ph
 tool("colorize", "Colorize", "Colorize", "ai", "fix", { hint: "Adds natural color to black-and-white photos." });
 const FACE_TOOLS = [["fauto", "Auto", "Auto beauty"], ["fsmooth", "Smooth", "Smooth skin"], ["fblemish", "Blemish", "Remove blemishes"],
   ["fundereye", "Under-eye", "Brighten under-eyes"], ["fteeth", "Teeth", "Whiten teeth"], ["feyes", "Eyes", "Brighten eyes"],
-  ["fbigeyes", "Eye size", "Eye size", 1], ["fslim", "Face shape", "Face shape", 1], ["fnose", "Nose", "Nose shape", 1],
+  ["fbigeyes", "Eye size", "Eye size", 1], ["fslim", "Face", "Face shape", 1], ["fnose", "Nose", "Nose shape", 1],
   ["flips", "Lips", "Lip color"], ["fblush", "Blush", "Cheek blush"], ["fbrows", "Brows", "Fill brows"], ["fshadow", "Eyeshadow", "Eyeshadow"],
   ["fliner", "Liner", "Eyeliner"], ["fglam", "Full glam", "Full glam"]];
 FACE_TOOLS.forEach(([id, label, title, reshape]) => tool(id, label, title, "face", "face", { reshape: !!reshape }));
@@ -89,8 +89,9 @@ const FILTER_IDS = TOOLS.filter((t) => t.kind === "filter").map((t) => t.id);
 // never suggested or applied automatically. AI holds the tools that change what is in the photo;
 // other paid tools sit with their task and carry the same credit badge.
 const CATS = {
-  retouch: [["skin", "Skin", ["fsmooth", "fblemish", "fundereye", "retouch"]],
-    ["face", "Face", ["fauto", "feyes", "fteeth", "smile", "faces", "fbigeyes", "fslim", "fnose"]],
+  // The first five are the default row (as in the approved design); the rest follow on scroll.
+  retouch: [["skin", "Skin", ["fsmooth", "fblemish", "feyes", "fslim", "fnose"]],
+    ["face", "Face", ["fundereye", "fauto", "fbigeyes", "fteeth", "retouch", "smile", "faces"]],
     ["makeup", "Makeup", ["flips", "fblush", "fbrows", "fshadow", "fliner", "fglam"]],
     ["hair", "Hair", ["hcolor", "hair_waves", "hair_bob", "hair_pixie", "hair_bangs", "hair_curls", "hair_bun", "hair_braids", "hair_butterfly"]]],
   looks: [["filters", "Filters", ["mylook", ...FILTER_IDS]],
@@ -150,7 +151,7 @@ document.querySelectorAll("[data-icon]").forEach((el) => setIcon(el, el.dataset.
 document.querySelectorAll("[data-icon-li]").forEach((li) => li.insertAdjacentHTML("afterbegin", icon(li.dataset.iconLi)));
 document.querySelectorAll("dialog [data-close]").forEach((b) => { setIcon(b, "close"); b.addEventListener("click", () => b.closest("dialog").close()); });
 [["camSettingsBtn", "settings"], ["homeSettingsBtn", "settings"], ["backBtn", "back"], ["favBtn", "star"],
-  ["camGallery", "gallery"], ["camFlip", "flip"], ["flashBtn", "flashoff"], ["obBack", "back"], ["searchClose", "close"],
+  ["camGallery", "gallery"], ["camFlip", "flip"], ["flashBtn", "flashoff"], ["searchClose", "close"],
   ["zoomIn", "zoomin"], ["zoomOut", "zoomout"], ["zoomFit", "fit"], ["collapseBtn", "chevdown"], ["expandView", "expand"]].forEach(([id, n]) => setIcon($(id), n));
 setIcon(document.querySelector("#handle i"), "compare");
 $("retakeBtn").innerHTML = icon("retake") + "<span>Retake</span>";
@@ -182,56 +183,9 @@ function go(dest) { showScreen(dest === "camera" ? "cameraScreen" : "editorHome"
 $("nav").addEventListener("click", (e) => { const b = e.target.closest("button[data-dest]"); if (b) { Platform.haptic(); go(b.dataset.dest); } });
 
 // ---------- Onboarding ----------
-// Three short screens with the sample portrait. Screen 2 shows a real Glow result on it: a
-// prepared AI preview when one exists, otherwise the Glow filter made on this device.
-// Nothing asks for a permission here; the camera asks when it opens.
-const INTRO = "/samples/demo/intro.jpg";
-const SLIDES = [
-  { title: "Your light. Your look.", text: "Take a photo with Glow, or make a favorite photo your own.", pair: true },
-  { title: "Start natural. Adjust to your taste.", text: "Explore light, retouching, and looks. You choose how much.", compare: true },
-  { title: "Make your first Glow.", text: "Free on-device tools, plus 3 AI credits each day.", last: true },
-];
-let slide = 0, introResult = null;
-// The result for screen 2, made once: { src, label }.
-function introAfter() {
-  return introResult || (introResult = (async () => {
-    try {
-      const m = await (await fetch(DEMO_DIR + "manifest.json", { cache: "no-cache" })).json();
-      for (const e of m.previews || []) {
-        if (e.status !== "ready" || !e.result || !TOOL[e.tool] || e.aligned === false) continue;
-        const r = await fetch(DEMO_DIR + e.result); if (!r.ok) continue;
-        return { src: URL.createObjectURL(await r.blob()), label: "Prepared preview", tool: TOOL[e.tool].title };
-      }
-    } catch {}
-    const glow = FILTERS.find((f) => f.id === "glow");
-    return { src: await applyFilter(INTRO, glow), label: "Glow filter · free", tool: "the free Glow filter" };
-  })().catch(() => { introResult = null; return null; }));
-}
-function renderSlide() {
-  const s = SLIDES[slide];
-  const photo = s.compare
-    ? `<div class="ob-photo"><img src="${INTRO}" alt=""><img class="ob-after" id="obAfter" alt="" hidden><span class="ob-line" hidden></span>
-        <span class="tag left">Original</span><span class="tag right" id="obAfterTag"></span><span class="tag bottom">AI-generated sample</span></div>`
-    : `<div class="ob-photo"><img src="${INTRO}" alt=""><span class="tag bottom">AI-generated sample</span></div>`;
-  $("obSlide").innerHTML = photo + `<h1>${s.title}</h1><p>${s.text}</p>` +
-    (s.pair ? `<div class="ob-pair"><span>${icon("camera")}<b>Camera</b>Take a new photo</span><span>${icon("editor")}<b>Editor</b>Edit a photo you love</span></div>` : "");
-  $("obSlide").querySelector(".ob-photo").setAttribute("aria-label", s.compare ? "AI-generated sample portrait, original and edited side by side" : "AI-generated sample portrait");
-  $("obSlide").querySelector(".ob-photo").setAttribute("role", "img");
-  if (s.compare) introAfter().then((r) => {
-    const a = $("obAfter"); if (!r || !a) return;
-    a.src = r.src; a.hidden = false; a.nextElementSibling.hidden = false; $("obAfterTag").textContent = r.label;
-    a.closest(".ob-photo").setAttribute("aria-label", `AI-generated sample portrait: the original next to Glow's ${r.tool} result`);
-  });
-  [...$("obDots").children].forEach((d, i) => d.classList.toggle("on", i === slide));
-  $("obDots").setAttribute("aria-label", `Step ${slide + 1} of ${SLIDES.length}`);
-  $("obBack").style.visibility = slide ? "visible" : "hidden";
-  const act = (label, kind, fn) => { const b = document.createElement("button"); b.className = "btn" + (kind ? " " + kind : ""); b.textContent = label; b.addEventListener("click", fn); return b; };
-  $("obActions").replaceChildren(...(s.last
-    ? [act("Open camera", "", () => finishOnboarding("camera")), act("Choose a photo", "quiet", () => finishOnboarding("pick")), act("Try a sample", "ghost", () => finishOnboarding("sample"))]
-    : [act("Next", "", () => { slide++; renderSlide(); })]));
-  $("obSkip").hidden = !!s.last;
-  if (slide < SLIDES.length - 1) introAfter();
-}
+// One welcome screen with the sample portrait: Choose a photo, Try the sample, or the camera.
+// Nothing asks for a permission here; the camera asks when it opens. Shown once; Settings can
+// show it again.
 // Explicit choices here (and the sample or a picked photo) override the startup preference.
 function finishOnboarding(dest) {
   store.set("glowOnboarded", "1");
@@ -240,9 +194,10 @@ function finishOnboarding(dest) {
   else if (dest === "camera") go("camera");
   else { const pref = store.get("glowStart") || "last"; go(pref === "last" ? store.get("glowLastDest") || "camera" : pref); }
 }
-$("obBack").addEventListener("click", () => { if (slide > 0) { slide--; renderSlide(); } });
-$("obSkip").addEventListener("click", () => finishOnboarding());
-function showOnboarding() { slide = 0; renderSlide(); showScreen("onboarding"); }
+$("obPick").addEventListener("click", () => finishOnboarding("pick"));
+$("obSample").addEventListener("click", () => finishOnboarding("sample"));
+$("obCamera").addEventListener("click", () => finishOnboarding("camera"));
+function showOnboarding() { showScreen("onboarding"); }
 
 // ---------- Editor state ----------
 // hist[i] = { data, op, full }. data is the working-size picture (up to 2048px) used for
@@ -340,10 +295,10 @@ $("sampleBtn").addEventListener("click", openSample);
 
 // ---------- Try a sample: a free demo ----------
 // The sample is an AI-generated portrait. On-device tools work on it normally. AI tools show
-// results prepared once with Glow's real pipeline (see samples/demo/manifest.json), loaded as
+// results prepared once with Glow's real pipeline (see samples/demo-v2/manifest.json), loaded as
 // static files: no AI request, no credits, no sign-in, no paywall. This is only a display
 // path; the server still enforces credits on every real AI request, whatever the app says.
-const DEMO_DIR = "/samples/demo/";
+const DEMO_DIR = "/samples/demo-v2/";   // versioned: a new sample gets a new folder, so no stale cache
 const DEMO_FREE = ["fblemish", "fsmooth", "fauto", "light", "filter:glow", "bgblur"];
 let demo = null; // { manifest, ready: [toolId], entry: {toolId: entry}, cache: {toolId: dataURL}, failed: {toolId: true}, saved }
 const demoOffers = (id) => !ed.demo || TOOL[id].kind !== "ai" || (!!demo && demo.ready.includes(id));
@@ -366,7 +321,8 @@ async function openSample() {
   const saved = demo ? demo.saved : { amt: { ...faceSet.amt }, shade: { ...faceSet.shade }, toolAmt: { ...toolAmt } };
   const entries = (manifest && manifest.previews) || [];
   demo = { manifest, saved, entry: Object.fromEntries(entries.map((e) => [e.tool, e])), cache: {}, failed: {},
-    ready: entries.filter((e) => e.status === "ready" && e.result && TOOL[e.tool] && TOOL[e.tool].kind === "ai").map((e) => e.tool) };
+    // Only results that line up with the original (same size and framing) are offered.
+    ready: entries.filter((e) => e.status === "ready" && e.result && e.aligned === true && TOOL[e.tool] && TOOL[e.tool].kind === "ai").map((e) => e.tool) };
   cat = "retouch";
   try { await openFile(new File([blob], "glow-ai-sample.png", { type: blob.type || "image/png" }), "AI-generated sample", { demo: true }); }
   catch (err) { exitDemo(); say(err.message, true); return; }
@@ -455,7 +411,8 @@ $("otherPhotoBtn").addEventListener("click", () => $("backBtn").click());
 // ---------- Draft: keeps the session (and any AI job) through a refresh or the app closing ----------
 let draftWarn = false;
 async function saveDraft() {
-  if (!hasPhoto() || ed.demo) return Drafts.clear(); // the sample is never kept as a project
+  if (ed.demo) return;                 // the sample is never kept as a project, and opening it keeps your draft
+  if (!hasPhoto()) return Drafts.clear();
   try {
     await Drafts.put({ v: 2, original: ed.original, hist: ed.hist.slice(0, ed.idx + 1), idx: ed.idx, floor: ed.floor, savedIdx: ed.savedIdx,
       originalSaved: ed.originalSaved, name: ed.name, session: ed.session, ts: Date.now() });
@@ -1270,13 +1227,13 @@ function panelState(t) {
     if (short) {
       apply.textContent = trial ? "Go Pro to keep using it" : "Get more AI credits";
       note = trial
-        ? (have ? `This uses ${credits(cost)} and you have ${have} free ${have === 1 ? "try" : "tries"} left.` : "You've used your 3 free tries of the premium AI tools. The other AI tools stay free every day.")
+        ? (have ? `This uses ${credits(cost)} and you have ${have} free premium ${have === 1 ? "credit" : "credits"} left.` : "You've used your 3 free premium credits. Your daily AI credits still work on the everyday AI tools.")
         : have
         ? `This uses ${credits(cost)} and you have ${have} left.`
         : `You're out of AI credits ${a.plan === "pro" ? "for now" : "for today"}. On-device tools are still free.`;
     } else {
       apply.textContent = `${again ? "Run again" : gen ? "Generate" : "Apply"} · ${credits(cost)}`;
-      const bal = !a ? "" : trial ? ` Premium tool: ${have} of 3 free tries left.` : ` You have ${have} left ${a.plan === "pro" ? "this week" : "today"}.`;
+      const bal = !a ? "" : trial ? ` Premium tool: ${have} of 3 free premium credits left.` : ` You have ${have} left ${a.plan === "pro" ? "this week" : "today"}.`;
       note = again ? `Running it again makes a new version and uses another ${credits(cost).replace(/^1 /, "")}.${bal}` : `${note}${bal}`.trim();
     }
     if (jobActive()) { apply.disabled = true; note = `Wait for ${job.title} to finish, or check its status above. Glow runs one AI edit at a time so nothing is charged twice.`; }
@@ -1658,6 +1615,9 @@ async function startAiEdit(t) {
     if (err.status) {
       // The server answered, so the edit didn't start. It returns the credit itself if it had taken one.
       job = null; saveJob();
+      // A premium tool on the free plan draws on the one-time trial, which never resets, so say that
+      // rather than the server's "come back tomorrow".
+      if (err.limit && trialTool(t)) err.message = "You've used your free premium credits. Go Pro to keep using premium AI tools, or use the everyday AI tools with your daily credits.";
       if (err.limit) { say(err.message, true); if (!account || account.plan !== "pro") openPaywall(); renderPanel(); return; }
       await refreshAccount();
       const extra = before != null && account ? (account.remaining >= before ? " No AI credit was used." : ` Your balance shows ${account.remaining} left.`) : "";
@@ -2081,11 +2041,14 @@ function renderCreditsSheet() {
     const r = nextUtcMidnight(), mins = Math.max(1, Math.round((r - Date.now()) / 60000));
     const left = mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
     html = p(`<b>${a.remaining} of ${a.quota} AI credits left today.</b>`) +
-      p(`You get 3 AI credits a day. They reset at midnight UTC, which is ${fmtTime(r)} your time (in ${left}). Unused credits don't carry over.`);
-    if (a.trialLeft !== undefined) html += p(`Premium AI tools (Fill, Expand, Enhance, Smile, Relight, hair, outfits and portrait styles) come with 3 free tries in all: <b>${a.trialLeft} left</b>. Your daily credits work on the other AI tools.`);
+      p(a.trialLeft !== undefined
+        ? `You get 3 AI credits a day for the everyday AI tools: Restore, Retouch, Remove, Face repair, Upscale, Colorize, 3D Toon, Clay, Older and Younger. They reset at midnight UTC, which is ${fmtTime(r)} your time (in ${left}). Unused credits don't carry over.`
+        : `You get 3 AI credits a day. They reset at midnight UTC, which is ${fmtTime(r)} your time (in ${left}). Unused credits don't carry over.`);
+    if (a.trialLeft !== undefined) html += p(`Premium AI tools (Enhance, Fill, Expand, Smile, Relight, Golden hour, hair, outfits and portrait styles) share 3 free premium credits, once, not each day: <b>${a.trialLeft} left</b>. Fill, Expand and the portrait styles use 2.`);
     if (native && plugins.AdMob && a.adsLeft > 0) html += p(`Out of credits? You can watch a short ad for 1 more credit${a.trialLeft !== undefined ? " (for the daily tools)" : ""}, up to ${a.adsLeft} more today. Ads are always optional.`);
   }
-  html += p(`Most AI tools use 1 credit. Headshot, Fashion, Anime and Watercolor${CONFIG.pricingV2 ? ", Fill and Expand" : ""} use 2. Each tool shows its cost before you apply it.`) +
+  html += p("Saving photos is free and unlimited. On the free plan, saves carry a small Glow mark. Credits are only for AI tools; on-device tools are always free.") +
+    p(`Most AI tools use 1 credit. Headshot, Fashion, Anime and Watercolor${CONFIG.pricingV2 ? ", Fill and Expand" : ""} use 2. Each tool shows its cost before you apply it.`) +
     p("The camera, filters, face, makeup, body, hair color, background, light and color tools run on your device and are always free. Undo and redo never use credits.") +
     p("If the AI service reports that an edit failed, its credit is returned automatically.");
   $("creditsBody").innerHTML = html;
@@ -2600,7 +2563,7 @@ $("restoreBtn").addEventListener("click", restore);
 $("restoreBtn2").addEventListener("click", restore);
 
 // Optional rewarded ad: when free edits run out, the user can choose to watch one
-// ad for one more edit (up to 3 a day). Google confirms the finished ad to our
+// ad for one more edit (the server allows 1 a day, for the everyday AI tools). Google confirms the finished ad to our
 // server, which adds the edit, so it can't be faked from the phone.
 let adsReady = null;
 function setupAds() {

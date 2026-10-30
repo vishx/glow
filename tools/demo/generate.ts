@@ -1,6 +1,6 @@
 // Makes the prepared AI results for Try a sample, once, with Glow's real AI pipeline.
 //
-// It runs each entry in public/samples/demo/manifest.json whose status is "needs-generation"
+// It runs each entry in public/samples/demo-v2/manifest.json whose status is "needs-generation"
 // through supabase/functions/enhance/pipeline.ts: the same models, prompts and settings the
 // app's users get. It saves each result next to the manifest and records provenance.
 // It does not go through the enhance function, so it doesn't use anyone's AI credits, but
@@ -13,7 +13,7 @@
 // The token is read from the environment only; nothing secret is written to disk.
 import { HttpError, lastOutput, MODES, rep, startPrediction } from "../../supabase/functions/enhance/pipeline.ts";
 
-const dir = new URL("../../public/samples/demo/", import.meta.url);
+const dir = new URL("../../public/samples/demo-v2/", import.meta.url);
 const manifestUrl = new URL("manifest.json", dir);
 const manifest = JSON.parse(await Deno.readTextFile(manifestUrl));
 const only = Deno.args;
@@ -45,7 +45,7 @@ for (const entry of manifest.previews) {
   entry.status = "generated";
   entry.raw = file;
   // Provenance only: no signed output URL, no token.
-  entry.provenance = { generatedAt: new Date().toISOString(), pipeline: "supabase/functions/enhance/pipeline.ts", model: info.model,
+  entry.provenance = { originalSha256: manifest.original.sha256, generatedAt: new Date().toISOString(), pipeline: "supabase/functions/enhance/pipeline.ts", model: info.model,
     version: info.version, predictionId: p.id, metrics: p.metrics ?? null };
   await Deno.writeTextFile(manifestUrl, JSON.stringify(manifest, null, 2) + "\n");
   console.log(`  saved ${file} (${info.model})`);

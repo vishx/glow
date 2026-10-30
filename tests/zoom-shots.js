@@ -6,7 +6,7 @@ fs.mkdirSync(out, { recursive: true });
 (async () => {
   const { browser, p } = await H.launch({ start: 'editor', scheme: 'light' });
   await p.goto('https://app.test/');
-  const fc = p.waitForEvent('filechooser'); await p.click('#pickBtn'); await (await fc).setFiles(path.join(__dirname, '../public/samples/demo/original.png'));
+  const fc = p.waitForEvent('filechooser'); await p.click('#pickBtn'); await (await fc).setFiles(path.join(__dirname, '../public/samples/demo-v2/original.png'));
   await p.waitForFunction(() => screen === 'editorScreen' && $('before').naturalWidth > 0);
   await p.click('.tab[data-cat="retouch"]'); await p.click('.subchip[data-chip="face"]'); await p.click('.tool[data-tool="fslim"]');
   await p.waitForFunction(() => !busyNow && reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 });

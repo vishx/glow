@@ -4,7 +4,7 @@ const H = require('./harness');
 const path = require('path'), fs = require('fs');
 const out = process.argv[2] || path.join(__dirname, 'out', 'crop');
 fs.mkdirSync(out, { recursive: true });
-const PORTRAIT = path.join(__dirname, '../public/samples/demo/original.png');
+const PORTRAIT = path.join(__dirname, '../public/samples/demo-v2/original.png');
 async function run(tag, opts) {
   const { browser, p, state } = await H.launch({ start: 'editor', ...opts });
   const shot = (n) => p.screenshot({ path: path.join(out, `${n}-${tag}.png`) });

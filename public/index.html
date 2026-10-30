@@ -22,15 +22,18 @@
 <body>
 <div id="app">
 
-  <!-- First launch: three short, skippable screens. -->
-  <section class="screen" id="onboarding" hidden aria-roledescription="introduction" aria-label="Welcome to Glow">
-    <div class="ob-top">
-      <button class="icon-btn" id="obBack" aria-label="Back"></button>
-      <div class="dots" id="obDots" role="img"><i></i><i></i><i></i></div>
-      <button class="link-btn" id="obSkip">Skip</button>
+  <!-- First launch: one welcome screen. Returning people go straight to the app; Settings can show it again. -->
+  <section class="screen" id="onboarding" hidden aria-label="Welcome to Glow">
+    <div class="ob-slide" id="obSlide">
+      <div class="ob-photo" role="img" aria-label="AI-generated sample portrait"><img src="/samples/demo-v2/intro.jpg" alt=""><span class="tag bottom">AI-generated sample</span></div>
+      <h1>Your light. Your look.</h1>
+      <p>Edit a photo you love, or try Glow on the sample first.</p>
     </div>
-    <div class="ob-slide" id="obSlide" aria-live="polite"></div>
-    <div class="ob-actions" id="obActions"></div>
+    <div class="ob-actions" id="obActions">
+      <button class="btn" id="obPick">Choose a photo</button>
+      <button class="btn quiet" id="obSample">Try the sample</button>
+      <button class="link-btn ob-cam" id="obCamera"><span data-icon="camera"></span>Take a photo</button>
+    </div>
   </section>
 
   <!-- Camera -->
@@ -117,7 +120,7 @@
         </div>
       </div>
       <button class="card sample-card" id="sampleBtn" aria-describedby="sampleCardText">
-        <img src="/samples/demo/thumb.jpg" alt="" width="88" height="110">
+        <img src="/samples/demo-v2/thumb.jpg" alt="" width="88" height="117">
         <span>
           <b>Try a sample · Free</b>
           <span id="sampleCardText">Explore Glow on an AI-generated portrait. No credits or account needed.</span>
@@ -277,7 +280,7 @@
       <a href="/privacy.html" target="_blank" rel="noopener">Privacy policy</a>
       <a href="/terms.html" target="_blank" rel="noopener">Terms of use</a>
       <a href="#" id="manageSubs">Manage subscription</a>
-      <button id="replayIntro">Show the introduction</button>
+      <button id="replayIntro">Show the welcome screen</button>
       <a href="/licenses.txt" target="_blank" rel="noopener">Licenses</a>
     </div>
     <div class="links"><a href="#" id="deleteAccount" class="danger">Delete my account and data</a></div>
@@ -297,7 +300,7 @@
   <div class="sheet-head"><h2 class="t-h" id="pwTitle">More room to create</h2><button class="icon-btn" data-close aria-label="Close"></button></div>
   <p class="pw-sub">Glow Pro · 40 AI credits each week</p>
   <ul class="perks" id="perks">
-    <li data-icon-li="check">40 AI credits every week, instead of 3 a day (yearly: up to 80 a month)</li>
+    <li data-icon-li="check">40 AI credits a week for every AI tool, premium ones included (yearly: up to 80 a month)</li>
     <li data-icon-li="check">Use them on any AI tool: Enhance, styles, hair, try-on, erase and expand</li>
     <li data-icon-li="check">No ads</li>
     <li data-icon-li="check">Camera, filters and on-device tools stay free for everyone</li>

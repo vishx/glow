@@ -11,7 +11,7 @@ fs.mkdirSync(out, { recursive: true });
   await p.goto('https://app.test/'); await p.waitForTimeout(500);
   await p.evaluate(async () => {
     const toData = (c) => c.toDataURL('image/png');
-    const img = await loadImg('/samples/demo/original.png'), W = img.naturalWidth, H = img.naturalHeight;
+    const img = await loadImg('/samples/demo-v2/original.png'), W = img.naturalWidth, H = img.naturalHeight;
     const variant = (w, h, draw) => { const c = newCanvas(w, h), x = c.getContext('2d'); x.fillStyle = '#7a7f86'; x.fillRect(0, 0, w, h); draw(x); return toData(c); };
     const V = {
       sample: variant(W, H, (x) => x.drawImage(img, 0, 0)),

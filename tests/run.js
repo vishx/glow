@@ -325,12 +325,12 @@ test('a11y: control boundaries and inactive controls meet 3:1 in both themes', a
 // whose two "results" are tone changes of the sample (tests/fixtures/demo-test-*.jpg). They test
 // the demo path only; they are not Glow results and are never shipped.
 const demoManifest = (() => {
-  const m = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/samples/demo/manifest.json')));
+  const m = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/samples/demo-v2/manifest.json')));
   for (const e of m.previews) Object.assign(e, e.tool === 'pro' || e.tool === 'relight' ? { status: 'ready', result: `test-${e.tool}.jpg`, aligned: true } : { status: 'needs-generation', result: null });
   return m;
 })();
-const demoFiles = (extra = {}) => ({ '/samples/demo/manifest.json': { json: demoManifest }, '/samples/demo/test-pro.jpg': fx('demo-test-a.jpg'),
-  '/samples/demo/test-relight.jpg': fx('demo-test-b.jpg'), ...extra });
+const demoFiles = (extra = {}) => ({ '/samples/demo-v2/manifest.json': { json: demoManifest }, '/samples/demo-v2/test-pro.jpg': fx('demo-test-a.jpg'),
+  '/samples/demo-v2/test-relight.jpg': fx('demo-test-b.jpg'), ...extra });
 async function openDemo(p) {
   await p.goto('https://app.test/'); await p.click('#sampleBtn');
   await p.waitForFunction(() => screen === 'editorScreen' && ed.demo && $('before').naturalWidth > 0, null, { timeout: 15000 });
@@ -342,7 +342,7 @@ test('demo: Try a sample opens the attached original with demo labels', async ({
   await openDemo(p);
   const o = await p.evaluate(async () => { const b = new Uint8Array(await ed.original.blob.arrayBuffer()); const h = await crypto.subtle.digest('SHA-256', b);
     return { w: ed.original.w, h: ed.original.h, sha: [...new Uint8Array(h)].map((x) => x.toString(16).padStart(2, '0')).join('') }; });
-  eq(o, { w: 1122, h: 1402, sha: demoManifest.original.sha256 }, 'unchanged original');
+  eq(o, { w: 1086, h: 1448, sha: demoManifest.original.sha256 }, 'unchanged original');
   // The disclosure is a small "AI sample" badge on the photo, with the full explanation for screen readers and on tap.
   const badge = await p.evaluate(() => { const b = $('demoNote').getBoundingClientRect(), st = $('stage').getBoundingClientRect();
     return { text: $('demoNote').textContent, onPhoto: b.top >= st.top && b.bottom <= st.bottom && b.left >= st.left, h: b.height, w: b.width }; });
@@ -401,12 +401,12 @@ test('demo: a missing preview shows a useful message and Retry recovers', async 
   eq(await p.evaluate(() => ed.idx), 0, 'shows the original meanwhile');
   await p.click('#applyBtn'); await p.waitForFunction(() => ed.idx === 1 && ed.hist[1].op.tool === 'relight');
   eq(state.posts.length, 0, 'no AI request');
-}, { files: demoFiles({ '/samples/demo/test-relight.jpg': { path: fx('demo-test-b.jpg'), flaky: 2 /* the preload and the first tap fail */ } }) });
+}, { files: demoFiles({ '/samples/demo-v2/test-relight.jpg': { path: fx('demo-test-b.jpg'), flaky: 2 /* the preload and the first tap fail */ } }) });
 
 test('demo: a preview whose file is gone is not offered', async ({ p }) => {
   await openDemo(p);
   eq(await p.evaluate(() => demo.ready), ['pro'], 'only previews that exist');
-}, { files: demoFiles({ '/samples/demo/test-relight.jpg': 404 }) });
+}, { files: demoFiles({ '/samples/demo-v2/test-relight.jpg': 404 }) });
 
 test('demo: with no prepared previews, no AI tools are offered and the note explains why', async ({ p, state }) => {
   await openDemo(p);
@@ -417,26 +417,31 @@ test('demo: with no prepared previews, no AI tools are offered and the note expl
   await p.click('.tab[data-cat="looks"]');
   assert(!(await p.$$eval('#tools .tool', (x) => x.some((b) => /uses \d credit/.test(b.getAttribute('aria-label'))))), 'no AI tool offered as chargeable on the sample');
   eq(state.posts.length, 0, 'no AI request');
-}, { files: { '/samples/demo/manifest.json': { json: { ...demoManifest, previews: demoManifest.previews.map((e) => ({ ...e, status: 'needs-generation', result: null })) } } } });
+}, { files: { '/samples/demo-v2/manifest.json': { json: { ...demoManifest, previews: demoManifest.previews.map((e) => ({ ...e, status: 'needs-generation', result: null })) } } } });
 
 test('demo: the shipped prepared previews are all there, match the manifest, and never call the AI', async ({ p, state }) => {
-  const dir = path.join(__dirname, '../public/samples/demo'), m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+  const dir = path.join(__dirname, '../public/samples/demo-v2'), m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
   const raw = fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8');
   assert(!/https?:\/\/|token|X-Amz|Signature=/i.test(raw), 'no URLs or credentials in the manifest');
   const ready = m.previews.filter((e) => e.status === 'ready');
-  eq(ready.map((e) => e.tool), ['retouch', 'pro', 'relight', 'golden', 'hair_bob', 'toon3d'], 'six prepared previews');
+  // The original is the approved portrait, and every shipped preview was made from that exact file
+  // and lines up with it: same size, same framing. Old results from an earlier sample are never shipped.
+  const orig = path.join(dir, m.original.file);
+  eq([require('crypto').createHash('sha256').update(fs.readFileSync(orig)).digest('hex'), imageSize(orig).w, imageSize(orig).h], [m.original.sha256, m.original.width, m.original.height], 'original matches the manifest');
   for (const e of ready) {
     const f = path.join(dir, e.result), sha = require('crypto').createHash('sha256').update(fs.readFileSync(f)).digest('hex');
-    eq([sha, imageSize(f).w, imageSize(f).h], [e.sha256, e.width, e.height], `${e.tool}: file matches`);
-    assert(e.provenance && e.provenance.predictionId && e.provenance.model && e.assetVersion, `${e.tool}: provenance and version`);
+    eq([sha, imageSize(f).w, imageSize(f).h], [e.sha256, m.original.width, m.original.height], `${e.tool}: file matches and has the original's size`);
+    assert(e.aligned === true && e.provenance && e.provenance.predictionId && e.provenance.originalSha256 === m.original.sha256 && e.assetVersion === m.assetVersion, `${e.tool}: aligned, made from this original`);
   }
+  const shipped = fs.readdirSync(dir).filter((f) => /\.(jpe?g|png|webp)$/i.test(f)).sort();
+  eq(shipped, [...new Set(['intro.jpg', 'thumb.jpg', m.original.file, ...(m.intro ? [m.intro.file] : []), ...ready.map((e) => e.result)])].sort(), 'no stray or old result images');
   await openDemo(p); const before = credit(state);
   for (const e of ready) {
     await tool(p, 'foryou', null, e.tool); await p.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x && $('after').naturalWidth > 0, e.tool, { timeout: 15000 });
     eq(await p.evaluate(() => [ed.hist.length, $('after').naturalWidth, $('after').naturalHeight]), [2, e.width, e.height], `${e.tool}: shown alone, at its size`);
   }
   eq(credit(state), before, 'no AI requests, credits unchanged');
-  await p.click('#compareBtn'); await settle(300);
+  if (ready.length) { await p.click('#compareBtn'); await settle(300); }
   await p.screenshot({ path: path.join(__dirname, 'out', 'demo-shipped.png') });
 }, { quota: 0 });
 
@@ -466,7 +471,7 @@ test('demo: saving exports the shown result and names it as an AI-generated samp
   await p.click('#saveBtn'); assert(/AI-generated sample/.test(await p.textContent('#ask')), 'export flow says it is a sample');
   await p.click('#ask .btn:has-text("Save sample")'); await downloads(state, 1);
   assert(/^glow-ai-sample-/.test(state.downloads[0].name), 'file name: ' + state.downloads[0].name);
-  eq((({ w, h }) => [w, h])(imageSize(state.downloads[0].file)), [1122, 1402], 'shown result at its size');
+  eq((({ w, h }) => [w, h])(imageSize(state.downloads[0].file)), [1086, 1448], 'shown result at its size');
   eq(state.posts.length, 0, 'no AI request');
 }, { files: demoFiles(), viewport: { width: 1280, height: 860 }, mobile: false, touch: false });
 
@@ -482,50 +487,34 @@ test('demo: phone layouts at 320 and 390 wide have no sideways scroll', async ({
 }, { files: demoFiles() });
 
 // ---------- Onboarding ----------
-test('onboarding: three screens with the sample photo, Back and Skip, and no permission prompts', async ({ p }) => {
+test('onboarding: one welcome screen with the whole sample portrait; Choose a photo first, then the sample, then a small camera action', async ({ p }) => {
   await p.goto('https://app.test/'); await p.waitForSelector('#onboarding:not([hidden])');
-  const read = () => p.evaluate(() => ({ h: $('obSlide').querySelector('h1').textContent, p: $('obSlide').querySelector('p').textContent,
-    photo: !!$('obSlide').querySelector('.ob-photo img[src*="intro.jpg"]'), back: getComputedStyle($('obBack')).visibility, skip: !$('obSkip').hidden,
-    actions: [...document.querySelectorAll('#obActions .btn')].map((b) => b.textContent), dots: $('obDots').getAttribute('aria-label'),
-    hSize: parseFloat(getComputedStyle($('obSlide').querySelector('h1')).fontSize), pSize: parseFloat(getComputedStyle($('obSlide').querySelector('p')).fontSize),
-    share: $('obSlide').querySelector('.ob-photo').getBoundingClientRect().height / ($('onboarding').getBoundingClientRect().height) }));
-  const s1 = await read();
-  eq([s1.h, s1.p, s1.photo, s1.back, s1.skip, s1.actions, s1.dots], ['Your light. Your look.', 'Take a photo with Glow, or make a favorite photo your own.', true, 'hidden', true, ['Next'], 'Step 1 of 3'], 'screen 1');
-  assert(/Camera/.test(await p.textContent('#obSlide')) && /Editor/.test(await p.textContent('#obSlide')), 'introduces Camera and Editor');
-  assert(s1.hSize >= 28 && s1.hSize <= 34 && s1.pSize >= 15 && s1.pSize <= 16, `type sizes ${s1.hSize}/${s1.pSize}`);
-  assert(s1.share >= 0.38 && s1.share <= 0.52, 'photo share of the screen ' + s1.share.toFixed(2));
-  await p.click('#obActions .btn');
-  const s2 = await read();
-  eq([s2.h, s2.p, s2.back, s2.dots], ['Start natural. Adjust to your taste.', 'Explore light, retouching, and looks. You choose how much.', 'visible', 'Step 2 of 3'], 'screen 2');
-  assert(!/Skin texture stays real/.test(await p.textContent('#onboarding')), 'no absolute promise');
-  await p.waitForFunction(() => $('obAfter') && !$('obAfter').hidden && $('obAfter').naturalWidth > 0, null, { timeout: 15000 });
-  eq(await p.textContent('#obAfterTag'), 'Prepared preview', 'the shipped prepared result');
-  await p.click('#obBack'); eq((await read()).h, 'Your light. Your look.', 'Back');
-  await p.click('#obActions .btn'); await p.click('#obActions .btn');
-  const s3 = await read();
-  eq([s3.h, s3.p, s3.actions, s3.skip], ['Make your first Glow.', 'Free on-device tools, plus 3 AI credits each day.', ['Open camera', 'Choose a photo', 'Try a sample'], false], 'screen 3');
-  eq(await p.evaluate(() => window.__streams.length), 0, 'no camera request during the introduction');
-  await p.click('#obActions .btn:has-text("Try a sample")');
+  const r = await p.evaluate(() => { const ph = document.querySelector('.ob-photo'), img = ph.querySelector('img'), b = (id) => $(id).getBoundingClientRect();
+    return { h: $('obSlide').querySelector('h1').textContent, photo: /demo-v2\/intro\.jpg$/.test(img.src), fit: getComputedStyle(img).objectFit,
+      boxRatio: ph.getBoundingClientRect().width / ph.getBoundingClientRect().height, imgRatio: img.naturalWidth / img.naturalHeight,
+      order: ['obPick', 'obSample', 'obCamera'].map((id) => Math.round(b(id).top)), heights: ['obPick', 'obSample', 'obCamera'].map((id) => Math.round(b(id).height)),
+      primary: getComputedStyle($('obPick')).backgroundColor !== getComputedStyle($('obSample')).backgroundColor,
+      fits: b('obCamera').bottom <= innerHeight, steps: !!document.querySelector('#obDots, #obSkip, #obBack'), text: $('onboarding').textContent }; });
+  eq([r.h, r.photo, r.fit, r.steps, r.fits], ['Your light. Your look.', true, 'contain', false, true], 'one screen, the new portrait, everything on screen');
+  near(r.boxRatio, r.imgRatio, 0.01, 'the portrait keeps its shape: nothing cropped');
+  assert(r.order[0] < r.order[1] && r.order[1] < r.order[2], 'Choose a photo, then Try the sample, then the camera: ' + r.order);
+  assert(r.heights[0] >= 48 && r.heights[2] >= 44 && r.heights[2] < r.heights[0] && r.primary, 'primary, secondary and a smaller camera action: ' + r.heights);
+  assert(!/AI credits each day/.test(r.text), 'no credit claim on the welcome screen');
+  eq(await p.evaluate(() => window.__streams.length), 0, 'no camera request on the welcome screen');
+  await p.click('#obSample');
   await p.waitForFunction(() => screen === 'editorScreen' && ed.demo && $('before').naturalWidth > 0, null, { timeout: 15000 });
-  eq(await p.evaluate(() => store.get('glowOnboarded')), '1', 'finished');
-  // Coming back to the sample later doesn't repeat the introduction.
+  eq(await p.evaluate(() => [store.get('glowOnboarded'), $('before').naturalWidth, $('before').naturalHeight]), ['1', 1086, 1448], 'finished, and the sample is the new portrait');
+  // Returning people skip the welcome; Settings can show it again.
   await p.reload(); await p.waitForFunction(() => screen === 'editorHome' || screen === 'cameraScreen');
   await p.evaluate(() => go('editor')); assert(await p.isVisible('#sampleBtn'), 'Try a sample · Free on Editor home');
-  assert(/Try a sample · Free/.test(await p.textContent('#sampleBtn')), 'label');
+  await p.evaluate(() => { $('settings').showModal(); }); await p.click('#replayIntro'); await p.waitForSelector('#onboarding:not([hidden])');
+}, { onboarded: false, camera: false, viewport: { width: 390, height: 740 } });
+
+test('onboarding: Choose a photo opens the picker and the editor', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForSelector('#onboarding:not([hidden])');
+  const fc = p.waitForEvent('filechooser'); await p.click('#obPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForFunction(() => screen === 'editorScreen' && ed.hist.length > 0 && !ed.demo, null, { timeout: 15000 });
 }, { onboarded: false, camera: false });
-
-test('onboarding: a prepared AI preview is used on screen 2 when one exists', async ({ p }) => {
-  await p.goto('https://app.test/'); await p.click('#obActions .btn');
-  await p.waitForFunction(() => $('obAfter') && !$('obAfter').hidden, null, { timeout: 15000 });
-  eq(await p.textContent('#obAfterTag'), 'Prepared preview', 'labeled as a prepared preview');
-  assert(/Enhance/.test(await p.getAttribute('.ob-photo', 'aria-label')), 'names the tool for screen readers');
-}, { onboarded: false, files: demoFiles() });
-
-test('onboarding: with no prepared previews, screen 2 shows the free Glow filter, labeled', async ({ p }) => {
-  await p.goto('https://app.test/'); await p.click('#obActions .btn');
-  await p.waitForFunction(() => $('obAfter') && !$('obAfter').hidden, null, { timeout: 15000 });
-  eq(await p.textContent('#obAfterTag'), 'Glow filter · free', 'a real on-device result');
-}, { onboarded: false, files: { '/samples/demo/manifest.json': { json: { ...demoManifest, previews: [] } } } });
 
 // ---------- Editor layout ----------
 async function stageBox(p) { return p.evaluate(() => { const r = $('stage').getBoundingClientRect(); return [Math.round(r.top), Math.round(r.height), Math.round(r.width)]; }); }
@@ -614,7 +603,7 @@ test('demo: canceling Try your own photo keeps the sample; reduced motion turns 
 
 
 // ---------- Face reshape (the owner's sample portrait, opened as an ordinary photo) ----------
-const PORTRAIT = path.join(__dirname, '../public/samples/demo/original.png');
+const PORTRAIT = path.join(__dirname, '../public/samples/demo-v2/original.png');
 const pixelsOf = (p, src) => p.evaluate(async (s) => { const i = await loadImg(s), c = newCanvas(i.naturalWidth, i.naturalHeight), x = c.getContext('2d'); x.drawImage(i, 0, 0); return Array.from(x.getImageData(0, 0, c.width, c.height).data.filter((_, k) => k % 997 === 0)); }, src);
 test('retouch: reshape at 0 is untouched, previews come from the baseline, tools combine, all on-device', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
@@ -640,7 +629,7 @@ test('retouch: reshape at 0 is untouched, previews come from the baseline, tools
   await p.click('#undoBtn'); await p.click('#undoBtn'); await p.click('#redoBtn'); await p.click('#redoBtn');
   eq(await p.evaluate((l) => committed() === l, last), true, 'redo returns to the combined result');
   await p.click('#saveBtn'); await downloads(state, 1);
-  const sz = imageSize(state.downloads[0].file); eq([sz.w, sz.h], [1122, 1402], 'saved at the photo size');
+  const sz = imageSize(state.downloads[0].file); eq([sz.w, sz.h], [1086, 1448], 'saved at the photo size');
   eq([state.posts.length, state.used], [0, 0], 'no AI request and no credit used');
 });
 test('retouch: Compare puts the divider on the face; Settings shows which build this is', async ({ p }) => {
@@ -885,7 +874,7 @@ test('zoom: pinch, pan, double-tap, wheel and buttons inspect the photo without 
   eq([s7.hist, s7.idx, s7.ops, s7.undo, s7.redo, s7.pending === s0.pending], [s0.hist, s0.idx, s0.ops, s0.undo, s0.redo, true], 'no history steps, same ops, same preview pixels');
   await p.click('#zoomIn'); await settle(300);
   await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
-  eq((({ w, h }) => [w, h])(imageSize(state.downloads[0].file)), [1122, 1402], 'saved at the photo size while zoomed in');
+  eq((({ w, h }) => [w, h])(imageSize(state.downloads[0].file)), [1086, 1448], 'saved at the photo size while zoomed in');
   eq(await p.evaluate(() => ed.hist.length), s0.hist + 1, 'only Apply added a step');
 }, { viewport: { width: 390, height: 844 } });
 test('zoom: desktop wheel zooms around the cursor and the mouse pans; crop keeps its own gestures', async ({ p }) => {
@@ -956,6 +945,15 @@ test('layout: on phones the idle editor reserves no panel space, and a closed to
   await p.click('#cancelBtn'); await box('closed');
   for (const n of ['cancelled', 'closed']) eq(sizes[n], sizes.home, 'closing gives the room back: ' + n);
 }, { viewport: { width: 390, height: 844 } });
+test('layout: the default Retouch row is Smooth, Blemish, Eyes, Face, Nose; the other tools follow on scroll', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  const r = await p.evaluate(() => { const box = document.querySelector('#editorScreen .side > .tools').getBoundingClientRect();
+    const tiles = [...document.querySelectorAll('#tools .tool[data-tool]')].map((b) => ({ id: b.dataset.tool, name: b.querySelector('.name').textContent, r: b.getBoundingClientRect() }));
+    return { first: tiles.slice(0, 5).map((t) => t.name), visible: tiles.filter((t) => t.r.right <= box.right + 1).map((t) => t.name), all: tiles.map((t) => t.id) }; });
+  eq(r.first, ['Smooth', 'Blemish', 'Eyes', 'Face', 'Nose'], 'default row');
+  eq(r.visible.slice(0, 5), ['Smooth', 'Blemish', 'Eyes', 'Face', 'Nose'], 'all five on screen at 390 wide');
+  for (const id of ['fundereye', 'fauto', 'fbigeyes', 'fteeth', 'retouch', 'smile', 'faces', 'flips', 'hcolor']) assert(r.all.includes(id), id + ' still in the Retouch tab');
+}, { viewport: { width: 390, height: 740 } });
 test('layout: at 390x740 the sample portrait shows wide and whole, with a small badge and no extra rows', async ({ p }) => {
   await openDemo(p); await settle(600);
   const r = await p.evaluate(() => { const st = $('stage').getBoundingClientRect(), im = $('before').getBoundingClientRect(), hd = document.querySelector('#editorScreen .topbar').getBoundingClientRect();
@@ -1325,10 +1323,10 @@ test('ai: free plan v2 — premium tools use the one-time trial, cheap tools the
   await p.waitForFunction(() => !!account);
   await p.evaluate(() => showUsage({ plan: 'free', used: 0, quota: 3, remaining: 3, trialLeft: 2, adsLeft: 1, v: 2 }));
   await tool(p, 'edit', null, 'pro');
-  eq(await p.evaluate(() => [$('applyBtn').textContent, /2 of 3 free tries left/.test($('panelNote').textContent)]), ['Apply · 1 credit', true], 'premium: trial balance shown');
+  eq(await p.evaluate(() => [$('applyBtn').textContent, /2 of 3 free premium credits left/.test($('panelNote').textContent)]), ['Apply · 1 credit', true], 'premium: trial balance shown');
   await p.evaluate(() => showUsage({ plan: 'free', pool: 'trial', used: 3, quota: 3, remaining: 0 }));
   eq(await p.evaluate(() => [account.remaining, account.trialLeft]), [3, 0], 'a trial charge only moves the trial balance');
-  eq(await p.evaluate(() => [$('applyBtn').textContent, /used your 3 free tries/.test($('panelNote').textContent)]), ['Go Pro to keep using it', true], 'trial used up');
+  eq(await p.evaluate(() => [$('applyBtn').textContent, /used your 3 free premium credits/.test($('panelNote').textContent)]), ['Go Pro to keep using it', true], 'trial used up');
   await p.click('#applyBtn'); await settle(200);
   eq([await p.evaluate(() => $('paywall').open), state.posts.length], [true, 0], 'opens Glow Pro, sends nothing');
   await p.evaluate(() => $('paywall').close());
