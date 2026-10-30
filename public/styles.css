@@ -817,3 +817,11 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
 @media (max-width: 359px) {
   #settings .plan-card .btn { padding-left: 12px; padding-right: 12px; font-size: .875rem; white-space: nowrap; }
 }
+
+/* Contact support */
+.support-form { display: grid; gap: var(--s3); }
+.support-form label { display: grid; gap: var(--s1); font-size: 0.875rem; font-weight: 600; }
+.support-form select, .support-form textarea, .support-form input { width: 100%; box-sizing: border-box; min-height: 44px; padding: 10px 12px;
+  border: 0; border-radius: 14px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--control); color: var(--text); font: 400 1rem/1.4 var(--font); }
+.support-form textarea { resize: vertical; min-height: 120px; }
+.support-form .stack { margin-top: 0; }

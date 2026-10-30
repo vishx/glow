@@ -104,6 +104,9 @@ Deno.serve(async (req) => {
         .lt("created_at", new Date(Date.now() - 2 * 864e5).toISOString()).then(() => {});
     }
     if (!quota.ok) {
+      if (quota.pool === "blocked") {
+        return json({ error: "AI tools are turned off for this account. If you think this is a mistake, use Contact support in Settings.", limit: true, blocked: true, usage }, 403);
+      }
       const msg = quota.remaining > 0 ? `This tool uses 2 AI credits and you have ${quota.remaining} left.` : quota.plan === "pro"
         ? "You've used your AI credits for now. They refresh over the next few days."
         : quota.pool === "trial"
