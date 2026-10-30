@@ -42,10 +42,10 @@ Deno.serve(async (req) => {
     if (event.type === "TRANSFER") {
       // "Restore purchases" on a new install moves the subscription to the new account.
       const from = uuids(event.transferred_from), to = uuids(event.transferred_to);
-      const { data } = await admin.from("profiles").select("plan, plan_expires_at").in("id", from.length ? from : ["00000000-0000-0000-0000-000000000000"])
+      const { data } = await admin.from("profiles").select("plan, plan_expires_at, plan_period").in("id", from.length ? from : ["00000000-0000-0000-0000-000000000000"])
         .eq("plan", "pro").order("plan_expires_at", { ascending: false }).limit(1);
-      const expires = data?.[0]?.plan_expires_at ?? null;
-      if (expires && new Date(expires) > new Date()) { await setPlan(to, "pro", expires); await setPlan(from, "free", null); }
+      const expires = data?.[0]?.plan_expires_at ?? null, period = data?.[0]?.plan_period ?? null;
+      if (expires && new Date(expires) > new Date()) { await setPlan(to, "pro", expires, period); await setPlan(from, "free", null); }
       console.log("revenuecat TRANSFER", from.join(","), "->", to.join(","), expires);
       return new Response("ok", { status: 200 });
     }

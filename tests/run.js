@@ -343,11 +343,16 @@ test('demo: Try a sample opens the attached original with demo labels', async ({
   const o = await p.evaluate(async () => { const b = new Uint8Array(await ed.original.blob.arrayBuffer()); const h = await crypto.subtle.digest('SHA-256', b);
     return { w: ed.original.w, h: ed.original.h, sha: [...new Uint8Array(h)].map((x) => x.toString(16).padStart(2, '0')).join('') }; });
   eq(o, { w: 1122, h: 1402, sha: demoManifest.original.sha256 }, 'unchanged original');
-  assert(/AI-generated sample/.test(await p.textContent('#demoNote')) && await p.isVisible('#demoNote'), 'demo label shown');
-  const nb = await p.evaluate(() => [$('demoNote').getBoundingClientRect().bottom, $('stage').getBoundingClientRect().top]); assert(nb[0] <= nb[1], 'demo label is outside the photo');
-  const row = await p.evaluate(() => { const b = $('demoOwnBtn').getBoundingClientRect(), st = $('stage').getBoundingClientRect(); return { inHeader: b.bottom <= st.top, bh: b.height, name: $('demoOwnBtn').getAttribute('aria-label') }; });
-  eq([row.inHeader, row.bh >= 44, row.name], [true, true, 'Use your photo'], 'compact Use your photo action in the header');
-  assert(/Free demo/.test(await p.textContent('#toast')), 'the free demo is explained once');
+  // The disclosure is a small "AI sample" badge on the photo, with the full explanation for screen readers and on tap.
+  const badge = await p.evaluate(() => { const b = $('demoNote').getBoundingClientRect(), st = $('stage').getBoundingClientRect();
+    return { text: $('demoNote').textContent, onPhoto: b.top >= st.top && b.bottom <= st.bottom && b.left >= st.left, h: b.height, w: b.width }; });
+  assert(/^AI sample/.test(badge.text) && /AI-generated sample, not a real person/.test(badge.text), 'badge text and accessible explanation: ' + badge.text);
+  assert(badge.onPhoto && badge.h <= 36 && badge.w <= 140, 'a small badge on the photo, not a row: ' + JSON.stringify(badge));
+  await p.click('#demoNote'); assert(/AI-generated, not a real person/.test(await p.textContent('#toast')), 'tapping the badge explains it');
+  // Use your photo is the small upload action in the utility row, not a header button.
+  const row = await p.evaluate(() => { const b = $('demoOwnBtn').getBoundingClientRect(), st = $('stage').getBoundingClientRect();
+    return { inRow: !!$('demoOwnBtn').closest('.viewbar'), belowPhoto: b.top >= st.bottom, bh: b.height, name: $('demoOwnBtn').getAttribute('aria-label'), header: !!$('demoOwnBtn').closest('.topbar') }; });
+  eq([row.inRow, row.belowPhoto, row.header, row.bh >= 44, row.name], [true, true, false, true, 'Use your photo'], 'small Use your photo action in the utility row');
   assert(await p.isVisible('#demoOwnBtn'), 'Try your own photo'); assert(await p.isHidden('#balanceBtn'), 'no credit balance in the demo');
   await p.click('.tab[data-cat="edit"]');   // Enhance and Relight are filed under Edit
   eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].map((c) => c.textContent)), ['Preview', 'Preview'], 'AI tools offered = prepared ones');
@@ -553,8 +558,8 @@ test('layout: ivory (light) and neutral (dark) surround, photo contained, edited
   eq(d.target, [44, 44], 'handle touch target'); assert(d.knob >= 24 && d.knob <= 28, 'visible knob ' + d.knob); eq(d.line, 2, '2px divider');
   assert(Math.abs(d.at - 0.75) < 0.03, 'handle about 75% down: ' + d.at);
   const seg = await p.evaluate(() => { const v = document.querySelector('.viewbar').getBoundingClientRect(), s = $('stage').getBoundingClientRect(), b = $('compareBtn').getBoundingClientRect();
-    return { below: v.top >= s.bottom, h: Math.round(b.height), font: parseFloat(getComputedStyle($('compareBtn')).fontSize), one: Math.round(v.height) <= 48 }; });
-  eq([seg.below, seg.h, seg.one], [true, 44, true], 'one slim utility row below the photo, 44px targets'); assert(seg.font >= 13 && seg.font <= 15, 'label size ' + seg.font);
+    return { below: v.top >= s.bottom, h: Math.round(b.height), font: parseFloat(getComputedStyle($('compareBtn')).fontSize), one: Math.round(v.height) <= 52 }; });
+  eq([seg.below, seg.h >= 44, seg.one], [true, true, true], 'one compact utility row below the photo, 44px targets'); assert(seg.font >= 13 && seg.font <= 15, 'label size ' + seg.font);
   await p.focus('#handle'); await p.keyboard.press('ArrowLeft'); eq(await p.getAttribute('#handle', 'aria-valuenow'), '48', 'keyboard moves the divider');
   // Saved file is the photo alone: its own size, no canvas margins.
   await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
@@ -933,22 +938,33 @@ test('filters: a Strength slider blends the filter; 100 is the full filter and t
     return { op: ed.hist[ed.idx].op.amt, ratio: de / df }; });
   eq(r.op, 0.4, 'strength recorded in the edit'); near(r.ratio, 0.4, 0.08, 'saved file is 40% of the filter');
 }, { viewport: { width: 390, height: 844 } });
-test('layout: on phones the photo keeps one size while tools open, change and close', async ({ p }) => {
+test('layout: on phones the idle editor reserves no panel space, and a closed tool gives its room back to the photo', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
-  const sizes = {}, box = async (n) => { await settle(400); sizes[n] = JSON.stringify(await stageBox(p)); };
+  const sizes = {}, box = async (n) => { await settle(400); sizes[n] = await stageBox(p); };
+  const gaps = () => p.evaluate(() => { const g = (s) => document.querySelector(s).getBoundingClientRect(), st = g('#stage'), vb = g('#editorScreen .viewbar'), tl = g('#editorScreen .side > .tools'), tb = g('#editorScreen .tabs');
+    return { photoToRow: Math.round(vb.top - st.bottom), rowToTools: Math.round(tl.top - vb.bottom), toolsToTabs: Math.round(tb.top - tl.bottom), tabsToEnd: Math.round(innerHeight - tb.bottom),
+      toolsH: Math.round(tl.height), labels: [...document.querySelectorAll('#editorScreen .side > .tools .group-label')].filter((e) => e.offsetParent).length }; });
+  const g = await gaps();
+  eq([g.photoToRow, g.rowToTools, g.toolsToTabs, g.tabsToEnd, g.labels], [0, 0, 0, 0, 0], 'utility row, tool row and tabs stacked with no empty space or group labels: ' + JSON.stringify(g));
+  assert(g.toolsH <= 90, 'one compact tool row: ' + g.toolsH);
   await box('home');
+  assert(sizes.home[1] >= 520, 'the photo takes the remaining height on a 390x844 phone: ' + sizes.home);
   await tool(p, 'retouch', 'face', 'fslim'); await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 }); await box('face shape');
-  await p.fill('.panel input[type=range]', '60'); await idle(p); await box('slider moved');
-  await p.click('.tool[data-tool="fnose"]'); await box('nose');
+  assert(sizes['face shape'][1] < sizes.home[1], 'an open tool takes room for its controls');
   await p.click('#cancelBtn'); await box('cancelled');
-  await tool(p, 'looks', 'filters', 'filter:glow'); await box('filter');
-  await p.click('#cancelBtn'); await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr); await box('crop');
-  await p.click('#cancelBtn'); await tool(p, 'foryou', null, 'pro'); await box('AI tool');
-  // Crop's controls are taller than the resting dock; the dock grows for them rather than cutting them off.
-  for (const [n, v] of Object.entries(sizes)) if (n !== 'crop') eq(v, sizes.home, 'photo size: ' + n);
-  assert(JSON.parse(sizes.home)[1] - JSON.parse(sizes.crop)[1] <= 32, 'crop takes at most a little more room: ' + sizes.crop);
-  assert(JSON.parse(sizes.home)[1] >= 400, 'photo height on a 390x844 phone: ' + sizes.home);
+  await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr); await box('crop');
+  await p.click('#cancelBtn'); await box('closed');
+  for (const n of ['cancelled', 'closed']) eq(sizes[n], sizes.home, 'closing gives the room back: ' + n);
 }, { viewport: { width: 390, height: 844 } });
+test('layout: at 390x740 the sample portrait shows wide and whole, with a small badge and no extra rows', async ({ p }) => {
+  await openDemo(p); await settle(600);
+  const r = await p.evaluate(() => { const st = $('stage').getBoundingClientRect(), im = $('before').getBoundingClientRect(), hd = document.querySelector('#editorScreen .topbar').getBoundingClientRect();
+    return { imgW: im.width, imgH: im.height, ratio: im.width / im.height, nat: $('before').naturalWidth / $('before').naturalHeight, inside: im.top >= st.top - 0.5 && im.bottom <= st.bottom + 0.5 && im.left >= st.left - 0.5 && im.right <= st.right + 0.5,
+      fit: getComputedStyle($('before')).objectFit, header: hd.height, headerBtns: [...document.querySelectorAll('#editorScreen .topbar button')].filter((b) => b.offsetParent).map((b) => b.id), docH: document.documentElement.scrollHeight }; });
+  assert(r.imgW >= 360, 'portrait nearly full width: ' + r.imgW); near(r.ratio, r.nat, 0.01, 'aspect ratio kept');
+  assert(r.inside, 'whole photo visible'); eq(r.docH, 740, 'nothing below the screen');
+  eq(r.headerBtns, ['backBtn', 'saveBtn'], 'header: Back, Glow, Save only');
+}, { viewport: { width: 390, height: 740 } });
 test('layout: a phone held sideways puts the photo and the tools side by side', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending);
@@ -961,9 +977,12 @@ test('layout: photo-first editor, collapsible panel, no sideways scroll on small
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'retouch', 'face', 'fslim'); await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 });
   const m = () => p.evaluate(() => ({ stage: $('stage').getBoundingClientRect().height, head: document.querySelector('#editorScreen .topbar').getBoundingClientRect().height,
-    apply: $('applyBtn').getBoundingClientRect().bottom <= innerHeight, small: [...document.querySelectorAll('#editorScreen button')].filter((b) => b.offsetParent && !b.classList.contains('tool') && !b.classList.contains('tab') && !b.classList.contains('subchip')).map((b) => [b.id || b.textContent.trim(), Math.round(b.getBoundingClientRect().height)]).filter(([, h]) => h < 44),
+    apply: $('applyBtn').getBoundingClientRect().bottom <= innerHeight, small: [...document.querySelectorAll('#editorScreen button')].filter((b) => b.offsetParent && !b.classList.contains('tool') && !b.classList.contains('tab') && !b.classList.contains('subchip') && b.id !== 'saveBtn').map((b) => [b.id || b.textContent.trim(), Math.round(b.getBoundingClientRect().height)]).filter(([, h]) => h < 44),
     sideways: document.documentElement.scrollWidth > innerWidth }));
   const a = await m();
+  // The small Save pill keeps a 44px touch target through an invisible ::after.
+  const save = await p.evaluate(() => { const b = $('saveBtn'), r = b.getBoundingClientRect(), af = getComputedStyle(b, '::after'); return r.height - parseFloat(af.top) - parseFloat(af.bottom); });
+  assert(save >= 44, 'Save touch target ' + save);
   assert(a.head <= 48, 'compact header ' + a.head); assert(a.apply, 'Apply reachable'); eq(a.small, [], 'touch targets at least 44px'); eq(a.sideways, false, 'no sideways scroll');
   await p.click('#collapseBtn'); await settle(150);
   const b = await m();
@@ -1128,9 +1147,9 @@ test('edit: Revert asks, returns to the original as one undoable step, and saves
   eq(await p.evaluate(() => $('revertBtn').disabled), true, 'nothing to revert');
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending); await p.click('#applyBtn'); await idle(p);
   eq(await p.evaluate(() => ed.idx), 1, 'one edit');
-  await p.click('#revertBtn'); await p.waitForSelector('#ask[open]'); await p.click('#askActions button:last-child'); await settle(150);
+  await p.click('#moreBtn'); await p.click('#revertBtn'); await p.waitForSelector('#ask[open]'); await p.click('#askActions button:last-child'); await settle(150);
   eq(await p.evaluate(() => ed.idx), 1, 'Cancel leaves it');
-  await p.click('#revertBtn'); await p.waitForSelector('#ask[open]'); await p.click('#askActions button:first-child'); await settle(150);
+  await p.click('#moreBtn'); await p.click('#revertBtn'); await p.waitForSelector('#ask[open]'); await p.click('#askActions button:first-child'); await settle(150);
   eq(await p.evaluate(() => [ed.idx, committed() === ed.hist[0].data, ed.hist[2].op.revert, $('revertBtn').disabled]), [2, true, true, true], 'a new step equal to the original');
   const saved = await p.evaluate(async () => { const a = await renderExport(), o = await renderExport(0); return [a.w, a.h, o.w, o.h, a.data, o.data]; });
   eq(saved.slice(0, 4), [saved[2], saved[3], saved[2], saved[3]], 'saves at the original size');
@@ -1282,7 +1301,7 @@ test('ai: Fill is listed but not sent until the server has it; then it sends the
   eq(state.posts.length, 0, 'nothing sent');
   await p.evaluate(() => { CONFIG.aiFill = true; renderEditor(); });
   await p.fill('#fillPrompt', 'a small vase of white flowers');
-  eq(await p.evaluate(() => [$('applyBtn').disabled, $('applyBtn').textContent]), [false, 'Generate · 1 credit'], 'cost shown before sending');
+  eq(await p.evaluate(() => [$('applyBtn').disabled, $('applyBtn').textContent]), [false, 'Generate · 2 credits'], 'cost shown before sending (pricing v2: 2 credits)');
   const req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
   await p.click('#applyBtn'); const body = JSON.parse((await req).postData());
   eq([body.mode, body.prompt, body.mask.startsWith('data:image/png'), !!body.request_id], ['fill', 'a small vase of white flowers', true, true], 'mode, prompt and mask');
@@ -1293,7 +1312,7 @@ test('ai: Fill is listed but not sent until the server has it; then it sends the
 test('ai: Expand sends once on Generate and waits for Apply', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'ai', null, 'expand');
-  eq(await p.textContent('#applyBtn'), 'Generate · 1 credit', 'cost shown first');
+  eq(await p.textContent('#applyBtn'), 'Generate · 2 credits', 'cost shown first (pricing v2: 2 credits)');
   eq(state.posts.length, 0, 'opening it sends nothing');
   await p.click('#applyBtn'); await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
   eq([state.posts, state.used, await p.evaluate(() => ed.idx)], [['expand'], 1, 0], 'one request, one credit, not applied yet');

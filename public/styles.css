@@ -203,7 +203,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
    tabs, the chip/search slot and the tool row) has a fixed height, so switching categories
    never resizes the photo. */
 /* The photo's surround: warm ivory in light mode, a quiet neutral in dark mode. On screen only. */
-#editorScreen { max-width: 560px; --canvas: var(--viewer); --tile-h: calc(8px + 40px + 4px + 1rem); --tools-h: calc(var(--s2) * 2 + 1rem + 2px + var(--tile-h)); }
+#editorScreen { max-width: 560px; --canvas: var(--viewer); --tile-h: calc(8px + 46px + 4px + 1rem); --tools-h: calc(var(--s1) * 2 + var(--tile-h)); }
 .canvas-col { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .stage { position: relative; flex: 1 1 auto; min-height: 160px; margin: 0 var(--gutter); border-radius: 16px; overflow: hidden;
   background: var(--canvas); touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -245,14 +245,18 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .tag.left { left: calc(var(--vx, 0px) + var(--s2)); } .tag.right { right: max(calc(100% - var(--vx, 0px) - var(--vw, 100%) + var(--s2)), 56px); }
 /* Expand / close full view: always there, small, top-right of the viewer. */
 .viewer-toggle { position: absolute; top: var(--s1); right: var(--s1); border-radius: 50%; color: #fff; }
-.viewer-toggle::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: rgb(18 16 20 / 0.55); }
+.viewer-toggle { color: #4a2a3d; }
+.viewer-toggle::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: rgb(255 250 247 / 0.85); }
 .viewer-toggle svg { position: relative; width: 18px; height: 18px; }
 .stage.cropping .viewer-toggle, .stage:not(.has-photo) .viewer-toggle { display: none; }
-/* Demo: one small line above the photo, never on it. */
-.demo-note { flex: none; margin: 0 var(--gutter) var(--s1); color: var(--muted); font-size: 0.75rem; line-height: 1rem; text-align: center; }
+/* The sample's disclosure: a small "AI sample" badge on the photo's top-left corner. */
+.sample-badge { position: absolute; top: var(--s2); left: var(--s2); z-index: 3; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 var(--s3);
+  border: 0; border-radius: 16px; background: rgb(255 250 247 / 0.92); color: var(--accent, #6f3a5a); font-size: 0.8125rem; font-weight: 600; }
+.sample-badge::after { content: ""; position: absolute; inset: -6px; }   /* 44px touch target */
+.sample-badge svg { width: 14px; height: 14px; }
+.sample-badge[hidden], .stage.cropping .sample-badge { display: none; }
 /* Full view: everything but the photo and Original / Compare / Edited steps aside. */
-#editorScreen.viewer-expanded .topbar, #editorScreen.viewer-expanded .side, #editorScreen.viewer-expanded .history,
-#editorScreen.viewer-expanded .demo-note { display: none; }
+#editorScreen.viewer-expanded .topbar, #editorScreen.viewer-expanded .side, #editorScreen.viewer-expanded .viewbar > :not(#compareBtn) { display: none; }
 #editorScreen.viewer-expanded .stage { margin: 0; border-radius: 0; }
 #editorScreen.viewer-expanded .viewbar { justify-content: center; padding-bottom: calc(var(--s2) + env(safe-area-inset-bottom)); }
 #editorScreen.viewer-expanded .canvas-col { grid-column: 1 / -1; grid-row: 1 / -1; padding: 0; }
@@ -321,22 +325,28 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .crop-tools { display: flex; gap: var(--s2); }
 .crop-tools .btn { flex: 1; }
 
-/* One slim utility row under the photo: Undo | Redo, Hold for original, split Compare, Share. */
-.viewbar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s1); padding: var(--s1) calc(var(--gutter) - 6px) 0; }
-.history .sep, .viewbar > .sep { flex: none; width: 1px; height: 20px; background: var(--line); }
-.viewbar > .sep { margin: 0 auto; }
-.hold-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 0; padding: 0 var(--s3); border: 0; border-radius: 22px; background: none;
-  color: var(--text); font-size: 0.875rem; font-weight: 600; white-space: nowrap; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
-  touch-action: manipulation; transition: background var(--t-select), color var(--t-select); }
-.hold-btn svg { width: 18px; height: 18px; }
-.hold-btn span:last-child { overflow: hidden; text-overflow: ellipsis; }
-.hold-btn.on { background: var(--blush); color: var(--accent); }
-.hold-btn:disabled { opacity: 0.45; cursor: default; }
-.util-end { display: flex; flex: none; }
-.util-end .icon-btn { border-radius: 50%; }
-.util-end .icon-btn svg { width: 20px; height: 20px; }
-.util-end .icon-btn[aria-pressed="true"] { background: var(--tint); }
-.util-end .icon-btn:disabled { opacity: 0.35; }
+/* One compact utility row under the photo: Undo | Redo | Compare | Share (or Use your photo) | More.
+   Each control is an icon over a short label, in an equal share of the row. */
+.viewbar { flex: none; display: flex; align-items: center; padding: 2px var(--s1) 0; }
+.viewbar > .sep { flex: none; width: 1px; height: 24px; background: var(--line); }
+.util { flex: 1 1 0; min-width: 44px; min-height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  padding: 2px 0; border: 0; border-radius: 12px; background: none; color: var(--accent); font-size: 0.8125rem; line-height: 1rem; font-weight: 600; white-space: nowrap;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; transition: background var(--t-select), opacity var(--t-select); }
+.util svg { width: 22px; height: 22px; stroke-width: 1.6; }
+.util:disabled { opacity: 0.4; cursor: default; }
+.util.on { background: var(--blush); }
+.viewbar .demo-own { flex: 1 1 0; display: flex; }
+.viewbar .demo-own[hidden], .util[hidden] { display: none; }
+.more { position: relative; flex: 1 1 0; display: flex; }
+.more-menu { position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 20; min-width: 220px; padding: var(--s1); border-radius: var(--r-card);
+  background: var(--surface); box-shadow: 0 8px 28px rgb(0 0 0 / 0.18), inset 0 0 0 1px var(--line); }
+.more-menu[hidden] { display: none; }
+.more-menu button { display: flex; align-items: center; gap: var(--s3); width: 100%; min-height: 44px; padding: 0 var(--s3); border: 0; border-radius: 10px;
+  background: none; color: var(--text); font-size: 0.9375rem; text-align: left; }
+.more-menu button svg { width: 20px; height: 20px; color: var(--accent); }
+.more-menu button:disabled { opacity: 0.45; }
+.more-menu button[hidden] { display: none; }
+.more-menu button:not(:disabled):hover, .more-menu button:focus-visible { background: var(--tint); }
 .credit-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 var(--s3); border: 0; border-radius: 22px; background: none;
   color: var(--text); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
 .top-actions { display: flex; align-items: center; gap: var(--s1); }
@@ -389,7 +399,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .tool .well { position: relative; width: 40px; height: 40px; margin: 0 auto 4px; display: grid; place-items: center; border-radius: var(--r-well);
   background: var(--surface); color: var(--text); background-size: cover; background-position: center 30%; font-style: normal; box-shadow: inset 0 0 0 1px var(--line); }
 .tool .well svg { width: 24px; height: 24px; stroke-width: 1.5; }
-.tool:not(.thumb) .well { background: none; box-shadow: none; }   /* plain outline icons; photo thumbnails keep their tile */
+.tool:not(.thumb) .well { width: 46px; height: 46px; border-radius: 50%; background: none; box-shadow: inset 0 0 0 1px var(--line); color: var(--accent); }   /* outlined circles, as in the mockup */
 .tool .name { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* Selected: a 2px ring, bold label and a check, not color alone. */
 .tool[aria-pressed="true"] { background: var(--tint); box-shadow: inset 0 0 0 2px var(--accent); color: var(--text); font-weight: 700; }
@@ -471,12 +481,12 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 /* Phones: the controls under the photo keep one height (the dock), so the photo keeps its size
    while tools open and change. Collapsing the panel, or expanding All, is the only way it grows. */
 @media (max-width: 959px) {
-  /* The dock's resting height is in rem, so it grows with larger text; it is a minimum, so
-     taller controls push it up (to 62% of the screen, then the panel scrolls) instead of being cut off. */
+  /* The controls take only the height they need: no reserved space. An open tool's panel adds its
+     own height (up to 62% of the screen, then it scrolls); closing it gives the room back to the photo. */
   #editorScreen { --dock-h: 17.125rem; }
-  #editorScreen .stage { margin: 0 var(--s2); border-radius: 16px; }
-  #editorScreen .side { display: flex; flex-direction: column; flex: none; min-height: calc(var(--dock-h) + env(safe-area-inset-bottom)); max-height: 62dvh; overflow: hidden; }
-  #editorScreen .side > .tools { flex: 0 1 auto; height: auto; min-height: 0; margin-top: auto; }   /* the tool row sits on the tabs; spare room stays above it */
+  #editorScreen .stage { margin: 0 10px; border-radius: 16px; }
+  #editorScreen .side { display: flex; flex-direction: column; flex: none; max-height: 62dvh; overflow: hidden; padding-bottom: env(safe-area-inset-bottom); }
+  #editorScreen .side > .tools { flex: none; height: auto; min-height: 0; padding-top: var(--s1); padding-bottom: var(--s1); border-top: 1px solid var(--line); }
   #editorScreen.editing-tool .side > .tools { flex: none; height: calc(var(--s2) * 2 + var(--tile-h)); }
   #editorScreen.no-tools .side > .tools { display: none; }
   #editorScreen .side > .panel { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
@@ -590,4 +600,7 @@ dialog .stack { display: grid; gap: var(--s3); margin-top: var(--s4); }
 .wordmark .spark { display: inline-block; width: 0.42em; height: 0.42em; margin-left: 2px; vertical-align: 0.55em;
   background: #e9a9bf; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }
 #saveBtn { background: var(--accent); }
+/* A small Save pill, as in the mockup; the invisible ::after keeps a 44px touch target. */
+#editorScreen #saveBtn { position: relative; min-height: 34px; padding: 0 var(--s4); border-radius: 17px; font-size: 0.9375rem; }
+#editorScreen #saveBtn::after { content: ""; position: absolute; inset: -5px -2px; }
 .search-tile .well svg { color: var(--muted); }

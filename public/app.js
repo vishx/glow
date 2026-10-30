@@ -18,8 +18,8 @@ const CONFIG = {
   // in supabase/functions/enhance in this repo, undeployed). Turn on once it is deployed.
   aiFill: false,
   // Pricing v2 (migration 007): Fill and Expand cost 2 credits. Turn on only once 007 is applied,
-  // so the cost shown always matches what the server charges.
-  pricingV2: false,
+  // so the cost shown always matches what the server charges. Applied on 2026-10-30.
+  pricingV2: true,
 };
 const PUBLIC_HOST = CONFIG.publicUrl ? new URL(CONFIG.publicUrl).host : "";
 
@@ -149,8 +149,8 @@ const setIcon = (el, name) => { el.innerHTML = icon(name); };
 document.querySelectorAll("[data-icon]").forEach((el) => setIcon(el, el.dataset.icon));
 document.querySelectorAll("[data-icon-li]").forEach((li) => li.insertAdjacentHTML("afterbegin", icon(li.dataset.iconLi)));
 document.querySelectorAll("dialog [data-close]").forEach((b) => { setIcon(b, "close"); b.addEventListener("click", () => b.closest("dialog").close()); });
-[["camSettingsBtn", "settings"], ["homeSettingsBtn", "settings"], ["backBtn", "back"], ["undoBtn", "undo"], ["redoBtn", "redo"], ["favBtn", "star"],
-  ["camGallery", "gallery"], ["camFlip", "flip"], ["flashBtn", "flashoff"], ["obBack", "back"], ["searchClose", "close"], ["shareBtn", "share"], ["revertBtn", "revert"],
+[["camSettingsBtn", "settings"], ["homeSettingsBtn", "settings"], ["backBtn", "back"], ["favBtn", "star"],
+  ["camGallery", "gallery"], ["camFlip", "flip"], ["flashBtn", "flashoff"], ["obBack", "back"], ["searchClose", "close"],
   ["zoomIn", "zoomin"], ["zoomOut", "zoomout"], ["zoomFit", "fit"], ["collapseBtn", "chevdown"], ["expandView", "expand"]].forEach(([id, n]) => setIcon($(id), n));
 setIcon(document.querySelector("#handle i"), "compare");
 $("retakeBtn").innerHTML = icon("retake") + "<span>Retake</span>";
@@ -371,11 +371,7 @@ async function openSample() {
   try { await openFile(new File([blob], "glow-ai-sample.png", { type: blob.type || "image/png" }), "AI-generated sample", { demo: true }); }
   catch (err) { exitDemo(); say(err.message, true); return; }
   $("alertLive").textContent = "AI-generated sample opened. Demo, no credits used.";
-  // The free demo is explained once; after that the slim Demo row is enough.
-  if (!localStorage.getItem("glow.demoExplained")) {
-    try { localStorage.setItem("glow.demoExplained", "1"); } catch {}
-    say("Free demo: AI tools show prepared previews. No credits used.");
-  }
+  // The "AI sample" badge on the photo is the disclosure; tapping it explains the demo.
   // Only offer previews whose files are really there, then warm up the first two.
   const ok = await Promise.all(demo.ready.map((id) => fetch(DEMO_DIR + demo.entry[id].result, { method: "HEAD" }).then((r) => r.ok).catch(() => false)));
   if (!demo) return;
@@ -444,6 +440,17 @@ function exitDemo() {
   demo = null; ed.demo = false; sel = null; lastCommitTool = null;
 }
 $("demoOwnBtn").addEventListener("click", pickAndOpen);
+$("demoNote").addEventListener("click", () => say("AI sample: this portrait is AI-generated, not a real person. AI tools show prepared previews, and no credits are used."));
+// More (⋯): Revert and Edit another photo, in a small menu above the button.
+function setMore(open) {
+  $("moreMenu").hidden = !open; $("moreBtn").setAttribute("aria-expanded", String(open));
+  if (open) { $("otherPhotoBtn").hidden = !!ed.demo; const f = [...$("moreMenu").querySelectorAll("button")].find((b) => !b.disabled && !b.hidden); if (f) f.focus(); }
+}
+$("moreBtn").addEventListener("click", (e) => { e.stopPropagation(); setMore($("moreMenu").hidden); });
+$("moreMenu").addEventListener("click", () => setMore(false));
+$("moreMenu").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); setMore(false); $("moreBtn").focus(); } });
+document.addEventListener("click", (e) => { if (!$("moreMenu").hidden && !e.target.closest(".more")) setMore(false); });
+$("otherPhotoBtn").addEventListener("click", () => $("backBtn").click());
 
 // ---------- Draft: keeps the session (and any AI job) through a refresh or the app closing ----------
 let draftWarn = false;
@@ -549,7 +556,7 @@ function renderEditor() {
   const view = st.dataset.view;
   $("tagLeft").textContent = hasAfter && (view === "split" || view === "original") ? "Original" : "";
   $("tagRight").textContent = hasAfter && view === "split" ? editedName : hasAfter && view === "edited" && editedName !== "Edited" ? editedName : "";
-  $("demoBar").hidden = !ed.demo; $("demoNote").hidden = !ed.demo;
+  $("demoBar").hidden = !ed.demo; $("demoNote").hidden = !ed.demo; $("shareBtn").hidden = !!ed.demo;
   setSplit(ed.split);
   if ($("frame").classList.contains("narrow") && view === "split") $("tagRight").textContent = editedName.replace(" preview", "");
   $("brush").hidden = !brushing;
@@ -977,13 +984,13 @@ function toolButton(t) {
 function renderTools() {
   const groups = groupsFor(cat).map((g) => [g[0], g[1], g[2].filter((id) => TOOL[id] && toolShown(id))]).filter((g) => g[2].length), box = $("tools");
   if (!groups.length && searching) { box.innerHTML = `<p class="empty-note">No tools match that search.</p>`; return; }
-  renderToolGroups(box, groups, true);
+  renderToolGroups(box, groups, searching);   // group names only in Search; a tab is one plain row
   if (!searching) {
     // Search sits at the end of every row.
     const b = document.createElement("button"); b.className = "tool search-tile"; b.id = "searchBtn";
     b.setAttribute("aria-label", "Search all tools"); b.setAttribute("aria-expanded", "false");
     b.innerHTML = `<i class="well">${icon("search")}</i><span class="name">Search</span>`;
-    const g = document.createElement("div"); g.className = "group"; g.append(Object.assign(document.createElement("span"), { className: "group-label", ariaHidden: "true", innerHTML: "&nbsp;" }));
+    const g = document.createElement("div"); g.className = "group";
     const items = document.createElement("div"); items.className = "group-items"; items.append(b); g.append(items); box.append(g);
   }
 }

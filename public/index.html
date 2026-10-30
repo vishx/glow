@@ -134,14 +134,14 @@
       <button class="icon-btn" id="backBtn" aria-label="Back to Editor home"></button>
       <p class="wordmark" aria-hidden="true">Glow<span class="spark"></span></p>
       <div class="top-actions">
-        <span class="demo-own" id="demoBar" hidden><button class="link-btn" id="demoOwnBtn" aria-label="Use your photo"><span data-icon="upload"></span><span class="lbl">Use your photo</span></button></span>
         <button class="credit-chip" id="balanceBtn" hidden></button>
         <button class="pill" id="saveBtn" disabled>Save</button>
       </div>
     </header>
     <div class="canvas-col">
-      <p class="demo-note" id="demoNote" hidden>Demo · AI-generated sample, not a real person</p>
       <div class="stage" id="stage" data-view="edited">
+        <!-- The sample's disclosure: a small badge on the photo; tapping it says more. -->
+        <button class="sample-badge" id="demoNote" hidden aria-describedby="sampleInfo"><span data-icon="sparkle"></span><span>AI sample</span><span class="sr-only" id="sampleInfo">: an AI-generated sample, not a real person. No credits are used.</span></button>
         <div class="frame" id="frame">
           <div class="view" id="view">
             <img id="before" alt="">
@@ -176,20 +176,25 @@
         <p class="zoom-hint" id="zoomHint" hidden>Pinch or double-tap to zoom</p>
         <div class="busy" id="busy" hidden><div><div class="spinner"></div><div id="busyText">Working…</div><p id="busyNote"></p></div></div>
       </div>
-      <!-- One slim utility row: Undo | Redo, Compare (tap: split, original, back; hold: original), Revert, Share. -->
+      <!-- One compact utility row: Undo | Redo | Compare (tap: split, original, back; hold: original) | Share, or
+           Use your photo on the sample | More (Revert, another photo). -->
       <div class="viewbar" role="toolbar" aria-label="Photo">
-        <div class="history">
-          <button class="icon-btn" id="undoBtn" aria-label="Undo" disabled></button>
-          <i class="sep" aria-hidden="true"></i>
-          <button class="icon-btn" id="redoBtn" aria-label="Redo" disabled></button>
-        </div>
+        <button class="util" id="undoBtn" disabled><span data-icon="undo"></span><span>Undo</span></button>
         <i class="sep" aria-hidden="true"></i>
-        <button class="hold-btn" id="compareBtn" aria-describedby="compareTip" disabled><span data-icon="compare"></span><span id="compareLbl">Compare</span></button>
+        <button class="util" id="redoBtn" disabled><span data-icon="redo"></span><span>Redo</span></button>
+        <i class="sep" aria-hidden="true"></i>
+        <button class="util" id="compareBtn" aria-describedby="compareTip" disabled><span data-icon="compare"></span><span id="compareLbl">Compare</span></button>
         <span class="sr-only" id="compareTip">Tap to switch between split, original and your edit. Hold to see the original.</span>
         <i class="sep" aria-hidden="true"></i>
-        <div class="util-end">
-          <button class="icon-btn" id="revertBtn" aria-label="Revert to original" disabled></button>
-          <button class="icon-btn" id="shareBtn" aria-label="Share photo" disabled></button>
+        <button class="util" id="shareBtn" aria-label="Share photo" disabled><span data-icon="share"></span></button>
+        <span class="demo-own" id="demoBar" hidden><button class="util" id="demoOwnBtn" aria-label="Use your photo"><span data-icon="upload"></span></button></span>
+        <i class="sep" aria-hidden="true"></i>
+        <div class="more">
+          <button class="util" id="moreBtn" aria-label="More photo actions" aria-haspopup="menu" aria-expanded="false" aria-controls="moreMenu"><span data-icon="more"></span></button>
+          <div class="more-menu" id="moreMenu" role="menu" hidden>
+            <button role="menuitem" id="revertBtn" disabled><span data-icon="revert"></span>Revert to original</button>
+            <button role="menuitem" id="otherPhotoBtn"><span data-icon="gallery"></span>Edit another photo</button>
+          </div>
         </div>
       </div>
     </div>
@@ -220,9 +225,9 @@
         </div>
       </div>
       <div class="tabs" id="tabs" role="tablist" aria-label="Tool categories">
-        <button class="tab" role="tab" data-cat="retouch"><span data-icon="face"></span><span>Retouch</span></button>
+        <button class="tab" role="tab" data-cat="retouch"><span data-icon="wand"></span><span>Retouch</span></button>
         <button class="tab" role="tab" data-cat="looks"><span data-icon="looks"></span><span>Looks</span></button>
-        <button class="tab" role="tab" data-cat="edit"><span data-icon="crop"></span><span>Edit</span></button>
+        <button class="tab" role="tab" data-cat="edit"><span data-icon="sliders"></span><span>Edit</span></button>
         <button class="tab" role="tab" data-cat="ai"><span data-icon="sparkle"></span><span>AI</span></button>
       </div>
     </div>
