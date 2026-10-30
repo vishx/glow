@@ -820,7 +820,8 @@ function panelState(t) {
   let note = t.hint || "";
   if (!cost) { chip.textContent = "Free · on-device"; chip.className = "chip free"; }
   else { chip.textContent = `AI · ${credits(cost)}`; chip.className = "chip"; }
-  if (t.reshape && !(faceSet.amt[t.id] > 0)) note = (note ? note + " " : "") + "Starts at 0. Move the slider to reshape.";
+  // Reshape tools always have a one-line note, so the photo doesn't change size as the slider moves.
+  if (t.reshape) note = (note ? note + " " : "") + (faceSet.amt[t.id] > 0 ? "Use Compare to check the change." : "Starts at 0. Move the slider to reshape.");
   const blocked = t.reshape && t.kind === "face" && reshapeNote && reshapeNote.tool === t.id ? reshapeNote : null;
   if (blocked) note = blocked.msg === null ? "Finding the face…" : blocked.msg || note;
   if (t.kind === "crop") note = "";
