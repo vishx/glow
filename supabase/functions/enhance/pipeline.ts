@@ -65,7 +65,8 @@ export const MODES: Record<string, Mode> = {
   },
 };
 
-export const API = "https://api.replicate.com/v1";
+// REPLICATE_API_BASE is only set for tools/demo/generate.ts runs; the deployed function uses Replicate directly.
+export const API = Deno.env.get("REPLICATE_API_BASE") ?? "https://api.replicate.com/v1";
 export const TOKEN = Deno.env.get("REPLICATE_API_TOKEN") ?? "";
 
 export class HttpError extends Error {
