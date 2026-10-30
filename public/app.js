@@ -974,7 +974,9 @@ function toolButton(t) {
   b.setAttribute("aria-label", t.label + spoken);
   const well = document.createElement("i"); well.className = "well";
   if (t.kind === "filter") {
-    if (thumb) { well.style.backgroundImage = `url(${thumb})`; well.style.filter = t.filter.f; }
+    if (thumb) { well.style.backgroundImage = `url(${faceThumb || thumb})`; well.style.filter = t.filter.f; }
+  } else if (["adjust", "crop", "bg"].includes(t.kind)) {
+    well.innerHTML = icon(t.id);   // photo controls read better as icons than as faces
   } else {
     // Every other tool shows the face it will change, with the tool's icon on a small badge;
     // the sample's AI tools show their prepared result.
