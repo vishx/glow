@@ -126,7 +126,7 @@ returned."
 - **Offline.** The service worker (now `glow-v3`) caches the sample as it's fetched. Nothing
   claims offline availability.
 
-### Prepared previews available now: none
+### Prepared previews available now: none (superseded: all six now exist, see notes/camera-editor-polish.md)
 
 The container can't reach Replicate, and generating needs paid runs, so I didn't make any and
 didn't substitute other images. Until they exist, the demo offers the free on-device tools and

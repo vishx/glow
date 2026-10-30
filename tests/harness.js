@@ -29,7 +29,7 @@ exports.launch = async (opts = {}) => {
   const args = ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
   const browser = await chromium.launch({ args });
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true, acceptDownloads: true, serviceWorkers: 'block', viewport: opts.viewport || { width: 390, height: 844 },
-    hasTouch: opts.touch !== false, isMobile: opts.mobile !== false, deviceScaleFactor: opts.dpr || 2, colorScheme: opts.scheme || 'dark',
+    hasTouch: opts.touch !== false, isMobile: opts.mobile !== false, deviceScaleFactor: opts.dpr || 2, colorScheme: opts.scheme || 'dark', reducedMotion: opts.reducedMotion ? 'reduce' : 'no-preference', recordVideo: opts.recordVideo,
     permissions: opts.camera === false ? [] : ['camera'] });
   // Counts every camera stream the app opens, so tests can check none is left running.
   await ctx.addInitScript(() => {

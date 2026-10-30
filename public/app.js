@@ -109,7 +109,8 @@ document.querySelectorAll("[data-icon]").forEach((el) => setIcon(el, el.dataset.
 document.querySelectorAll("[data-icon-li]").forEach((li) => li.insertAdjacentHTML("afterbegin", icon(li.dataset.iconLi)));
 document.querySelectorAll("dialog [data-close]").forEach((b) => { setIcon(b, "close"); b.addEventListener("click", () => b.closest("dialog").close()); });
 [["camSettingsBtn", "settings"], ["homeSettingsBtn", "settings"], ["backBtn", "back"], ["undoBtn", "undo"], ["redoBtn", "redo"], ["favBtn", "star"],
-  ["camGallery", "gallery"], ["camFlip", "flip"], ["flashBtn", "flashoff"], ["handle", "compare"]].forEach(([id, n]) => setIcon($(id), n));
+  ["camGallery", "gallery"], ["camFlip", "flip"], ["flashBtn", "flashoff"], ["obBack", "back"], ["expandBtn", "chevup"]].forEach(([id, n]) => setIcon($(id), n));
+setIcon(document.querySelector("#handle i"), "compare");
 $("retakeBtn").innerHTML = icon("retake") + "<span>Retake</span>";
 const fmtTime = (d) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
@@ -139,22 +140,66 @@ function go(dest) { showScreen(dest === "camera" ? "cameraScreen" : "editorHome"
 $("nav").addEventListener("click", (e) => { const b = e.target.closest("button[data-dest]"); if (b) { Platform.haptic(); go(b.dataset.dest); } });
 
 // ---------- Onboarding ----------
+// Three short screens with the sample portrait. Screen 2 shows a real Glow result on it: a
+// prepared AI preview when one exists, otherwise the Glow filter made on this device.
+// Nothing asks for a permission here; the camera asks when it opens.
+const INTRO = "/samples/demo/intro.jpg";
 const SLIDES = [
-  { art: "camera", title: "Your light. Your look.", text: "Glow is a beauty camera and a photo editor. Take a new photo with a live look, or edit one you already love.", pair: true },
-  { art: "sparkle", title: "A little—or a little more.", text: "Keep it natural or go full glam. Skin texture stays real, and reshaping is off unless you turn it on." },
-  { art: "imageplus", title: "Start with your favorite photo.", text: "The camera, filters, face, makeup and background tools are free on your device. You also get 3 AI credits a day for tools like Enhance and styles." },
+  { title: "Your light. Your look.", text: "Take a photo with Glow, or make a favorite photo your own.", pair: true },
+  { title: "Start natural. Adjust to your taste.", text: "Explore light, retouching, and looks. You choose how much.", compare: true },
+  { title: "Make your first Glow.", text: "Free on-device tools, plus 3 AI credits each day.", last: true },
 ];
-let slide = 0;
+let slide = 0, introResult = null;
+// The result for screen 2, made once: { src, label }.
+function introAfter() {
+  return introResult || (introResult = (async () => {
+    try {
+      const m = await (await fetch(DEMO_DIR + "manifest.json", { cache: "no-cache" })).json();
+      for (const e of m.previews || []) {
+        if (e.status !== "ready" || !e.result || !TOOL[e.tool] || e.aligned === false) continue;
+        const r = await fetch(DEMO_DIR + e.result); if (!r.ok) continue;
+        return { src: URL.createObjectURL(await r.blob()), label: "Prepared preview", tool: TOOL[e.tool].title };
+      }
+    } catch {}
+    const glow = FILTERS.find((f) => f.id === "glow");
+    return { src: await applyFilter(INTRO, glow), label: "Glow filter · free", tool: "the free Glow filter" };
+  })().catch(() => { introResult = null; return null; }));
+}
 function renderSlide() {
   const s = SLIDES[slide];
-  $("obSlide").innerHTML = `<div class="ob-art">${icon(s.art)}</div><h1 class="t-display">${s.title}</h1><p>${s.text}</p>` +
-    (s.pair ? `<div class="ob-pair"><span>${icon("camera")}Camera</span><span>${icon("editor")}Editor</span></div>` : "");
+  const photo = s.compare
+    ? `<div class="ob-photo"><img src="${INTRO}" alt=""><img class="ob-after" id="obAfter" alt="" hidden><span class="ob-line" hidden></span>
+        <span class="tag left">Original</span><span class="tag right" id="obAfterTag"></span><span class="tag bottom">AI-generated sample</span></div>`
+    : `<div class="ob-photo"><img src="${INTRO}" alt=""><span class="tag bottom">AI-generated sample</span></div>`;
+  $("obSlide").innerHTML = photo + `<h1>${s.title}</h1><p>${s.text}</p>` +
+    (s.pair ? `<div class="ob-pair"><span>${icon("camera")}<b>Camera</b>Take a new photo</span><span>${icon("editor")}<b>Editor</b>Edit a photo you love</span></div>` : "");
+  $("obSlide").querySelector(".ob-photo").setAttribute("aria-label", s.compare ? "AI-generated sample portrait, original and edited side by side" : "AI-generated sample portrait");
+  $("obSlide").querySelector(".ob-photo").setAttribute("role", "img");
+  if (s.compare) introAfter().then((r) => {
+    const a = $("obAfter"); if (!r || !a) return;
+    a.src = r.src; a.hidden = false; a.nextElementSibling.hidden = false; $("obAfterTag").textContent = r.label;
+    a.closest(".ob-photo").setAttribute("aria-label", `AI-generated sample portrait: the original next to Glow's ${r.tool} result`);
+  });
   [...$("obDots").children].forEach((d, i) => d.classList.toggle("on", i === slide));
-  $("obNext").textContent = slide === SLIDES.length - 1 ? "Open the camera" : "Next";
+  $("obDots").setAttribute("aria-label", `Step ${slide + 1} of ${SLIDES.length}`);
+  $("obBack").style.visibility = slide ? "visible" : "hidden";
+  const act = (label, kind, fn) => { const b = document.createElement("button"); b.className = "btn" + (kind ? " " + kind : ""); b.textContent = label; b.addEventListener("click", fn); return b; };
+  $("obActions").replaceChildren(...(s.last
+    ? [act("Open camera", "", () => finishOnboarding("camera")), act("Choose a photo", "quiet", () => finishOnboarding("pick")), act("Try a sample", "ghost", () => finishOnboarding("sample"))]
+    : [act("Next", "", () => { slide++; renderSlide(); })]));
+  $("obSkip").hidden = !!s.last;
+  if (slide < SLIDES.length - 1) introAfter();
 }
-function finishOnboarding() { store.set("glowOnboarded", "1"); go("camera"); }
-$("obNext").addEventListener("click", () => { if (slide < SLIDES.length - 1) { slide++; renderSlide(); } else finishOnboarding(); });
-$("obSkip").addEventListener("click", finishOnboarding);
+// Explicit choices here (and the sample or a picked photo) override the startup preference.
+function finishOnboarding(dest) {
+  store.set("glowOnboarded", "1");
+  if (dest === "pick") { go("editor"); pickAndOpen(); }
+  else if (dest === "sample") { go("editor"); openSample(); }
+  else if (dest === "camera") go("camera");
+  else { const pref = store.get("glowStart") || "last"; go(pref === "last" ? store.get("glowLastDest") || "camera" : pref); }
+}
+$("obBack").addEventListener("click", () => { if (slide > 0) { slide--; renderSlide(); } });
+$("obSkip").addEventListener("click", () => finishOnboarding());
 function showOnboarding() { slide = 0; renderSlide(); showScreen("onboarding"); }
 
 // ---------- Editor state ----------
@@ -213,7 +258,7 @@ async function openPhoto(work, original, opts = {}) {
   ed.name = opts.name || "Photo"; ed.shotStamp = opts.shotStamp || 0; lastCommitTool = null; cutoutCache = {}; strokes = [];
   if (opts.processed) { ed.hist.push({ data: opts.processed.data, full: opts.processed.full, op: { tool: "camlook", fixed: true, label: opts.processed.label } }); ed.idx = 1; }
   if (opts.savedAlready) ed.savedIdx = ed.idx;
-  sel = null; ed.view = "split"; ed.split = 50;
+  sel = null; ed.view = "edited"; ed.split = 50; toolsOpen = false;
   showScreen("editorScreen");
   renderEditor(); saveDraft();
 }
@@ -300,8 +345,7 @@ async function showDemoPreview(id) {
     const data = await demoAsset(id);
     if (mine !== previewToken || sel !== id || !ed.demo) return;
     ed.hist.push({ data, full: data, op: { tool: id, fixed: true, demo: true } }); ed.idx = 1;
-    ed.view = "split"; ed.split = 50;
-    $("alertLive").textContent = `${t.title} prepared preview shown. Compare it with the original.`;
+    $("alertLive").textContent = `${t.title} prepared preview shown. Use Compare to see it next to the original.`;
   } catch {
     if (mine !== previewToken || !demo) return;
     demo.failed[id] = true;
@@ -323,9 +367,12 @@ function demoPanelState(t) {
     $("panelNote").textContent = "Loading the prepared preview…";
   } else {
     apply.textContent = "Done";
-    $("panelNote").textContent = `A saved result from Glow's ${t.title} tool on this photo. Nothing is generated and no credits are used. Sample previews show one effect at a time.`;
+    const shifted = demo && demo.entry[t.id] && demo.entry[t.id].aligned === false ? " The AI reframed the picture a little, so Compare won't line up exactly." : "";
+    $("panelNote").textContent = `A saved result from Glow's ${t.title} tool on this photo. Nothing is generated and no credits are used. Sample previews show one effect at a time.${shifted}`;
   }
 }
+// "prepared-preview-relight-" when the shown result is a prepared preview, so the file says what it is.
+function demoSaveTag() { const op = ed.hist[ed.idx].op; return op && op.demo ? `prepared-preview-${op.tool}-` : ""; }
 function exitDemo() {
   if (!demo) return;
   Object.assign(faceSet.amt, demo.saved.amt); Object.assign(faceSet.shade, demo.saved.shade); saveFace();
@@ -403,28 +450,40 @@ function renderHome() {
 }
 
 // ---------- Editor rendering ----------
+// The photo sits on a neutral charcoal canvas, whole (contain), never cropped or stretched.
+// The canvas color is only on screen: Save exports the picture alone.
 function renderEditor() {
   if (!hasPhoto()) return;
   const st = $("stage"), brushing = sel === "erase";
   const after = ed.pending ? ed.pending.data : ed.idx > 0 ? committed() : null;
   const b = $("before"), a = $("after");
   const wantBefore = brushing ? committed() : ed.hist[0].data;
-  if (b.getAttribute("src") !== wantBefore) b.src = wantBefore;
+  if (b.getAttribute("src") !== wantBefore) { b.classList.remove("alpha"); b.onload = () => { markAlpha(b); layoutFrame(); }; b.src = wantBefore; }
   if (after && !brushing) {
     if (a.getAttribute("src") !== after) {
-      a.classList.add("fade"); a.onload = () => a.classList.remove("fade"); a.src = after;
+      // A short crossfade once the new result has loaded (instant with reduced motion).
+      a.classList.add("fade"); a.classList.remove("alpha");
+      a.onload = () => { markAlpha(a); layoutFrame(); requestAnimationFrame(() => a.classList.remove("fade")); };
+      a.src = after;
     }
     a.hidden = false;
   } else a.hidden = true;
-  st.classList.toggle("has-after", !!after && !brushing);
-  st.classList.toggle("checker", /^data:image\/png/.test(after || "") && !brushing);
+  const hasAfter = !!after && !brushing;
+  if (!hasAfter && ed.view !== "edited") ed.view = "edited";
+  st.classList.toggle("has-after", hasAfter);
   st.dataset.view = brushing ? "original" : ed.view;
-  document.querySelectorAll(".views button").forEach((v) => v.setAttribute("aria-pressed", String(v.dataset.view === ed.view)));
+  // Comparing only means something once there's an edit or a preview.
+  document.querySelectorAll(".views button").forEach((v) => {
+    v.setAttribute("aria-pressed", String(v.dataset.view === ed.view)); v.disabled = !hasAfter;
+  });
   const prepared = !ed.pending && ed.idx > 0 && ed.hist[ed.idx].op && ed.hist[ed.idx].op.demo;
-  $("previewBadge").hidden = !ed.pending && !prepared;
-  $("previewBadge").textContent = prepared ? "Prepared preview" : "Preview";
-  $("demoBar").hidden = !ed.demo;
-  setSplit(ed.split);
+  const editedName = ed.pending ? "Preview" : prepared ? "Prepared preview" : "Edited";
+  const view = st.dataset.view;
+  $("tagLeft").textContent = hasAfter && (view === "split" || view === "original") ? "Original" : "";
+  $("tagRight").textContent = hasAfter && view === "split" ? editedName : hasAfter && view === "edited" && editedName !== "Edited" ? editedName : "";
+  $("demoBar").hidden = !ed.demo; $("tagSample").hidden = !ed.demo;
+  layoutFrame(); setSplit(ed.split);
+  if ($("frame").classList.contains("narrow") && view === "split") $("tagRight").textContent = editedName.replace(" preview", "");
   $("brush").hidden = !brushing;
   if (brushing) requestAnimationFrame(drawStrokes);
   $("undoBtn").disabled = !!busyNow || (ed.idx <= ed.floor && !ed.pending);
@@ -434,10 +493,34 @@ function renderEditor() {
   $("saveBtn").disabled = !!busyNow || savingEdit || (ed.idx === 0 && !ed.pending) || savedNow;
   $("saveBtn").textContent = savedNow ? "Saved" : "Save";
   $("editorScreen").classList.toggle("editing-tool", !!sel);
+  $("editorScreen").classList.toggle("tools-open", toolsOpen && cat === "all" && !sel);
   if (thumbFor !== committed()) { thumbFor = committed(); refreshThumb(); }
   renderTabs(); renderTools(); renderPanel(); renderCredits(); renderJob();
+  if (sel) { const tb = $("tools").querySelector(`.tool[data-tool="${CSS.escape(sel)}"]`); if (tb) tb.scrollIntoView({ block: "nearest", inline: "nearest" }); }
 }
-let thumbFor = null;
+let thumbFor = null, toolsOpen = false;
+// Checkerboard only behind pictures that really have transparent pixels.
+function markAlpha(img) {
+  try {
+    if (!/^data:image\/(png|webp)/.test(img.getAttribute("src") || "")) return;
+    const w = 48, h = Math.max(1, Math.round(48 * img.naturalHeight / img.naturalWidth)), c = newCanvas(w, h), ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, w, h);
+    const d = ctx.getImageData(0, 0, w, h).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i] < 250) { img.classList.add("alpha"); return; }
+  } catch {}
+}
+// Sizes the frame to the photo as shown (the edited picture when there is one), so the
+// divider and labels sit on the picture and both images stay aligned at any size.
+function layoutFrame() {
+  const st = $("stage"), a = $("after"), b = $("before");
+  const main = !a.hidden && a.naturalWidth ? a : b;
+  const W = st.clientWidth, H = st.clientHeight, f = $("frame");
+  if (!main.naturalWidth || !W || !H) { Object.assign(f.style, { left: "0px", top: "0px", width: W + "px", height: H + "px" }); return; }
+  const s = Math.min(W / main.naturalWidth, H / main.naturalHeight), w = Math.round(main.naturalWidth * s), h = Math.round(main.naturalHeight * s);
+  Object.assign(f.style, { left: Math.round((W - w) / 2) + "px", top: Math.round((H - h) / 2) + "px", width: w + "px", height: h + "px" });
+  f.classList.toggle("narrow", w < 220);
+}
+new ResizeObserver(() => { layoutFrame(); if (sel === "erase") drawStrokes(); }).observe($("stage"));
 function setSplit(pct) {
   ed.split = Math.max(0, Math.min(100, pct));
   $("after").style.clipPath = $("stage").dataset.view === "split" ? `inset(0 0 0 ${ed.split}%)` : "";
@@ -446,14 +529,15 @@ function setSplit(pct) {
   $("handle").setAttribute("aria-valuetext", `${Math.round(ed.split)}% original`);
 }
 document.querySelector(".views").addEventListener("click", (e) => {
-  const b = e.target.closest("button[data-view]"); if (!b) return;
+  const b = e.target.closest("button[data-view]"); if (!b || b.disabled) return;
   ed.view = b.dataset.view; renderEditor();
+  if (ed.view === "split") $("alertLive").textContent = "Compare: drag the divider, or use the arrow keys on it.";
 });
 // Drag the divider (or anywhere on the photo) to compare; arrow keys move the handle.
 let dragging = false;
-const dragTo = (e) => { const r = $("stage").getBoundingClientRect(); setSplit(((e.clientX - r.left) / r.width) * 100); };
+const dragTo = (e) => { const r = $("frame").getBoundingClientRect(); setSplit(((e.clientX - r.left) / r.width) * 100); };
 $("stage").addEventListener("pointerdown", (e) => {
-  if (!$("stage").classList.contains("has-after") || $("stage").dataset.view !== "split" || e.target.closest(".views")) return;
+  if (!$("stage").classList.contains("has-after") || $("stage").dataset.view !== "split" || e.target.closest(".history")) return;
   dragging = true; $("stage").setPointerCapture(e.pointerId); dragTo(e);
 });
 $("stage").addEventListener("pointermove", (e) => { if (dragging) dragTo(e); });
@@ -475,7 +559,7 @@ function commit(data, t, op, full) {
   while (ed.idx - ed.floor > MAX_UNDO) { ed.floor++; if (ed.floor > 1) ed.hist[ed.floor - 1].data = null; }
   lastCommitTool = t && t.kind === "ai" ? t.id : null;
   if (t) { recent = [t.id, ...recent.filter((x) => x !== t.id)].slice(0, 8); store.set("glowRecent", JSON.stringify(recent)); }
-  ed.view = "split"; ed.split = 50;
+  ed.view = "edited"; ed.split = 50;
   saveDraft();
 }
 $("undoBtn").addEventListener("click", () => {
@@ -517,6 +601,15 @@ function renderTabs() {
   });
   const groups = CATS[cat];
   $("chips").hidden = !groups;
+  $("searchBox").hidden = cat !== "all";
+  // For You has no subgroups; its slot says what's there instead.
+  const note = cat === "foryou" ? (ed.demo ? (demo && demo.ready.length ? "Sample previews show one effect at a time."
+    : "Prepared AI previews aren't available for the sample yet. Try the free tools.") : "Suggestions, your favorites and recent tools.") : "";
+  $("slotNote").textContent = note; $("slotNote").hidden = !note;
+  const open = toolsOpen && cat === "all";
+  $("expandBtn").setAttribute("aria-expanded", String(open));
+  $("expandBtn").setAttribute("aria-label", open ? "Show fewer tools" : "Show more tools");
+  setIcon($("expandBtn"), open ? "chevdown" : "chevup");
   if (groups) {
     const pick = chipFor[cat] || groups[0][0];
     $("chips").replaceChildren(...groups.map(([k, name]) => {
@@ -524,7 +617,6 @@ function renderTabs() {
       b.setAttribute("aria-pressed", String(k === pick)); return b;
     }));
   }
-  $("searchBox").hidden = cat !== "all";
 }
 function toolButton(t) {
   const b = document.createElement("button");
@@ -543,7 +635,6 @@ function toolButton(t) {
 }
 function renderTools() {
   const groups = groupsFor(cat).map((g) => [g[0], g[1], g[2].filter((id) => TOOL[id] && demoOffers(id))]).filter((g) => g[2].length), box = $("tools");
-  $("demoNote").hidden = !(ed.demo && cat === "foryou" && demo && !demo.ready.length);
   if (!groups.length && ed.demo) { box.innerHTML = `<p class="empty-note">This tool group needs your own photo. Tap Try your own photo above.</p>`; return; }
   if (!groups.length) { box.innerHTML = `<p class="empty-note">No tools match that search.</p>`; return; }
   renderToolGroups(box, groups, cat === "foryou" || cat === "all");
@@ -566,7 +657,8 @@ async function refreshThumb() {
 }
 $("tabs").addEventListener("click", (e) => {
   const t = e.target.closest(".tab"); if (!t) return;
-  cat = t.dataset.cat; store.set("glowCat", cat); renderTabs(); renderTools();
+  cat = t.dataset.cat; store.set("glowCat", cat); $("tools").scrollTo(0, 0);
+  $("editorScreen").classList.toggle("tools-open", toolsOpen && cat === "all" && !sel); renderTabs(); renderTools();
   if (cat === "all" && matchMedia("(pointer: fine)").matches) $("searchInput").focus();
 });
 $("tabs").addEventListener("keydown", (e) => {
@@ -579,6 +671,10 @@ $("chips").addEventListener("click", (e) => {
   chipFor[cat] = b.dataset.chip; store.set("glowChips", JSON.stringify(chipFor)); renderTabs(); renderTools();
 });
 $("searchInput").addEventListener("input", renderTools);
+// All: a deliberate switch between one scrolling row and a taller catalog.
+$("expandBtn").addEventListener("click", () => {
+  toolsOpen = !toolsOpen; $("editorScreen").classList.toggle("tools-open", toolsOpen && cat === "all" && !sel); renderTabs();
+});
 $("tools").addEventListener("click", (e) => {
   const b = e.target.closest(".tool"); if (!b || busyNow) return;
   Platform.haptic();
@@ -590,7 +686,7 @@ function discardPending() { if (ed.pending) { ed.pending = null; previewToken++;
 function selectTool(id) {
   if (ed.pending && ed.pending.tool !== id) say(`${TOOL[ed.pending.tool].title} wasn't applied.`);
   discardPending();
-  sel = id; strokes = []; outfitData = null; cropSet = { ratio: 0, turns: 0 }; panelBuilt = null;
+  sel = id; strokes = []; outfitData = null; toolsOpen = false; cropSet = { ratio: 0, turns: 0 }; panelBuilt = null;
   lookPick = editorLooks().some((l) => l.id === lookId) ? lookId : "natural";
   if (id in toolAmt) toolAmt[id] = 0; // adjustments start from the committed photo
   if (ed.demo && id) {
@@ -773,7 +869,7 @@ async function preview() {
     const out = await computeOp(op, base);
     if (token !== previewToken || sel !== t.id) return;
     ed.pending = out ? { tool: t.id, data: out, op } : null;
-    if (out) { ed.view = "split"; $("alertLive").textContent = `${t.title} preview ready. Apply to keep it.`; }
+    if (out) { if (ed.view === "original") ed.view = "edited"; $("alertLive").textContent = `${t.title} preview ready. Apply to keep it.`; }
   } catch (err) {
     if (token === previewToken) { ed.pending = null; say(err.message, true); }
   } finally {
@@ -1065,7 +1161,10 @@ async function saveEdit() {
   if (ed.idx === 0) { say("Nothing to save yet. Apply a tool first."); return false; }
   if (savingEdit) return false;
   if (ed.demo) {
-    const c = await ask({ title: "Save the AI-generated sample?", text: "This is Glow's sample photo, made with AI. It isn't a real person. The file name marks it as a sample.",
+    const op = ed.hist[ed.idx].op, prep = op && op.demo ? TOOL[op.tool].title : "";
+    const c = await ask({ title: prep ? "Save this prepared preview?" : "Save the AI-generated sample?",
+      text: prep ? `A prepared preview of Glow's ${prep} tool on the AI-generated sample photo. It isn't a real person. The file name marks it as a prepared preview.`
+        : "This is Glow's sample photo, made with AI. It isn't a real person. The file name marks it as a sample.",
       actions: [{ label: "Save sample", value: "yes" }, { label: "Cancel", value: "", kind: "ghost" }] });
     if (!c) return false;
   }
@@ -1083,7 +1182,7 @@ async function saveEdit() {
     const img = await loadImg(committed());
     out = { data: committed(), w: img.naturalWidth, h: img.naturalHeight, preview: true };
   }
-  const stamp = Date.now(), items = [{ data: out.data, name: ed.demo ? `glow-ai-sample-${stamp}` : `glow-${stamp}` }];
+  const stamp = Date.now(), items = [{ data: out.data, name: ed.demo ? `glow-ai-sample-${demoSaveTag()}${stamp}` : `glow-${stamp}` }];
   const withOrig = !ed.demo && store.get("glowSaveOrig") === "on" && !ed.originalSaved && ed.original && ed.original.blob;
   if (withOrig) items.unshift({ blob: ed.original.blob, name: `glow-${stamp}-original` });
   try {
@@ -1107,12 +1206,14 @@ $("backBtn").addEventListener("click", () => { discardPending(); sel = null; go(
 let account = null;
 function balanceText(a) { const n = a.remaining; return `${n} AI credit${n === 1 ? "" : "s"} left ${a.plan === "pro" ? "this week" : "today"}`; }
 function nextUtcMidnight() { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)); }
+// A compact chip under the photo; the demo says "Demo · No credits used" in its own bar instead.
 function renderCredits() {
-  const a = account;
-  $("balanceBtn").hidden = !a || (ed.demo && screen === "editorScreen"); $("homeCredits").hidden = !a;
+  const a = account, chip = $("balanceBtn");
+  chip.hidden = !a || (ed.demo && screen === "editorScreen"); $("homeCredits").hidden = !a;
   if (!a) return;
-  $("balanceBtn").innerHTML = icon("sparkle") + `<span>${balanceText(a)}</span>`;
-  $("balanceBtn").setAttribute("aria-label", `${balanceText(a)}. Details`);
+  const n = a.remaining;
+  chip.innerHTML = `<span>${icon("sparkle")}${n} AI credit${n === 1 ? "" : "s"}</span>`;
+  chip.setAttribute("aria-label", `${balanceText(a)}. Details`);
   $("homeCredits").innerHTML = icon("sparkle") + `<span>${balanceText(a)}. On-device tools are always free.</span>` + icon("chevron");
 }
 function renderCreditsSheet() {

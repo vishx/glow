@@ -15,8 +15,25 @@ These are listed in `manifest.json`, which records for each one the tool id, the
 input, the output file and its provenance. The app offers an entry only when its status is
 `ready` and its file loads.
 
-As of 2026-10-30, none is ready yet. All six need one paid run each (see the review notes).
-They are made like this:
+All six were made on 2026-10-30, once each, with the owner's approval, by
+`tools/demo/generate.ts` running in a one-off GitHub Actions job ("Demo previews" on the
+`demo-gen` branch). It reached Replicate through a temporary Supabase function that checked the
+job's GitHub OIDC token, so the Replicate token never left Supabase; that function was retired
+right after. Each entry in `manifest.json` records the model, the prediction id and the time.
+
+| Preview | Model | Size | Lines up with the original |
+| --- | --- | --- | --- |
+| Retouch | sczhou/codeformer | 1122 × 1402 | yes |
+| Enhance | google/nano-banana | 896 × 1152 | close (the model returns 7:9) |
+| Relight | google/nano-banana | 896 × 1152 | close (the model returns 7:9) |
+| Golden hour | google/nano-banana | 896 × 1152 | no, the model reframed it |
+| Sleek bob | google/nano-banana | 896 × 1152 | no, the model reframed it |
+| 3D Toon | fofr/face-to-many | 1122 × 1402 | yes (a new picture by design) |
+
+Results are shown as the model returned them, resized only when their shape already matched
+the original. Nothing was retouched by hand or made with another generator.
+
+To remake them, the steps are:
 
 1. `REPLICATE_API_TOKEN=… deno run --allow-env --allow-net --allow-read --allow-write tools/demo/generate.ts`
    - This uses `supabase/functions/enhance/pipeline.ts`: the same models, prompts and settings
@@ -31,3 +48,9 @@ They are made like this:
 
 The JPEGs under `tests/fixtures/demo-test-*.jpg` are tone changes made for the tests only.
 They are not Glow results and are never shipped.
+
+## thumb.jpg and intro.jpg
+
+Smaller copies of `original.png`, resized only (176 × 220 and 720 × 900, JPEG): the Editor
+landing's sample card and the introduction screens use them so they load fast. The editor
+always compares against `original.png` itself.

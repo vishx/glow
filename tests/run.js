@@ -21,6 +21,8 @@ async function pick(p, file) {
   await p.waitForFunction(() => $('before').naturalWidth > 0);
 }
 async function tool(p, cat, chip, id) {
+  // On phones the categories step aside while a tool is open; Done/Cancel brings them back.
+  if (!(await p.isVisible(`.tab[data-cat="${cat}"]`))) await p.click('#cancelBtn');
   await p.click(`.tab[data-cat="${cat}"]`); if (chip) await p.click(`.subchip[data-chip="${chip}"]`);
   if (!(await p.evaluate((x) => sel === x, id))) await p.click(`.tool[data-tool="${id}"]`);
   await p.waitForTimeout(150); await idle(p);
@@ -315,7 +317,7 @@ test('a11y: control boundaries and inactive controls meet 3:1 in both themes', a
 // the demo path only; they are not Glow results and are never shipped.
 const demoManifest = (() => {
   const m = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/samples/demo/manifest.json')));
-  for (const e of m.previews) if (e.tool === 'pro' || e.tool === 'relight') Object.assign(e, { status: 'ready', result: `test-${e.tool}.jpg` });
+  for (const e of m.previews) Object.assign(e, e.tool === 'pro' || e.tool === 'relight' ? { status: 'ready', result: `test-${e.tool}.jpg`, aligned: true } : { status: 'needs-generation', result: null });
   return m;
 })();
 const demoFiles = (extra = {}) => ({ '/samples/demo/manifest.json': { json: demoManifest }, '/samples/demo/test-pro.jpg': fx('demo-test-a.jpg'),
@@ -343,7 +345,7 @@ test('demo: prepared previews make no AI request, use no credits, and never stac
   await openDemo(p); const before = credit(state);
   for (let i = 0; i < 3; i++) for (const id of ['pro', 'relight']) {
     await tool(p, 'foryou', null, id); await p.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x, id);
-    const v = await p.evaluate(() => ({ n: ed.hist.length, before: $('before').src === ed.hist[0].data, after: $('after').src === ed.hist[1].data, hidden: $('after').hidden, badge: $('previewBadge').textContent }));
+    const v = await p.evaluate(() => ({ n: ed.hist.length, before: $('before').src === ed.hist[0].data, after: $('after').src === ed.hist[1].data, hidden: $('after').hidden, badge: $('tagRight').textContent }));
     eq(v, { n: 2, before: true, after: true, hidden: false, badge: 'Prepared preview' }, `${id}: original vs this result only`);
   }
   eq(credit(state), before, 'no enhance calls, credits unchanged'); eq(state.posts.length, 0, 'no POST');
@@ -387,15 +389,35 @@ test('demo: a preview whose file is gone is not offered', async ({ p }) => {
   eq(await p.evaluate(() => demo.ready), ['pro'], 'only previews that exist');
 }, { files: demoFiles({ '/samples/demo/test-relight.jpg': 404 }) });
 
-test('demo: shipped manifest with nothing prepared yet offers no AI tools and explains why', async ({ p, state }) => {
+test('demo: with no prepared previews, no AI tools are offered and the note explains why', async ({ p, state }) => {
   await openDemo(p);
   eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].length), 0, 'no AI tiles');
-  assert(await p.isVisible('#demoNote') && /aren't ready yet/.test(await p.textContent('#demoNote')), 'note');
+  assert(await p.isVisible('#slotNote') && /aren't available for the sample yet/.test(await p.textContent('#slotNote')), 'note');
   await p.click('.tab[data-cat="looks"]'); await p.click('.subchip[data-chip="styles"]');
   assert(/needs your own photo/.test(await p.textContent('#tools')), 'AI-only group explains');
-  await p.screenshot({ path: path.join(__dirname, 'out', 'demo-shipped.png') });
   eq(state.posts.length, 0, 'no AI request');
-});
+}, { files: { '/samples/demo/manifest.json': { json: { ...demoManifest, previews: demoManifest.previews.map((e) => ({ ...e, status: 'needs-generation', result: null })) } } } });
+
+test('demo: the shipped prepared previews are all there, match the manifest, and never call the AI', async ({ p, state }) => {
+  const dir = path.join(__dirname, '../public/samples/demo'), m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+  const raw = fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8');
+  assert(!/https?:\/\/|token|X-Amz|Signature=/i.test(raw), 'no URLs or credentials in the manifest');
+  const ready = m.previews.filter((e) => e.status === 'ready');
+  eq(ready.map((e) => e.tool), ['retouch', 'pro', 'relight', 'golden', 'hair_bob', 'toon3d'], 'six prepared previews');
+  for (const e of ready) {
+    const f = path.join(dir, e.result), sha = require('crypto').createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+    eq([sha, imageSize(f).w, imageSize(f).h], [e.sha256, e.width, e.height], `${e.tool}: file matches`);
+    assert(e.provenance && e.provenance.predictionId && e.provenance.model && e.assetVersion, `${e.tool}: provenance and version`);
+  }
+  await openDemo(p); const before = credit(state);
+  for (const e of ready) {
+    await tool(p, 'foryou', null, e.tool); await p.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x && $('after').naturalWidth > 0, e.tool, { timeout: 15000 });
+    eq(await p.evaluate(() => [ed.hist.length, $('after').naturalWidth, $('after').naturalHeight]), [2, e.width, e.height], `${e.tool}: shown alone, at its size`);
+  }
+  eq(credit(state), before, 'no AI requests, credits unchanged');
+  await p.click('.views [data-view="split"]'); await settle(300);
+  await p.screenshot({ path: path.join(__dirname, 'out', 'demo-shipped.png') });
+}, { quota: 0 });
 
 test('demo: Try your own photo exits the demo completely, then real AI is charged by the server', async ({ p, state }) => {
   await openDemo(p);
@@ -404,7 +426,7 @@ test('demo: Try your own photo exits the demo completely, then real AI is charge
   await tool(p, 'foryou', null, 'pro'); await p.waitForFunction(() => ed.idx === 1);
   const fc = p.waitForEvent('filechooser'); await p.click('#demoOwnBtn'); await (await fc).setFiles(fx('phone-12mp-exif6.jpg'));
   await p.waitForFunction(() => !ed.demo && ed.original && ed.original.w === 3024, null, { timeout: 15000 });
-  const s = await p.evaluate(() => ({ demo: !!demo, bar: $('demoBar').hidden, sel, n: ed.hist.length, badge: $('previewBadge').hidden, amt: faceSet.amt.fsmooth,
+  const s = await p.evaluate(() => ({ demo: !!demo, bar: $('demoBar').hidden, sel, n: ed.hist.length, badge: $('tagSample').hidden && !$('tagRight').textContent, amt: faceSet.amt.fsmooth,
     costs: [...document.querySelectorAll('.tool .cost')].map((c) => c.textContent) }));
   eq([s.demo, s.bar, s.sel, s.n, s.badge], [false, true, null, 1, true], 'no demo state, labels gone, nothing selected, no sample result carried');
   eq(s.amt, faceBefore, 'tool settings restored'); assert(s.costs.includes('AI · 1'), 'real pricing back: ' + s.costs);
@@ -437,6 +459,136 @@ test('demo: phone layouts at 320 and 390 wide have no sideways scroll', async ({
     await p.screenshot({ path: path.join(__dirname, 'out', `demo-${width}.png`) });
   }
 }, { files: demoFiles() });
+
+// ---------- Onboarding ----------
+test('onboarding: three screens with the sample photo, Back and Skip, and no permission prompts', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForSelector('#onboarding:not([hidden])');
+  const read = () => p.evaluate(() => ({ h: $('obSlide').querySelector('h1').textContent, p: $('obSlide').querySelector('p').textContent,
+    photo: !!$('obSlide').querySelector('.ob-photo img[src*="intro.jpg"]'), back: getComputedStyle($('obBack')).visibility, skip: !$('obSkip').hidden,
+    actions: [...document.querySelectorAll('#obActions .btn')].map((b) => b.textContent), dots: $('obDots').getAttribute('aria-label'),
+    hSize: parseFloat(getComputedStyle($('obSlide').querySelector('h1')).fontSize), pSize: parseFloat(getComputedStyle($('obSlide').querySelector('p')).fontSize),
+    share: $('obSlide').querySelector('.ob-photo').getBoundingClientRect().height / ($('onboarding').getBoundingClientRect().height) }));
+  const s1 = await read();
+  eq([s1.h, s1.p, s1.photo, s1.back, s1.skip, s1.actions, s1.dots], ['Your light. Your look.', 'Take a photo with Glow, or make a favorite photo your own.', true, 'hidden', true, ['Next'], 'Step 1 of 3'], 'screen 1');
+  assert(/Camera/.test(await p.textContent('#obSlide')) && /Editor/.test(await p.textContent('#obSlide')), 'introduces Camera and Editor');
+  assert(s1.hSize >= 28 && s1.hSize <= 34 && s1.pSize >= 15 && s1.pSize <= 16, `type sizes ${s1.hSize}/${s1.pSize}`);
+  assert(s1.share >= 0.38 && s1.share <= 0.52, 'photo share of the screen ' + s1.share.toFixed(2));
+  await p.click('#obActions .btn');
+  const s2 = await read();
+  eq([s2.h, s2.p, s2.back, s2.dots], ['Start natural. Adjust to your taste.', 'Explore light, retouching, and looks. You choose how much.', 'visible', 'Step 2 of 3'], 'screen 2');
+  assert(!/Skin texture stays real/.test(await p.textContent('#onboarding')), 'no absolute promise');
+  await p.waitForFunction(() => $('obAfter') && !$('obAfter').hidden && $('obAfter').naturalWidth > 0, null, { timeout: 15000 });
+  eq(await p.textContent('#obAfterTag'), 'Prepared preview', 'the shipped prepared result');
+  await p.click('#obBack'); eq((await read()).h, 'Your light. Your look.', 'Back');
+  await p.click('#obActions .btn'); await p.click('#obActions .btn');
+  const s3 = await read();
+  eq([s3.h, s3.p, s3.actions, s3.skip], ['Make your first Glow.', 'Free on-device tools, plus 3 AI credits each day.', ['Open camera', 'Choose a photo', 'Try a sample'], false], 'screen 3');
+  eq(await p.evaluate(() => window.__streams.length), 0, 'no camera request during the introduction');
+  await p.click('#obActions .btn:has-text("Try a sample")');
+  await p.waitForFunction(() => screen === 'editorScreen' && ed.demo && $('before').naturalWidth > 0, null, { timeout: 15000 });
+  eq(await p.evaluate(() => store.get('glowOnboarded')), '1', 'finished');
+  // Coming back to the sample later doesn't repeat the introduction.
+  await p.reload(); await p.waitForFunction(() => screen === 'editorHome' || screen === 'cameraScreen');
+  await p.evaluate(() => go('editor')); assert(await p.isVisible('#sampleBtn'), 'Try a sample · Free on Editor home');
+  assert(/Try a sample · Free/.test(await p.textContent('#sampleBtn')), 'label');
+}, { onboarded: false, camera: false });
+
+test('onboarding: a prepared AI preview is used on screen 2 when one exists', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.click('#obActions .btn');
+  await p.waitForFunction(() => $('obAfter') && !$('obAfter').hidden, null, { timeout: 15000 });
+  eq(await p.textContent('#obAfterTag'), 'Prepared preview', 'labeled as a prepared preview');
+  assert(/Enhance/.test(await p.getAttribute('.ob-photo', 'aria-label')), 'names the tool for screen readers');
+}, { onboarded: false, files: demoFiles() });
+
+test('onboarding: with no prepared previews, screen 2 shows the free Glow filter, labeled', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.click('#obActions .btn');
+  await p.waitForFunction(() => $('obAfter') && !$('obAfter').hidden, null, { timeout: 15000 });
+  eq(await p.textContent('#obAfterTag'), 'Glow filter · free', 'a real on-device result');
+}, { onboarded: false, files: { '/samples/demo/manifest.json': { json: { ...demoManifest, previews: [] } } } });
+
+// ---------- Editor layout ----------
+async function stageBox(p) { return p.evaluate(() => { const r = $('stage').getBoundingClientRect(); return [Math.round(r.top), Math.round(r.height), Math.round(r.width)]; }); }
+for (const [w, h] of [[390, 844], [320, 640], [412, 915]]) test(`layout: categories never resize the photo at ${w}×${h} (photo and sample)`, async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('transparent.png'));
+  for (const run of ['photo', 'sample']) {
+    if (run === 'sample') { await p.click('#backBtn'); await p.click('#sampleBtn'); await p.waitForFunction(() => ed.demo && $('before').naturalWidth > 0); }
+    const boxes = {};
+    for (const c of ['foryou', 'retouch', 'looks', 'edit', 'all']) { await p.click(`.tab[data-cat="${c}"]`); await settle(120); boxes[c] = await stageBox(p); }
+    const first = JSON.stringify(boxes.foryou);
+    for (const [c, b] of Object.entries(boxes)) eq(JSON.stringify(b), first, `${run}: ${c} vs For You`);
+    for (const c of ['retouch', 'looks', 'edit']) { await p.click(`.tab[data-cat="${c}"]`); for (const chip of await p.$$eval('.subchip', (x) => x.map((b) => b.dataset.chip))) {
+      await p.click(`.subchip[data-chip="${chip}"]`); eq(JSON.stringify(await stageBox(p)), first, `${run}: ${c}/${chip}`); } }
+    eq(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${run}: no sideways scroll`);
+  }
+}, { viewport: { width: w, height: h } });
+
+test('layout: charcoal canvas in both themes, photo contained, edited view first, compare only after an edit', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
+  const bg = () => p.evaluate(() => getComputedStyle($('stage')).backgroundColor);
+  eq(await bg(), 'rgb(24, 23, 27)', 'dark');
+  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(24, 23, 27)', 'light');
+  const st = await p.evaluate(() => ({ view: $('stage').dataset.view, disabled: [...document.querySelectorAll('.views button')].map((b) => b.disabled), radius: getComputedStyle($('stage')).borderTopLeftRadius,
+    fit: getComputedStyle($('before')).objectFit, frame: (() => { const f = $('frame').getBoundingClientRect(), s = $('stage').getBoundingClientRect(); return f.width <= s.width + 0.5 && f.height <= s.height + 0.5 && Math.abs(f.width / f.height - ed.original.w / ed.original.h) < 0.02; })() }));
+  eq(st, { view: 'edited', disabled: [true, true, true], radius: '16px', fit: 'contain', frame: true }, 'before any edit');
+  await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending);
+  eq(await p.evaluate(() => [$('stage').dataset.view, [...document.querySelectorAll('.views button')].map((b) => b.disabled)]), ['edited', [false, false, false]], 'comparison available once there is a preview');
+  eq(await p.isVisible('#divider'), false, 'no divider outside Compare');
+  await p.click('.views [data-view="split"]');
+  const d = await p.evaluate(() => { const h = $('handle').getBoundingClientRect(), k = $('handle').querySelector('i').getBoundingClientRect(), f = $('frame').getBoundingClientRect(), dv = $('divider').getBoundingClientRect();
+    return { target: [Math.round(h.width), Math.round(h.height)], knob: Math.round(k.width), at: +(((h.top + h.height / 2) - f.top) / f.height).toFixed(2), line: Math.round(dv.width) }; });
+  eq(d.target, [44, 44], 'handle touch target'); assert(d.knob >= 24 && d.knob <= 28, 'visible knob ' + d.knob); eq(d.line, 2, '2px divider');
+  assert(Math.abs(d.at - 0.75) < 0.03, 'handle about 75% down: ' + d.at);
+  const seg = await p.evaluate(() => { const v = document.querySelector('.views').getBoundingClientRect(), s = $('stage').getBoundingClientRect(), b = document.querySelector('.views button').getBoundingClientRect();
+    return { below: v.top >= s.bottom, h: Math.round(b.height), font: parseFloat(getComputedStyle(document.querySelector('.views button')).fontSize) }; });
+  eq([seg.below, seg.h], [true, 44], 'segments below the photo, 44px high'); assert(seg.font >= 13 && seg.font <= 14, 'label size ' + seg.font);
+  await p.focus('#handle'); await p.keyboard.press('ArrowLeft'); eq(await p.getAttribute('#handle', 'aria-valuenow'), '48', 'keyboard moves the divider');
+  // Saved file is the photo alone: its own size, no canvas margins.
+  await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
+  eq((({ w, h }) => [w, h])(imageSize(state.downloads[0].file)), await p.evaluate(() => [ed.original.w, ed.original.h]), 'saved at the photo\'s own size, no canvas margins');
+}, { viewport: { width: 390, height: 844 } });
+
+test('layout: transparent PNG shows a checkerboard only behind the picture', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('transparent.png'));
+  await p.waitForFunction(() => $('before').classList.contains('alpha'));
+  await p.click('#backBtn'); await pick(p, fx('phone-12mp-exif6.jpg')).catch(() => {});
+  await p.waitForFunction(() => ed.original && ed.original.w === 3024, null, { timeout: 15000 }).catch(() => {});
+  eq(await p.evaluate(() => $('before').classList.contains('alpha')), false, 'an opaque photo has no checkerboard');
+});
+
+test('layout: compact credit chip under the photo opens the credits sheet', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('transparent.png'));
+  await p.waitForFunction(() => !$('balanceBtn').hidden);
+  const c = await p.evaluate(() => { const r = $('balanceBtn').getBoundingClientRect(); return { text: $('balanceBtn').textContent, h: r.height, below: r.top >= $('stage').getBoundingClientRect().bottom }; });
+  eq(c.text, '3 AI credits', 'actual balance, short'); assert(c.h >= 44, 'touch target ' + c.h); assert(c.below, 'under the photo');
+  await p.click('#balanceBtn'); assert(await p.evaluate(() => $('creditsSheet').open), 'opens the details sheet');
+  assert(/midnight UTC/.test(await p.textContent('#creditsBody')), 'explains the real reset');
+});
+
+test('layout: All has search and an expandable catalog; the last tools scroll fully into view', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('transparent.png'));
+  await p.click('.tab[data-cat="all"]');
+  const s0 = await stageBox(p);
+  await p.fill('#searchInput', 'blur'); eq(await p.$$eval('#tools .tool', (x) => x.map((b) => b.dataset.tool)), ['bgblur'], 'search');
+  await p.fill('#searchInput', '');
+  await p.click('#expandBtn'); eq(await p.getAttribute('#expandBtn', 'aria-expanded'), 'true', 'expanded');
+  const tall = await p.evaluate(() => $('tools').getBoundingClientRect().height); assert(tall > 300, 'taller catalog ' + tall);
+  await p.click('#expandBtn'); eq(JSON.stringify(await stageBox(p)), JSON.stringify(s0), 'collapsing restores the photo size');
+  await p.click('.tab[data-cat="retouch"]'); await p.click('.subchip[data-chip="makeup"]');
+  await p.evaluate(() => $('tools').scrollTo({ left: 1e5 })); await settle(200);
+  const last = await p.evaluate(() => { const t = [...document.querySelectorAll('#tools .tool')].pop().getBoundingClientRect(), b = $('tools').getBoundingClientRect(); return t.right <= b.right + 0.5 && t.left >= b.left; });
+  assert(last, 'last tool fully visible after scrolling');
+  const costs = await p.evaluate(() => [...document.querySelectorAll('#tools .cost')].every((c) => { const r = c.getBoundingClientRect(), b = $('tools').getBoundingClientRect(); return r.top >= b.top; }));
+  assert(costs, 'cost badges not clipped at the top');
+}, { viewport: { width: 390, height: 844 } });
+
+test('demo: canceling Try your own photo keeps the sample; reduced motion turns the crossfade off', async ({ p, state }) => {
+  await openDemo(p);
+  await tool(p, 'foryou', null, 'pro'); await p.waitForFunction(() => ed.idx === 1);
+  const fc = p.waitForEvent('filechooser'); await p.click('#demoOwnBtn'); await (await fc).setFiles([]); await settle(400);
+  eq(await p.evaluate(() => [ed.demo, !!demo, ed.idx, $('demoBar').hidden]), [true, true, 1, false], 'still in the demo, preview kept');
+  eq(await p.evaluate(() => parseFloat(getComputedStyle($('after')).transitionDuration)), 0.00001, 'no crossfade with reduced motion');
+  eq(state.posts.length, 0, 'no AI request');
+}, { files: demoFiles(), reducedMotion: true });
 
 // ---------- Face tools on a real portrait (only with GLOW_TEST_FACE) ----------
 if (face) test('face: smooth skin previews at 2048px and saves at full size', async ({ p, state }) => {

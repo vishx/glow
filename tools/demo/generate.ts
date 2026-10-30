@@ -11,7 +11,7 @@
 //
 // Then run tools/demo/optimize.py to fit each result to the original's frame and size.
 // The token is read from the environment only; nothing secret is written to disk.
-import { lastOutput, MODES, rep, startPrediction } from "../../supabase/functions/enhance/pipeline.ts";
+import { HttpError, lastOutput, MODES, rep, startPrediction } from "../../supabase/functions/enhance/pipeline.ts";
 
 const dir = new URL("../../public/samples/demo/", import.meta.url);
 const manifestUrl = new URL("manifest.json", dir);
@@ -25,7 +25,14 @@ for (const entry of manifest.previews) {
   const cfg = MODES[entry.tool];
   if (!cfg) { console.error(`skip ${entry.tool}: not a Glow AI tool`); continue; }
   console.log(`running ${entry.tool}…`);
-  let { p, info } = await startPrediction(cfg, { image });
+  // Replicate throttles new predictions on small accounts (6 a minute, 1 at a time), so wait
+  // and try again on a 429 rather than give up. A throttled request isn't run or billed.
+  let started;
+  for (let i = 0; ; i++) {
+    try { started = await startPrediction(cfg, { image }); break; }
+    catch (e) { if (!(e instanceof HttpError) || e.status !== 429 || i >= 6) throw e; await new Promise((r) => setTimeout(r, 15000)); }
+  }
+  let { p, info } = started;
   while (!["succeeded", "failed", "canceled"].includes(p.status)) {
     await new Promise((r) => setTimeout(r, 3000));
     p = await rep(`/predictions/${p.id}`);
