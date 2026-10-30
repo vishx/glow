@@ -16,7 +16,7 @@ function edit(prompt: string, model: string | string[] = EDIT_MODELS) {
 const hair = (style: string) => edit(`Change only the person's hairstyle to ${style}. Keep the same hair color, clothes, pose and background.`);
 const outfit = (clothes: string) => edit(`Change only the person's clothes to ${clothes}. Keep the same body shape, pose, hair and background.`);
 
-export type Mode = { model: string | string[]; input: Record<string, unknown>; needsMask?: boolean; needsExtra?: boolean };
+export type Mode = { model: string | string[]; input: Record<string, unknown>; needsMask?: boolean; needsExtra?: boolean; userPrompt?: string };
 export const MODES: Record<string, Mode> = {
   enhance: { model: "sczhou/codeformer", input: { codeformer_fidelity: 0.7, background_enhance: true, face_upsample: true, upscale: 2 } },
   upscale: { model: "nightmareai/real-esrgan", input: { scale: 4, face_enhance: false } },
@@ -63,7 +63,21 @@ export const MODES: Record<string, Mode> = {
     input: { prompt: "seamlessly continue the photo beyond its edges, matching lighting and scene", output_format: "jpg" },
     needsMask: true,
   },
+  // Generative fill: repaints only the masked area. The user's short prompt (if any) is put
+  // inside userPrompt; with no prompt it continues the surrounding scene.
+  fill: {
+    model: ["black-forest-labs/flux-fill-pro", "black-forest-labs/flux-fill-dev"],
+    input: { prompt: "fill the marked area so it blends naturally with the rest of the photo, matching lighting, perspective and texture", output_format: "jpg" },
+    needsMask: true,
+    userPrompt: "{p}, blending naturally with the rest of the photo, matching lighting, perspective and texture",
+  },
 };
+
+// A user prompt is plain text: one line, at most 200 characters, no control characters.
+export function cleanPrompt(v: unknown): string {
+  if (typeof v !== "string") return "";
+  return v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+}
 
 // REPLICATE_API_BASE is only set for tools/demo/generate.ts runs; the deployed function uses Replicate directly.
 export const API = Deno.env.get("REPLICATE_API_BASE") ?? "https://api.replicate.com/v1";
@@ -116,7 +130,7 @@ export async function modelInfo(model: string | string[]): Promise<ModelInfo> {
 export const lastOutput = (o: unknown) => (Array.isArray(o) ? o[o.length - 1] : o) ?? null;
 
 // Starts one edit on Replicate and waits up to a minute for it. Charging is the caller's job.
-export async function startPrediction(cfg: Mode, { image, mask, extra }: { image: string; mask?: string; extra?: string }) {
+export async function startPrediction(cfg: Mode, { image, mask, extra, prompt }: { image: string; mask?: string; extra?: string; prompt?: string }) {
   const info = await modelInfo(cfg.model);
   const images = cfg.needsExtra ? [image, extra] : [image];
   const input: Record<string, unknown> = { [info.imageKey]: info.imageList ? images : image };
@@ -127,6 +141,7 @@ export async function startPrediction(cfg: Mode, { image, mask, extra }: { image
     input.garment_des = "outfit";
   }
   if (cfg.needsMask) input[info.maskKey] = mask;
+  if (cfg.userPrompt && prompt) input.prompt = cfg.userPrompt.replace("{p}", prompt);
   // Wait up to a minute so most edits finish in one request.
   const p = await rep(info.version ? "/predictions" : `/models/${info.model}/predictions`, {
     method: "POST",

@@ -6,7 +6,7 @@
 // refund the server confirmed. Needs migration 006 (ai_usage.client_request_id).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { HttpError, lastOutput, MODES, rep, startPrediction, TOKEN } from "./pipeline.ts";
+import { cleanPrompt, HttpError, lastOutput, MODES, rep, startPrediction, TOKEN } from "./pipeline.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
     }
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-    const { image, mode, mask, extra, request_id } = await req.json().catch(() => ({}));
+    const { image, mode, mask, extra, prompt, request_id } = await req.json().catch(() => ({}));
     const requestId = typeof request_id === "string" && UUID.test(request_id) ? request_id : null;
     // A resent request is the same edit: answer with it instead of charging again.
     if (requestId) {
@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
     }
 
     try {
-      const { p, info } = await startPrediction(cfg, { image, mask, extra });
+      const { p, info } = await startPrediction(cfg, { image, mask, extra, prompt: cleanPrompt(prompt) });
       console.log("started", mode, info.model, p.id, p.status, p.error ?? "");
       await admin.from("ai_usage").update({ prediction_id: p.id }).eq("id", quota.usage_id);
       const failed = p.status === "failed" || p.status === "canceled";

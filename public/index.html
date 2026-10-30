@@ -6,7 +6,7 @@
 <title>Glow</title>
 <meta name="description" content="Glow: a beauty camera and photo editor.">
 <meta name="theme-color" content="#121014" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#fbf7f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#faf7f2" media="(prefers-color-scheme: light)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -132,7 +132,7 @@
   <section class="screen" id="editorScreen" hidden aria-label="Photo editor">
     <header class="topbar compact">
       <button class="icon-btn" id="backBtn" aria-label="Back to Editor home"></button>
-      <p class="wordmark" aria-hidden="true">Glow</p>
+      <p class="wordmark" aria-hidden="true">Glow<span class="spark"></span></p>
       <div class="top-actions">
         <span class="demo-own" id="demoBar" hidden><button class="link-btn" id="demoOwnBtn" aria-label="Use your photo"><span data-icon="upload"></span><span class="lbl">Use your photo</span></button></span>
         <button class="credit-chip" id="balanceBtn" hidden></button>
@@ -152,6 +152,7 @@
           </div>
           <span class="tag left" id="tagLeft"></span>
           <span class="tag right" id="tagRight"></span>
+          <div class="face-pick" id="facePick" role="group" aria-label="Choose the face to edit" hidden></div>
         </div>
         <canvas id="brush" hidden></canvas>
         <div class="crop-view" id="cropView" hidden tabindex="0" role="application" aria-roledescription="crop area"
@@ -175,15 +176,20 @@
         <p class="zoom-hint" id="zoomHint" hidden>Pinch or double-tap to zoom</p>
         <div class="busy" id="busy" hidden><div><div class="spinner"></div><div id="busyText">Working…</div><p id="busyNote"></p></div></div>
       </div>
-      <div class="viewbar">
+      <!-- One slim utility row: Undo | Redo, Compare (tap: split, original, back; hold: original), Revert, Share. -->
+      <div class="viewbar" role="toolbar" aria-label="Photo">
         <div class="history">
           <button class="icon-btn" id="undoBtn" aria-label="Undo" disabled></button>
+          <i class="sep" aria-hidden="true"></i>
           <button class="icon-btn" id="redoBtn" aria-label="Redo" disabled></button>
         </div>
-        <div class="views" role="group" aria-label="View">
-          <button data-view="original" aria-pressed="false">Original</button>
-          <button data-view="split" aria-pressed="false">Compare</button>
-          <button data-view="edited" aria-pressed="true">Edited</button>
+        <i class="sep" aria-hidden="true"></i>
+        <button class="hold-btn" id="compareBtn" aria-describedby="compareTip" disabled><span data-icon="compare"></span><span id="compareLbl">Compare</span></button>
+        <span class="sr-only" id="compareTip">Tap to switch between split, original and your edit. Hold to see the original.</span>
+        <i class="sep" aria-hidden="true"></i>
+        <div class="util-end">
+          <button class="icon-btn" id="revertBtn" aria-label="Revert to original" disabled></button>
+          <button class="icon-btn" id="shareBtn" aria-label="Share photo" disabled></button>
         </div>
       </div>
     </div>
@@ -193,21 +199,10 @@
         <p id="jobText"></p>
         <div class="row" id="jobActions"></div>
       </div>
-      <div class="tabs" id="tabs" role="tablist" aria-label="Tool categories">
-        <button class="tab" role="tab" data-cat="foryou">For You</button>
-        <button class="tab" role="tab" data-cat="retouch">Retouch</button>
-        <button class="tab" role="tab" data-cat="looks">Looks</button>
-        <button class="tab" role="tab" data-cat="edit">Edit</button>
-        <button class="tab" role="tab" data-cat="all">All</button>
-      </div>
-      <div class="slot">
-        <div class="chips" id="chips" role="group" aria-label="Tool groups"></div>
-        <div class="search-row" id="searchBox" hidden>
-          <label class="search"><span data-icon="search"></span><span class="sr-only">Search tools</span>
-            <input type="search" id="searchInput" placeholder="Search all tools" autocomplete="off"></label>
-          <button class="icon-btn" id="expandBtn" aria-expanded="false" aria-controls="tools" aria-label="Show more tools"></button>
-        </div>
-        <p class="slot-note" id="slotNote" hidden></p>
+      <div class="search-row" id="searchBox" hidden>
+        <label class="search"><span data-icon="search"></span><span class="sr-only">Search tools</span>
+          <input type="search" id="searchInput" placeholder="Search all tools" autocomplete="off"></label>
+        <button class="icon-btn" id="searchClose" aria-label="Close search"></button>
       </div>
       <div class="tools" id="tools" role="group" aria-label="Tools"></div>
       <div class="panel" id="panel" hidden role="region" aria-labelledby="toolName">
@@ -223,6 +218,12 @@
           <button class="btn ghost" id="cancelBtn">Cancel</button>
           <button class="btn" id="applyBtn">Apply</button>
         </div>
+      </div>
+      <div class="tabs" id="tabs" role="tablist" aria-label="Tool categories">
+        <button class="tab" role="tab" data-cat="retouch"><span data-icon="face"></span><span>Retouch</span></button>
+        <button class="tab" role="tab" data-cat="looks"><span data-icon="looks"></span><span>Looks</span></button>
+        <button class="tab" role="tab" data-cat="edit"><span data-icon="crop"></span><span>Edit</span></button>
+        <button class="tab" role="tab" data-cat="ai"><span data-icon="sparkle"></span><span>AI</span></button>
       </div>
     </div>
   </section>
@@ -255,7 +256,7 @@
   <div class="setting">
     <h3 id="themeLabel">Appearance</h3>
     <div class="seg" id="themeSeg" role="group" aria-labelledby="themeLabel">
-      <button data-theme="system">System</button><button data-theme="dark">Dark</button><button data-theme="light">Light</button>
+      <button data-theme="system">System</button><button data-theme="light">Ivory</button><button data-theme="dark">Dark</button>
     </div>
   </div>
   <div class="setting">

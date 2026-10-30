@@ -14,6 +14,9 @@ const CONFIG = {
   // QR card. This is the project's production domain on Vercel. Leave it "" and free saves
   // show "Glow" alone and Share Glow is not offered.
   publicUrl: "https://glow-photo-enhancer.vercel.app",
+  // Fill sends mode "fill" with a short prompt. The live server doesn't have that mode yet (it is
+  // in supabase/functions/enhance in this repo, undeployed). Turn on once it is deployed.
+  aiFill: false,
 };
 const PUBLIC_HOST = CONFIG.publicUrl ? new URL(CONFIG.publicUrl).host : "";
 
@@ -50,10 +53,13 @@ tool("outfit", "Try on", "Try on an outfit", "ai", "styles", { hint: "Pick a pho
   ["headshot", "Headshot", "Headshot"], ["fashion", "Fashion", "Fashion shoot"], ["anime", "Anime", "Anime"], ["watercolor", "Watercolor", "Watercolor"],
   ["toon3d", "3D Toon", "3D Toon"], ["clay", "Clay", "Clay"], ["older", "Older", "Make older"], ["younger", "Younger", "Make younger"]]
   .forEach(([id, label, title]) => tool(id, label, title, "ai", "styles", { hint: SELFIE_HINT }));
-[["bgblur", "Portrait blur", "Portrait blur"], ["bgremove", "Remove", "Remove background"], ["bgwhite", "White", "White background"],
+[["bgblur", "Portrait blur", "Portrait blur"], ["bgremove", "Cutout", "Remove background"], ["bgwhite", "White", "White background"],
   ["bgblush", "Blush", "Blush background"], ["bgsky", "Sky", "Sky background"]].forEach(([id, label, title]) => tool(id, label, title, "bg", "bg"));
-tool("erase", "Magic erase", "Magic erase", "ai", "edit", { hint: "Paint over what you want removed, then tap Apply." });
-tool("expand", "Expand", "Expand", "ai", "edit", { hint: "Adds more scene around the edges of your photo." });
+// Generative tools: Remove and Fill repaint only the area you mark; Expand adds new scene around
+// the photo. Your own pixels outside the marked or new area are put back exactly afterwards.
+tool("erase", "Remove", "Remove", "ai", "ai", { hint: "Paint over what to remove. Only the marked area changes.", mask: true });
+tool("fill", "Fill", "Fill", "ai", "ai", { hint: "Paint the area to fill and, if you like, say what to put there.", mask: true });
+tool("expand", "Expand", "Expand", "ai", "ai", { hint: "Choose a bigger shape and place the photo. Only the new area is generated." });
 tool("crop", "Crop", "Crop and rotate", "crop", "edit");
 tool("light", "Light", "Light", "adjust", "edit");
 tool("color", "Color", "Color", "adjust", "edit");
@@ -67,22 +73,37 @@ const TWO_CREDITS = ["headshot", "anime", "watercolor", "fashion"];
 const costOf = (t) => (t.kind !== "ai" ? 0 : TWO_CREDITS.includes(t.id) ? 2 : 1);
 const credits = (n) => `${n} credit${n === 1 ? "" : "s"}`;
 
-const ORIGINAL_CATS = [["fix", "Fix"], ["face", "Face"], ["hair", "Hair"], ["body", "Body"], ["styles", "Styles"], ["bg", "Backdrop"], ["edit", "Edit"], ["filters", "Filters"]];
+const ORIGINAL_CATS = [["fix", "Fix"], ["face", "Face"], ["hair", "Hair"], ["body", "Body"], ["styles", "Styles"], ["bg", "Backdrop"], ["edit", "Edit"], ["ai", "AI"], ["filters", "Filters"]];
 const FILTER_IDS = TOOLS.filter((t) => t.kind === "filter").map((t) => t.id);
+// Four tabs, each one row of tools in small labeled groups (no second row of subgroups).
+// Body reshaping is kept out of the tabs: it is only in Search, under "Body (advanced)", and is
+// never suggested or applied automatically. AI holds the tools that change what is in the photo;
+// other paid tools sit with their task and carry the same credit badge.
 const CATS = {
-  retouch: [["face", "Face", ["fauto", "feyes", "fundereye", "fteeth", "smile", "faces", "fbigeyes", "fslim", "fnose"]],
-    ["skin", "Skin", ["fsmooth", "fblemish", "retouch"]],
+  retouch: [["skin", "Skin", ["fsmooth", "fblemish", "fundereye", "retouch"]],
+    ["face", "Face", ["fauto", "feyes", "fteeth", "smile", "faces", "fbigeyes", "fslim", "fnose"]],
     ["makeup", "Makeup", ["flips", "fblush", "fbrows", "fshadow", "fliner", "fglam"]],
-    ["hair", "Hair", ["hcolor", "hair_waves", "hair_bob", "hair_pixie", "hair_bangs", "hair_curls", "hair_bun", "hair_braids", "hair_butterfly"]],
-    ["body", "Body", ["bwaist", "bhips", "barms", "bslimlegs", "blegs"]]],
+    ["hair", "Hair", ["hcolor", "hair_waves", "hair_bob", "hair_pixie", "hair_bangs", "hair_curls", "hair_bun", "hair_braids", "hair_butterfly"]]],
   looks: [["filters", "Filters", ["mylook", ...FILTER_IDS]],
     ["styles", "Styles", ["headshot", "fashion", "anime", "watercolor", "toon3d", "clay", "older", "younger"]],
     ["outfits", "Outfits", ["outfit", "gown", "suit", "sundress", "street"]]],
-  edit: [["crop", "Crop", ["crop", "expand"]], ["light", "Light", ["light", "relight", "golden"]], ["color", "Color", ["color", "warmth", "colorize"]],
-    ["detail", "Detail", ["pro", "detail", "enhance", "upscale"]], ["bg", "Background", ["bgblur", "bgremove", "bgwhite", "bgblush", "bgsky", "erase"]]],
+  edit: [["adjust", "Adjust", ["crop", "light", "color", "warmth", "detail"]],
+    ["enhance", "Enhance", ["pro", "enhance", "upscale", "relight", "golden", "colorize"]],
+    ["bg", "Background", ["bgblur", "bgremove", "bgwhite", "bgblush", "bgsky"]]],
+  ai: [["gen", "AI tools", ["erase", "fill", "expand"]]],
 };
-// Fixed starting points, not image analysis. Reshaping is never suggested.
+const ADVANCED = [["body", "Body (advanced)", ["bwaist", "bhips", "barms", "bslimlegs", "blegs"]]];
+const TAB_NAMES = { retouch: "Retouch", looks: "Looks", edit: "Edit", ai: "AI" };
+// Where a tool lives: its tab, or null for tools reached through Search only.
+function tabFor(id) {
+  for (const [c, groups] of Object.entries(CATS)) for (const [, , ids] of groups) if (ids.includes(id)) return [c, null];
+  return null;
+}
 const SUGGESTED = ["pro", "fauto", "relight", "bgblur"];
+// Remove, Fill and Expand: the marked or new area only, never auto-run, and Glow's server must
+// have the mode. Fill needs the "fill" mode from supabase/functions/enhance (not yet live).
+const MASK_TOOLS = ["erase", "fill"];
+const aiLive = (id) => id !== "fill" || CONFIG.aiFill;
 const CROPS = [["Free", "free"], ["Original", 0], ["Square", 1], ["4:5", 4 / 5], ["3:4", 3 / 4], ["9:16", 9 / 16], ["16:9", 16 / 9]];
 
 // ---------- Small UI helpers ----------
@@ -120,7 +141,7 @@ document.querySelectorAll("[data-icon]").forEach((el) => setIcon(el, el.dataset.
 document.querySelectorAll("[data-icon-li]").forEach((li) => li.insertAdjacentHTML("afterbegin", icon(li.dataset.iconLi)));
 document.querySelectorAll("dialog [data-close]").forEach((b) => { setIcon(b, "close"); b.addEventListener("click", () => b.closest("dialog").close()); });
 [["camSettingsBtn", "settings"], ["homeSettingsBtn", "settings"], ["backBtn", "back"], ["undoBtn", "undo"], ["redoBtn", "redo"], ["favBtn", "star"],
-  ["camGallery", "gallery"], ["camFlip", "flip"], ["flashBtn", "flashoff"], ["obBack", "back"], ["expandBtn", "chevup"],
+  ["camGallery", "gallery"], ["camFlip", "flip"], ["flashBtn", "flashoff"], ["obBack", "back"], ["searchClose", "close"], ["shareBtn", "share"], ["revertBtn", "revert"],
   ["zoomIn", "zoomin"], ["zoomOut", "zoomout"], ["zoomFit", "fit"], ["collapseBtn", "chevdown"], ["expandView", "expand"]].forEach(([id, n]) => setIcon($(id), n));
 setIcon(document.querySelector("#handle i"), "compare");
 $("retakeBtn").innerHTML = icon("retake") + "<span>Retake</span>";
@@ -224,13 +245,20 @@ const ed = { hist: [], idx: 0, floor: 0, pending: null, savedIdx: 0, original: n
 const MAX_UNDO = 25;
 let savingEdit = false;
 let sel = null;          // selected tool id, or null when no panel is open
-let cat = store.get("glowCat") || "foryou";
-let chipFor = {};
-try { chipFor = JSON.parse(store.get("glowChips") || "{}"); } catch {}
+let cat = store.get("glowCat") || "retouch";
+if (!CATS[cat]) cat = "retouch";   // For You and All from earlier versions: now Search
 let favs = [], recent = [];
 try { favs = JSON.parse(store.get("glowFavs") || "[]"); recent = JSON.parse(store.get("glowRecent") || "[]"); } catch {}
 let lastCommitTool = null;  // the AI tool behind the latest commit, to disclose a repeat charge
 let outfitData = null, strokes = [], painting = false, busyNow = false, thumb = "";
+// Remove / Fill: brush size (screen pixels), paint or erase marks, and Fill's optional prompt.
+let brushSize = 28, brushMode = "paint", fillPrompt = "";
+// A finished Remove / Fill / Expand result waits, unapplied, until the person applies or discards
+// it. It is kept with the job (in IndexedDB), so leaving the tool, the editor or the app never
+// loses paid work; reopening the tool (or Review in the status bar) shows it again.
+const resultReady = () => !!job && job.status === "done" && job.session === ed.session && hasPhoto();
+const reviewing = () => resultReady() && sel === job.tool;
+const maskOn = () => MASK_TOOLS.includes(sel) && !reviewing() && !ed.demo;
 
 const hasPhoto = () => ed.hist.length > 0;
 const committed = () => ed.hist[ed.idx].data;
@@ -330,7 +358,7 @@ async function openSample() {
   const entries = (manifest && manifest.previews) || [];
   demo = { manifest, saved, entry: Object.fromEntries(entries.map((e) => [e.tool, e])), cache: {}, failed: {},
     ready: entries.filter((e) => e.status === "ready" && e.result && TOOL[e.tool] && TOOL[e.tool].kind === "ai").map((e) => e.tool) };
-  cat = "foryou";
+  cat = "retouch";
   try { await openFile(new File([blob], "glow-ai-sample.png", { type: blob.type || "image/png" }), "AI-generated sample", { demo: true }); }
   catch (err) { exitDemo(); say(err.message, true); return; }
   $("alertLive").textContent = "AI-generated sample opened. Demo, no credits used.";
@@ -376,6 +404,13 @@ async function showDemoPreview(id) {
 }
 function demoPanelState(t) {
   const chip = $("cost"), apply = $("applyBtn");
+  if (!demo || !demo.ready.includes(t.id)) {
+    // Remove, Fill and Expand have no prepared result: nothing is generated on the sample.
+    chip.textContent = "Own photo"; chip.className = "chip";
+    apply.textContent = "Use your photo"; apply.disabled = false;
+    $("panelNote").textContent = `${t.title} works on your own photo. The sample has no prepared ${t.title} result, so nothing is generated here.`;
+    fitDock(); return;
+  }
   chip.textContent = "Prepared preview"; chip.className = "chip";
   apply.disabled = false;
   if (demo && demo.failed[t.id]) {
@@ -474,8 +509,8 @@ function renderHome() {
 // The canvas color is only on screen: Save exports the picture alone.
 function renderEditor() {
   if (!hasPhoto()) return;
-  const st = $("stage"), brushing = sel === "erase";
-  const after = ed.pending ? ed.pending.data : ed.idx > 0 ? committed() : null;
+  const st = $("stage"), brushing = maskOn();
+  const after = reviewing() ? job.result.data : ed.pending ? ed.pending.data : ed.idx > 0 ? committed() : null;
   const b = $("before"), a = $("after");
   const wantBefore = brushing ? committed() : ed.hist[0].data;
   if (b.getAttribute("src") !== wantBefore) { b.classList.remove("alpha"); b.onload = () => { markAlpha(b); layoutFrame(); }; b.src = wantBefore; }
@@ -493,9 +528,13 @@ function renderEditor() {
   st.classList.toggle("has-after", hasAfter);
   st.dataset.view = brushing ? "original" : ed.view;
   // Comparing only means something once there's an edit or a preview.
-  document.querySelectorAll(".views button").forEach((v) => {
-    v.setAttribute("aria-pressed", String(v.dataset.view === ed.view)); v.disabled = !hasAfter || !!cr;
-  });
+  const noCompare = !hasAfter || !!cr;
+  $("compareBtn").disabled = noCompare;
+  $("compareLbl").textContent = noCompare || holding ? "Compare" : ed.view === "split" ? "Split" : ed.view === "original" ? "Original" : "Compare";
+  $("compareBtn").setAttribute("aria-label", `Compare, ${noCompare ? "nothing to compare yet" : ed.view === "split" ? "showing split" : ed.view === "original" ? "showing original" : "showing your edit"}`);
+  $("compareBtn").classList.toggle("on", !noCompare && ed.view !== "edited");
+  $("revertBtn").disabled = !!busyNow || ed.demo || !!cr || (ed.idx === 0 && !ed.pending) || !!(ed.hist[ed.idx].op && ed.hist[ed.idx].op.revert && !ed.pending);
+  $("shareBtn").disabled = !!busyNow || savingEdit || (ed.idx === 0 && !ed.pending);
   const prepared = !ed.pending && ed.idx > 0 && ed.hist[ed.idx].op && ed.hist[ed.idx].op.demo;
   const editedName = ed.pending ? "Preview" : prepared ? "Prepared preview" : "Edited";
   const view = st.dataset.view;
@@ -513,7 +552,7 @@ function renderEditor() {
   $("saveBtn").disabled = !!busyNow || savingEdit || (ed.idx === 0 && !ed.pending) || savedNow;
   $("saveBtn").textContent = savedNow ? "Saved" : "Save";
   $("editorScreen").classList.toggle("editing-tool", !!sel);
-  $("editorScreen").classList.toggle("tools-open", toolsOpen && cat === "all" && !sel);
+  $("editorScreen").classList.toggle("tools-open", searching && !sel);
   if (thumbFor !== committed()) { thumbFor = committed(); refreshThumb(); }
   renderTabs(); renderTools(); renderPanel(); renderCredits(); renderJob();
   $("editorScreen").classList.toggle("panel-collapsed", !!sel && panelCollapsed);
@@ -583,9 +622,71 @@ function applyView() {
   $("after").style.clipPath = st.dataset.view === "split" && v.w ? `inset(0 0 0 ${((dx - v.x) / v.w) * 100}%)` : "";
   $("zoomIn").disabled = insp.z >= zoomMax(F) - 0.001; $("zoomOut").disabled = $("zoomFit").disabled = insp.z <= 1.001;
   $("zoomCtl").classList.toggle("show", insp.z > 1.001 || Date.now() < zoomCtlUntil);
-  if (sel === "erase" && !$("brush").hidden) drawStrokes();
+  if (maskOn() && !$("brush").hidden) drawStrokes();
+  placeFaceRings(v);
 }
 const layoutFrame = applyView;
+
+// ---------- Choosing a face in group photos ----------
+// Face tools edit one face at a time. With more than one face, the photo shows a ring on each:
+// the selected one (the largest at first) is solid and labeled, the others are dashed and can
+// be tapped (or reached with Tab) to switch. Nothing is ever applied to every face at once.
+const faceSel = { src: "", boxes: [], i: 0, loading: null };
+function ensureFaces() {
+  const src = committed();
+  if (faceSel.src === src) return faceSel.loading || Promise.resolve();
+  const prev = faceSel.boxes[faceSel.i];
+  faceSel.src = src;
+  faceSel.loading = faceBoxes(src).then((boxes) => {
+    if (faceSel.src !== src) return;
+    faceSel.boxes = boxes; faceSel.i = 0;
+    // Keep the same person selected after an edit changes the picture.
+    if (prev && boxes.length > 1) {
+      let bd = Infinity;
+      boxes.forEach((b, i) => { const d = (b.cx - prev.cx) ** 2 + (b.cy - prev.cy) ** 2; if (d < bd) { bd = d; faceSel.i = i; } });
+    }
+  }).catch(() => { if (faceSel.src === src) faceSel.boxes = []; })
+    .finally(() => { if (faceSel.src === src) faceSel.loading = null; renderFaceRings(); });
+  return faceSel.loading;
+}
+const pickingFace = () => !!sel && TOOL[sel].kind === "face" && faceSel.src === committed() && faceSel.boxes.length > 1 && !ed.demo;
+function renderFaceRings() {
+  const box = $("facePick"), on = pickingFace();
+  box.hidden = !on;
+  if (!on) { box.replaceChildren(); box.dataset.key = ""; return; }
+  const n = faceSel.boxes.length, key = `${faceSel.src.length}|${faceSel.src.slice(-32)}|${faceSel.i}|${n}`;
+  if (box.dataset.key === key) { placeFaceRings(); return; }
+  box.dataset.key = key;
+  box.replaceChildren(...faceSel.boxes.map((b, i) => {
+    const r = document.createElement("button");
+    r.className = "face-ring" + (i === faceSel.i ? " on" : ""); r.dataset.i = i;
+    r.setAttribute("aria-pressed", String(i === faceSel.i));
+    r.setAttribute("aria-label", `Face ${i + 1} of ${n}${i === 0 ? ", largest" : ""}${i === faceSel.i ? ", selected" : ""}`);
+    if (i === faceSel.i) r.innerHTML = `<span class="face-tag">Editing</span>`;
+    return r;
+  }));
+  placeFaceRings();
+}
+function placeFaceRings(v) {
+  const box = $("facePick"); if (box.hidden || !box.children.length) return;
+  v = v || viewRect();
+  [...box.children].forEach((r) => {
+    const b = faceSel.boxes[r.dataset.i], pad = 0.18;
+    const w = b.w * v.w * (1 + pad * 2), h = b.h * v.h * (1 + pad * 2);
+    Object.assign(r.style, { left: v.x + (b.cx * v.w) - w / 2 + "px", top: v.y + (b.cy * v.h) - h / 2 + "px", width: w + "px", height: h + "px" });
+  });
+}
+// A ring is a button: pressing it never starts a pan, pinch or double-tap zoom on the photo.
+["pointerdown", "dblclick", "touchstart"].forEach((ev) => $("facePick").addEventListener(ev, (e) => { if (e.target.closest(".face-ring")) e.stopPropagation(); }, { passive: true }));
+$("facePick").addEventListener("click", (e) => {
+  const r = e.target.closest(".face-ring"); if (!r) return;
+  e.stopPropagation();
+  const i = +r.dataset.i; if (i === faceSel.i) return;
+  faceSel.i = i; renderFaceRings();
+  $("facePick").querySelector(".face-ring.on").focus();
+  $("alertLive").textContent = `Face ${i + 1} selected. Changes apply to this face only.`;
+  if (sel && (faceSet.amt[sel] ?? 50) > 0) preview();   // the preview moves to the chosen face
+});
 let zoomCtlUntil = 0, zoomCtlTimer = 0;
 function pokeZoomCtl() {
   zoomCtlUntil = Date.now() + 2500; $("zoomCtl").classList.add("show");
@@ -620,13 +721,49 @@ function setSplit(pct) {
   applyView();
   $("handle").setAttribute("aria-valuenow", String(Math.round(ed.split)));
   $("handle").setAttribute("aria-valuetext", `${Math.round(ed.split)}% original`);
+  renderFaceRings();
 }
-document.querySelector(".views").addEventListener("click", (e) => {
-  const b = e.target.closest("button[data-view]"); if (!b || b.disabled) return;
-  if (b.dataset.view === "split" && ed.view !== "split") centerDividerOnFace();
-  ed.view = b.dataset.view; renderEditor();   // the zoom and position are kept across views
-  if (ed.view === "split") $("alertLive").textContent = "Compare: drag the divider, or use the arrow keys on it.";
+// Compare is one button outside the photo, so it never competes with pinching or brushing.
+// A tap (or Enter / Space) steps through split, original and back to the edit; pressing and
+// holding shows the original only while held. Zoom and position are kept across views.
+let holding = null;
+function setView(v) {
+  if (v === "split" && ed.view !== "split") centerDividerOnFace();
+  ed.view = v; renderEditor();
+  if (v === "split") $("alertLive").textContent = "Compare: drag the divider, or use the arrow keys on it.";
+  else $("alertLive").textContent = v === "original" ? "Showing the original." : "Showing your edit.";
+}
+$("compareBtn").addEventListener("pointerdown", (e) => {
+  if ($("compareBtn").disabled || (e.pointerType === "mouse" && e.button !== 0)) return;
+  holding = { prev: ed.view, held: false };
+  holding.timer = setTimeout(() => { if (holding) { holding.held = true; ed.view = "original"; renderEditor(); } }, 300);
 });
+const holdEnd = () => {
+  if (!holding) return;
+  clearTimeout(holding.timer);
+  if (holding.held) { ed.view = holding.prev; holding.skipClick = true; renderEditor(); }
+  const h = holding; setTimeout(() => { if (holding === h) holding = null; }, 0);
+};
+["pointerup", "pointercancel", "pointerleave"].forEach((ev) => $("compareBtn").addEventListener(ev, holdEnd));
+$("compareBtn").addEventListener("contextmenu", (e) => e.preventDefault());
+$("compareBtn").addEventListener("click", () => {
+  const h = holding; holding = null;
+  if (h && h.skipClick) return;
+  setView({ edited: "split", split: "original", original: "edited" }[ed.view] || "edited");
+});
+// Revert adds a step that returns to the original photo. It is an ordinary step, so Undo
+// brings the edits back, and the original itself is never changed.
+$("revertBtn").addEventListener("click", async () => {
+  if ($("revertBtn").disabled) return;
+  const c = await ask({ title: "Revert to the original?", text: "All edits are removed from the photo. Undo brings them back.", actions: [
+    { label: "Revert", value: "yes" }, { label: "Cancel", value: "", kind: "ghost" }] });
+  if (c !== "yes") return;
+  if (sel) selectTool(null, { discard: true });
+  previewToken++;
+  commit(ed.hist[0].data, null, { tool: "revert", fixed: true, revert: true }, ed.hist[0].full);
+  renderEditor(); say("Reverted to the original. Undo brings your edits back.");
+});
+$("shareBtn").addEventListener("click", () => saveEdit({ share: true }));
 // Compare starts with the divider down the middle of the face when one is known (the
 // landmarks found by a face tool) and in view, otherwise down the middle of the visible photo.
 function centerDividerOnFace() {
@@ -714,7 +851,7 @@ function hideZoomHint() {
   clearTimeout(hintTimer); $("zoomHint").classList.add("gone");
   setTimeout(() => { $("zoomHint").hidden = true; $("frame").classList.remove("hinting"); }, 400);
 }
-new ResizeObserver(() => { applyView(); if (sel === "erase") drawStrokes(); if (cr) renderCrop(); }).observe($("stage"));
+new ResizeObserver(() => { applyView(); if (maskOn()) drawStrokes(); if (cr) renderCrop(); }).observe($("stage"));
 // ---------- Expanded view ----------
 // A near full-screen look at the photo: the header and the tool panels step aside and nothing
 // else changes (the preview, zoom, position, comparison and unapplied settings all stay).
@@ -779,79 +916,74 @@ $("redoBtn").addEventListener("click", () => {
 });
 
 // ---------- Categories and tools ----------
+// Four tabs at the bottom: Retouch, Looks, Edit, AI. Each shows one row of tools in small
+// labeled groups. Search (the last tile) covers every tool, with favorites and recent tools first,
+// and is the way to the advanced body tools.
+let searching = false;
 function groupsFor(c) {
-  if (c === "foryou" && ed.demo) {
-    const ready = demo ? demo.ready : [];
-    return [["demo", ready.length ? "Prepared AI previews" : "AI previews aren't prepared for the sample yet", ready.length ? ready : []],
-      ["free", "Free on-device", DEMO_FREE]];
-  }
-  if (c === "foryou") {
-    const g = [];
-    if (favs.length) g.push(["fav", "Favorites", favs]);
-    if (recent.length) g.push(["recent", "Recent", recent.filter((id) => !favs.includes(id)).slice(0, 6)]);
-    const shown = new Set(g.flatMap((x) => x[2]));
-    g.push(["start", "Good places to start", SUGGESTED.filter((id) => !shown.has(id)).slice(0, 4)]);
-    return g.filter((x) => x[2].length);
-  }
-  if (c === "all") {
+  const all = [...Object.values(CATS).flat(), ...ADVANCED];
+  if (searching) {
     const q = $("searchInput").value.trim().toLowerCase();
-    return ORIGINAL_CATS.map(([k, name]) => [k, name, TOOLS.filter((t) => t.cat === k &&
-      (!q || `${t.label} ${t.title} ${name}`.toLowerCase().includes(q))).map((t) => t.id)]).filter((x) => x[2].length);
+    if (!q) {
+      const g = [];
+      if (favs.length) g.push(["fav", "Favorites", favs]);
+      if (recent.length) g.push(["recent", "Recent", recent.filter((id) => !favs.includes(id)).slice(0, 6)]);
+      return [...g, ...all.map(([k, name, ids]) => [k, `${TAB_NAMES[(tabFor(ids[0]) || [])[0]] ? TAB_NAMES[tabFor(ids[0])[0]] + " · " : ""}${name}`, ids])];
+    }
+    return all.map(([k, name, ids]) => [k, name, ids.filter((id) => TOOL[id] && `${TOOL[id].label} ${TOOL[id].title} ${name}`.toLowerCase().includes(q))]).filter((x) => x[2].length);
   }
-  const groups = CATS[c], pick = chipFor[c] || groups[0][0];
-  return groups.filter((g) => g[0] === pick);
+  return CATS[c];
 }
 function renderTabs() {
   document.querySelectorAll("#tabs .tab").forEach((t) => {
     const on = t.dataset.cat === cat;
     t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1;
   });
-  const groups = CATS[cat];
-  $("chips").hidden = !groups;
-  $("searchBox").hidden = cat !== "all";
-  // For You has no subgroups; its slot says what's there instead.
-  const note = cat === "foryou" ? (ed.demo ? (demo && demo.ready.length ? "Try a prepared preview or a free tool."
-    : "Prepared AI previews aren't available for the sample yet. Try the free tools.") : "Suggestions, your favorites and recent tools.") : "";
-  $("slotNote").textContent = note; $("slotNote").hidden = !note;
-  const open = toolsOpen && cat === "all";
-  $("expandBtn").setAttribute("aria-expanded", String(open));
-  $("expandBtn").setAttribute("aria-label", open ? "Show fewer tools" : "Show more tools");
-  setIcon($("expandBtn"), open ? "chevdown" : "chevup");
-  if (groups) {
-    const pick = chipFor[cat] || groups[0][0];
-    $("chips").replaceChildren(...groups.map(([k, name]) => {
-      const b = document.createElement("button"); b.className = "subchip"; b.textContent = name; b.dataset.chip = k;
-      b.setAttribute("aria-pressed", String(k === pick)); return b;
-    }));
-  }
+  $("searchBox").hidden = !searching;
+}
+// Remove, Fill and Expand are always listed under AI, even where they can't run (the sample, or
+// Fill before the server has it), with a badge saying why, instead of silently disappearing.
+const toolShown = (id) => demoOffers(id) || (ed.demo && CATS.ai[0][2].includes(id));
+function toolBadge(t) {
+  if (ed.demo && t.kind === "ai") return demo && demo.ready.includes(t.id) ? ["Preview", ", prepared preview, no credits"] : ["Own photo", ", needs your own photo"];
+  if (!aiLive(t.id)) return ["Soon", ", not available yet"];
+  const cost = costOf(t);
+  return cost ? [`AI · ${cost}`, `, uses ${credits(cost)}`] : [null, ", free"];
 }
 function toolButton(t) {
   const b = document.createElement("button");
-  b.className = "tool"; b.dataset.tool = t.id;
+  b.className = "tool" + (t.kind === "filter" ? " thumb" : ""); b.dataset.tool = t.id;
   b.setAttribute("aria-pressed", String(sel === t.id));
-  const cost = ed.demo ? 0 : costOf(t), prepared = ed.demo && t.kind === "ai";
-  b.setAttribute("aria-label", t.label + (prepared ? ", prepared preview, no credits" : cost ? `, uses ${credits(cost)}` : ", free"));
+  const [badge, spoken] = toolBadge(t);
+  b.setAttribute("aria-label", t.label + spoken);
   const well = document.createElement("i"); well.className = "well";
   if (t.kind === "filter") {
     if (thumb) { well.style.backgroundImage = `url(${thumb})`; well.style.filter = t.filter.f; }
   } else well.innerHTML = icon(t.id);
-  if (cost || prepared) { const c = document.createElement("span"); c.className = "cost"; c.textContent = prepared ? "Preview" : `AI · ${cost}`; c.setAttribute("aria-hidden", "true"); well.append(c); }
+  if (badge) { const c = document.createElement("span"); c.className = "cost"; c.textContent = badge; c.setAttribute("aria-hidden", "true"); well.append(c); }
   const name = document.createElement("span"); name.className = "name"; name.textContent = t.label;
   b.append(well, name);
   return b;
 }
 function renderTools() {
-  const groups = groupsFor(cat).map((g) => [g[0], g[1], g[2].filter((id) => TOOL[id] && demoOffers(id))]).filter((g) => g[2].length), box = $("tools");
-  if (!groups.length && ed.demo) { box.innerHTML = `<p class="empty-note">This tool group needs your own photo. Tap Use your photo above.</p>`; return; }
-  if (!groups.length) { box.innerHTML = `<p class="empty-note">No tools match that search.</p>`; return; }
-  renderToolGroups(box, groups, cat === "foryou" || cat === "all");
+  const groups = groupsFor(cat).map((g) => [g[0], g[1], g[2].filter((id) => TOOL[id] && toolShown(id))]).filter((g) => g[2].length), box = $("tools");
+  if (!groups.length && searching) { box.innerHTML = `<p class="empty-note">No tools match that search.</p>`; return; }
+  renderToolGroups(box, groups, true);
+  if (!searching) {
+    // Search sits at the end of every row.
+    const b = document.createElement("button"); b.className = "tool search-tile"; b.id = "searchBtn";
+    b.setAttribute("aria-label", "Search all tools"); b.setAttribute("aria-expanded", "false");
+    b.innerHTML = `<i class="well">${icon("search")}</i><span class="name">Search</span>`;
+    const g = document.createElement("div"); g.className = "group"; g.append(Object.assign(document.createElement("span"), { className: "group-label", ariaHidden: "true", innerHTML: "&nbsp;" }));
+    const items = document.createElement("div"); items.className = "group-items"; items.append(b); g.append(items); box.append(g);
+  }
 }
 function renderToolGroups(box, groups, showLabels) {
   box.replaceChildren(...groups.map(([, name, ids]) => {
     const g = document.createElement("div"); g.className = "group"; g.setAttribute("role", "group"); g.setAttribute("aria-label", name);
     if (showLabels) { const l = document.createElement("span"); l.className = "group-label"; l.textContent = name; l.setAttribute("aria-hidden", "true"); g.append(l); }
     const items = document.createElement("div"); items.className = "group-items";
-    items.append(...ids.filter((id) => TOOL[id] && demoOffers(id)).map((id) => toolButton(TOOL[id])));
+    items.append(...ids.filter((id) => TOOL[id] && toolShown(id)).map((id) => toolButton(TOOL[id])));
     g.append(items); return g;
   }));
 }
@@ -862,39 +994,50 @@ async function refreshThumb() {
   } catch { thumb = ""; }
   if (screen === "editorScreen") renderTools();
 }
+function setSearching(on) {
+  if (on && sel) selectTool(null);
+  searching = on; toolsOpen = on;
+  if (!on) $("searchInput").value = "";
+  $("editorScreen").classList.toggle("tools-open", on && !sel); renderTabs(); renderTools(); fitDock();
+  if (on) $("searchInput").focus(); else if ($("searchBtn")) $("searchBtn").focus();
+}
 $("tabs").addEventListener("click", (e) => {
   const t = e.target.closest(".tab"); if (!t) return;
+  if (sel) selectTool(null);
+  if (searching) { searching = false; toolsOpen = false; $("searchInput").value = ""; }
   cat = t.dataset.cat; store.set("glowCat", cat); $("tools").scrollTo(0, 0);
-  $("editorScreen").classList.toggle("tools-open", toolsOpen && cat === "all" && !sel); renderTabs(); renderTools();
-  if (cat === "all" && matchMedia("(pointer: fine)").matches) $("searchInput").focus();
+  $("editorScreen").classList.remove("tools-open"); renderTabs(); renderTools();
 });
 $("tabs").addEventListener("keydown", (e) => {
   if (!["ArrowLeft", "ArrowRight"].includes(e.key)) return;
   const tabs = [...document.querySelectorAll("#tabs .tab")], i = tabs.findIndex((t) => t.dataset.cat === cat);
   const n = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length]; n.click(); n.focus();
 });
-$("chips").addEventListener("click", (e) => {
-  const b = e.target.closest(".subchip"); if (!b) return;
-  chipFor[cat] = b.dataset.chip; store.set("glowChips", JSON.stringify(chipFor)); renderTabs(); renderTools();
-});
 $("searchInput").addEventListener("input", renderTools);
-// All: a deliberate switch between one scrolling row and a taller catalog.
-$("expandBtn").addEventListener("click", () => {
-  toolsOpen = !toolsOpen; $("editorScreen").classList.toggle("tools-open", toolsOpen && cat === "all" && !sel); renderTabs();
-});
+$("searchClose").addEventListener("click", () => setSearching(false));
+$("searchInput").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); setSearching(false); } });
 $("tools").addEventListener("click", (e) => {
   const b = e.target.closest(".tool"); if (!b || busyNow) return;
+  if (b.id === "searchBtn") { setSearching(true); return; }
   Platform.haptic();
   selectTool(sel === b.dataset.tool ? null : b.dataset.tool);
 });
 
 // ---------- Selected tool panel ----------
 function discardPending() { if (ed.pending) { ed.pending = null; previewToken++; } }
-function selectTool(id) {
-  if (ed.pending && ed.pending.tool !== id) say(`${TOOL[ed.pending.tool].title} wasn't applied.`);
-  discardPending();
+// Leaving a free tool keeps its change: switching tools or tabs commits the preview as one
+// Undo step (one per tool visit, never one per slider move). Cancel and Escape discard it.
+function selectTool(id, opts = {}) {
+  if (cr && !opts.discard && cropChanged() && !busyNow) { applyCrop().then(() => { if (id) selectTool(id); }); return; }
+  if (ed.pending && ed.pending.tool !== id && !opts.discard) {
+    const p = ed.pending, t = TOOL[p.tool];
+    commit(p.data, t, p.op); previewToken++;
+    say(`${t.title} kept. Undo removes it.`);
+  } else if (ed.pending && opts.discard) { say(`${TOOL[ed.pending.tool].title} discarded.`); discardPending(); }
+  else discardPending();
   if (cr) closeCrop();
   if (id !== sel) { panelCollapsed = false; filterAmt = 100; }   // a newly opened tool always shows its controls
+  if (searching && id) { searching = false; $("searchInput").value = ""; $("editorScreen").classList.remove("tools-open"); const home = tabFor(id); if (home) cat = home[0]; }
   sel = id; strokes = []; outfitData = null; toolsOpen = false; panelBuilt = null; reshapeNote = null;
   lookPick = editorLooks().some((l) => l.id === lookId) ? lookId : "natural";
   if (id in toolAmt) toolAmt[id] = 0; // adjustments start from the committed photo
@@ -902,7 +1045,7 @@ function selectTool(id) {
     const t = TOOL[id];
     // One effect at a time: a prepared preview always starts from the original, and so does
     // an on-device tool picked while a prepared preview is showing.
-    if (t.kind === "ai") { showDemoPreview(id); return; }
+    if (t.kind === "ai" && demo && demo.ready.includes(id)) { showDemoPreview(id); return; }
     if (ed.idx > 0 && ed.hist.some((h) => h.op && h.op.demo)) demoReset("Back to the original. Sample previews show one effect at a time.");
   }
   renderEditor();
@@ -910,18 +1053,43 @@ function selectTool(id) {
     const t = TOOL[id];
     if (t.kind === "adjust") return; // previews once changed
     if (t.kind === "crop") { openCrop().catch((err) => { say(err.message, true); selectTool(null); }); return; }
+    if (t.kind === "face") ensureFaces();
     if (t.kind === "face" && t.reshape) checkReshape(id);
     if (t.kind === "face" || t.kind === "body" || t.kind === "hair") { if ((faceSet.amt[id] ?? 50) > 0) preview(); return; }
     if (t.kind === "look") { preview(); return; }
     if (t.kind === "filter" || t.kind === "bg") preview();
   }
 }
-$("cancelBtn").addEventListener("click", () => selectTool(null));
+$("cancelBtn").addEventListener("click", () => (reviewing() ? discardResult() : selectTool(null, { discard: true })));
+// Discarding a finished AI result: the credit was spent when it was made and isn't returned,
+// so this asks first. Remove / Fill marks stay, ready for another try.
+async function discardResult() {
+  if (!job || job.status !== "done") return;
+  const t = TOOL[job.tool];
+  const c = await ask({ title: `Discard this ${t.title} result?`, text: "The AI credit it used isn't returned. Your marks stay, so you can adjust them and try again.",
+    actions: [{ label: "Discard", value: "yes" }, { label: "Keep reviewing", value: "", kind: "ghost" }] });
+  if (!c || !job || job.status !== "done") return;
+  job = null; saveJob(); renderEditor(); say(`${t.title} result discarded.`);
+}
+// Applying it adds one Undo step. A result made from an earlier version of the photo replaces
+// the current version, so that case asks first.
+async function applyResult() {
+  if (!resultReady()) return;
+  const r = job.result, t = TOOL[job.tool];
+  if (ed.idx !== job.baseIdx) {
+    const c = await ask({ title: `Use the ${t.title} result?`, text: "It was made from an earlier version of this photo, so edits made since then won't be in it. Undo brings them back.",
+      actions: [{ label: "Use it", value: "yes" }, { label: "Not now", value: "", kind: "ghost" }] });
+    if (!c || !resultReady()) return;
+  }
+  job = null; saveJob();
+  commit(r.data, t, { tool: t.id, fixed: true }, r.full); strokes = []; if (sel === t.id) sel = null;
+  renderEditor(); say(`${t.title} applied. Undo removes it.`); Platform.haptic();
+}
 $("favBtn").addEventListener("click", () => {
   if (!sel) return;
   favs = favs.includes(sel) ? favs.filter((x) => x !== sel) : [sel, ...favs].slice(0, 8);
-  store.set("glowFavs", JSON.stringify(favs)); renderPanel(); if (cat === "foryou") renderTools();
-  say(favs.includes(sel) ? "Added to favorites in For You." : "Removed from favorites.");
+  store.set("glowFavs", JSON.stringify(favs)); renderPanel(); if (searching) renderTools();
+  say(favs.includes(sel) ? "Added to favorites. Find them in Search." : "Removed from favorites.");
 });
 
 function slider(label, min, max, value, onInput, onChange, fmt = (v) => v) {
@@ -1024,14 +1192,33 @@ function buildPanel(t) {
       if (f) { try { outfitData = await loadAndShrink(f); } catch (err) { say(err.message, true); } renderPanel(true); }
     });
     row.append(b); body.append(row);
-  } else if (t.id === "erase") {
-    const b = document.createElement("button"); b.className = "btn quiet small"; b.id = "clearMarks"; b.textContent = "Clear marks";
-    b.addEventListener("click", () => { strokes = []; drawStrokes(); renderPanel(); }); body.append(b);
+  } else if (MASK_TOOLS.includes(t.id) && !ed.demo) {
+    // Paint marks the area; Erase takes marks away. Reset (in the title row) clears them all.
+    const modes = options([["Paint", "paint"], ["Erase marks", "erase"]], (v) => v === brushMode, (v) => { brushMode = v; renderPanel(true); });
+    modes.setAttribute("role", "group"); modes.setAttribute("aria-label", "Brush"); modes.classList.add("brush-modes");
+    [...modes.children].forEach((b, i) => { b.setAttribute("aria-label", b.textContent); b.title = b.textContent; b.innerHTML = icon(i ? "eraser" : "brush"); });
+    const sz = slider("Size", 8, 80, brushSize, (v) => { brushSize = v; }, (v) => { brushSize = v; }, (v) => v);
+    sz.querySelector("input").setAttribute("aria-valuetext", `${brushSize} pixels`);
+    sz.querySelector("input").addEventListener("input", (e) => e.target.setAttribute("aria-valuetext", `${e.target.value} pixels`));
+    const row = document.createElement("div"); row.className = "brush-row"; row.append(modes, sz); body.append(row);
+    if (t.id === "fill") {
+      const l = document.createElement("label"); l.className = "prompt";
+      const inp = document.createElement("input"); inp.type = "text"; inp.id = "fillPrompt"; inp.maxLength = 200; inp.autocomplete = "off";
+      inp.placeholder = "What to add (optional), e.g. a vase of flowers"; inp.value = fillPrompt;
+      inp.addEventListener("input", () => { fillPrompt = inp.value; });
+      l.append(Object.assign(document.createElement("span"), { className: "sr-only", textContent: "What to add (optional)" }), inp); body.append(l);
+    }
+    const rs = document.createElement("button"); rs.className = "link-btn head-extra"; rs.id = "clearMarks"; rs.textContent = "Reset";
+    rs.setAttribute("aria-label", "Clear all marks");
+    rs.addEventListener("click", () => { strokes = []; drawStrokes(); renderPanel(); });
+    $("collapseBtn").before(rs);
   }
 }
 function panelState(t) {
+  $("cancelBtn").textContent = reviewing() ? "Discard" : "Cancel";
   if (ed.demo && t.kind === "ai") return demoPanelState(t);
   const cost = costOf(t), chip = $("cost"), apply = $("applyBtn");
+  const gen = MASK_TOOLS.includes(t.id) || t.id === "expand";
   let note = t.hint || "";
   if (!cost) { chip.textContent = "Free · on-device"; chip.className = "chip free"; }
   else { chip.textContent = `AI · ${credits(cost)}`; chip.className = "chip"; }
@@ -1049,6 +1236,18 @@ function panelState(t) {
     if (t.kind === "crop") apply.disabled ||= !cropChanged();
     const sl = $("panelBody").querySelector(".slider input");
     if (sl && t.reshape && t.kind === "face") sl.disabled = !!(blocked && blocked.msg);
+  } else if (reviewing()) {
+    // A result is waiting: the credit was spent making it. Apply keeps it as one Undo step;
+    // Discard drops it (the credit isn't returned). Nothing is charged by either.
+    chip.textContent = `AI · ${credits(cost)} used`; chip.className = "chip";
+    apply.textContent = "Apply"; apply.disabled = false;
+    note = job.unblended ? "This device couldn't blend the result into your full-size photo, so the whole picture is at the size the AI returned. Discard to keep your photo as it was."
+      : MASK_TOOLS.includes(t.id) ? "Only the marked area changed. It is blended into your full-size photo; the marked area itself is at the AI's size and may look softer up close."
+      : "Tap Compare to see the original. Apply keeps it; Discard drops it, and the credit isn't returned.";
+  } else if (!aiLive(t.id)) {
+    chip.textContent = "Not available yet"; chip.className = "chip";
+    apply.textContent = "Not available yet"; apply.disabled = true;
+    note = "Fill needs an update to Glow's AI server that isn't live yet. Nothing is sent or charged.";
   } else {
     const again = lastCommitTool === t.id;
     const a = account, short = a && a.remaining < cost;
@@ -1058,13 +1257,14 @@ function panelState(t) {
         ? `This uses ${credits(cost)} and you have ${a.remaining} left.`
         : `You're out of AI credits ${a.plan === "pro" ? "for now" : "for today"}. On-device tools are still free.`;
     } else {
-      apply.textContent = `${again ? "Run again" : "Apply"} · ${credits(cost)}`;
+      apply.textContent = `${again ? "Run again" : gen ? "Generate" : "Apply"} · ${credits(cost)}`;
       const bal = a ? ` You have ${a.remaining} left ${a.plan === "pro" ? "this week" : "today"}.` : "";
       note = again ? `Running it again makes a new version and uses another ${credits(cost).replace(/^1 /, "")}.${bal}` : `${note}${bal}`.trim();
     }
     if (jobActive()) { apply.disabled = true; note = `Wait for ${job.title} to finish, or check its status above. Glow runs one AI edit at a time so nothing is charged twice.`; }
+    else if (resultReady()) { apply.disabled = true; note = `Apply or discard the ${job.title} result first (in the bar above).`; }
     if (t.id === "outfit" && !outfitData && !short) apply.disabled = true;
-    if (t.id === "erase" && !strokes.length && !short) apply.disabled = true;
+    if (MASK_TOOLS.includes(t.id) && !strokes.some((x) => !x.erase) && !short) apply.disabled = true;
   }
   $("panelNote").textContent = note; fitDock();
 }
@@ -1075,6 +1275,7 @@ let previewToken = 0;
 function opFor(t) {
   const op = { tool: t.id };
   if (t.kind === "face" || t.kind === "body" || t.kind === "hair") { op.amt = (faceSet.amt[t.id] ?? 50) / 100; op.shades = { ...faceSet.shade }; }
+  if (t.kind === "face" && faceSel.boxes.length > 1) { const b = faceSel.boxes[faceSel.i]; op.face = [b.cx, b.cy]; }
   if (t.kind === "adjust") op.value = toolAmt[t.id];
   if (t.kind === "filter" && filterAmt < 100) op.amt = filterAmt / 100;
   if (t.kind === "look") op.look = { ...(editorLooks().find((l) => l.id === lookPick) || PRESET_LOOKS[1]) };
@@ -1086,7 +1287,7 @@ async function computeOp(op, base) {
     const keep = { ...faceSet.shade };
     Object.assign(faceSet.shade, op.shades);
     try {
-      if (t.kind === "face") return await faceEdit(base, t.id, op.amt);
+      if (t.kind === "face") return await faceEdit(base, t.id, op.amt, op.face);
       if (t.kind === "body") return await bodyEdit(base, t.id, op.amt);
       return await hairColor(base, op.amt, op.shades.hcolor);
     } finally { Object.assign(faceSet.shade, keep); }
@@ -1110,7 +1311,9 @@ async function computeOp(op, base) {
 }
 async function preview() {
   const t = sel && TOOL[sel]; if (!t || costOf(t) || t.kind === "crop") return;
-  const token = ++previewToken, base = committed(), op = opFor(t);
+  const token = ++previewToken, base = committed();
+  if (t.kind === "face") { await ensureFaces(); if (token !== previewToken || sel !== t.id) return; }
+  const op = opFor(t);
   const slow = setTimeout(() => { if (token === previewToken) setBusy(true, t.kind === "face" || t.kind === "body" || t.kind === "hair" || t.kind === "bg" ? "Finding the details…" : "Working…"); }, 250);
   try {
     const out = await computeOp(op, base);
@@ -1142,7 +1345,11 @@ $("applyBtn").addEventListener("click", applyCurrent);
 async function applyCurrent() {
   const t = sel && TOOL[sel]; if (!t || busyNow) return;
   // Sample: prepared previews are already showing. Nothing is generated or charged.
-  if (ed.demo && t.kind === "ai") { if (demo && demo.failed[t.id]) showDemoPreview(t.id); else { sel = null; renderEditor(); } return; }
+  if (ed.demo && t.kind === "ai") {
+    if (!demo || !demo.ready.includes(t.id)) { pickAndOpen(); return; }
+    if (demo.failed[t.id]) showDemoPreview(t.id); else { sel = null; renderEditor(); } return;
+  }
+  if (reviewing()) { await applyResult(); return; }
   const cost = costOf(t);
   if (t.kind === "crop") { if (cr && cropChanged()) await applyCrop(); return; }
   if (!cost) {
@@ -1164,6 +1371,8 @@ async function applyCurrent() {
     return;
   }
   if (jobActive()) { say(`${job.title} is still running. Check its status first.`, true); return; }
+  if (resultReady()) { say(`Apply or discard the ${job.title} result first.`, true); return; }
+  if (!aiLive(t.id)) return;
   await startAiEdit(t);
 }
 
@@ -1409,17 +1618,19 @@ async function startAiEdit(t) {
   const before = account ? account.remaining : null;
   setBusy(true, `${t.title}…`, "AI edits can take up to a minute.");
   $("alertLive").textContent = `${t.title} is running.`;
-  let body;
+  let body, keep = {};
   try {
     const base = committed();
-    if (t.id === "erase") {
-      const up = await uploadable(base), dims = await loadImg(up);
-      body = { image: up, mode: "erase", mask: eraseMask(dims.naturalWidth, dims.naturalHeight) };
+    if (MASK_TOOLS.includes(t.id)) {
+      const up = await uploadable(base), dims = await loadImg(up), mask = eraseMask(dims.naturalWidth, dims.naturalHeight);
+      const prompt = t.id === "fill" ? fillPrompt.trim().slice(0, 200) : "";
+      body = { image: up, mode: t.id, mask, prompt: prompt || undefined };
+      keep = { mask };   // to put every unmarked pixel back afterwards
     } else if (t.id === "expand") {
       const x = await expandInputs(base); body = { image: x.image, mode: "expand", mask: x.mask };
     } else body = { image: await uploadable(base), mode: t.id, extra: t.id === "outfit" ? outfitData : undefined };
   } catch (err) { setBusy(false); say(err.message, true); return; }
-  job = { requestId: rid(), id: null, tool: t.id, title: t.title, session: ed.session, baseIdx: ed.idx, status: "starting", startedAt: Date.now(), before };
+  job = { requestId: rid(), id: null, tool: t.id, title: t.title, session: ed.session, baseIdx: ed.idx, status: "starting", startedAt: Date.now(), before, ...keep };
   saveJob();
   let res;
   try {
@@ -1439,7 +1650,6 @@ async function startAiEdit(t) {
     job.status = "unknown"; job.error = "The connection dropped before Glow heard back."; saveJob();
     return;
   }
-  if (t.id === "erase") strokes = [];
   job.id = res.id; job.status = "processing"; saveJob();
   await followJob(res, 60000, true);
 }
@@ -1501,14 +1711,20 @@ async function settleJob(res) {
     const r = await fetch(res.output); if (!r.ok) throw new Error();
     full = await blobToData(await r.blob());
   } catch { mine.status = "unknown"; mine.error = "The result couldn't be downloaded yet."; saveJob(); return; }
+  // Remove / Fill: only the marked area comes from the AI. It is blended into the FULL-SIZE photo
+  // (every earlier step redone at full size), so every unmarked pixel is the photo's own, at its
+  // own resolution. Only the marked area is limited to the size the AI worked at.
+  const mineHere = mine.session === ed.session && hasPhoto() && ed.hist.length > mine.baseIdx;
+  if (mineHere && mine.mask) {
+    try { const fb = await renderExport(mine.baseIdx); full = await protectComposite(fb.data, full, mine.mask); } catch { mine.unblended = true; }
+  }
   const data = await shrinkData(full, 2048);
-  const op = { tool: mine.tool, fixed: true };
-  if (mine.session === ed.session && hasPhoto() && ed.idx === mine.baseIdx) {
-    job = null; saveJob();
-    commit(data, TOOL[mine.tool], op, full); if (sel === mine.tool) sel = null;
-    renderEditor(); say(`${mine.title} done. Drag the line to compare.`); Platform.haptic();
-  } else if (mine.session === ed.session && hasPhoto()) {
+  if (mineHere) {
+    // Every AI result waits for Apply. It is kept with the job, so it survives leaving the tool,
+    // the editor, or a reload, and nothing is charged again to look at it.
     mine.status = "done"; mine.result = { data, full }; saveJob();
+    renderEditor(); Platform.haptic();
+    say(sel === mine.tool ? `${mine.title} is ready. Apply to keep it.` : `${mine.title} is ready to review.`);
   } else {
     recovered = { title: mine.title, data, full }; job = null; saveJob();
     Drafts.putRecovered(recovered).catch(() => {}); if (screen === "editorHome") renderHome();
@@ -1519,7 +1735,7 @@ const blobToData = (b) => new Promise((ok, fail) => { const fr = new FileReader(
 
 function renderJob() {
   const bar = $("jobBar");
-  const show = !!job && job.session === ed.session && screen === "editorScreen";
+  const show = !!job && job.session === ed.session && screen === "editorScreen" && !reviewing();
   bar.hidden = !show;
   if (!show) return;
   const working = job.status === "starting" || (job.status === "processing" && following);
@@ -1528,16 +1744,14 @@ function renderJob() {
   if (job.status === "processing" && !following) text = `${job.title} may still be processing.`;
   if (job.status === "unknown") text += ` ${job.error || ""} Glow won't charge you again to check.`;
   if (job.status === "failed") text += ` ${job.error}` + (job.refunded ? " Glow's server returned the AI credit." : account ? ` Your balance shows ${balanceText(account)}.` : "");
-  if (job.status === "done") text += " It was made from an earlier version of this photo.";
+  if (job.status === "done" && ed.idx !== job.baseIdx) text += " It was made from an earlier version of this photo.";
   $("jobText").textContent = text;
   const btn = (label, fn, kind) => { const b = document.createElement("button"); b.className = "btn small " + (kind || "quiet"); b.textContent = label; b.addEventListener("click", fn); return b; };
   const acts = [];
   if (job.status === "unknown" || (job.status === "processing" && !following)) acts.push(btn("Check status", () => checkJob()));
-  if (job.status === "done") acts.push(btn("Use it", () => {
-    const r = job.result, t = TOOL[job.tool]; job = null; saveJob();
-    commit(r.data, t, { tool: t.id, fixed: true }, r.full); renderEditor(); say(`${t.title} added. Undo removes it.`);
-  }, ""));
-  if (job.status === "failed" || job.status === "done" || job.status === "unknown") acts.push(btn("Dismiss", () => { job = null; saveJob(); }, "ghost"));
+  if (job.status === "done") acts.push(btn("Review", () => selectTool(job.tool)), btn("Apply", applyResult, ""));
+  if (job.status === "done") acts.push(btn("Discard", discardResult, "ghost"));
+  if (job.status === "failed" || job.status === "unknown") acts.push(btn("Dismiss", () => { job = null; saveJob(); }, "ghost"));
   $("jobActions").replaceChildren(...acts);
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && job && job.status === "processing" && !following) checkJob(); });
@@ -1555,8 +1769,10 @@ function drawStrokes() {
   if (!hasPhoto() || !$("before").naturalWidth) return;
   const ctx = cv.getContext("2d"), r = imageRect();
   ctx.scale(dpr, dpr);
-  ctx.strokeStyle = "rgba(255,80,120,0.55)"; ctx.lineCap = ctx.lineJoin = "round";
+  // Marks are drawn solid on their own layer and shown at one opacity, so overlaps don't darken.
+  ctx.strokeStyle = "rgb(214 70 128)"; ctx.lineCap = ctx.lineJoin = "round";
   for (const s of strokes) {
+    ctx.globalCompositeOperation = s.erase ? "destination-out" : "source-over";
     ctx.lineWidth = s.w * r.s; ctx.beginPath();
     s.pts.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, r.x + x * r.s, r.y + y * r.s));
     if (s.pts.length === 1) ctx.lineTo(r.x + s.pts[0][0] * r.s + 0.1, r.y + s.pts[0][1] * r.s);
@@ -1579,7 +1795,7 @@ $("brush").addEventListener("pointerdown", (e) => {
   }
   if (e.pointerType === "mouse" && e.button !== 0) return;
   painting = true; painter = { id: e.pointerId, p: stagePt(e) };
-  strokes.push({ w: 28 / imageRect().s, pts: [brushPoint(e)] }); drawStrokes();
+  strokes.push({ w: brushSize / imageRect().s, pts: [brushPoint(e)], erase: brushMode === "erase" || undefined }); drawStrokes();
 });
 $("brush").addEventListener("pointermove", (e) => {
   if (navPtrs.has(e.pointerId)) { navPtrs.set(e.pointerId, stagePt(e)); navMove(); return; }
@@ -1595,16 +1811,35 @@ $("brush").addEventListener("wheel", (e) => { e.preventDefault(); const p = stag
 function eraseMask(w, h) {
   const r = imageRect(), k = w / r.nw, c = newCanvas(w, h), ctx = c.getContext("2d");
   ctx.fillStyle = "#000"; ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = "#fff"; ctx.lineCap = ctx.lineJoin = "round";
+  ctx.lineCap = ctx.lineJoin = "round";
   for (const s of strokes) {
-    ctx.lineWidth = s.w * 1.15 * k; ctx.beginPath();
+    ctx.strokeStyle = s.erase ? "#000" : "#fff";
+    ctx.lineWidth = s.w * (s.erase ? 1 : 1.15) * k; ctx.beginPath();
     s.pts.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, x * k, y * k));
     if (s.pts.length === 1) ctx.lineTo(s.pts[0][0] * k + 0.1, s.pts[0][1] * k);
     ctx.stroke();
   }
   return c.toDataURL("image/png");
 }
-window.addEventListener("resize", () => { if (sel === "erase") drawStrokes(); });
+window.addEventListener("resize", () => { if (maskOn()) drawStrokes(); });
+
+// Puts every unmarked pixel of the photo back over an AI result: the result is used only where
+// the (slightly feathered) mask is white. Works at the size of the photo being edited.
+async function protectComposite(baseSrc, resultSrc, maskSrc) {
+  const [base, res, m] = await Promise.all([loadImg(baseSrc), loadImg(resultSrc), loadImg(maskSrc)]);
+  const w = base.naturalWidth, h = base.naturalHeight, out = newCanvas(w, h), ctx = out.getContext("2d");
+  ctx.drawImage(base, 0, 0);
+  const mc = newCanvas(w, h), mx = mc.getContext("2d", { willReadFrequently: true });
+  // The blend band: a feather of 0.2% of the long side (2 px or more) at the mask's edge.
+  mx.filter = `blur(${Math.max(2, Math.round(Math.max(w, h) / 500))}px)`; mx.drawImage(m, 0, 0, w, h); mx.filter = "none";
+  const d = mx.getImageData(0, 0, w, h);
+  for (let i = 0; i < d.data.length; i += 4) { d.data[i + 3] = d.data[i]; d.data[i] = d.data[i + 1] = d.data[i + 2] = 255; }
+  mx.putImageData(d, 0, 0);
+  const layer = newCanvas(w, h), lx = layer.getContext("2d");
+  lx.drawImage(res, 0, 0, w, h); lx.globalCompositeOperation = "destination-in"; lx.drawImage(mc, 0, 0);
+  ctx.drawImage(layer, 0, 0);
+  return /^data:image\/png/.test(baseSrc) ? out.toDataURL("image/png") : out.toDataURL("image/jpeg", 0.95);
+}
 
 // ---------- Save and leave ----------
 // Saving redoes every step from the full-size original (or the latest AI result, at the size
@@ -1619,11 +1854,13 @@ async function exportBase(src, png) {
     return { data: png ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", 0.95), capped: f.capped, srcW: img.naturalWidth, srcH: img.naturalHeight };
   } finally { if (src instanceof Blob) URL.revokeObjectURL(url); }
 }
-async function renderExport() {
-  const steps = ed.hist.slice(0, ed.idx + 1);
+// Redoes every step at full size, up to the current version (or step `upto`).
+async function renderExport(upto = ed.idx) {
+  const steps = ed.hist.slice(0, upto + 1);
   let k = 0;
   for (let i = steps.length - 1; i >= 1; i--) if (steps[i].op && steps[i].op.fixed) { k = i; break; }
-  const from = k ? steps[k].full || steps[k].data : (ed.original && ed.original.blob) || steps[0].data;
+  // A Revert step starts again from the original itself.
+  const from = k && !steps[k].op.revert ? steps[k].full || steps[k].data : (ed.original && ed.original.blob) || steps[0].data;
   const png = from instanceof Blob ? from.type === "image/png" : isPng(from);
   const base = await exportBase(from, png);
   let data = base.data;
@@ -1637,7 +1874,7 @@ async function renderExport() {
     }
   } finally { IMG_MAX = keep; }
   const img = await loadImg(data);
-  return { data, w: img.naturalWidth, h: img.naturalHeight, capped: base.capped, ai: k && steps[k].op.tool !== "camlook" ? TOOL[steps[k].op.tool] : null };
+  return { data, w: img.naturalWidth, h: img.naturalHeight, capped: base.capped, ai: k && TOOL[steps[k].op.tool] && steps[k].op.tool !== "camlook" ? TOOL[steps[k].op.tool] : null };
 }
 function exportNote(r) {
   if (r.preview) return ` Saved at ${r.w} × ${r.h}, the preview size, because the full-size version couldn't be made on this device.`;
@@ -1646,7 +1883,8 @@ function exportNote(r) {
   if (r.capped) return ` Saved at ${r.w} × ${r.h}, Glow's 16-megapixel limit.`;
   return ` Saved at ${r.w} × ${r.h}.`;
 }
-async function saveEdit() {
+async function saveEdit(opts) {
+  const share = !!(opts && opts.share === true);   // the Share button: the share sheet wherever the browser has one
   if (ed.pending) {
     const t = TOOL[ed.pending.tool];
     const c = await ask({ title: `Apply ${t.title} before saving?`, text: "This change is only a preview so far.", actions: [
@@ -1698,7 +1936,7 @@ async function saveEdit() {
   const withOrig = !ed.demo && store.get("glowSaveOrig") === "on" && !ed.originalSaved && ed.original && ed.original.blob;
   if (withOrig) items.unshift({ blob: ed.original.blob, name: `glow-${stamp}-original` });
   try {
-    const where = await Platform.savePhotos(items);
+    const where = await Platform.savePhotos(items, { share });
     ed.savedIdx = ed.idx; if (withOrig) ed.originalSaved = true;
     ed.lastExport = { w: out.w, h: out.h, original: ed.original ? [ed.original.w, ed.original.h] : null };
     saveDraft(); renderEditor();
@@ -1735,13 +1973,25 @@ function markLayout(ctx, w, h) {
   if (u < 11 || gw + hw > w * 0.5) { host = ""; hw = 0; }   // too small to read: "Glow" alone
   return { s, u, gw, hw, host, x: Math.round(w - inset - gw - hw), y: h - inset };
 }
+// Mean luminance (0–1) of the area the mark covers; true when it is bright.
+function markLight(ctx, m, w, h) {
+  const x = Math.max(0, Math.floor(m.x)), y = Math.max(0, Math.floor(m.y - m.s)), bw = Math.min(w - x, Math.ceil(m.gw + m.hw)), bh = Math.min(h - y, Math.ceil(m.s * 1.3));
+  if (bw < 1 || bh < 1) return false;
+  const d = ctx.getImageData(x, y, bw, bh).data, step = Math.max(1, Math.floor((bw * bh) / 4000)) * 4;
+  let sum = 0, n = 0;
+  for (let i = 0; i < d.length; i += step) { sum += (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255; n++; }
+  return n > 0 && sum / n > 0.62;
+}
 async function addMark(data, png) {
   await markFonts();
   const img = await loadImg(data), w = img.naturalWidth, h = img.naturalHeight, c = newCanvas(w, h), ctx = c.getContext("2d");
   ctx.drawImage(img, 0, 0);
   const m = markLayout(ctx, w, h);
   ctx.save();
-  ctx.fillStyle = "rgba(255, 255, 255, 0.94)"; ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+  // The mark's color follows the picture under it: white with a dark shadow on dark or busy
+  // areas, deep plum with a light glow on bright ones (a white sky, a white wall), so it stays legible.
+  const light = markLight(ctx, m, w, h);
+  ctx.fillStyle = light ? "rgba(52, 26, 42, 0.9)" : "rgba(255, 255, 255, 0.94)"; ctx.shadowColor = light ? "rgba(255, 255, 255, 0.7)" : "rgba(0, 0, 0, 0.6)";
   ctx.shadowBlur = Math.max(2, m.s * 0.3); ctx.shadowOffsetY = Math.max(1, Math.round(m.s * 0.04));
   ctx.font = MARK_SERIF(m.s); ctx.fillText("Glow", m.x, m.y);
   if (m.host) { ctx.font = MARK_SANS(m.u); ctx.fillText(m.host, m.x + m.gw, m.y); }
@@ -2389,8 +2639,8 @@ if (native && plugins.App) plugins.App.addListener("backButton", () => {
 });
 // Keyboard: Escape closes the tool panel; Ctrl/Cmd+Z undoes.
 document.addEventListener("keydown", (e) => {
-  if (screen !== "editorScreen" || document.querySelector("dialog[open]") || e.target.matches("input[type=search]")) return;
-  if (e.key === "Escape" && sel) selectTool(null);
+  if (screen !== "editorScreen" || document.querySelector("dialog[open]") || e.target.matches("input[type=search], input[type=text]")) return;
+  if (e.key === "Escape" && sel && !reviewing()) selectTool(null, { discard: true });
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !cr) { e.preventDefault(); (e.shiftKey ? $("redoBtn") : $("undoBtn")).click(); }
 });
 
@@ -2399,6 +2649,9 @@ ensureSession().then(refreshAccount).catch((e) => say(e.message, true));
 setupPurchases();
 setupAds();
 restoreDraft();
-if (!store.get("glowOnboarded")) showOnboarding();
-else { const pref = store.get("glowStart") || "last"; go(pref === "last" ? store.get("glowLastDest") || "camera" : pref); }
+function startApp() {
+  if (!store.get("glowOnboarded")) showOnboarding();
+  else { const pref = store.get("glowStart") || "last"; go(pref === "last" ? store.get("glowLastDest") || "camera" : pref); }
+}
+startApp();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

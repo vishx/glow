@@ -124,6 +124,7 @@ exports.launch = async (opts = {}) => {
       const o = (opts.files || {})[u.pathname];
       if (o === 404) return r.fulfill({ status: 404, body: '' });
       if (o && o.flaky && method === 'GET' && (state.flaked[u.pathname] || 0) < o.flaky) { state.flaked[u.pathname] = (state.flaked[u.pathname] || 0) + 1; return r.fulfill({ status: 503, body: '' }); }
+      if (o && o.delay) await new Promise((ok) => setTimeout(ok, o.delay));   // a slow connection
       if (o && o.json) return r.fulfill({ json: o.json });
       if (o) return r.fulfill({ path: o.path || o });
       if (u.pathname === '/__ai.jpg') return r.fulfill({ path: path.join(fixtures, 'ai-result.jpg'), headers: cors });

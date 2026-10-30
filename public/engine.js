@@ -511,13 +511,34 @@ async function reshapeStatus(src) {
   return why.includes("") ? "" : why[0];
 }
 
-async function faceEdit(src, toolId, amt) {
+// Each face's box in 0–1 coordinates, largest first, for choosing one face in a group photo.
+function faceBox(f) {
+  let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+  for (const [x, y] of f) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+}
+async function faceBoxes(src) {
+  const img = await loadImg(src), c = canvasFor(img);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return (await findFaces(src, c)).map(faceBox).sort((a, b) => b.w * b.h - a.w * a.h);
+}
+// The face nearest a chosen point (0–1 coordinates), so an edit stays on the face it was made for.
+function nearestFace(faces, pick) {
+  let best = null, bd = Infinity;
+  for (const f of faces) { const b = faceBox(f), d = (b.cx - pick[0]) ** 2 + (b.cy - pick[1]) ** 2; if (d < bd) { bd = d; best = f; } }
+  return best;
+}
+
+// `pick` is the chosen face's centre in 0–1 coordinates. Steps saved before faces could be
+// chosen have none, and edit every face as they did then.
+async function faceEdit(src, toolId, amt, pick) {
   const reshape = RESHAPE_TOOLS.includes(toolId);
   if (reshape && !(amt > 0)) return src; // 0 leaves the photo exactly as it was
   const img = await loadImg(src);
   const c = canvasFor(img), ctx = c.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(img, 0, 0, c.width, c.height);
-  const faces = (await findFaces(src, c)).map((f) => f.map(([x, y]) => [x * c.width, y * c.height]));
+  const found = await findFaces(src, c), chosen = pick && found.length > 1 ? nearestFace(found, pick) : null;
+  const faces = (chosen ? [chosen] : found).map((f) => f.map(([x, y]) => [x * c.width, y * c.height]));
   if (!faces.length) throw reshape ? unavailable("Couldn't find a face clearly enough to reshape. Try a clear, front-facing photo.") : new Error("Couldn't find a face. Try a clear, front-facing photo.");
   const use = reshape ? faces.filter((P) => !reshapeProblem(P, c.width, c.height)) : faces;
   if (!use.length) throw unavailable(reshapeProblem(faces[0], c.width, c.height));

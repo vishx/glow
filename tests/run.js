@@ -21,11 +21,20 @@ async function pick(p, file) {
   await p.waitForFunction(() => $('before').naturalWidth > 0);
 }
 async function tool(p, cat, chip, id) {
+  // The tab and subgroup come from where the app files the tool (the cat/chip arguments are
+  // kept for readability; earlier tabs such as For You no longer exist).
+  const home = await p.evaluate((x) => tabFor(x), id);
   // On phones the categories step aside while a tool is open; Done/Cancel brings them back.
-  if (!(await p.isVisible(`.tab[data-cat="${cat}"]`))) await p.click('#cancelBtn');
-  await p.click(`.tab[data-cat="${cat}"]`); if (chip) await p.click(`.subchip[data-chip="${chip}"]`);
+  if (!(await p.isVisible('#tabs .tab'))) await p.click('#cancelBtn');
+  if (home) await p.click(`.tab[data-cat="${home[0]}"]`);
+  else { await p.click('#searchBtn'); await p.fill('#searchInput', await p.evaluate((x) => TOOL[x].label, id)); }   // advanced tools: through Search
   if (!(await p.evaluate((x) => sel === x, id))) await p.click(`.tool[data-tool="${id}"]`);
   await p.waitForTimeout(150); await idle(p);
+}
+// Every AI result waits for Apply; this applies it once it is ready.
+async function aiApply(p, ms = 30000) {
+  await p.waitForFunction(() => job && job.status === 'done', null, { timeout: ms });
+  await p.evaluate(() => applyResult()); await p.waitForFunction(() => !job && ed.idx >= 1);
 }
 async function downloads(state, n, ms = 20000) {
   const t = Date.now();
@@ -146,7 +155,7 @@ test('export: transparent PNG keeps transparency through a look and saves as PNG
 test('export: AI result saves at the size the AI returned, and later steps build on it', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   await tool(p, 'foryou', null, 'pro'); await p.click('#applyBtn'); await idle(p);
-  await p.waitForFunction(() => ed.idx === 1, null, { timeout: 20000 });
+  await aiApply(p, 20000);
   await tool(p, 'edit', 'light', 'light'); await p.fill('.panel input[type=range]', '-10'); await idle(p); await p.click('#applyBtn'); await idle(p);
   await p.click('#saveBtn'); await downloads(state, 1);
   const s = imageSize(state.downloads[0].file); eq([s.w, s.h], [1024, 1365], 'AI output size, not upscaled to 3024 × 4032');
@@ -189,7 +198,7 @@ test('ai: dropped connection on start → Check status finds and finishes the jo
   await tool(p, 'foryou', null, 'pro'); await p.click('#applyBtn'); await idle(p);
   await p.waitForFunction(() => job && job.status === 'unknown');
   await p.click('#jobActions button:has-text("Check status")');
-  await p.waitForFunction(() => !job && ed.idx === 1, null, { timeout: 15000 });
+  await aiApply(p, 15000);
   eq(state.posts.length, 1, 'one paid request'); eq(state.used, 1, 'one credit');
 });
 
@@ -209,7 +218,7 @@ test('ai: still processing after a refresh resumes polling and lands in the same
   eq(await p.evaluate(() => job && job.status), 'processing', 'processing');
   await p.reload(); await p.waitForFunction(() => !!ed.hist.length, null, { timeout: 10000 });
   await p.click('#resumeBtn').catch(() => {});
-  await p.waitForFunction(() => !job && ed.idx === 1, null, { timeout: 60000 });
+  await aiApply(p, 60000);
   eq(state.posts.length, 1, 'no second paid request'); assert(state.polls >= 2, 'polled by id');
 });
 
@@ -220,7 +229,7 @@ test('ai: network loss while polling → unknown, then resumes on Check status',
   await p.waitForFunction(() => job && job.status === 'unknown', null, { timeout: 20000 });
   assert(/couldn't reach its server/.test(await p.textContent('#jobText')), 'network wording');
   await p.click('#jobActions button:has-text("Check status")');
-  await p.waitForFunction(() => !job && ed.idx === 1, null, { timeout: 30000 });
+  await aiApply(p, 30000);
   eq(state.posts.length, 1, 'one paid request');
 });
 
@@ -340,6 +349,7 @@ test('demo: Try a sample opens the attached original with demo labels', async ({
   eq([row.inHeader, row.bh >= 44, row.name], [true, true, 'Use your photo'], 'compact Use your photo action in the header');
   assert(/Free demo/.test(await p.textContent('#toast')), 'the free demo is explained once');
   assert(await p.isVisible('#demoOwnBtn'), 'Try your own photo'); assert(await p.isHidden('#balanceBtn'), 'no credit balance in the demo');
+  await p.click('.tab[data-cat="edit"]');   // Enhance and Relight are filed under Edit
   eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].map((c) => c.textContent)), ['Preview', 'Preview'], 'AI tools offered = prepared ones');
   assert(/prepared preview, no credits/.test(await p.getAttribute('.tool[data-tool="pro"]', 'aria-label')), 'screen-reader label');
   await p.screenshot({ path: path.join(__dirname, 'out', 'demo-open.png') });
@@ -396,9 +406,11 @@ test('demo: a preview whose file is gone is not offered', async ({ p }) => {
 test('demo: with no prepared previews, no AI tools are offered and the note explains why', async ({ p, state }) => {
   await openDemo(p);
   eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].length), 0, 'no AI tiles');
-  assert(await p.isVisible('#slotNote') && /aren't available for the sample yet/.test(await p.textContent('#slotNote')), 'note');
-  await p.click('.tab[data-cat="looks"]'); await p.click('.subchip[data-chip="styles"]');
-  assert(/needs your own photo/.test(await p.textContent('#tools')), 'AI-only group explains');
+  await p.click('.tab[data-cat="ai"]');
+  eq(await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => [b.dataset.tool, b.querySelector('.cost') && b.querySelector('.cost').textContent])),
+    [['erase', 'Own photo'], ['fill', 'Own photo'], ['expand', 'Own photo']], 'Remove, Fill and Expand stay listed, marked as needing your own photo');
+  await p.click('.tab[data-cat="looks"]');
+  assert(!(await p.$$eval('#tools .tool', (x) => x.some((b) => /uses \d credit/.test(b.getAttribute('aria-label'))))), 'no AI tool offered as chargeable on the sample');
   eq(state.posts.length, 0, 'no AI request');
 }, { files: { '/samples/demo/manifest.json': { json: { ...demoManifest, previews: demoManifest.previews.map((e) => ({ ...e, status: 'needs-generation', result: null })) } } } });
 
@@ -419,7 +431,7 @@ test('demo: the shipped prepared previews are all there, match the manifest, and
     eq(await p.evaluate(() => [ed.hist.length, $('after').naturalWidth, $('after').naturalHeight]), [2, e.width, e.height], `${e.tool}: shown alone, at its size`);
   }
   eq(credit(state), before, 'no AI requests, credits unchanged');
-  await p.click('.views [data-view="split"]'); await settle(300);
+  await p.click('#compareBtn'); await settle(300);
   await p.screenshot({ path: path.join(__dirname, 'out', 'demo-shipped.png') });
 }, { quota: 0 });
 
@@ -437,7 +449,7 @@ test('demo: Try your own photo exits the demo completely, then real AI is charge
   eq(state.posts.length, 0, 'the last demo tool did not run');
   await tool(p, 'foryou', null, 'pro');
   assert(/Apply · 1 credit/.test(await p.textContent('#applyBtn')), 'shows the real cost first');
-  await p.click('#applyBtn'); await idle(p); await p.waitForFunction(() => ed.idx === 1, null, { timeout: 20000 });
+  await p.click('#applyBtn'); await idle(p); await aiApply(p, 20000);
   eq([state.posts.length, state.used], [1, 1], 'real edit went to the server, which charged one credit');
   const draft = await p.evaluate(async () => (await Drafts.get()).hist.map((h) => h.op && h.op.demo));
   assert(!draft.includes(true), 'no sample result in the saved project');
@@ -517,11 +529,9 @@ for (const [w, h] of [[390, 844], [320, 640], [412, 915]]) test(`layout: categor
   for (const run of ['photo', 'sample']) {
     if (run === 'sample') { await p.click('#backBtn'); await p.click('#sampleBtn'); await p.waitForFunction(() => ed.demo && $('before').naturalWidth > 0); }
     const boxes = {};
-    for (const c of ['foryou', 'retouch', 'looks', 'edit', 'all']) { await p.click(`.tab[data-cat="${c}"]`); await settle(120); boxes[c] = await stageBox(p); }
-    const first = JSON.stringify(boxes.foryou);
-    for (const [c, b] of Object.entries(boxes)) eq(JSON.stringify(b), first, `${run}: ${c} vs For You`);
-    for (const c of ['retouch', 'looks', 'edit']) { await p.click(`.tab[data-cat="${c}"]`); for (const chip of await p.$$eval('.subchip', (x) => x.map((b) => b.dataset.chip))) {
-      await p.click(`.subchip[data-chip="${chip}"]`); eq(JSON.stringify(await stageBox(p)), first, `${run}: ${c}/${chip}`); } }
+    for (const c of ['retouch', 'looks', 'edit', 'ai']) { await p.click(`.tab[data-cat="${c}"]`); await settle(120); boxes[c] = await stageBox(p); }
+    const first = JSON.stringify(boxes.retouch);
+    for (const [c, b] of Object.entries(boxes)) eq(JSON.stringify(b), first, `${run}: ${c} vs Retouch`);
     eq(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${run}: no sideways scroll`);
   }
 }, { viewport: { width: w, height: h } });
@@ -530,21 +540,21 @@ test('layout: ivory (light) and neutral (dark) surround, photo contained, edited
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   const bg = () => p.evaluate(() => getComputedStyle($('stage')).backgroundColor);
   eq(await bg(), 'rgb(29, 26, 31)', 'dark: quiet neutral');
-  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(242, 235, 227)', 'light: warm ivory');
-  const st = await p.evaluate(() => ({ view: $('stage').dataset.view, disabled: [...document.querySelectorAll('.views button')].map((b) => b.disabled), radius: getComputedStyle($('stage')).borderTopLeftRadius,
+  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(241, 235, 227)', 'light: warm ivory');
+  const st = await p.evaluate(() => ({ view: $('stage').dataset.view, disabled: [$('compareBtn').disabled, $('revertBtn').disabled], radius: getComputedStyle($('stage')).borderTopLeftRadius,
     fit: getComputedStyle($('before')).objectFit, frame: (() => { const f = $('view').getBoundingClientRect(), s = $('stage').getBoundingClientRect(); return f.width <= s.width + 0.5 && f.height <= s.height + 0.5 && Math.abs(f.width / f.height - ed.original.w / ed.original.h) < 0.02; })() }));
-  eq(st, { view: 'edited', disabled: [true, true, true], radius: '0px', fit: 'contain', frame: true }, 'before any edit (edge to edge on phones)');
+  eq(st, { view: 'edited', disabled: [true, true], radius: '16px', fit: 'contain', frame: true }, 'before any edit (rounded, with a small margin)');
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending);
-  eq(await p.evaluate(() => [$('stage').dataset.view, [...document.querySelectorAll('.views button')].map((b) => b.disabled)]), ['edited', [false, false, false]], 'comparison available once there is a preview');
+  eq(await p.evaluate(() => [$('stage').dataset.view, $('compareBtn').disabled]), ['edited', false], 'comparison available once there is a preview');
   eq(await p.isVisible('#divider'), false, 'no divider outside Compare');
-  await p.click('.views [data-view="split"]');
+  await p.click('#compareBtn');
   const d = await p.evaluate(() => { const h = $('handle').getBoundingClientRect(), k = $('handle').querySelector('i').getBoundingClientRect(), f = $('view').getBoundingClientRect(), dv = $('divider').getBoundingClientRect();
     return { target: [Math.round(h.width), Math.round(h.height)], knob: Math.round(k.width), at: +(((h.top + h.height / 2) - f.top) / f.height).toFixed(2), line: Math.round(dv.width) }; });
   eq(d.target, [44, 44], 'handle touch target'); assert(d.knob >= 24 && d.knob <= 28, 'visible knob ' + d.knob); eq(d.line, 2, '2px divider');
   assert(Math.abs(d.at - 0.75) < 0.03, 'handle about 75% down: ' + d.at);
-  const seg = await p.evaluate(() => { const v = document.querySelector('.views').getBoundingClientRect(), s = $('stage').getBoundingClientRect(), b = document.querySelector('.views button').getBoundingClientRect();
-    return { below: v.top >= s.bottom, h: Math.round(b.height), font: parseFloat(getComputedStyle(document.querySelector('.views button')).fontSize) }; });
-  eq([seg.below, seg.h], [true, 44], 'segments below the photo, 44px high'); assert(seg.font >= 13 && seg.font <= 14, 'label size ' + seg.font);
+  const seg = await p.evaluate(() => { const v = document.querySelector('.viewbar').getBoundingClientRect(), s = $('stage').getBoundingClientRect(), b = $('compareBtn').getBoundingClientRect();
+    return { below: v.top >= s.bottom, h: Math.round(b.height), font: parseFloat(getComputedStyle($('compareBtn')).fontSize), one: Math.round(v.height) <= 48 }; });
+  eq([seg.below, seg.h, seg.one], [true, 44, true], 'one slim utility row below the photo, 44px targets'); assert(seg.font >= 13 && seg.font <= 15, 'label size ' + seg.font);
   await p.focus('#handle'); await p.keyboard.press('ArrowLeft'); eq(await p.getAttribute('#handle', 'aria-valuenow'), '48', 'keyboard moves the divider');
   // Saved file is the photo alone: its own size, no canvas margins.
   await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
@@ -568,16 +578,19 @@ test('layout: compact credit chip in the header opens the credits sheet', async 
   assert(/midnight UTC/.test(await p.textContent('#creditsBody')), 'explains the real reset');
 });
 
-test('layout: All has search and an expandable catalog; the last tools scroll fully into view', async ({ p }) => {
+test('layout: Search covers every tool in a taller catalog; the last tools scroll fully into view', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, fx('transparent.png'));
-  await p.click('.tab[data-cat="all"]');
   const s0 = await stageBox(p);
-  await p.fill('#searchInput', 'blur'); eq(await p.$$eval('#tools .tool', (x) => x.map((b) => b.dataset.tool)), ['bgblur'], 'search');
-  await p.fill('#searchInput', '');
-  await p.click('#expandBtn'); eq(await p.getAttribute('#expandBtn', 'aria-expanded'), 'true', 'expanded');
+  await p.click('#searchBtn'); eq(await p.evaluate(() => [searching, !$('searchBox').hidden]), [true, true], 'search open');
+  eq(await p.evaluate(() => document.activeElement.id), 'searchInput', 'focus in the search field');
   const tall = await p.evaluate(() => $('tools').getBoundingClientRect().height); assert(tall > 300, 'taller catalog ' + tall);
-  await p.click('#expandBtn'); eq(JSON.stringify(await stageBox(p)), JSON.stringify(s0), 'collapsing restores the photo size');
-  await p.click('.tab[data-cat="retouch"]'); await p.click('.subchip[data-chip="makeup"]');
+  eq(await p.evaluate(() => new Set([...document.querySelectorAll('#tools .tool')].map((b) => b.dataset.tool)).size), await p.evaluate(() => TOOLS.length), 'every tool is in Search');
+  await p.fill('#searchInput', 'blur'); eq(await p.$$eval('#tools .tool', (x) => x.map((b) => b.dataset.tool)), ['bgblur'], 'search');
+  await p.click('.tool[data-tool="bgblur"]'); await idle(p);
+  eq(await p.evaluate(() => [sel, cat, searching]), ['bgblur', 'edit', false], 'a found tool opens in its own tab');
+  await p.click('#cancelBtn'); await settle(150);
+  eq(JSON.stringify(await stageBox(p)), JSON.stringify(s0), 'closing restores the photo size');
+  await p.click('.tab[data-cat="retouch"]');
   await p.evaluate(() => $('tools').scrollTo({ left: 1e5 })); await settle(200);
   const last = await p.evaluate(() => { const t = [...document.querySelectorAll('#tools .tool')].pop().getBoundingClientRect(), b = $('tools').getBoundingClientRect(); return t.right <= b.right + 0.5 && t.left >= b.left; });
   assert(last, 'last tool fully visible after scrolling');
@@ -629,7 +642,7 @@ test('retouch: Compare puts the divider on the face; Settings shows which build 
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'retouch', 'face', 'fslim'); await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 });
   await p.fill('.panel input[type=range]', '100'); await settle(200); await idle(p);
-  await p.click('.views [data-view="split"]');
+  await p.click('#compareBtn');
   const r = await p.evaluate(() => { const f = $('view').getBoundingClientRect(), d = $('divider').getBoundingClientRect(), P = faceCache.get(committed())[0];
     return { x: d.left + d.width / 2, nose: f.left + P[1][0] * f.width, f: [f.left, f.right] }; });
   near(r.x, r.nose, 2, 'divider runs down the nose'); assert(r.x > r.f[0] && r.x < r.f[1], 'divider is on the photo');
@@ -820,7 +833,7 @@ const viewState = (p) => p.evaluate(() => {
 test('zoom: pinch, pan, double-tap, wheel and buttons inspect the photo without changing the edit', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending); await idle(p);
-  await p.click('.views [data-view="split"]'); await settle(200);
+  await p.click('#compareBtn'); await settle(200);
   const s0 = await viewState(p), { T, wait } = await touchpad(p);
   eq(s0.z, 1, 'starts at fit'); near(s0.divider, s0.v.x + s0.v.w / 2, 1.5, 'divider starts mid-photo');
   const cx = s0.st.x + s0.st.w / 2, cy = s0.st.y + s0.st.h * 0.4, mx = cx - s0.st.x, my = cy - s0.st.y;
@@ -848,7 +861,7 @@ test('zoom: pinch, pan, double-tap, wheel and buttons inspect the photo without 
   const s4 = await viewState(p); near(s4.divider, s3.divider - 40, 1.5, 'divider follows the finger'); near(s4.v.x, s3.v.x, 0.01, 'view did not pan'); eq(s4.z, s3.z, 'zoom unchanged');
   near(s4.clipX, s4.divider, 1, 'still aligned with the divider');
   // Switching views keeps the inspection position.
-  await p.click('.views [data-view="edited"]'); await p.click('.views [data-view="original"]'); await p.click('.views [data-view="split"]');
+  await p.click('#compareBtn'); eq(await p.evaluate(() => $('stage').dataset.view), 'original', 'Compare steps to the original'); await p.click('#compareBtn'); await p.click('#compareBtn');
   const s5 = await viewState(p); near(s5.v.x, s4.v.x, 0.01, 'position kept across views'); eq(s5.z, s4.z, 'zoom kept across views');
   // Double-tap back to fit, then into a close-up centred on the tap.
   const tap = async (x, y) => { await T('touchStart', [[x, y, 0]]); await T('touchEnd', []); await p.waitForTimeout(60); await T('touchStart', [[x, y, 0]]); await T('touchEnd', []); await settle(350); };
@@ -931,7 +944,9 @@ test('layout: on phones the photo keeps one size while tools open, change and cl
   await tool(p, 'looks', 'filters', 'filter:glow'); await box('filter');
   await p.click('#cancelBtn'); await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr); await box('crop');
   await p.click('#cancelBtn'); await tool(p, 'foryou', null, 'pro'); await box('AI tool');
-  for (const [n, v] of Object.entries(sizes)) eq(v, sizes.home, 'photo size: ' + n);
+  // Crop's controls are taller than the resting dock; the dock grows for them rather than cutting them off.
+  for (const [n, v] of Object.entries(sizes)) if (n !== 'crop') eq(v, sizes.home, 'photo size: ' + n);
+  assert(JSON.parse(sizes.home)[1] - JSON.parse(sizes.crop)[1] <= 32, 'crop takes at most a little more room: ' + sizes.crop);
   assert(JSON.parse(sizes.home)[1] >= 400, 'photo height on a 390x844 phone: ' + sizes.home);
 }, { viewport: { width: 390, height: 844 } });
 test('layout: a phone held sideways puts the photo and the tools side by side', async ({ p }) => {
@@ -946,7 +961,7 @@ test('layout: photo-first editor, collapsible panel, no sideways scroll on small
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'retouch', 'face', 'fslim'); await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 });
   const m = () => p.evaluate(() => ({ stage: $('stage').getBoundingClientRect().height, head: document.querySelector('#editorScreen .topbar').getBoundingClientRect().height,
-    apply: $('applyBtn').getBoundingClientRect().bottom <= innerHeight, small: [...document.querySelectorAll('#editorScreen button')].filter((b) => b.offsetParent && !b.closest('.views') && !b.classList.contains('tool') && !b.classList.contains('tab') && !b.classList.contains('subchip')).map((b) => [b.id || b.textContent.trim(), Math.round(b.getBoundingClientRect().height)]).filter(([, h]) => h < 44),
+    apply: $('applyBtn').getBoundingClientRect().bottom <= innerHeight, small: [...document.querySelectorAll('#editorScreen button')].filter((b) => b.offsetParent && !b.classList.contains('tool') && !b.classList.contains('tab') && !b.classList.contains('subchip')).map((b) => [b.id || b.textContent.trim(), Math.round(b.getBoundingClientRect().height)]).filter(([, h]) => h < 44),
     sideways: document.documentElement.scrollWidth > innerWidth }));
   const a = await m();
   assert(a.head <= 48, 'compact header ' + a.head); assert(a.apply, 'Apply reachable'); eq(a.small, [], 'touch targets at least 44px'); eq(a.sideways, false, 'no sideways scroll');
@@ -1035,7 +1050,7 @@ test('mark: Share and Download give the same marked file; Share Glow card only o
 test('view: full view keeps the preview, zoom and comparison, and Back closes it', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending);
-  await p.click('.views [data-view="split"]'); await p.evaluate(() => document.activeElement.blur()); await p.keyboard.press('+'); await settle(300);
+  await p.click('#compareBtn'); await p.evaluate(() => document.activeElement.blur()); await p.keyboard.press('+'); await settle(300);
   const s0 = await viewState(p), h0 = s0.st.h; assert(s0.z > 1.5, 'zoomed with the keyboard');
   await p.click('#expandView'); await settle(200);
   const s1 = await viewState(p);
@@ -1050,6 +1065,251 @@ test('view: full view keeps the preview, zoom and comparison, and Back closes it
   near(s2.st.h, h0, 0.5, 'editing layout restored'); eq([s2.z, s2.pending === s0.pending, s2.hist], [s0.z, true, s0.hist], 'state unchanged');
   await p.click('#expandView'); await p.keyboard.press('Escape'); await settle(100); eq(await p.evaluate(() => expanded), false, 'Escape closes too');
 }, { viewport: { width: 390, height: 844 } });
+
+// ---------- Navigation: four tabs, Hold for original ----------
+test('nav: four tabs file every tool once, body tools only through Search, one row per tab with Search last', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('transparent.png'));
+  const c = await p.evaluate(() => {
+    const filed = [...Object.values(CATS), ADVANCED].flatMap((g) => g.flatMap((x) => x[2]));
+    const counts = {}; filed.forEach((id) => { counts[id] = (counts[id] || 0) + 1; });
+    return { missing: TOOLS.map((t) => t.id).filter((id) => !counts[id]), twice: Object.keys(counts).filter((id) => counts[id] > 1), unknown: filed.filter((id) => !TOOL[id]),
+      tabs: [...document.querySelectorAll('#tabs .tab')].map((t) => t.textContent.trim()),
+      bodyOnlyInSearch: TOOLS.filter((t) => t.kind === 'body').every((t) => tabFor(t.id) === null) };
+  });
+  eq(c, { missing: [], twice: [], unknown: [], tabs: ['Retouch', 'Looks', 'Edit', 'AI'], bodyOnlyInSearch: true }, 'every tool filed once, four tabs, body tools advanced');
+  for (const cat of ['retouch', 'looks', 'edit', 'ai']) {
+    await p.click(`.tab[data-cat="${cat}"]`);
+    const r = await p.evaluate(() => [[...document.querySelectorAll('#tools .tool')].pop().id, document.querySelectorAll('#tools .tool[data-tool^="b"][data-tool$="s"], #tools .tool[data-tool="bwaist"]').length]);
+    eq(r, ['searchBtn', 0], `${cat}: Search is the last tile and no body tools are listed`);
+  }
+  await p.click('.tab[data-cat="edit"]');
+  eq((await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => b.dataset.tool))).slice(0, 5), ['crop', 'light', 'color', 'warmth', 'detail'], 'Crop, Light, Color, Warmth, Detail first');
+  await p.click('.tool[data-tool="crop"]'); await p.waitForFunction(() => !!cr);
+  eq(await p.evaluate(() => [sel, $('panelBody').querySelectorAll('.tool').length]), ['crop', 0], 'one tap from Edit to the crop controls');
+  await p.click('#cancelBtn');
+  await p.click('.tab[data-cat="ai"]');
+  eq(await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => b.dataset.tool)), ['erase', 'fill', 'expand'], 'AI: Remove, Fill, Expand only');
+  await settle(400);
+  const pill = await p.evaluate(() => { const t = document.querySelector('.tab[aria-selected="true"]'); return [t.dataset.cat, getComputedStyle(t.firstElementChild).backgroundColor !== 'rgba(0, 0, 0, 0)']; });
+  eq(pill, ['ai', true], 'the open tab sits on a pill');
+  const h = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')].map((t) => Math.round(t.getBoundingClientRect().height)));
+  assert(h.every((x) => x >= 44), 'tab targets ' + h);
+  // Advanced body tools are reachable through Search, and are never on a tab.
+  await p.click('#searchBtn'); await p.fill('#searchInput', 'waist');
+  eq(await p.$$eval('#tools .tool', (x) => x.map((b) => b.dataset.tool)), ['bwaist'], 'Search finds the advanced tool');
+  await p.click('.tool[data-tool="bwaist"]'); await settle(200);
+  eq(await p.evaluate(() => [sel, searching, faceSet.amt.bwaist]), ['bwaist', false, 0], 'opens at 0, nothing applied');
+  eq(await p.evaluate(() => { localStorage.setItem('glowCat', 'foryou'); return true; }), true, 'old saved tab');
+  await p.reload(); await p.waitForFunction(() => typeof cat === 'string');
+  eq(await p.evaluate(() => cat), 'retouch', 'a saved tab that no longer exists falls back to Retouch');
+}, { viewport: { width: 1280, height: 860 }, mobile: false, touch: false });
+
+test('nav: Compare taps through split, original and back; holding shows the original; keys work', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  eq(await p.evaluate(() => $('compareBtn').disabled), true, 'nothing to compare yet');
+  await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending);
+  const b = await p.evaluate(() => { const r = $('compareBtn').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+  const view = () => p.evaluate(() => [$('stage').dataset.view, $('compareLbl').textContent]);
+  await p.mouse.move(b[0], b[1]); await p.mouse.down(); await settle(450);
+  eq((await view())[0], 'original', 'held: original');
+  await p.mouse.up(); await settle(100);
+  eq(await view(), ['edited', 'Compare'], 'let go: back to the edit, no tap counted');
+  await p.click('#compareBtn'); eq(await view(), ['split', 'Split'], 'tap: split');
+  await p.click('#compareBtn'); eq(await view(), ['original', 'Original'], 'tap: original');
+  await p.click('#compareBtn'); eq(await view(), ['edited', 'Compare'], 'tap: back to the edit');
+  await p.focus('#compareBtn'); await p.keyboard.press('Enter'); eq((await view())[0], 'split', 'Enter steps');
+  await p.keyboard.press('Space'); eq((await view())[0], 'original', 'Space steps');
+  assert(/showing original/.test(await p.getAttribute('#compareBtn', 'aria-label')), 'the state is spoken');
+  eq(await p.evaluate(() => [ed.idx, !!ed.pending, insp.z]), [0, true, 1], 'viewing never changes the photo or history');
+}, { viewport: { width: 1280, height: 860 }, mobile: false, touch: false });
+
+test('edit: Revert asks, returns to the original as one undoable step, and saves the original', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  eq(await p.evaluate(() => $('revertBtn').disabled), true, 'nothing to revert');
+  await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending); await p.click('#applyBtn'); await idle(p);
+  eq(await p.evaluate(() => ed.idx), 1, 'one edit');
+  await p.click('#revertBtn'); await p.waitForSelector('#ask[open]'); await p.click('#askActions button:last-child'); await settle(150);
+  eq(await p.evaluate(() => ed.idx), 1, 'Cancel leaves it');
+  await p.click('#revertBtn'); await p.waitForSelector('#ask[open]'); await p.click('#askActions button:first-child'); await settle(150);
+  eq(await p.evaluate(() => [ed.idx, committed() === ed.hist[0].data, ed.hist[2].op.revert, $('revertBtn').disabled]), [2, true, true, true], 'a new step equal to the original');
+  const saved = await p.evaluate(async () => { const a = await renderExport(), o = await renderExport(0); return [a.w, a.h, o.w, o.h, a.data, o.data]; });
+  eq(saved.slice(0, 4), [saved[2], saved[3], saved[2], saved[3]], 'saves at the original size');
+  assert(await boxDiff(p, saved[4], saved[5], [0, 0, 1, 1]) < 1, 'the saved picture is the original');
+  await p.click('#undoBtn'); eq(await p.evaluate(() => [ed.idx, $('revertBtn').disabled]), [1, false], 'Undo brings the edit back');
+  await p.click('#redoBtn'); eq(await p.evaluate(() => ed.idx), 2, 'Redo reverts again');
+}, { viewport: { width: 1280, height: 860 }, mobile: false, touch: false });
+
+test('edit: switching tools keeps a free change as one Undo step; Cancel and Escape discard', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'edit', null, 'light');
+  for (const v of ['10', '20', '30']) { await p.fill('#panelBody input[type=range]', v); await settle(60); }
+  await p.dispatchEvent('#panelBody input[type=range]', 'change'); await p.waitForFunction(() => ed.pending && ed.pending.op.value === 30); await idle(p);
+  await p.click('.tool[data-tool="color"]'); await idle(p);
+  eq(await p.evaluate(() => [ed.idx, ed.hist[1].op.tool, ed.hist[1].op.value, sel]), [1, 'light', 30, 'color'], 'one step for the whole slider session');
+  assert(/kept/.test(await toast(p)), 'says it was kept');
+  await p.fill('#panelBody input[type=range]', '20'); await p.dispatchEvent('#panelBody input[type=range]', 'change'); await p.waitForFunction(() => !!ed.pending); await idle(p);
+  await p.keyboard.press('Escape'); await settle(100);
+  eq(await p.evaluate(() => [ed.idx, !!ed.pending, sel]), [1, false, null], 'Escape discards');
+  await tool(p, 'edit', null, 'warmth');
+  await p.fill('#panelBody input[type=range]', '20'); await p.dispatchEvent('#panelBody input[type=range]', 'change'); await p.waitForFunction(() => !!ed.pending); await idle(p);
+  await p.click('#cancelBtn'); await settle(100);
+  eq(await p.evaluate(() => [ed.idx, !!ed.pending]), [1, false], 'Cancel discards');
+  await tool(p, 'edit', null, 'warmth');
+  await p.fill('#panelBody input[type=range]', '-20'); await p.dispatchEvent('#panelBody input[type=range]', 'change'); await p.waitForFunction(() => !!ed.pending); await idle(p);
+  await p.click('.tab[data-cat="looks"]'); await settle(100);
+  eq(await p.evaluate(() => [ed.idx, ed.hist[2].op.tool]), [2, 'warmth'], 'changing tab keeps it too');
+  await p.click('#undoBtn'); eq(await p.evaluate(() => ed.idx), 1, 'one Undo removes it');
+}, { viewport: { width: 1280, height: 860 }, mobile: false, touch: false });
+
+test('retouch: in a group photo face tools edit only the highlighted face; the largest is first and a tap switches', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('group-two.jpg'));
+  const base = await p.evaluate(() => committed());
+  await tool(p, 'retouch', null, 'fsmooth');
+  await p.waitForFunction(() => document.querySelectorAll('#facePick .face-ring').length === 2, null, { timeout: 30000 });
+  const rings = await p.evaluate(() => [...document.querySelectorAll('#facePick .face-ring')].map((r) => [r.getAttribute('aria-label'), r.classList.contains('on')]));
+  eq(rings, [['Face 1 of 2, largest, selected', true], ['Face 2 of 2', false]], 'largest face selected and marked');
+  const boxes = await p.evaluate(() => faceSel.boxes.map((b) => [b.x, b.y, b.w, b.h]));
+  assert(boxes[0][0] < 0.5 && boxes[1][0] > 0.5, 'the large face is on the left ' + JSON.stringify(boxes));
+  await p.waitForFunction(() => !!ed.pending, null, { timeout: 30000 }); await idle(p);
+  let out = await p.evaluate(() => ed.pending.data);
+  const d = async (o) => [await boxDiff(p, base, o, boxes[0]), await boxDiff(p, base, o, boxes[1])];
+  let [l, r] = await d(out);
+  assert(l > 0.3 && r < 0.05, `only the selected face changes: left ${l.toFixed(2)}, right ${r.toFixed(2)}`);
+  await p.click('#facePick .face-ring:not(.on)');
+  await p.waitForFunction((o) => ed.pending && ed.pending.data !== o, out, { timeout: 30000 }); await idle(p);
+  out = await p.evaluate(() => ed.pending.data); [l, r] = await d(out);
+  assert(l < 0.05 && r > 0.3, `after switching only the other face changes: left ${l.toFixed(2)}, right ${r.toFixed(2)}`);
+  await p.click('#applyBtn'); await idle(p);
+  const op = await p.evaluate(() => ed.hist[1].op.face);
+  assert(op && op[0] > 0.5, 'the step remembers which face');
+  // Saved copy vs the unedited saved copy put through the same JPEG encode the face tools use.
+  const [full, plain] = await p.evaluate(async () => {
+    const plain = (await renderExport(0)).data, img = await loadImg(plain), c = newCanvas(img.naturalWidth, img.naturalHeight);
+    c.getContext('2d').drawImage(img, 0, 0); return [(await renderExport()).data, c.toDataURL('image/jpeg', 0.92)]; });
+  [l, r] = [await boxDiff(p, plain, full, boxes[0]), await boxDiff(p, plain, full, boxes[1])];
+  assert(l < 0.05 && r > 0.3, `saving edits the same face: left ${l.toFixed(2)}, right ${r.toFixed(2)}`);
+}, { viewport: { width: 1280, height: 860 }, mobile: false, touch: false });
+
+// ---------- AI Remove / Fill / Expand (mocked server) ----------
+async function paint(p, from, to) {
+  const r = await p.evaluate(() => { const b = $('brush').getBoundingClientRect(), v = viewRect(); return { x: b.x + v.x, y: b.y + v.y, w: v.w, h: v.h }; });
+  await p.mouse.move(r.x + r.w * from[0], r.y + r.h * from[1]); await p.mouse.down();
+  for (let i = 1; i <= 8; i++) await p.mouse.move(r.x + r.w * (from[0] + (to[0] - from[0]) * i / 8), r.y + r.h * (from[1] + (to[1] - from[1]) * i / 8));
+  await p.mouse.up();
+}
+// Mean absolute difference of two pictures inside a box (fractions of the picture).
+const boxDiff = (p, a, b, box) => p.evaluate(async ([a, b, box]) => {
+  const [i, j] = await Promise.all([loadImg(a), loadImg(b)]), w = 200, h = Math.round(200 * i.naturalHeight / i.naturalWidth);
+  const px = (img) => { const c = newCanvas(w, h), x = c.getContext('2d'); x.drawImage(img, 0, 0, w, h); return x.getImageData(Math.round(box[0] * w), Math.round(box[1] * h), Math.max(1, Math.round(box[2] * w)), Math.max(1, Math.round(box[3] * h))).data; };
+  const d1 = px(i), d2 = px(j); let s = 0; for (let k = 0; k < d1.length; k++) if (k % 4 !== 3) s += Math.abs(d1[k] - d2[k]);
+  return s / (d1.length * 0.75);
+}, [a, b, box]);
+
+test('ai: Remove waits for Apply, survives switching tools and a reload, and keeps unmarked pixels', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'ai', null, 'erase'); await p.waitForFunction(() => !$('brush').hidden);
+  eq(await p.evaluate(() => [$('applyBtn').textContent, $('applyBtn').disabled, $('cost').textContent]), ['Generate · 1 credit', true, 'AI · 1 credit'], 'cost shown, nothing to remove yet');
+  await p.fill('.brush-row input[type=range]', '40'); await p.dispatchEvent('.brush-row input[type=range]', 'change');
+  await paint(p, [0.1, 0.1], [0.3, 0.12]);
+  eq(await p.evaluate(() => [strokes.length, Math.round(strokes[0].w * imageRect().s)]), [1, 40], 'stroke at the chosen size');
+  await p.click('.brush-modes .opt:nth-child(2)'); await paint(p, [0.25, 0.11], [0.3, 0.12]);
+  eq(await p.evaluate(() => [strokes.length, !!strokes[1].erase]), [2, true], 'erase marks');
+  await p.keyboard.press('+'); await settle(300); await p.keyboard.press('0'); await settle(300);
+  eq(state.posts.length, 0, 'nothing sent before Generate');
+  const base = await p.evaluate(() => committed());
+  await p.click('#applyBtn'); await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
+  eq([state.posts, state.used], [['erase'], 1], 'one request, one credit');
+  eq(await p.evaluate((b) => [ed.idx, committed() === b, reviewing()], base), [0, true, true], 'pending: nothing applied yet');
+  const shown = await p.evaluate(() => job.result.data);
+  const outside = await boxDiff(p, base, shown, [0.05, 0.5, 0.9, 0.45]), inside = await boxDiff(p, base, shown, [0.14, 0.095, 0.08, 0.03]);
+  assert(outside < 2.5, 'unmarked pixels are the photo\'s own: ' + outside.toFixed(2));
+  assert(inside > 10, 'the marked area changed: ' + inside.toFixed(2));
+  eq(await p.evaluate(() => [$('applyBtn').textContent, $('cancelBtn').textContent, $('brush').hidden, $('compareBtn').disabled]), ['Apply', 'Discard', true, false], 'Apply / Discard, compare available');
+  // Leaving the tool keeps the paid result waiting.
+  await p.click('.tab[data-cat="edit"]'); await p.click('.tool[data-tool="light"]'); await settle(200);
+  eq(await p.evaluate(() => [job && job.status, ed.idx, !$('jobBar').hidden, /ready/.test($('jobText').textContent)]), ['done', 0, true, true], 'still waiting after switching tools');
+  await p.reload(); await p.waitForFunction(() => ed.hist.length > 0 && job && job.status === 'done', null, { timeout: 15000 });
+  await p.click('#resumeBtn').catch(() => {}); await p.waitForFunction(() => screen === 'editorScreen' && !$('jobBar').hidden, null, { timeout: 15000 });
+  eq(state.posts.length, 1, 'a reload never asks again');
+  await p.click('#jobActions button:has-text("Review")'); await settle(200);
+  eq(await p.evaluate(() => [sel, reviewing()]), ['erase', true], 'Review reopens it');
+  // Discard asks (the credit isn't returned); keeping it keeps it.
+  await p.click('#cancelBtn'); await p.waitForSelector('#ask[open]'); assert(/isn't returned/.test(await p.textContent('#askText')), 'says the credit is not returned');
+  await p.click('#askActions button:last-child'); await settle(150);
+  eq(await p.evaluate(() => job && job.status), 'done', 'Keep reviewing keeps it');
+  await p.click('#applyBtn'); await settle(150);
+  eq(await p.evaluate(() => [ed.idx, job, ed.hist[1].op.fixed]), [1, null, true], 'Apply adds one step');
+  await p.click('#undoBtn'); eq(await p.evaluate(() => ed.idx), 0, 'Undo takes it off');
+  eq([state.posts.length, state.used], [1, 1], 'charged once in all');
+});
+
+test('ai: Remove blends into the full-size photo; it keeps the original size and every unmarked pixel', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
+  await tool(p, 'ai', null, 'erase'); await paint(p, [0.3, 0.2], [0.6, 0.25]);
+  await p.click('#applyBtn'); await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 60000 });
+  const r = await p.evaluate(async () => {
+    const fb = await renderExport(0), [a, b] = await Promise.all([loadImg(fb.data), loadImg(job.result.full)]);
+    const w = a.naturalWidth, h = a.naturalHeight;
+    const px = (img, y0, y1) => { const c = newCanvas(w, y1 - y0), x = c.getContext('2d'); x.drawImage(img, 0, -y0); return x.getImageData(0, 0, w, y1 - y0).data; };
+    const diff = (y0, y1, x0 = 0, x1 = w) => { const d1 = px(a, y0, y1), d2 = px(b, y0, y1); let s = 0, n = 0;
+      for (let y = 0; y < y1 - y0; y += 2) for (let x = x0; x < x1; x += 2) { const k = (y * w + x) * 4; s += Math.abs(d1[k] - d2[k]) + Math.abs(d1[k + 1] - d2[k + 1]) + Math.abs(d1[k + 2] - d2[k + 2]); n += 3; }
+      return s / n; };
+    const sh = await loadImg(job.result.data);
+    return { size: [w, h, b.naturalWidth, b.naturalHeight], outside: diff(Math.round(h * 0.5), Math.round(h * 0.95)), inside: diff(Math.round(h * 0.215), Math.round(h * 0.235), Math.round(w * 0.35), Math.round(w * 0.55)),
+      shown: Math.max(sh.naturalWidth, sh.naturalHeight) };
+  });
+  eq(r.size, [3024, 4032, 3024, 4032], 'the result is the full-size photo, upright');
+  assert(r.outside < 1.5, 'unmarked pixels match the full-size photo (JPEG tolerance): ' + r.outside.toFixed(2));
+  assert(r.inside > 10, 'the marked area comes from the AI: ' + r.inside.toFixed(2));
+  assert(r.shown <= 2048, 'the screen copy is at most 2048px');
+  eq([state.posts.length, state.used], [1, 1], 'one request, one credit');
+});
+
+test('ai: a failed Remove is refunded once and never retried by itself', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'ai', null, 'erase'); await paint(p, [0.2, 0.2], [0.3, 0.2]);
+  await p.click('#applyBtn'); await p.waitForFunction(() => job && job.status === 'failed', null, { timeout: 30000 });
+  await settle(2000);
+  eq([state.posts.length, state.refunds, state.used, await p.evaluate(() => [ed.idx, strokes.length])], [1, 1, 0, [0, 1]], 'refunded once, no retry, marks kept');
+}, { ai: { polls: ['processing', 'failed'], post: 'processing' } });
+
+test('ai: Fill is listed but not sent until the server has it; then it sends the mask and prompt', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await p.click('.tab[data-cat="ai"]');
+  eq(await p.$eval('.tool[data-tool="fill"]', (b) => [b.querySelector('.cost').textContent, b.getAttribute('aria-label')]), ['Soon', 'Fill, not available yet'], 'marked as not available yet');
+  await p.click('.tool[data-tool="fill"]'); await paint(p, [0.2, 0.2], [0.3, 0.25]);
+  eq(await p.evaluate(() => [$('applyBtn').disabled, $('applyBtn').textContent, /isn't live yet/.test($('panelNote').textContent)]), [true, 'Not available yet', true], 'Generate off, gap explained');
+  eq(state.posts.length, 0, 'nothing sent');
+  await p.evaluate(() => { CONFIG.aiFill = true; renderEditor(); });
+  await p.fill('#fillPrompt', 'a small vase of white flowers');
+  eq(await p.evaluate(() => [$('applyBtn').disabled, $('applyBtn').textContent]), [false, 'Generate · 1 credit'], 'cost shown before sending');
+  const req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
+  await p.click('#applyBtn'); const body = JSON.parse((await req).postData());
+  eq([body.mode, body.prompt, body.mask.startsWith('data:image/png'), !!body.request_id], ['fill', 'a small vase of white flowers', true, true], 'mode, prompt and mask');
+  await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
+  eq([state.used, await p.evaluate(() => ed.idx)], [1, 0], 'one credit, waiting for Apply');
+});
+
+test('ai: Expand sends once on Generate and waits for Apply', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'ai', null, 'expand');
+  eq(await p.textContent('#applyBtn'), 'Generate · 1 credit', 'cost shown first');
+  eq(state.posts.length, 0, 'opening it sends nothing');
+  await p.click('#applyBtn'); await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
+  eq([state.posts, state.used, await p.evaluate(() => ed.idx)], [['expand'], 1, 0], 'one request, one credit, not applied yet');
+  await p.click('#applyBtn'); await settle(100);
+  eq(await p.evaluate(() => [ed.idx, job]), [1, null], 'Apply adds it');
+});
+
+test('demo: Remove, Fill and Expand on the sample offer your own photo and never call the AI', async ({ p, state }) => {
+  await openDemo(p);
+  await p.click('.tab[data-cat="ai"]'); await p.click('.tool[data-tool="erase"]'); await settle(200);
+  eq(await p.evaluate(() => [$('cost').textContent, $('applyBtn').textContent, $('brush').hidden, /nothing is generated/.test($('panelNote').textContent)]), ['Own photo', 'Use your photo', true, true], 'explained, no brush');
+  const fc = p.waitForEvent('filechooser'); await p.click('#applyBtn'); await (await fc).setFiles([]); await settle(300);
+  await p.click('.tool[data-tool="expand"]'); await settle(200);
+  eq(await p.evaluate(() => ed.idx), 0, 'nothing applied on the sample');
+  eq(state.posts.length, 0, 'no AI request');
+}, { files: demoFiles() });
 
 // ---------- Runner ----------
 (async () => {

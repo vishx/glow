@@ -31,7 +31,8 @@ const Platform = {
   // once the platform has finished, and says where they went: "photos" (the phone app saved them
   // to the Glow album), "shared" (the share sheet closed; we can't tell what the user picked) or
   // "downloaded" (the browser started a download). Throws AbortError if the user cancels.
-  // { download: true } skips the share sheet, for saves the user didn't tap for (auto-save).
+  // { download: true } skips the share sheet, for saves the user didn't tap for (auto-save);
+  // { share: true } asks for the share sheet on computers too (the editor's Share button).
   async savePhotos(items, opts = {}) {
     const files = await Promise.all(items.map(async (it) => {
       const blob = it.blob || (await (await fetch(it.data)).blob());
@@ -50,7 +51,7 @@ const Platform = {
     }
     // Phones: the share sheet has "Save Image". Computers: a normal download.
     const touch = matchMedia("(pointer: coarse)").matches;
-    if (!opts.download && touch && navigator.canShare && navigator.canShare({ files })) {
+    if (!opts.download && (touch || opts.share) && navigator.canShare && navigator.canShare({ files })) {
       await navigator.share({ files, title: "Glow" });
       return "shared";
     }
