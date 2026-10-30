@@ -508,7 +508,7 @@ test('first launch opens Enhance: sample before/after, Choose a photo, then the 
   assert(r.order[0] < r.order[1] && r.order[1] < r.order[2], 'Choose a photo, Try the sample, camera: ' + r.order);
   await p.click('#obSample');
   await p.waitForFunction(() => screen === 'editorScreen' && ed.demo && $('before').naturalWidth > 0, null, { timeout: 15000 });
-  await p.reload(); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.reload(); await p.waitForFunction(() => screen === 'editorHome');   // reopens where you left off
 }, { onboarded: false, camera: false, viewport: { width: 390, height: 740 } });
 
 test('enhance: pick, one AI request, before/after, toggles on the phone, save, share screen, editor hand-off', async ({ p, state }) => {
