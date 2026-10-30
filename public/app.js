@@ -31,8 +31,8 @@ const PUBLIC_HOST = CONFIG.publicUrl ? new URL(CONFIG.publicUrl).host : "";
 const TOOLS = [];
 const tool = (id, label, title, kind, cat, extra = {}) => TOOLS.push({ id, label, title, kind, cat, ...extra });
 tool("mylook", "My Look", "My Look", "look", "fix", { hint: "Gives this photo one of your camera looks." });
-tool("pro", "Enhance", "Enhance", "ai", "fix", { hint: "A photographer-style edit: color, light, skin and background." });
-tool("enhance", "Restore", "Restore", "ai", "fix", { hint: "Sharpens and repairs old, blurry or low-quality photos." });
+tool("pro", "Pro edit", "Pro edit", "ai", "fix", { hint: "A photographer-style edit: color, light, skin and background." });
+tool("enhance", "Enhance", "Enhance", "ai", "fix", { hint: "Sharper faces and cleaner detail, the same as the Enhance tab. Also repairs old or blurry photos." });
 tool("faces", "Repair", "Face repair", "ai", "fix", { hint: "Restores blurry or damaged faces." });
 tool("retouch", "Retouch", "AI retouch", "ai", "fix", { hint: "Evens skin and tone while keeping texture." });
 tool("smile", "Smile", "Add a smile", "ai", "fix", { hint: "Works best on a clear, front-facing photo." });
@@ -1188,7 +1188,7 @@ const GLOW_ITEMS = [
   ["Eyes and smile", [["feyes", "Brighter eyes", 0.5, true], ["fteeth", "Whiter teeth", 0.5, true], ["flashes", "Lashes", 0.45, false], ["fliner", "Liner", 0.45, false], ["feyecolor", "Eye color", 0.55, false]]],
   ["Makeup", [["flips", "Lips", 0.5, false], ["fblush", "Blush", 0.45, false], ["fbrows", "Brows", 0.4, false], ["fcontour", "Contour", 0.4, false], ["fhighlight", "Highlighter", 0.4, false]]],
 ];
-const GLOW_AI = [["No AI", null], ["Enhance", "pro"], ["New background", "bgscene"], ["Your words", "custom"]];
+const GLOW_AI = [["No AI", null], ["Pro edit", "pro"], ["New background", "bgscene"], ["Your words", "custom"]];
 const glowDefaults = () => ({ on: Object.fromEntries(GLOW_ITEMS.flatMap(([, items]) => items.map(([id, , , on]) => [id, on]))), look: null, slim: false, light: true, ai: null, words: "", strength: 60 });
 let glow = glowDefaults();
 try { const g = JSON.parse(store.get("glowRoutine") || "null"); if (g && g.on) glow = { ...glowDefaults(), ...g, on: { ...glowDefaults().on, ...g.on }, words: "" }; } catch {}
@@ -2381,15 +2381,15 @@ function renderCreditsSheet() {
     const r = nextUtcMidnight(), mins = Math.max(1, Math.round((r - Date.now()) / 60000));
     const left = mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
     html = card(a.remaining, `of ${a.quota} AI credits left today`, `Resets at ${fmtTime(r)} (in ${left}). Unused credits don't carry over.`,
-      a.trialLeft !== undefined ? "Daily credits work with Restore, Retouch, Remove and Colorize." : "");
+      a.trialLeft !== undefined ? "Daily credits work with Enhance, AI retouch, Remove and Colorize." : "");
     if (a.trialLeft !== undefined) facts.push(fact("sparkle", `${a.trialLeft} free premium ${a.trialLeft === 1 ? "try" : "tries"} left`,
-      "Enhance, Fill, Golden hour, outfits and portrait styles share 3 free premium credits, once, not each day. Fill and the portrait styles use 2."));
+      "Pro edit, Golden hour, outfits, Describe, Fill, AI scene and portrait styles share 3 free premium credits, once, not each day. Fill, AI scene, Describe and the portrait styles use 2."));
     if (native && plugins.AdMob && a.adsLeft > 0) facts.push(fact("star", "Out of credits?",
       `Watch a short ad for 1 more credit${a.trialLeft !== undefined ? " for the daily tools" : ""}, up to ${a.adsLeft} more today. Ads are always optional.`));
   }
   facts.push(fact("save", "Saving is free and unlimited", "On the free plan, saves carry a small Glow mark."),
     fact("sliders", "On-device tools are always free", "Camera, filters, face, makeup, backgrounds, light and color. Undo and redo never use credits."),
-    fact("wand", `Most AI tools use 1 credit`, `Headshot and Fashion${CONFIG.pricingV2 ? " and Fill" : ""} use 2. Each tool shows its cost before you apply it.`),
+    fact("wand", `Most AI tools use 1 credit`, `Headshot, Fashion, Describe${CONFIG.pricingV2 ? ", Fill and AI scene" : " and AI scene"} use 2. Each tool shows its cost before you apply it.`),
     fact("revert", "Failed edits are refunded", "If the AI service reports an edit failed, its credit comes back automatically."));
   $("creditsBody").innerHTML = html + `<ul class="cr-facts">${facts.join("")}</ul>`;
   $("creditsPro").hidden = !!(a && a.plan === "pro");

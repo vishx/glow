@@ -159,7 +159,7 @@ test('export: AI result saves at the size the AI returned, and later steps build
   await tool(p, 'edit', 'light', 'light'); await p.fill('.panel input[type=range]', '-10'); await idle(p); await p.click('#applyBtn'); await idle(p);
   await p.click('#saveBtn'); await downloads(state, 1);
   const s = imageSize(state.downloads[0].file); eq([s.w, s.h], [1024, 1365], 'AI output size, not upscaled to 3024 × 4032');
-  assert(/size Enhance returned/.test(await toast(p)), 'toast explains the AI size: ' + await toast(p));
+  assert(/size Pro edit returned/.test(await toast(p)), 'toast explains the AI size: ' + await toast(p));
   eq(state.posts.length, 1, 'one paid request');
   state.report = { case: 'Enhance, then Light −10', original: [3024, 4032], working: [1024, 1365], exported: [s.w, s.h], steps: 'AI result is the base' };
 });
@@ -326,12 +326,12 @@ test('a11y: control boundaries and inactive controls meet 3:1 in both themes', a
 // the demo path only; they are not Glow results and are never shipped.
 const demoManifest = (() => {
   const m = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/samples/demo-v2/manifest.json')));
-  if (!m.previews.some((e) => e.tool === 'relight')) m.previews.push({ tool: 'relight', title: 'Relight' });
-  for (const e of m.previews) Object.assign(e, e.tool === 'pro' || e.tool === 'relight' ? { status: 'ready', result: `test-${e.tool}.jpg`, aligned: true } : { status: 'needs-generation', result: null });
+  if (!m.previews.some((e) => e.tool === 'golden')) m.previews.push({ tool: 'golden', title: 'Golden hour' });
+  for (const e of m.previews) Object.assign(e, e.tool === 'pro' || e.tool === 'golden' ? { status: 'ready', result: `test-${e.tool}.jpg`, aligned: true } : { status: 'needs-generation', result: null });
   return m;
 })();
 const demoFiles = (extra = {}) => ({ '/samples/demo-v2/manifest.json': { json: demoManifest }, '/samples/demo-v2/test-pro.jpg': fx('demo-test-a.jpg'),
-  '/samples/demo-v2/test-relight.jpg': fx('demo-test-b.jpg'), ...extra });
+  '/samples/demo-v2/test-golden.jpg': fx('demo-test-b.jpg'), ...extra });
 async function openDemo(p) {
   await p.goto('https://app.test/'); await p.click('#sampleBtn');
   await p.waitForFunction(() => screen === 'editorScreen' && ed.demo && $('before').naturalWidth > 0, null, { timeout: 15000 });
@@ -350,12 +350,12 @@ test('demo: Try a sample opens the attached original with demo labels', async ({
   assert(/^AI sample/.test(badge.text) && /AI-generated sample, not a real person/.test(badge.text), 'badge text and accessible explanation: ' + badge.text);
   assert(badge.onPhoto && badge.h <= 36 && badge.w <= 140, 'a small badge on the photo, not a row: ' + JSON.stringify(badge));
   await p.click('#demoNote'); assert(/AI-generated, not a real person/.test(await p.textContent('#toast')), 'tapping the badge explains it');
-  // Use your photo is the small upload action in the utility row, not a header button.
-  const row = await p.evaluate(() => { const b = $('demoOwnBtn').getBoundingClientRect(), st = $('stage').getBoundingClientRect();
-    return { inRow: !!$('demoOwnBtn').closest('.viewbar'), belowPhoto: b.top >= st.bottom, bh: b.height, name: $('demoOwnBtn').getAttribute('aria-label'), header: !!$('demoOwnBtn').closest('.topbar') }; });
-  eq([row.inRow, row.belowPhoto, row.header, row.bh >= 44, row.name], [true, true, false, true, 'Use your photo'], 'small Use your photo action in the utility row');
+  // Use your photo is the small upload action in the utility row (on phones a glass pill over the photo), not a header button.
+  const row = await p.evaluate(() => { const b = $('demoOwnBtn').getBoundingClientRect();
+    return { inRow: !!$('demoOwnBtn').closest('.viewbar'), bh: b.height, name: $('demoOwnBtn').getAttribute('aria-label'), header: !!$('demoOwnBtn').closest('.topbar') }; });
+  eq([row.inRow, row.header, row.bh >= 44, row.name], [true, false, true, 'Use your photo'], 'small Use your photo action in the utility row');
   assert(await p.isVisible('#demoOwnBtn'), 'Try your own photo'); assert(await p.isHidden('#balanceBtn'), 'no credit balance in the demo');
-  await p.click('.tab[data-cat="edit"]');   // Enhance and Relight are filed under Edit
+  await p.click('.tab[data-cat="edit"]');   // Pro edit and Golden hour are filed under Edit
   eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].map((c) => c.textContent)), ['Preview', 'Preview'], 'AI tools offered = prepared ones');
   assert(/prepared preview, no credits/.test(await p.getAttribute('.tool[data-tool="pro"]', 'aria-label')), 'screen-reader label');
   await p.screenshot({ path: path.join(__dirname, 'out', 'demo-open.png') });
@@ -363,7 +363,7 @@ test('demo: Try a sample opens the attached original with demo labels', async ({
 
 test('demo: prepared previews make no AI request, use no credits, and never stack', async ({ p, state }) => {
   await openDemo(p); const before = credit(state);
-  for (let i = 0; i < 3; i++) for (const id of ['pro', 'relight']) {
+  for (let i = 0; i < 3; i++) for (const id of ['pro', 'golden']) {
     await tool(p, 'foryou', null, id); await p.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x, id);
     const v = await p.evaluate(() => ({ n: ed.hist.length, before: $('before').src === ed.hist[0].data, after: $('after').src === ed.hist[1].data, hidden: $('after').hidden, badge: $('tagRight').textContent }));
     eq(v, { n: 2, before: true, after: true, hidden: false, badge: 'Prepared preview' }, `${id}: original vs this result only`);
@@ -390,31 +390,32 @@ test('demo: on-device tools stay interactive and reset the prepared preview', as
   assert(/Back to the original/.test(await toast(p)), 'says so');
   await p.fill('.panel input[type=range]', '20'); await idle(p); await p.click('#applyBtn'); await idle(p);
   eq(await p.evaluate(() => ed.idx), 1, 'light applied on the original');
-  await tool(p, 'foryou', null, 'relight'); await p.waitForFunction(() => ed.idx === 1 && ed.hist[1].op.tool === 'relight');
-  eq(await p.evaluate(() => ed.hist.map((h) => h.op && h.op.tool)), [null, 'relight'], 'prepared preview starts from the original, light dropped');
+  await tool(p, 'foryou', null, 'golden'); await p.waitForFunction(() => ed.idx === 1 && ed.hist[1].op.tool === 'golden');
+  eq(await p.evaluate(() => ed.hist.map((h) => h.op && h.op.tool)), [null, 'golden'], 'prepared preview starts from the original, light dropped');
   eq(state.posts.length, 0, 'local edits never sent to AI');
 }, { files: demoFiles() });
 
 test('demo: a missing preview shows a useful message and Retry recovers', async ({ p, state }) => {
   await openDemo(p);
-  await tool(p, 'foryou', null, 'relight'); await p.waitForFunction(() => demo.failed.relight);
+  await tool(p, 'foryou', null, 'golden'); await p.waitForFunction(() => demo.failed.golden);
   assert(/Couldn't load this preview/.test(await p.textContent('#panelNote')), 'message'); eq(await p.textContent('#applyBtn'), 'Retry', 'retry action');
   eq(await p.evaluate(() => ed.idx), 0, 'shows the original meanwhile');
-  await p.click('#applyBtn'); await p.waitForFunction(() => ed.idx === 1 && ed.hist[1].op.tool === 'relight');
+  await p.click('#applyBtn'); await p.waitForFunction(() => ed.idx === 1 && ed.hist[1].op.tool === 'golden');
   eq(state.posts.length, 0, 'no AI request');
-}, { files: demoFiles({ '/samples/demo-v2/test-relight.jpg': { path: fx('demo-test-b.jpg'), flaky: 2 /* the preload and the first tap fail */ } }) });
+}, { files: demoFiles({ '/samples/demo-v2/test-golden.jpg': { path: fx('demo-test-b.jpg'), flaky: 2 /* the preload and the first tap fail */ } }) });
 
 test('demo: a preview whose file is gone is not offered', async ({ p }) => {
   await openDemo(p);
   eq(await p.evaluate(() => demo.ready), ['pro'], 'only previews that exist');
-}, { files: demoFiles({ '/samples/demo-v2/test-relight.jpg': 404 }) });
+}, { files: demoFiles({ '/samples/demo-v2/test-golden.jpg': 404 }) });
 
 test('demo: with no prepared previews, no AI tools are offered and the note explains why', async ({ p, state }) => {
   await openDemo(p);
   eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].length), 0, 'no AI tiles');
   await p.click('.tab[data-cat="ai"]');
   eq(await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => [b.dataset.tool, b.querySelector('.cost') && b.querySelector('.cost').textContent])),
-    [['erase', 'Own photo'], ['fill', 'Own photo'], ['expand', 'Own photo'], ['custom', 'Own photo']], 'Remove, Fill, Expand and Describe stay listed, marked as needing your own photo');
+    [['erase', null], ['fill', null], ['custom', null]], 'Remove, Fill and Describe stay listed, with no badge (the panel explains)');
+  assert(await p.$$eval('#tools .tool[data-tool]', (x) => x.every((b) => /needs your own photo/.test(b.getAttribute('aria-label')))), 'spoken: needs your own photo');
   await p.click('.tab[data-cat="looks"]');
   assert(!(await p.$$eval('#tools .tool', (x) => x.some((b) => /uses \d credit/.test(b.getAttribute('aria-label'))))), 'no AI tool offered as chargeable on the sample');
   eq(state.posts.length, 0, 'no AI request');
@@ -435,10 +436,10 @@ test('demo: the shipped prepared previews are all there, match the manifest, and
     assert(e.aligned === true && e.provenance && e.provenance.predictionId && e.provenance.originalSha256 === m.original.sha256 && e.assetVersion === m.assetVersion, `${e.tool}: aligned, made from this original`);
   }
   const shipped = fs.readdirSync(dir).filter((f) => /\.(jpe?g|png|webp)$/i.test(f)).sort();
-  eq(shipped, [...new Set(['intro.jpg', 'thumb.jpg', m.original.file, ...(m.intro ? [m.intro.file] : []), ...ready.map((e) => e.result)])].sort(), 'no stray or old result images');
-  await openDemo(p); const before = credit(state);
-  // Colorize is only offered for black-and-white photos, so the color sample doesn't show it.
-  for (const e of ready.filter((x) => x.tool !== 'colorize')) {
+  eq(shipped, [...new Set(['intro.jpg', 'thumb.jpg', 'pw-before.jpg', 'pw-after.jpg', m.original.file, ...(m.intro ? [m.intro.file] : []), ...ready.map((e) => e.result)])].sort(), 'no stray or old result images');
+  await openDemo(p); const before = credit(state), retired = await p.evaluate(() => RETIRED);
+  // Colorize is only offered for black-and-white photos, so the color sample doesn't show it; retired tools aren't offered.
+  for (const e of ready.filter((x) => x.tool !== 'colorize' && !retired.includes(x.tool))) {
     await tool(p, 'foryou', null, e.tool); await p.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x && $('after').naturalWidth > 0, e.tool, { timeout: 15000 });
     eq(await p.evaluate(() => [ed.hist.length, $('after').naturalWidth, $('after').naturalHeight]), [2, e.width, e.height], `${e.tool}: shown alone, at its size`);
   }
@@ -489,7 +490,7 @@ test('demo: phone layouts at 320 and 390 wide have no sideways scroll', async ({
 }, { files: demoFiles() });
 
 // ---------- Onboarding ----------
-test('first launch opens Enhance: sample before/after, Choose a photo, then the sample; the welcome screen is still in Settings', async ({ p }) => {
+test('first launch opens Enhance: sample before/after, Choose a photo, then the sample; the welcome screen still works', async ({ p }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   const h = await p.evaluate(() => { const b = (id) => $(id).getBoundingClientRect();
     return { nav: [...document.querySelectorAll('#nav button')].map((x) => x.dataset.dest), current: document.querySelector('#nav [aria-current]').dataset.dest,
@@ -498,11 +499,12 @@ test('first launch opens Enhance: sample before/after, Choose a photo, then the 
   eq([h.nav, h.current, h.onboarded, h.hero], [['enhance', 'camera', 'editor'], 'enhance', '1', ['original.png', 'enhance.jpg']], 'Enhance first, with the sample before/after');
   assert(h.order[0] < h.order[1] && h.fits, 'Choose a photo, then Try the sample, both on screen: ' + h.order);
   eq(await p.evaluate(() => window.__streams.length), 0, 'no camera request on the first screen');
-  // The welcome screen: Settings can still show it, with the whole sample portrait.
-  await p.evaluate(() => { $('settings').showModal(); }); await p.click('#replayIntro'); await p.waitForSelector('#onboarding:not([hidden])');
+  // The welcome screen (no longer offered in Settings) still shows the whole sample portrait.
+  await p.evaluate(() => showOnboarding()); await p.waitForSelector('#onboarding:not([hidden])');
   const r = await p.evaluate(() => { const ph = document.querySelector('.ob-photo'), img = ph.querySelector('img'), b = (id) => $(id).getBoundingClientRect();
-    return { h: $('obSlide').querySelector('h1').textContent, fit: getComputedStyle(img).objectFit, order: ['obPick', 'obSample', 'obCamera'].map((id) => Math.round(b(id).top)), fits: b('obCamera').bottom <= innerHeight }; });
-  eq([r.h, r.fit, r.fits], ['Your light. Your look.', 'contain', true], 'welcome screen intact');
+    return { h: $('obSlide').querySelector('h1').textContent, fit: getComputedStyle(img).objectFit, order: ['obPick', 'obSample', 'obCamera'].map((id) => Math.round(b(id).top)) }; });
+  // No button opens it any more, so its buttons no longer have to fit one screen.
+  eq([r.h, r.fit, r.order[0] < r.order[1] && r.order[1] < r.order[2]], ['Your light, your look.', 'contain', true], 'welcome screen intact: ' + JSON.stringify(r));
   assert(r.order[0] < r.order[1] && r.order[1] < r.order[2], 'Choose a photo, Try the sample, camera: ' + r.order);
   await p.click('#obSample');
   await p.waitForFunction(() => screen === 'editorScreen' && ed.demo && $('before').naturalWidth > 0, null, { timeout: 15000 });
@@ -553,11 +555,11 @@ for (const [w, h] of [[390, 844], [320, 640], [412, 915]]) test(`layout: categor
   }
 }, { viewport: { width: w, height: h } });
 
-test('layout: ivory (light) and neutral (dark) surround, photo contained, edited view first, compare only after an edit', async ({ p, state }) => {
+test('layout: porcelain (light) and ink (dark) surround, photo contained, edited view first, compare only after an edit', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   const bg = () => p.evaluate(() => getComputedStyle($('stage')).backgroundColor);
-  eq(await bg(), 'rgb(29, 26, 31)', 'dark: quiet neutral');
-  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(241, 235, 227)', 'light: warm ivory');
+  eq(await bg(), 'rgb(20, 16, 19)', 'dark: ink');
+  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(251, 247, 245)', 'light: porcelain');
   const st = await p.evaluate(() => ({ view: $('stage').dataset.view, disabled: [$('compareBtn').disabled, $('revertBtn').disabled], radius: getComputedStyle($('stage')).borderTopLeftRadius,
     fit: getComputedStyle($('before')).objectFit, frame: (() => { const f = $('view').getBoundingClientRect(), s = $('stage').getBoundingClientRect(); return f.width <= s.width + 0.5 && f.height <= s.height + 0.5 && Math.abs(f.width / f.height - ed.original.w / ed.original.h) < 0.02; })() }));
   eq(st, { view: 'edited', disabled: [true, true], radius: '16px', fit: 'contain', frame: true }, 'before any edit (rounded, with a small margin)');
@@ -570,8 +572,8 @@ test('layout: ivory (light) and neutral (dark) surround, photo contained, edited
   eq(d.target, [44, 44], 'handle touch target'); assert(d.knob >= 24 && d.knob <= 28, 'visible knob ' + d.knob); eq(d.line, 2, '2px divider');
   assert(Math.abs(d.at - 0.75) < 0.03, 'handle about 75% down: ' + d.at);
   const seg = await p.evaluate(() => { const v = document.querySelector('.viewbar').getBoundingClientRect(), s = $('stage').getBoundingClientRect(), b = $('compareBtn').getBoundingClientRect();
-    return { below: v.top >= s.bottom, h: Math.round(b.height), font: parseFloat(getComputedStyle($('compareBtn')).fontSize), one: Math.round(v.height) <= 52 }; });
-  eq([seg.below, seg.h >= 44, seg.one], [true, true, true], 'one compact utility row below the photo, 44px targets'); assert(seg.font >= 13 && seg.font <= 15, 'label size ' + seg.font);
+    return { below: v.top >= s.top && v.bottom <= s.bottom, h: Math.round(b.height), font: parseFloat(getComputedStyle($('compareBtn')).fontSize), one: Math.round(v.height) <= 52 }; });
+  eq([seg.below, seg.h >= 44, seg.one], [true, true, true], 'one compact utility row on the photo, 44px targets'); assert(seg.font >= 13 && seg.font <= 15, 'label size ' + seg.font);
   await p.focus('#handle'); await p.keyboard.press('ArrowLeft'); eq(await p.getAttribute('#handle', 'aria-valuenow'), '48', 'keyboard moves the divider');
   // Saved file is the photo alone: its own size, no canvas margins.
   await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
@@ -592,7 +594,7 @@ test('layout: compact credit chip in the header opens the credits sheet', async 
   const c = await p.evaluate(() => { const r = $('balanceBtn').getBoundingClientRect(); return { text: $('balanceBtn').textContent, label: $('balanceBtn').getAttribute('aria-label'), h: r.height, top: r.bottom <= $('stage').getBoundingClientRect().top }; });
   eq(c.text, '3', 'actual balance, compact'); assert(/3/.test(c.label) && /credit/.test(c.label), 'spoken label ' + c.label); assert(c.h >= 44, 'touch target ' + c.h); assert(c.top, 'in the header');
   await p.click('#balanceBtn'); assert(await p.evaluate(() => $('creditsSheet').open), 'opens the details sheet');
-  assert(/midnight UTC/.test(await p.textContent('#creditsBody')), 'explains the real reset');
+  assert(/Resets at .* \(in \d+ h \d+ min\)/.test(await p.textContent('#creditsBody')), 'explains the real reset');
 });
 
 test('layout: Search covers every tool in a taller catalog; the last tools scroll fully into view', async ({ p }) => {
@@ -601,7 +603,7 @@ test('layout: Search covers every tool in a taller catalog; the last tools scrol
   await p.click('#searchBtn'); eq(await p.evaluate(() => [searching, !$('searchBox').hidden]), [true, true], 'search open');
   eq(await p.evaluate(() => document.activeElement.id), 'searchInput', 'focus in the search field');
   const tall = await p.evaluate(() => $('tools').getBoundingClientRect().height); assert(tall > 300, 'taller catalog ' + tall);
-  eq(await p.evaluate(() => new Set([...document.querySelectorAll('#tools .tool')].map((b) => b.dataset.tool)).size), await p.evaluate(() => TOOLS.length), 'every tool is in Search');
+  eq(await p.evaluate(() => new Set([...document.querySelectorAll('#tools .tool')].map((b) => b.dataset.tool)).size), await p.evaluate(() => TOOLS.filter((t) => !RETIRED.includes(t.id)).length), 'every tool still offered is in Search');
   await p.fill('#searchInput', 'blur'); eq(await p.$$eval('#tools .tool', (x) => x.map((b) => b.dataset.tool)), ['bgblur'], 'search');
   await p.click('.tool[data-tool="bgblur"]'); await idle(p);
   eq(await p.evaluate(() => [sel, cat, searching]), ['bgblur', 'edit', false], 'a found tool opens in its own tab');
@@ -852,7 +854,7 @@ test('zoom: pinch, pan, double-tap, wheel and buttons inspect the photo without 
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending); await idle(p);
   await p.click('#compareBtn'); await settle(200);
   const s0 = await viewState(p), { T, wait } = await touchpad(p);
-  eq(s0.z, 1, 'starts at fit'); near(s0.divider, s0.v.x + s0.v.w / 2, 1.5, 'divider starts mid-photo');
+  eq(s0.z, 1, 'starts at fit'); near(s0.divider, s0.v.x + (s0.split / 100) * s0.v.w, 1.5, 'divider starts where Compare puts it (on the face)');
   const cx = s0.st.x + s0.st.w / 2, cy = s0.st.y + s0.st.h * 0.4, mx = cx - s0.st.x, my = cy - s0.st.y;
   const under = (s) => [(mx - s.v.x) / s.v.w, (my - s.v.y) / s.v.h];
   // Pinch away from the divider: zooms around the fingers' midpoint.
@@ -954,10 +956,10 @@ test('layout: on phones the idle editor reserves no panel space, and a closed to
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   const sizes = {}, box = async (n) => { await settle(400); sizes[n] = await stageBox(p); };
   const gaps = () => p.evaluate(() => { const g = (s) => document.querySelector(s).getBoundingClientRect(), st = g('#stage'), vb = g('#editorScreen .viewbar'), tl = g('#editorScreen .side > .tools'), tb = g('#editorScreen .tabs');
-    return { photoToRow: Math.round(vb.top - st.bottom), rowToTools: Math.round(tl.top - vb.bottom), toolsToTabs: Math.round(tb.top - tl.bottom), tabsToEnd: Math.round(innerHeight - tb.bottom),
+    return { rowOnPhoto: vb.top >= st.top && vb.bottom <= st.bottom, photoToTools: Math.round(tl.top - st.bottom), toolsToTabs: Math.round(tb.top - tl.bottom), tabsToEnd: Math.round(innerHeight - tb.bottom),
       toolsH: Math.round(tl.height), labels: [...document.querySelectorAll('#editorScreen .side > .tools .group-label')].filter((e) => e.offsetParent).length }; });
   const g = await gaps();
-  eq([g.photoToRow, g.rowToTools, g.toolsToTabs, g.tabsToEnd, g.labels], [0, 0, 0, 0, 0], 'utility row, tool row and tabs stacked with no empty space or group labels: ' + JSON.stringify(g));
+  eq([g.rowOnPhoto, g.photoToTools, g.toolsToTabs, g.tabsToEnd, g.labels], [true, 0, 0, 0, 0], 'utility pill floats on the photo; tool row and tabs stacked under it with no empty space or group labels: ' + JSON.stringify(g));
   assert(g.toolsH <= 90, 'one compact tool row: ' + g.toolsH);
   await box('home');
   assert(sizes.home[1] >= 520, 'the photo takes the remaining height on a 390x844 phone: ' + sizes.home);
@@ -975,7 +977,7 @@ test('layout: the default Retouch row is Glow Up, Smooth, Blemish, Eyes, Face; t
     return { first: tiles.slice(0, 5).map((t) => t.name), visible: tiles.filter((t) => t.r.right <= box.right + 1).map((t) => t.name), all: tiles.map((t) => t.id) }; });
   eq(r.first, ['Glow Up', 'Smooth', 'Blemish', 'Eyes', 'Face'], 'default row');
   eq(r.visible.slice(0, 5), ['Glow Up', 'Smooth', 'Blemish', 'Eyes', 'Face'], 'all five on screen at 390 wide');
-  for (const id of ['fundereye', 'fauto', 'fbigeyes', 'fteeth', 'retouch', 'smile', 'faces', 'flips', 'hcolor']) assert(r.all.includes(id), id + ' still in the Retouch tab');
+  for (const id of ['fundereye', 'fauto', 'fbigeyes', 'fteeth', 'retouch', 'flips', 'hcolor']) assert(r.all.includes(id), id + ' still in the Retouch tab');
 }, { viewport: { width: 390, height: 740 } });
 test('layout: at 390x740 the sample portrait shows wide and whole, with a small badge and no extra rows', async ({ p }) => {
   await openDemo(p); await settle(600);
@@ -1107,12 +1109,12 @@ test('view: full view keeps the preview, zoom and comparison, and Back closes it
 }, { viewport: { width: 390, height: 844 } });
 
 // ---------- Navigation: four tabs, Hold for original ----------
-test('nav: four tabs file every tool once, body tools only through Search, one row per tab with Search last', async ({ p }) => {
+test('nav: four tabs file every tool still offered once, retired tools nowhere, one row per tab with Search last', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, fx('transparent.png'));
   const c = await p.evaluate(() => {
     const filed = [...Object.values(CATS), ADVANCED].flatMap((g) => g.flatMap((x) => x[2]));
     const counts = {}; filed.forEach((id) => { counts[id] = (counts[id] || 0) + 1; });
-    return { missing: TOOLS.map((t) => t.id).filter((id) => !counts[id]), twice: Object.keys(counts).filter((id) => counts[id] > 1), unknown: filed.filter((id) => !TOOL[id]),
+    return { missing: TOOLS.map((t) => t.id).filter((id) => !counts[id] && !RETIRED.includes(id)), twice: Object.keys(counts).filter((id) => counts[id] > 1), unknown: filed.filter((id) => !TOOL[id]),
       tabs: [...document.querySelectorAll('#tabs .tab')].map((t) => t.textContent.trim()),
       bodyOnlyInSearch: TOOLS.filter((t) => t.kind === 'body').every((t) => tabFor(t.id) === null) };
   });
@@ -1128,17 +1130,15 @@ test('nav: four tabs file every tool once, body tools only through Search, one r
   eq(await p.evaluate(() => [sel, $('panelBody').querySelectorAll('.tool').length]), ['crop', 0], 'one tap from Edit to the crop controls');
   await p.click('#cancelBtn');
   await p.click('.tab[data-cat="ai"]');
-  eq(await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => b.dataset.tool)), ['erase', 'fill', 'expand', 'custom'], 'AI: Remove, Fill, Expand, Describe');
+  eq(await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => b.dataset.tool)), ['erase', 'fill', 'custom'], 'AI: Remove, Fill, Describe');
   await settle(400);
   const pill = await p.evaluate(() => { const t = document.querySelector('.tab[aria-selected="true"]'); return [t.dataset.cat, getComputedStyle(t.firstElementChild).backgroundColor !== 'rgba(0, 0, 0, 0)']; });
   eq(pill, ['ai', true], 'the open tab sits on a pill');
   const h = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')].map((t) => Math.round(t.getBoundingClientRect().height)));
   assert(h.every((x) => x >= 44), 'tab targets ' + h);
-  // Advanced body tools are reachable through Search, and are never on a tab.
+  // Body tools are retired: never on a tab, and Search doesn't offer them either.
   await p.click('#searchBtn'); await p.fill('#searchInput', 'waist');
-  eq(await p.$$eval('#tools .tool', (x) => x.map((b) => b.dataset.tool)), ['bwaist'], 'Search finds the advanced tool');
-  await p.click('.tool[data-tool="bwaist"]'); await settle(200);
-  eq(await p.evaluate(() => [sel, searching, faceSet.amt.bwaist]), ['bwaist', false, 0], 'opens at 0, nothing applied');
+  eq(await p.$$eval('#tools .tool', (x) => x.map((b) => b.dataset.tool)), [], 'Search skips retired tools');
   eq(await p.evaluate(() => { localStorage.setItem('glowCat', 'foryou'); return true; }), true, 'old saved tab');
   await p.reload(); await p.waitForFunction(() => typeof cat === 'string');
   eq(await p.evaluate(() => cat), 'retouch', 'a saved tab that no longer exists falls back to Retouch');
@@ -1331,17 +1331,6 @@ test('ai: Fill is listed but not sent until the server has it; then it sends the
   eq([state.used, await p.evaluate(() => ed.idx)], [1, 0], 'one credit, waiting for Apply');
 });
 
-test('ai: Expand sends once on Generate and waits for Apply', async ({ p, state }) => {
-  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
-  await tool(p, 'ai', null, 'expand');
-  eq(await p.textContent('#applyBtn'), 'Generate · 2 credits', 'cost shown first (pricing v2: 2 credits)');
-  eq(state.posts.length, 0, 'opening it sends nothing');
-  await p.click('#applyBtn'); await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
-  eq([state.posts, state.used, await p.evaluate(() => ed.idx)], [['expand'], 1, 0], 'one request, one credit, not applied yet');
-  await p.click('#applyBtn'); await settle(100);
-  eq(await p.evaluate(() => [ed.idx, job]), [1, null], 'Apply adds it');
-});
-
 test('ai: free plan v2 — premium tools use the one-time trial, cheap tools the daily credits', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await p.waitForFunction(() => !!account);
@@ -1359,12 +1348,12 @@ test('ai: free plan v2 — premium tools use the one-time trial, cheap tools the
   eq(await p.evaluate(() => ['$4.99/week', '$49.99/year'].map((x) => document.body.innerHTML.includes(x))), [true, true], 'new prices on the paywall');
 });
 
-test('demo: Remove, Fill and Expand on the sample offer your own photo and never call the AI', async ({ p, state }) => {
+test('demo: Remove and Fill on the sample offer your own photo and never call the AI', async ({ p, state }) => {
   await openDemo(p);
   await p.click('.tab[data-cat="ai"]'); await p.click('.tool[data-tool="erase"]'); await settle(200);
   eq(await p.evaluate(() => [$('cost').textContent, $('applyBtn').textContent, $('brush').hidden, /nothing is generated/.test($('panelNote').textContent)]), ['Own photo', 'Use your photo', true, true], 'explained, no brush');
   const fc = p.waitForEvent('filechooser'); await p.click('#applyBtn'); await (await fc).setFiles([]); await settle(300);
-  await p.click('.tool[data-tool="expand"]'); await settle(200);
+  await p.click('.tool[data-tool="fill"]'); await settle(200);
   eq(await p.evaluate(() => ed.idx), 0, 'nothing applied on the sample');
   eq(state.posts.length, 0, 'no AI request');
 }, { files: demoFiles() });
@@ -1380,15 +1369,17 @@ const nearPx = (a, b, tol) => a.slice(0, 3).every((v, i) => Math.abs(v - b[i]) <
 test('bg: on-device backgrounds keep her own pixels, replace the backdrop, and swap instead of stacking', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   const base = await p.evaluate(() => committed());
-  await tool(p, 'edit', null, 'bgwhite'); await p.waitForFunction(() => ed.pending && ed.pending.tool === 'bgwhite', null, { timeout: 30000 }); await idle(p);
+  await tool(p, 'edit', null, 'bgcolor'); await p.click('#panelBody .opt:has-text("White")');
+  await p.waitForFunction(() => ed.pending && ed.pending.tool === 'bgcolor', null, { timeout: 30000 }); await idle(p);
   const white = await p.evaluate(() => ed.pending.data);
-  assert(nearPx(await pxAt(p, white, 0.03, 0.04), [255, 255, 255], 6), 'the corner is the new white backdrop');
+  { const c = await pxAt(p, white, 0.03, 0.04); assert(c.slice(0, 3).every((v) => v >= 200), 'the corner is the new light backdrop: ' + c); }
   { const a = await pxAt(p, white, 0.5, 0.3), b = await pxAt(p, base, 0.5, 0.3); assert(nearPx(a, b, 8), 'her face is her own pixels (JPEG tolerance): ' + a + ' vs ' + b); }
-  await p.click('.tool[data-tool="bgsky"]'); await p.waitForFunction(() => ed.pending && ed.pending.tool === 'bgsky', null, { timeout: 30000 }); await idle(p);
-  eq(await p.evaluate(() => [ed.idx, ed.hist.length]), [0, 1], 'Sky replaces White instead of stacking on it');
+  await p.click('#panelBody .opt:has-text("Black")'); await p.waitForFunction((w) => ed.pending && ed.pending.data !== w, white, { timeout: 30000 }); await idle(p);
+  { const c = await pxAt(p, await p.evaluate(() => ed.pending.data), 0.03, 0.04); assert(c.slice(0, 3).every((v) => v <= 60), 'Black swaps the backdrop: ' + c); }
+  eq(await p.evaluate(() => [ed.idx, ed.hist.length]), [0, 1], 'Black replaces White instead of stacking on it');
   // Your photo: any picture becomes the backdrop.
   await p.click('.tool[data-tool="bgphoto"]'); await settle(200);
-  eq(await p.evaluate(() => [ed.idx, $('applyBtn').disabled]), [0, true], 'switching discards Sky; nothing to apply before a photo is picked');
+  eq(await p.evaluate(() => [ed.idx, $('applyBtn').disabled]), [0, true], 'switching discards the color; nothing to apply before a photo is picked');
   const fc = p.waitForEvent('filechooser'); await p.click('#panelBody .outfit-pick button'); await (await fc).setFiles(fx('coords-600x400.png'));
   await p.waitForFunction(() => ed.pending && ed.pending.tool === 'bgphoto', null, { timeout: 30000 }); await idle(p);
   const mine = await p.evaluate(() => ed.pending.data);
@@ -1415,20 +1406,6 @@ test('ai: AI scene costs 2 credits, sends the background mask and the scene, and
   assert(nearPx(await pxAt(p, shown, 0.5, 0.3), await pxAt(p, base, 0.5, 0.3), 4), 'her face is her own pixels');
   eq([state.used, await p.evaluate(() => ed.idx)], [1, 0], 'one request, waiting for Apply');
 });
-
-test('ai: HD cutout costs 1 credit and turns the AI edge into a full-size transparent cutout', async ({ p, state }) => {
-  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
-  await p.evaluate(() => { CONFIG.aiV10 = true; renderEditor(); });   // once the server has the modes
-  await tool(p, 'edit', null, 'bgcut');
-  eq(await p.textContent('#applyBtn'), 'Apply · 1 credit', 'everyday 1-credit tool');
-  await p.click('#applyBtn'); await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
-  eq(state.posts, ['bgcut'], 'one request');
-  const full = await p.evaluate(() => job.result.full || job.result.data), base = await p.evaluate(() => committed());
-  eq((await pxAt(p, full, 0.02, 0.02))[3], 0, 'outside the edge is transparent');
-  const mid = await pxAt(p, full, 0.5, 0.5);
-  eq(mid[3], 255, 'inside the edge is solid');
-  assert(nearPx(mid, await pxAt(p, base, 0.5, 0.5), 4), 'and keeps the photo\'s own pixels');
-}, { files: { '/__ai.jpg': { path: fx('ai-cutout-mask.png') } } });
 
 test('adjust: the full Adjust set changes the photo, and grain is the same every time', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
