@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
       const msg = quota.remaining > 0 ? `This tool uses 2 AI credits and you have ${quota.remaining} left.` : quota.plan === "pro"
         ? "You've used your AI credits for now. They refresh over the next few days."
         : quota.pool === "trial"
-        ? "You've used your 3 free tries of the premium AI tools. Go Pro to keep using them; the other AI tools stay free every day."
+        ? "You've used your free premium credits. Go Pro to keep using premium AI tools, or use the everyday AI tools with your daily credits."
         : "You've used today's free AI credits. Go Pro for 40 a week, or come back tomorrow.";
       return json({ error: msg, limit: true, usage }, 429);
     }

@@ -1292,6 +1292,7 @@ test('ai: a failed Remove is refunded once and never retried by itself', async (
 
 test('ai: Fill is listed but not sent until the server has it; then it sends the mask and prompt', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await p.evaluate(() => { CONFIG.aiFill = false; renderEditor(); });   // as before the server had Fill
   await p.click('.tab[data-cat="ai"]');
   eq(await p.$eval('.tool[data-tool="fill"]', (b) => [b.querySelector('.cost').textContent, b.getAttribute('aria-label')]), ['Soon', 'Fill, not available yet'], 'marked as not available yet');
   await p.click('.tool[data-tool="fill"]'); await paint(p, [0.2, 0.2], [0.3, 0.25]);

@@ -14,9 +14,8 @@ const CONFIG = {
   // QR card. This is the project's production domain on Vercel. Leave it "" and free saves
   // show "Glow" alone and Share Glow is not offered.
   publicUrl: "https://glow-photo-enhancer.vercel.app",
-  // Fill sends mode "fill" with a short prompt. The live server doesn't have that mode yet (it is
-  // in supabase/functions/enhance in this repo, undeployed). Turn on once it is deployed.
-  aiFill: false,
+  // Fill sends mode "fill" with a short prompt. Live since enhance v9 (2026-10-30, after migration 006).
+  aiFill: true,
   // Pricing v2 (migration 007): Fill and Expand cost 2 credits. Turn on only once 007 is applied,
   // so the cost shown always matches what the server charges. Applied on 2026-10-30.
   pricingV2: true,
