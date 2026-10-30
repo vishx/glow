@@ -330,10 +330,12 @@
 
 <dialog class="sheet" id="settings" aria-labelledby="settingsTitle">
   <div class="sheet-head"><h2 class="t-section" id="settingsTitle">Settings</h2><button class="icon-btn" data-close aria-label="Close settings"></button></div>
-  <p id="planLine">Free plan</p>
-  <div class="row" style="margin:8px 0 16px">
-    <button class="btn" id="goProBtn">See Glow Pro</button>
-    <button class="btn ghost" id="restoreBtn">Restore purchases</button>
+  <div class="plan-card">
+    <p id="planLine">Free plan</p>
+    <div class="row">
+      <button class="btn" id="goProBtn">See Glow Pro</button>
+      <button class="btn ghost" id="restoreBtn" aria-label="Restore purchases">Restore</button>
+    </div>
   </div>
   <div class="setting">
     <h3 id="themeLabel">Appearance</h3>
@@ -347,7 +349,7 @@
   </div>
   <div class="setting">
     <label class="toggle">Also save the original photo <input type="checkbox" role="switch" id="saveOrigToggle" aria-describedby="saveOrigHelp"></label>
-    <p class="fine" id="saveOrigHelp" style="margin:0">When a photo has a look or edits, the untouched original is saved once as well, at its full size. A photo taken with the Original look is only saved once.</p>
+    <p class="fine" id="saveOrigHelp" style="margin:0">Keep the untouched, full-size photo next to your edit.</p>
   </div>
   <div class="setting">
     <div class="links">
