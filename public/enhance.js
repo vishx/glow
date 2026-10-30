@@ -19,14 +19,16 @@ const enh = {
 };
 
 // ---------- Launch animation ----------
-// The mark draws itself, the glint pops, the wordmark settles, then the app shows through.
-// It never holds the app back for more than about 1.4 s, and a tap skips it.
+// Holds the launch image's frame for a moment, then plays the Aperture animation (enhance.css).
+// It never holds the app back for more than about 1.1 s after that, and a tap skips it.
 (function splash() {
   const s = $("splash"); if (!s) return;
-  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const hide = () => { if (s.classList.contains("out")) return; s.classList.add("out"); setTimeout(() => s.remove(), 700); };
-  setTimeout(hide, Math.max(0, (reduce ? 300 : 1400) - performance.now()));
-  s.addEventListener("pointerdown", hide);
+  if (window.Capacitor?.getPlatform?.() === "ios") s.classList.add("ios"); // iOS fills the screen with its square launch image
+  const done = () => s.remove();
+  setTimeout(() => s.classList.add("go"), Math.max(0, 450 - performance.now()));
+  s.addEventListener("animationend", (e) => { if (e.target === s) done(); });
+  setTimeout(done, 2400); // in case animations never run (a hidden tab, for example)
+  s.addEventListener("pointerdown", () => { s.classList.remove("go"); s.classList.add("out"); });
 })();
 
 // ---------- Home ----------

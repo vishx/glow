@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <defs><radialGradient id="g" cx="0.5" cy="0.38" r="0.75"><stop offset="0" stop-color="#2a2226"/><stop offset="1" stop-color="#141114"/></radialGradient></defs>
-  <rect width="1024" height="1024" fill="url(#g)"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF7F4"/><stop offset="0.3" stop-color="#FADCDD"/><stop offset="0.62" stop-color="#F0B7B6"/><stop offset="0.85" stop-color="#F9D4CF"/><stop offset="1" stop-color="#E8A2A4"/></linearGradient>
+ <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="0.6"><stop offset="0.15" stop-color="#fff" stop-opacity="0"/><stop offset="0.32" stop-color="#fff" stop-opacity="0.85"/><stop offset="0.45" stop-color="#fff" stop-opacity="0"/><stop offset="0.7" stop-color="#fff" stop-opacity="0"/><stop offset="0.82" stop-color="#fff" stop-opacity="0.5"/><stop offset="0.95" stop-color="#fff" stop-opacity="0"/></linearGradient>
+ <filter id="brush"><feTurbulence type="fractalNoise" baseFrequency="0.002 0.9" numOctaves="2" seed="4"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="linear" slope="0" intercept="0.10"/></feComponentTransfer><feComposite in2="SourceGraphic" operator="in"/></filter>
+ </defs>
+<rect width="1024" height="1024" fill="url(#bg)"/><rect width="1024" height="1024" fill="url(#sweep)"/><rect width="1024" height="1024" fill="#fff" filter="url(#brush)" transform="rotate(-35 512 512) scale(1.5) translate(-170 -170)"/>
 </svg>

@@ -730,6 +730,88 @@ dialog.pw .links { justify-content: center; }
 /* Quieter utility row and glass zoom buttons. (The photo sits on the page itself: --viewer matches --bg.) */
 .util-row .sep, .utils .sep, i.sep { opacity: 0; }
 .zoomctl .icon-btn { background: var(--glass); color: var(--text); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+
+/* Photo tiles: the face the tool will change, with the tool's icon on a small blush badge. */
+.tool.photo .well { width: 52px; height: 52px; border-radius: 16px; background-color: var(--surface-2); background-size: cover; background-position: center; box-shadow: none; }
+.tool.photo .glyph { position: absolute; right: -5px; bottom: -5px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  background: linear-gradient(var(--blush), var(--blush)), var(--bg); color: var(--rose); box-shadow: 0 0 0 2px var(--bg); }
+.tool.photo .glyph svg { width: 13px; height: 13px; stroke-width: 2.2; }
+
+/* Phones: Undo, Redo, Compare, Share and More float on a glass pill over the bottom of the
+   photo, so the photo gets the row's height back. Labels stay for screen readers. */
+@media (max-width: 959px) and (min-height: 601px) {
+  #editorScreen .canvas-col { position: relative; }
+  #editorScreen:not(.viewer-expanded) .viewbar { position: absolute; left: 50%; bottom: var(--s3); z-index: 6; transform: translateX(-50%);
+    gap: 2px; padding: 3px; border-radius: 999px; background: var(--glass); -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2);
+    box-shadow: 0 10px 28px -14px rgb(0 0 0 / 0.45), inset 0 0 0 1px rgb(255 255 255 / 0.14); }
+  #editorScreen .viewbar > .sep { display: none; }
+  #editorScreen .viewbar .util, #editorScreen .viewbar .more, #editorScreen .viewbar .demo-own { flex: none; }
+  #editorScreen .viewbar .util { width: 44px; min-height: 44px; border-radius: 50%; color: var(--text); }
+  #editorScreen .viewbar .util.on { background: var(--text); color: var(--bg); }
+  #editorScreen .viewbar .util > span + span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  #editorScreen .stage.cropping ~ .viewbar { display: none; }
+  #editorScreen .zoomctl, #editorScreen .zoom-hint { bottom: calc(var(--s3) + 56px); }
+}
+
+/* ---------- Motion ----------
+   Springs on selection, a shimmer while AI works, a sparkle when a save lands.
+   The reduced-motion rule near the top of the file turns all of these into instant changes. */
+@keyframes glow-in { 0% { transform: scaleX(0.55); opacity: 0.4; } 70% { transform: scaleX(1.06); } 100% { transform: scaleX(1); opacity: 1; } }
+.tab[aria-selected="true"] > span:first-child { animation: glow-in 300ms cubic-bezier(.3, .7, .4, 1.3); }
+.tool[aria-pressed="true"] .well { animation: glow-pop 380ms cubic-bezier(.3, .7, .4, 1.4); }
+.plan { transition: box-shadow var(--t-select), transform 160ms cubic-bezier(.3, .7, .4, 1.4); }
+.plan:active { transform: scale(0.97); }
+
+/* AI working: a soft light sweeps across the photo under the progress text. */
+.busy { background: rgb(20 16 19 / 0.42); overflow: hidden; }
+.busy::before { content: ""; position: absolute; inset: -20% -60%; background: linear-gradient(105deg, transparent 38%, rgb(255 240 245 / 0.28) 50%, transparent 62%);
+  animation: glow-sweep 1.8s cubic-bezier(.4, 0, .2, 1) infinite; pointer-events: none; }
+.busy > div { position: relative; padding: var(--s3) var(--s4); border-radius: 20px; background: rgb(20 16 19 / 0.55); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.busy .spinner { border-color: rgb(255 255 255 / 0.25); border-top-color: #f2a5bb; }
+@keyframes glow-sweep { from { transform: translateX(-45%); } to { transform: translateX(45%); } }
+
+/* Saved: a quiet blush pill, with a sparkle the moment it lands. */
+#editorScreen #saveBtn.saved:disabled { background: var(--blush); color: var(--rose); }
+#editorScreen #saveBtn.just-saved::before { content: ""; position: absolute; top: -6px; left: -6px; width: 14px; height: 14px; background: var(--rose);
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); animation: glow-twinkle 900ms ease-out both; pointer-events: none; }
+@keyframes glow-twinkle { 0% { transform: scale(0) rotate(0); opacity: 0; } 35% { transform: scale(1.2) rotate(30deg); opacity: 1; } 100% { transform: translate(-6px, -8px) scale(0) rotate(90deg); opacity: 0; } }
+
+/* Sheet and alert titles use the display serif, like every other title. */
+dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font-display); font-weight: 500; font-size: 1.5rem; line-height: 1.875rem;
+  font-variation-settings: "SOFT" 100, "WONK" 0; letter-spacing: -0.01em; }
+
+/* Credits sheet: a balance card, then short facts with icons */
+.cr-card { background: linear-gradient(160deg, var(--tint), transparent 70%), var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 18px 18px 16px; margin: 4px 0 14px; }
+.cr-card p { margin: 0; color: var(--muted); font-size: .875rem; line-height: 1.35rem; }
+.cr-card p.cr-note { margin-top: 6px; font-size: .8125rem; }
+.cr-num { display: flex; align-items: baseline; gap: 8px; }
+.cr-num b { font-family: var(--font-display); font-variation-settings: "SOFT" 100; font-weight: 500; font-size: 3rem; line-height: 1; color: var(--text); }
+.cr-num span { color: var(--text); font-weight: 600; font-size: .9375rem; }
+.cr-bar { height: 6px; border-radius: 3px; background: var(--surface-2); margin: 12px 0 10px; overflow: hidden; }
+.cr-bar i { display: block; height: 100%; border-radius: 3px; background: var(--champagne); }
+.cr-facts { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 14px; }
+.cr-facts li { display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: start; }
+.cr-facts svg { width: 36px; height: 36px; padding: 8px; border-radius: 12px; background: var(--blush); color: var(--rose); box-sizing: border-box; }
+.cr-facts b { display: block; font-size: .9375rem; line-height: 1.25rem; font-weight: 600; color: var(--text); }
+.cr-facts span { display: block; color: var(--muted); font-size: .8125rem; line-height: 1.2rem; margin-top: 2px; }
+
+/* Settings: plan card, quieter links */
+#settings .plan-card { background: linear-gradient(120deg, rgb(242 215 182 / .35), rgb(233 179 195 / .35)), var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 16px; margin: 4px 0 8px; display: grid; gap: 12px; }
+#settings .plan-card #planLine { margin: 0; font-family: var(--font-display); font-variation-settings: "SOFT" 100; font-size: 1.25rem; line-height: 1.6rem; color: var(--text); }
+#settings .plan-card .row { margin: 0; }
+#settings .plan-card .btn { flex: 1; }
+#settings .setting .fine { color: var(--muted); }
+#settings .links a { color: var(--muted); text-decoration: none; }
+#settings .links a.danger { color: var(--rose); }
+#settings .build-id { opacity: .6; }
+
+/* Group names: Search and wide screens only; a phone tab stays one clean row */
+#editorScreen:not(.tools-open) .group-label { display: none; }
+@media (min-width: 960px) {
+  #editorScreen .group-label { display: block !important; position: static; background: none; padding: 0 0 6px 2px; font-family: var(--font-display); font-variation-settings: "SOFT" 100; font-weight: 500; font-size: 1rem; line-height: 1.375rem; color: var(--text); }
+  #editorScreen .tools > .group:last-child .group-label { display: none !important; }
+}
+#editorScreen.tools-open .zoom-hint { display: none; }
 /* ---------- Live beauty camera: Adjust tabs, shade swatches, hold to compare ---------- */
 .adj-tabs { display: flex; gap: var(--s1); margin: 0 0 var(--s1); }
 .adj-tabs button { flex: 1; min-height: 40px; border: 0; border-radius: 20px; background: transparent; color: #ffffffb3; font-size: 0.875rem; font-weight: 600; }
@@ -737,7 +819,7 @@ dialog.pw .links { justify-content: center; }
 .adj-group { display: grid; gap: var(--s1); }
 .swatches { display: flex; gap: var(--s2); padding: 0 0 var(--s1) calc(6.5rem + var(--s2)); }
 .swatch { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #000; box-shadow: 0 0 0 1px #ffffff55; padding: 0; }
-.swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px #fff; }
+.swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--rose); }
 .adj-note { margin: 0; color: #ffffffb3; font-size: 0.8125rem; text-align: center; }
 .vf-pill { position: absolute; top: var(--s3); left: 50%; transform: translateX(-50%); margin: 0; padding: 4px var(--s3); border-radius: 14px;
   background: var(--scrim); color: #fff; font-size: 0.8125rem; font-weight: 600; pointer-events: none; }
