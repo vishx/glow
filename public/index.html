@@ -18,9 +18,88 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Cormorant+Garamond:wght@600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="enhance.css">
 </head>
 <body>
+<!-- Launch animation: the Glow mark draws itself, then the app shows through (enhance.js removes it). -->
+<div id="splash" aria-hidden="true">
+  <div class="sp-bloom"></div>
+  <div class="sp-mark">
+    <svg class="sp-cam" viewBox="244 300 536 440" style="width:150px;height:123px">
+      <path class="sp-body" d="M330 392 H382 L420 340 H604 L642 392 H694 A56 56 0 0 1 750 448 V652 A56 56 0 0 1 694 708 H330 A56 56 0 0 1 274 652 V448 A56 56 0 0 1 330 392 Z"/>
+      <circle class="sp-lens" cx="512" cy="546" r="98"/>
+      <path class="sp-glint" d="M652 410 C657 437 664 444 690 449 C664 454 657 461 652 488 C647 461 640 454 614 449 C640 444 647 437 652 410 Z"/>
+    </svg>
+    <p class="sp-word">Glow</p>
+  </div>
+</div>
 <div id="app">
+
+  <!-- Enhance: the main flow. Pick a photo, one tap, compare, save. -->
+  <section class="screen" id="enhanceHome" hidden aria-label="Enhance">
+    <header class="topbar">
+      <span class="spacer" aria-hidden="true"></span>
+      <p class="wordmark" aria-hidden="true">Glow</p>
+      <button class="icon-btn" id="enhSettingsBtn" aria-label="Settings"></button>
+    </header>
+    <div class="enh-home">
+      <div class="enh-hero" role="img" aria-label="Before and after Enhance on an AI-generated sample portrait">
+        <img src="/samples/demo-v2/original.png" alt="">
+        <img class="after" src="/samples/demo-v2/enhance.jpg" alt="">
+        <i class="line" aria-hidden="true"></i>
+        <span class="enh-pill left">Before</span><span class="enh-pill right">After</span>
+        <span class="enh-pill ai">AI-generated sample</span>
+        <div class="cap"><h1>Enhance</h1><p>Sharper faces and cleaner detail in one tap.</p></div>
+      </div>
+      <div class="enh-cta">
+        <button class="btn" id="enhPick"><span data-icon="sparkle"></span>Choose a photo</button>
+        <button class="btn quiet" id="enhSample">Try it on the sample · Free</button>
+      </div>
+      <div class="enh-meta"><button id="enhCredits" hidden></button></div>
+    </div>
+  </section>
+
+  <section class="screen dark" id="enhanceResult" hidden aria-label="Enhance result">
+    <header class="enh-top">
+      <button class="icon-btn" id="enhClose" aria-label="Close result"></button>
+      <h1>Result</h1>
+      <button class="enh-dl end" id="enhDownload" aria-label="Save photo"></button>
+    </header>
+    <div class="enh-stage" id="enhStage">
+      <div class="enh-frame" id="enhFrame">
+        <img id="enhBefore" alt="Before">
+        <img class="after" id="enhAfter" alt="After">
+        <i class="line" aria-hidden="true"></i>
+        <button class="knob" id="enhKnob" role="slider" aria-label="Compare before and after" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"></button>
+        <span class="enh-pill left" aria-hidden="true">Before</span><span class="enh-pill right" aria-hidden="true">After</span>
+        <span class="enh-pill ai" id="enhSampleTag" hidden>AI-generated sample</span>
+        <div class="enh-working" id="enhWorking"><div class="spinner"></div></div>
+      </div>
+    </div>
+    <div class="enh-toggles" id="enhToggles" role="group" aria-label="Enhancers"></div>
+  </section>
+
+  <section class="screen dark" id="enhanceShare" hidden aria-label="Share">
+    <header class="enh-top">
+      <button class="icon-btn" id="enhShareBack" aria-label="Back to result"></button>
+      <h1>Share</h1>
+      <button class="enh-done" id="enhShareDone">Done</button>
+    </header>
+    <div class="enh-share-ph">
+      <div class="enh-card">
+        <img id="enhShareImg" alt="Your enhanced photo">
+        <div class="enh-saved">
+          <span class="state" id="enhSavedState" role="status"><span id="enhSavedText">Saved</span><span class="ok"></span></span>
+          <button class="share" id="enhShareBtn" aria-label="Share photo"></button>
+        </div>
+      </div>
+    </div>
+    <div class="enh-share-foot">
+      <button class="btn" id="enhAnother">Enhance another<span data-icon="sparkle"></span></button>
+      <button class="link-btn" id="enhEdit">Edit more in the editor</button>
+    </div>
+  </section>
+
 
   <!-- First launch: one welcome screen. Returning people go straight to the app; Settings can show it again. -->
   <section class="screen" id="onboarding" hidden aria-label="Welcome to Glow">
@@ -237,6 +316,7 @@
   </section>
 
   <nav class="nav" id="nav" aria-label="Main">
+    <button data-dest="enhance"><span data-icon="sparkle"></span><span>Enhance</span></button>
     <button data-dest="camera"><span data-icon="camera"></span><span>Camera</span></button>
     <button data-dest="editor"><span data-icon="editor"></span><span>Editor</span></button>
   </nav>
@@ -258,7 +338,7 @@
   <div class="setting">
     <h3 id="startLabel">Open Glow in</h3>
     <div class="seg" id="startSeg" role="group" aria-labelledby="startLabel">
-      <button data-start="camera">Camera</button><button data-start="editor">Editor</button><button data-start="last">Last used</button>
+      <button data-start="enhance">Enhance</button><button data-start="camera">Camera</button><button data-start="editor">Editor</button><button data-start="last">Last used</button>
     </div>
   </div>
   <div class="setting">
@@ -315,6 +395,20 @@
   <div class="links"><button id="restoreBtn2">Restore purchases</button><a href="/terms.html" target="_blank" rel="noopener">Terms</a><a href="/privacy.html" target="_blank" rel="noopener">Privacy</a></div>
 </dialog>
 
+<dialog class="enh-sheet" id="enhSheet" aria-label="Enhance this photo">
+  <div class="ph">
+    <img id="enhSheetImg" alt="The photo you picked">
+    <div class="enh-scan" aria-hidden="true"></div>
+    <div class="sparkles" aria-hidden="true"><i style="left:22%;top:30%"></i><i style="left:70%;top:22%"></i><i style="left:58%;top:64%"></i></div>
+    <button class="x" id="enhSheetClose" aria-label="Close"></button>
+    <span class="enh-pill ai" id="enhSheetSample" hidden>AI-generated sample</span>
+  </div>
+  <div class="foot">
+    <button class="enh-go" id="enhGo"><span data-icon="sparkle"></span><span id="enhGoLbl">Enhance</span><span class="go-arrow" data-icon="chevron"></span></button>
+    <p class="cost" id="enhCost" aria-live="polite"></p>
+  </div>
+</dialog>
+
 <dialog class="alert" id="ask" aria-labelledby="askTitle">
   <h2 class="t-section" id="askTitle"></h2>
   <p id="askText"></p>
@@ -326,5 +420,6 @@
 <script src="platform.js"></script>
 <script src="engine.js"></script>
 <script src="app.js"></script>
+<script src="enhance.js"></script>
 </body>
 </html>
