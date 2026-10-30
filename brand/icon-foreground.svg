@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Glow app icon foreground: blush camera outline with a four-point glint. Kept inside the central 66% safe zone for adaptive icons. -->
+  <g fill="none" stroke="#f0b8cc" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M330 392 H382 L420 340 H604 L642 392 H694 A56 56 0 0 1 750 448 V652 A56 56 0 0 1 694 708 H330 A56 56 0 0 1 274 652 V448 A56 56 0 0 1 330 392 Z"/>
+    <circle cx="512" cy="546" r="98"/>
+  </g>
+  <path d="M652 410 C657 437 664 444 690 449 C664 454 657 461 652 488 C647 461 640 454 614 449 C640 444 647 437 652 410 Z" fill="#fff4f7"/>
+</svg>

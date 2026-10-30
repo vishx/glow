@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Glow</title>
-<meta name="theme-color" content="#121014">
+<meta name="description" content="Glow: a beauty camera and photo editor.">
+<meta name="theme-color" content="#121014" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fbf7f8" media="(prefers-color-scheme: light)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -14,367 +16,239 @@
 <link rel="apple-touch-icon" href="/icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Cormorant+Garamond:wght@500;600&display=swap" rel="stylesheet">
-<style>
-  /* Soft luxury: warm charcoal, restrained rose. */
-  :root {
-    --bg: #121014; --surface: #201b21; --line: #3d343f; --text: #faf5f7; --muted: #bfb2bc;
-    --accent: #f0b8cc; --on-accent: #28131e; --tint: #f0b8cc1f; --danger: #ff8a8a; --free: #9fd8b0;
-  }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; background: var(--bg); color: var(--text);
-    font: 16px/1.5 Manrope, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  body { min-height: 100dvh; padding: env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 16px); }
-  button { font: inherit; color: inherit; cursor: pointer; }
-  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-  svg { width: 24px; height: 24px; display: block; }
-  /* The photo takes whatever height the controls leave, so everything fits on one phone screen. */
-  main { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column;
-    min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px); }
-
-  /* Top bar */
-  header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; height: 56px; }
-  .wordmark { margin: 0; text-align: center; font: 600 30px/1 "Cormorant Garamond", Georgia, serif; letter-spacing: 0.5px; }
-  .icon-btn { width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 14px; background: none; color: var(--text); padding: 0; }
-  .icon-btn[hidden] { display: none; }
-  .pill { height: 40px; padding: 0 20px; border: 0; border-radius: 20px; background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 15px; }
-  .pill[hidden] { display: none; }
-  .head-right { display: flex; justify-content: flex-end; }
-
-  /* Photo canvas */
-  .stage { position: relative; background: var(--surface); border-radius: 20px;
-    flex: 1 1 0; min-height: 260px; overflow: hidden; display: grid; place-items: center; touch-action: none; user-select: none; }
-  .stage.checker { background: repeating-conic-gradient(#2a232b 0 25%, #201b21 0 50%) 0 0 / 20px 20px; }
-  .stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
-  #after { clip-path: inset(0 0 0 50%); }
-  .divider { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 8px #0006; display: none; pointer-events: none; }
-  .divider::after { content: "\2039\00a0\203A"; position: absolute; top: 72%; left: 50%; transform: translate(-50%, -50%);
-    background: #fff; color: #28131e; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-size: 20px; font-weight: 700; box-shadow: 0 2px 10px #0006; }
-  .tag { position: absolute; top: 12px; font-size: 13px; font-weight: 500; background: #121014b3; color: #fff; padding: 4px 12px; border-radius: 10px; display: none; pointer-events: none; backdrop-filter: blur(6px); }
-  .tag.l { left: 12px; } .tag.r { right: 12px; }
-  .compare .divider, .compare .tag { display: block; }
-  .sweep #after { transition: clip-path 0.6s ease-in-out; } .sweep .divider { transition: left 0.6s ease-in-out; }
-  .canvas-btn { position: absolute; right: 12px; bottom: 12px; width: 44px; height: 44px; border-radius: 50%; border: 0;
-    background: #121014b3; color: #fff; display: grid; place-items: center; backdrop-filter: blur(6px); }
-  .canvas-btn[hidden] { display: none; }
-  .canvas-btn svg { width: 20px; height: 20px; }
-  .busy { position: absolute; inset: 0; background: #12101499; display: none; place-items: center; text-align: center; color: #fff; font-weight: 500; }
-  .busy.on { display: grid; }
-  .spinner { width: 36px; height: 36px; border-radius: 50%; border: 3px solid #ffffff33; border-top-color: var(--accent);
-    animation: spin 1.6s linear infinite; margin: 0 auto 12px; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  #brush { position: absolute; inset: 0; width: 100%; height: 100%; display: none; touch-action: none; }
-  .brushing #brush { display: block; }
-  .brushing .divider, .brushing .tag { display: none !important; }
-
-  /* Empty state */
-  .start { text-align: center; padding: 32px 24px; max-width: 340px; }
-  .start[hidden] { display: none; }
-  .start-art { width: 72px; height: 72px; margin: 0 auto 20px; border-radius: 24px; display: grid; place-items: center; background: var(--tint); color: var(--accent); }
-  .start-art svg { width: 32px; height: 32px; }
-  .start h2 { margin: 0 0 8px; font: 600 32px/1.1 "Cormorant Garamond", Georgia, serif; }
-  .start p { margin: 0 0 24px; color: var(--muted); font-size: 15px; }
-  .start .btn + .btn { margin-top: 12px; }
-  body.empty .editing { display: none !important; }
-
-  .credits { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 8px auto 0; padding: 4px 12px; border: 0; background: none;
-    color: var(--muted); font-size: 14px; min-height: 36px; }
-  .credits[hidden] { display: none; }
-  .credits svg { width: 16px; height: 16px; color: var(--accent); }
-  .msg { margin: 4px 2px 0; font-size: 13px; color: var(--muted); text-align: center; }
-  .msg:empty { display: none; }
-  .msg.err { color: var(--danger); }
-
-  /* Categories and tools */
-  .tabs { display: flex; gap: 4px; margin: 8px -16px 0; padding: 0 16px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); }
-  .tabs::-webkit-scrollbar { display: none; }
-  .tab { flex: 0 0 auto; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted);
-    min-height: 44px; padding: 0 12px; font-size: 15px; font-weight: 600; white-space: nowrap; transition: color 140ms, border-color 140ms; }
-  .tab.on { color: var(--text); border-bottom-color: var(--accent); }
-  .tools { display: flex; gap: 4px; overflow-x: auto; margin: 0 -16px; padding: 12px 16px 4px; scrollbar-width: none; }
-  .tools::-webkit-scrollbar { display: none; }
-  .tools[hidden] { display: none; }
-  .tool { position: relative; flex: 0 0 auto; width: 80px; background: none; border: 1px solid transparent; border-radius: 14px;
-    padding: 8px 4px; font-size: 13px; line-height: 18px; text-align: center; color: var(--muted); transition: background 140ms, border-color 140ms, color 140ms; }
-  .tool .ic { width: 48px; height: 48px; margin: 0 auto 4px; border-radius: 14px; display: grid; place-items: center; background: var(--surface); color: var(--text); }
-  .tool.on { background: var(--tint); border-color: var(--accent); color: var(--text); }
-  .tool.on .ic { background: transparent; }
-  .tool:active { transform: scale(0.98); }
-  .tool .sw { display: block; width: 48px; height: 48px; margin: 0 auto 4px; border-radius: 14px; background-size: cover; background-position: center; }
-  .tool.ai::after { content: "AI"; position: absolute; top: 4px; right: 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.3px;
-    color: var(--accent); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 0 4px; line-height: 15px; }
-  .tool.ai2::after { content: "AI\00b7 2"; }
-
-  /* Selected tool panel */
-  .panel { margin: 8px -16px 0; padding: 16px 16px 4px; background: var(--surface); border-radius: 28px 28px 0 0; border-top: 1px solid var(--line); }
-  .panel[hidden] { display: none; }
-  .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
-  .panel-head h3 { margin: 0; font-size: 20px; line-height: 26px; font-weight: 700; }
-  .chip { font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--accent); color: var(--accent); white-space: nowrap; }
-  .chip.free { border-color: #9fd8b066; color: var(--free); }
-  .face-opts { margin-top: 12px; }
-  .face-opts[hidden] { display: none; }
-  .face-opts label { display: flex; justify-content: space-between; font-size: 15px; color: var(--text); }
-  .face-opts input[type=range] { width: 100%; margin: 8px 0 0; accent-color: var(--accent); height: 28px; }
-  .shades { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
-  .shades:empty { display: none; }
-  .shade { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--surface); padding: 0; box-shadow: 0 0 0 1px var(--line); }
-  .shade.on { box-shadow: 0 0 0 2px var(--accent); }
-  .row { display: flex; gap: 12px; }
-  .btn { flex: 1; min-height: 52px; border: 0; border-radius: 16px; padding: 0 16px; font-size: 16px; font-weight: 700;
-    color: var(--on-accent); background: var(--accent); transition: transform 120ms; width: 100%; }
-  .btn:active { transform: scale(0.98); transition-duration: 80ms; }
-  .btn.ghost { background: none; color: var(--text); border: 1px solid var(--line); }
-  .btn:disabled { opacity: 0.45; }
-  .btn[hidden] { display: none; }
-  .apply-row { margin: 16px 0 8px; }
-  input[type=file] { display: none; }
-
-  /* Dialogs */
-  dialog { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 28px;
-    width: min(92vw, 440px); padding: 24px; box-shadow: 0 -8px 32px #00000040; }
-  dialog::backdrop { background: #000a; }
-  dialog p { color: var(--muted); font-size: 14px; margin: 8px 0; }
-  dialog a { color: var(--accent); }
-  .pw-title { margin: 0 0 4px; font: 600 34px/1.1 "Cormorant Garamond", Georgia, serif; }
-  .pw-sub { margin: 0 0 16px !important; font-size: 16px !important; color: var(--text) !important; }
-  .perks { list-style: none; padding: 0; margin: 0 0 16px; font-size: 15px; line-height: 1.5; color: var(--muted); }
-  .perks li { margin: 6px 0; }
-  .perks li::before { content: "\2713"; color: var(--accent); font-weight: 700; margin-right: 10px; }
-  .plans { display: grid; gap: 12px; }
-  .plan { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; min-height: 64px;
-    background: var(--bg); border: 1px solid var(--line); border-radius: 16px; padding: 12px 16px; font-size: 15px; transition: border-color 140ms, background 140ms; }
-  .plan small { display: block; color: var(--muted); font-size: 12px; font-weight: 500; }
-  .plan.on { border-color: var(--accent); background: var(--tint); box-shadow: 0 0 0 1px var(--accent) inset; }
-  .plan em { position: absolute; top: -10px; right: 12px; font-style: normal; font-size: 11px; font-weight: 700; color: var(--on-accent);
-    background: var(--accent); padding: 2px 8px; border-radius: 8px; }
-  .fine { font-size: 12px !important; line-height: 1.45; }
-
-  /* Live camera */
-  .cam { position: fixed; inset: 0; z-index: 50; background: #000; touch-action: none; }
-  .cam[hidden] { display: none; }
-  #camCanvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  .cam-top { position: absolute; top: calc(env(safe-area-inset-top) + 12px); left: 12px; right: 12px; display: flex; justify-content: space-between; gap: 8px; }
-  .cam-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 16px calc(env(safe-area-inset-bottom) + 20px);
-    background: linear-gradient(transparent, #000d 40%); }
-  .cam-btn { min-width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #0009; color: #fff;
-    border: 1px solid #ffffff2e; border-radius: 22px; padding: 0 14px; font-size: 14px; font-weight: 600; backdrop-filter: blur(8px); }
-  .cam-btn svg { width: 20px; height: 20px; }
-  .cam-btn.round { width: 52px; height: 52px; padding: 0; border-radius: 50%; }
-  .cam-btn.off { opacity: 0.6; }
-  .cam-row { display: flex; align-items: center; justify-content: space-between; padding: 0 12px; }
-  .shutter { width: 88px; height: 88px; border: 0; border-radius: 50%; background: none; padding: 0; display: grid; place-items: center; }
-  .shutter::before { content: ""; width: 72px; height: 72px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px #000, 0 0 0 7px var(--accent); transition: transform 120ms; }
-  .shutter:active::before { transform: scale(0.94); }
-  .sliders { display: grid; gap: 8px; margin-bottom: 12px; color: #fff; font-size: 13px; }
-  .sliders[hidden] { display: none; }
-  .sliders label { display: grid; grid-template-columns: 76px 1fr; align-items: center; gap: 8px; }
-  .sliders input { width: 100%; accent-color: var(--accent); }
-  .looks { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 12px; scrollbar-width: none; justify-content: safe center; }
-  .looks::-webkit-scrollbar { display: none; }
-  .look { flex: 0 0 auto; min-height: 36px; background: #0009; color: #fff; border: 1px solid #ffffff38; border-radius: 18px; padding: 0 14px; font-size: 13px; font-weight: 600; backdrop-filter: blur(8px); }
-  .look.on { background: var(--accent); color: var(--on-accent); border-color: transparent; }
-  .look.add { border-style: dashed; }
-  .flash { position: fixed; inset: 0; background: #fff; z-index: 60; pointer-events: none; animation: flash 0.35s ease-out forwards; }
-  @keyframes flash { to { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation-duration: 0.01ms !important; } }
-</style>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Cormorant+Garamond:wght@600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
 </head>
-<body class="empty">
-<main>
-  <header>
+<body>
+<div id="app">
+
+  <!-- First launch: three short, skippable screens. -->
+  <section class="screen" id="onboarding" hidden aria-roledescription="introduction">
+    <div class="ob-top"><button class="link-btn" id="obSkip">Skip</button></div>
+    <div class="ob-slide" id="obSlide" aria-live="polite"></div>
     <div>
-      <button class="icon-btn" id="settingsBtn" aria-label="Settings"></button>
-      <button class="icon-btn" id="backBtn" aria-label="Choose another photo" hidden></button>
+      <div class="dots" id="obDots" aria-hidden="true"><i></i><i></i><i></i></div>
+      <button class="btn" id="obNext">Next</button>
     </div>
-    <h1 class="wordmark">Glow</h1>
-    <div class="head-right"><button class="pill" id="saveBtn" hidden>Save</button></div>
-  </header>
+  </section>
 
-  <div class="stage" id="stage">
-    <div class="start" id="placeholder">
-      <div class="start-art" data-icon="imageplus"></div>
-      <h2>Your next favorite photo starts here</h2>
-      <p>Refine light, try new looks, and keep what feels like you.</p>
-      <button class="btn" id="pickBtn">Choose photo</button>
-      <button class="btn ghost" id="cameraBtn">Open camera</button>
+  <!-- Camera -->
+  <section class="screen dark" id="cameraScreen" hidden aria-label="Camera">
+    <header class="topbar cam-top">
+      <button class="icon-btn" id="flashBtn" aria-label="Flash" aria-pressed="false" hidden></button>
+      <span class="spacer" id="flashSpacer" aria-hidden="true"></span>
+      <p class="wordmark" aria-hidden="true">Glow</p>
+      <button class="icon-btn" id="camSettingsBtn" aria-label="Settings"></button>
+    </header>
+    <div class="viewfinder" id="viewfinder">
+      <canvas id="camCanvas" aria-label="Camera preview" role="img"></canvas>
+      <img id="reviewImg" alt="The photo you just took" hidden>
+      <video id="camVideo" playsinline muted hidden></video>
+      <div class="vf-state" id="camState" hidden>
+        <div class="vf-card">
+          <div class="art" id="camStateArt"></div>
+          <h2 class="t-section" id="camStateTitle"></h2>
+          <p id="camStateText"></p>
+          <button class="btn" id="camStateBtn"></button>
+          <button class="link-btn" id="camStateAlt">Choose a photo instead</button>
+        </div>
+      </div>
+      <p class="vf-note" id="camNote" hidden></p>
     </div>
-    <img id="before" alt="" hidden>
-    <img id="after" alt="" hidden>
-    <div class="divider" id="divider"></div>
-    <div class="tag l">Original</div><div class="tag r">Edited</div>
-    <canvas id="brush"></canvas>
-    <button class="canvas-btn" id="resetBtn" aria-label="Back to the original" hidden></button>
-    <div class="busy" id="busy"><div><div class="spinner"></div><div id="busyText">Working…</div></div></div>
-  </div>
-  <button class="credits editing" id="usageBtn" hidden></button>
-  <div class="msg" id="msg"></div>
-  <input type="file" id="file" accept="image/*">
-  <input type="file" id="camera" accept="image/*" capture="environment">
-  <input type="file" id="outfitFile" accept="image/*">
+    <div class="cam-controls" id="camControls">
+      <div id="liveControls">
+        <div class="adjust-panel" id="adjustPanel" hidden>
+          <label class="slider">Smooth skin <input type="range" min="0" max="100" id="sSmooth"><output for="sSmooth"></output></label>
+          <label class="slider">Brighten <input type="range" min="0" max="100" id="sBright"><output for="sBright"></output></label>
+          <label class="slider">Warmth <input type="range" min="0" max="100" id="sWarm"><output for="sWarm"></output></label>
+          <div class="looks" id="camFilters" style="padding:4px 0 0;justify-content:flex-start" aria-label="Filters"></div>
+        </div>
+        <div class="looks" id="camLooks" role="group" aria-label="Looks"></div>
+        <div class="capture-row">
+          <button class="round-btn" id="camGallery" aria-label="Choose a photo to edit"></button>
+          <button class="shutter" id="shutter" aria-label="Take photo"></button>
+          <button class="round-btn" id="camFlip" aria-label="Switch to the other camera"></button>
+        </div>
+      </div>
+      <div class="review-row" id="reviewControls" hidden>
+        <button class="btn ghost" id="retakeBtn" aria-label="Retake"></button>
+        <button class="btn quiet" id="editShotBtn">Edit photo</button>
+        <button class="btn" id="saveShotBtn">Save</button>
+      </div>
+    </div>
+  </section>
 
-  <div class="tabs editing" id="tabs">
-    <button class="tab on" data-tab="ai">Fix</button>
-    <button class="tab" data-tab="face">Face</button>
-    <button class="tab" data-tab="hair">Hair</button>
-    <button class="tab" data-tab="body">Body</button>
-    <button class="tab" data-tab="styles">Styles</button>
-    <button class="tab" data-tab="bg">Backdrop</button>
-    <button class="tab" data-tab="edit">Edit</button>
-    <button class="tab" data-tab="filters">Filters</button>
-  </div>
-  <div class="tools editing" id="tools-ai">
-    <button class="tool" data-tool="mylook"><i class="ic"></i>My Look</button>
-    <button class="tool on" data-tool="pro"><i class="ic"></i>Enhance</button>
-    <button class="tool" data-tool="enhance"><i class="ic"></i>Restore</button>
-    <button class="tool" data-tool="faces"><i class="ic"></i>Face repair</button>
-    <button class="tool" data-tool="retouch"><i class="ic"></i>Retouch</button>
-    <button class="tool" data-tool="smile"><i class="ic"></i>Smile</button>
-    <button class="tool" data-tool="relight"><i class="ic"></i>Relight</button>
-    <button class="tool" data-tool="golden"><i class="ic"></i>Golden hour</button>
-    <button class="tool" data-tool="upscale"><i class="ic"></i>Upscale 4×</button>
-    <button class="tool" data-tool="colorize"><i class="ic"></i>Colorize</button>
-  </div>
-  <div class="tools editing" id="tools-face" hidden>
-    <button class="tool on" data-tool="fauto"><i class="ic"></i>Auto</button>
-    <button class="tool" data-tool="fsmooth"><i class="ic"></i>Smooth</button>
-    <button class="tool" data-tool="fblemish"><i class="ic"></i>Blemish</button>
-    <button class="tool" data-tool="fundereye"><i class="ic"></i>Under-eye</button>
-    <button class="tool" data-tool="fteeth"><i class="ic"></i>Teeth</button>
-    <button class="tool" data-tool="feyes"><i class="ic"></i>Eyes</button>
-    <button class="tool" data-tool="fbigeyes"><i class="ic"></i>Eye size</button>
-    <button class="tool" data-tool="fslim"><i class="ic"></i>Face shape</button>
-    <button class="tool" data-tool="fnose"><i class="ic"></i>Nose</button>
-    <button class="tool" data-tool="flips"><i class="ic"></i>Lips</button>
-    <button class="tool" data-tool="fblush"><i class="ic"></i>Blush</button>
-    <button class="tool" data-tool="fbrows"><i class="ic"></i>Brows</button>
-    <button class="tool" data-tool="fshadow"><i class="ic"></i>Eyeshadow</button>
-    <button class="tool" data-tool="fliner"><i class="ic"></i>Liner</button>
-    <button class="tool" data-tool="fglam"><i class="ic"></i>Full glam</button>
-  </div>
-  <div class="tools editing" id="tools-hair" hidden>
-    <button class="tool on" data-tool="hcolor"><i class="ic"></i>Color</button>
-    <button class="tool" data-tool="hair_waves"><i class="ic"></i>Waves</button>
-    <button class="tool" data-tool="hair_bob"><i class="ic"></i>Bob</button>
-    <button class="tool" data-tool="hair_pixie"><i class="ic"></i>Pixie</button>
-    <button class="tool" data-tool="hair_bangs"><i class="ic"></i>Bangs</button>
-    <button class="tool" data-tool="hair_curls"><i class="ic"></i>Curls</button>
-    <button class="tool" data-tool="hair_bun"><i class="ic"></i>Bun</button>
-    <button class="tool" data-tool="hair_braids"><i class="ic"></i>Braids</button>
-    <button class="tool" data-tool="hair_butterfly"><i class="ic"></i>Butterfly</button>
-  </div>
-  <div class="tools editing" id="tools-body" hidden>
-    <button class="tool on" data-tool="bwaist"><i class="ic"></i>Waist</button>
-    <button class="tool" data-tool="bhips"><i class="ic"></i>Hips</button>
-    <button class="tool" data-tool="barms"><i class="ic"></i>Arms</button>
-    <button class="tool" data-tool="bslimlegs"><i class="ic"></i>Slim legs</button>
-    <button class="tool" data-tool="blegs"><i class="ic"></i>Longer legs</button>
-  </div>
-  <div class="tools editing" id="tools-styles" hidden>
-    <button class="tool" data-tool="outfit"><i class="ic"></i>Try on</button>
-    <button class="tool" data-tool="gown"><i class="ic"></i>Gown</button>
-    <button class="tool" data-tool="suit"><i class="ic"></i>Suit</button>
-    <button class="tool" data-tool="sundress"><i class="ic"></i>Sundress</button>
-    <button class="tool" data-tool="street"><i class="ic"></i>Street</button>
-    <button class="tool on" data-tool="headshot"><i class="ic"></i>Headshot</button>
-    <button class="tool" data-tool="fashion"><i class="ic"></i>Fashion</button>
-    <button class="tool" data-tool="anime"><i class="ic"></i>Anime</button>
-    <button class="tool" data-tool="watercolor"><i class="ic"></i>Watercolor</button>
-    <button class="tool" data-tool="toon3d"><i class="ic"></i>3D Toon</button>
-    <button class="tool" data-tool="clay"><i class="ic"></i>Clay</button>
-    <button class="tool" data-tool="older"><i class="ic"></i>Older</button>
-    <button class="tool" data-tool="younger"><i class="ic"></i>Younger</button>
-  </div>
-  <div class="tools editing" id="tools-bg" hidden>
-    <button class="tool" data-tool="bgblur"><i class="ic"></i>Portrait blur</button>
-    <button class="tool" data-tool="bgremove"><i class="ic"></i>Remove</button>
-    <button class="tool" data-tool="bgwhite"><i class="ic"></i>White</button>
-    <button class="tool" data-tool="bgblush"><i class="ic"></i>Blush</button>
-    <button class="tool" data-tool="bgsky"><i class="ic"></i>Sky</button>
-  </div>
-  <div class="tools editing" id="tools-edit" hidden>
-    <button class="tool on" data-tool="erase"><i class="ic"></i>Magic erase</button>
-    <button class="tool" data-tool="expand"><i class="ic"></i>Expand</button>
-    <button class="tool" data-tool="clearmask"><i class="ic"></i>Clear marks</button>
-  </div>
-  <div class="tools editing" id="tools-filters" hidden></div>
+  <!-- Editor landing -->
+  <section class="screen" id="editorHome" hidden aria-label="Editor">
+    <header class="topbar">
+      <span class="spacer" aria-hidden="true"></span>
+      <p class="wordmark" aria-hidden="true">Glow</p>
+      <button class="icon-btn" id="homeSettingsBtn" aria-label="Settings"></button>
+    </header>
+    <div class="home">
+      <div class="card resume" id="resumeCard" hidden>
+        <img id="resumeImg" alt="">
+        <div>
+          <h2>Continue editing</h2>
+          <p class="t-meta" id="resumeMeta"></p>
+        </div>
+        <div class="row">
+          <button class="btn ghost small" id="discardBtn">Discard</button>
+          <button class="btn small" id="resumeBtn">Continue</button>
+        </div>
+      </div>
+      <div class="hero">
+        <div class="art" data-icon="imageplus"></div>
+        <h1 class="t-h">Edit a photo</h1>
+        <p>Refine light, try a look, and keep what feels like you.</p>
+        <div class="actions">
+          <button class="btn" id="pickBtn">Choose a photo</button>
+          <button class="btn ghost" id="sampleBtn">Try a sample</button>
+        </div>
+      </div>
+      <button class="credit-summary" id="homeCredits" hidden></button>
+    </div>
+  </section>
 
-  <div class="panel editing" id="panel">
-    <div class="panel-head">
-      <h3 id="toolName">Enhance</h3>
-      <span class="chip" id="cost"></span>
+  <!-- Active editor -->
+  <section class="screen" id="editorScreen" hidden aria-label="Photo editor">
+    <header class="topbar">
+      <button class="icon-btn" id="backBtn" aria-label="Back to Editor home"></button>
+      <p class="wordmark" aria-hidden="true">Glow</p>
+      <button class="pill" id="saveBtn" disabled>Save</button>
+    </header>
+    <div class="stage" id="stage" data-view="split">
+      <img id="before" alt="">
+      <img id="after" alt="">
+      <canvas id="brush" hidden></canvas>
+      <div class="divider" id="divider">
+        <button class="handle" id="handle" role="slider" aria-label="Compare original and edited" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"></button>
+      </div>
+      <div class="views" role="group" aria-label="View">
+        <button data-view="original" aria-pressed="false">Original</button>
+        <button data-view="split" aria-pressed="true">Compare</button>
+        <button data-view="edited" aria-pressed="false">Edited</button>
+      </div>
+      <span class="badge-preview" id="previewBadge" hidden>Preview</span>
+      <div class="busy" id="busy" hidden><div><div class="spinner"></div><div id="busyText">Working…</div><p id="busyNote"></p></div></div>
     </div>
-    <div class="face-opts" id="faceOpts" hidden>
-      <label for="faceAmt">Strength <span id="faceAmtVal"></span></label>
-      <input type="range" min="0" max="100" id="faceAmt">
-      <div class="shades" id="shades"></div>
+    <div class="side">
+      <div class="toolbar">
+        <button class="icon-btn" id="undoBtn" aria-label="Undo" disabled></button>
+        <button class="icon-btn" id="redoBtn" aria-label="Redo" disabled></button>
+        <span class="grow"></span>
+        <button class="balance" id="balanceBtn" hidden></button>
+      </div>
+      <div class="tabs" id="tabs" role="tablist" aria-label="Tool categories">
+        <button class="tab" role="tab" data-cat="foryou">For You</button>
+        <button class="tab" role="tab" data-cat="retouch">Retouch</button>
+        <button class="tab" role="tab" data-cat="looks">Looks</button>
+        <button class="tab" role="tab" data-cat="edit">Edit</button>
+        <button class="tab" role="tab" data-cat="all">All</button>
+      </div>
+      <div class="chips" id="chips" role="group" aria-label="Tool groups"></div>
+      <label class="search" id="searchBox" hidden><span data-icon="search"></span><span class="sr-only">Search tools</span>
+        <input type="search" id="searchInput" placeholder="Search all tools" autocomplete="off"></label>
+      <div class="tools" id="tools" role="group" aria-label="Tools"></div>
+      <div class="panel" id="panel" hidden role="region" aria-labelledby="toolName">
+        <div class="panel-head">
+          <h2 class="t-section" id="toolName"></h2>
+          <span class="chip" id="cost"></span>
+          <button class="icon-btn" id="favBtn" aria-pressed="false" aria-label="Add to favorites"></button>
+        </div>
+        <p class="panel-note" id="panelNote"></p>
+        <div class="panel-body" id="panelBody"></div>
+        <div class="panel-actions">
+          <button class="btn ghost" id="cancelBtn">Cancel</button>
+          <button class="btn" id="applyBtn">Apply</button>
+        </div>
+      </div>
     </div>
-    <div class="apply-row"><button class="btn" id="goBtn" disabled>Apply</button></div>
-  </div>
-</main>
+  </section>
 
-<div class="cam" id="cam" hidden>
-  <canvas id="camCanvas"></canvas>
-  <video id="camVideo" playsinline muted hidden></video>
-  <div class="cam-top">
-    <button class="cam-btn" id="camClose" aria-label="Close camera"></button>
-    <button class="cam-btn" id="camAuto">Auto fix: On</button>
-    <button class="cam-btn" id="camBeauty" aria-label="Adjust beauty"></button>
-  </div>
-  <div class="cam-bottom">
-    <div class="looks" id="camLooks"></div>
-    <div class="sliders" id="camSliders" hidden>
-      <label>Smooth <input type="range" min="0" max="100" id="sSmooth"></label>
-      <label>Brighten <input type="range" min="0" max="100" id="sBright"></label>
-      <label>Glow <input type="range" min="0" max="100" id="sWarm"></label>
-      <div class="looks" id="camFilters"></div>
-    </div>
-    <div class="cam-row">
-      <button class="cam-btn round" id="camGallery" aria-label="Choose from gallery"></button>
-      <button class="shutter" id="shutter" aria-label="Take photo"></button>
-      <button class="cam-btn round" id="camFlip" aria-label="Switch camera"></button>
-    </div>
-  </div>
+  <nav class="nav" id="nav" aria-label="Main">
+    <button data-dest="camera"><span data-icon="camera"></span><span>Camera</span></button>
+    <button data-dest="editor"><span data-icon="editor"></span><span>Editor</span></button>
+  </nav>
 </div>
 
-<dialog id="settings">
-  <h3 style="margin:0 0 4px;font-size:20px">Glow</h3>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="sr-only" id="alertLive" role="alert" aria-live="assertive"></div>
+<input type="file" id="file" accept="image/*" hidden>
+<input type="file" id="sysCamera" accept="image/*" capture="user" hidden>
+<input type="file" id="outfitFile" accept="image/*" hidden>
+
+<dialog class="sheet" id="settings" aria-labelledby="settingsTitle">
+  <div class="sheet-head"><h2 class="t-section" id="settingsTitle">Settings</h2><button class="icon-btn" data-close aria-label="Close settings"></button></div>
   <p id="planLine">Free plan</p>
-  <div class="row" style="margin:16px 0">
-    <button class="btn" id="goProBtn">Go Pro</button>
+  <div class="row" style="margin:8px 0 16px">
+    <button class="btn" id="goProBtn">See Glow Pro</button>
     <button class="btn ghost" id="restoreBtn">Restore purchases</button>
   </div>
-  <p><a href="/privacy.html" target="_blank" rel="noopener">Privacy policy</a> · <a href="/terms.html" target="_blank" rel="noopener">Terms of use</a> · <a href="#" id="manageSubs">Manage subscription</a></p>
-  <p><a href="#" id="deleteAccount" style="color:var(--danger)">Delete my account and data</a></p>
-  <div class="row" style="margin-top:16px">
-    <button class="btn ghost" id="closeSettings">Close</button>
+  <div class="setting">
+    <h3 id="startLabel">Open Glow in</h3>
+    <div class="seg" id="startSeg" role="group" aria-labelledby="startLabel">
+      <button data-start="camera">Camera</button><button data-start="editor">Editor</button><button data-start="last">Last used</button>
+    </div>
+  </div>
+  <div class="setting">
+    <h3 id="themeLabel">Appearance</h3>
+    <div class="seg" id="themeSeg" role="group" aria-labelledby="themeLabel">
+      <button data-theme="system">System</button><button data-theme="dark">Dark</button><button data-theme="light">Light</button>
+    </div>
+  </div>
+  <div class="setting">
+    <label class="toggle">Also save the original photo <input type="checkbox" id="saveOrigToggle"></label>
+    <p class="fine" style="margin:0">When you save a camera photo or an edit, the untouched original is saved too.</p>
+  </div>
+  <div class="setting">
+    <div class="links">
+      <a href="/privacy.html" target="_blank" rel="noopener">Privacy policy</a>
+      <a href="/terms.html" target="_blank" rel="noopener">Terms of use</a>
+      <a href="#" id="manageSubs">Manage subscription</a>
+      <button id="replayIntro">Show the introduction</button>
+      <a href="/licenses.txt" target="_blank" rel="noopener">Licenses</a>
+    </div>
+    <div class="links"><a href="#" id="deleteAccount" class="danger">Delete my account and data</a></div>
   </div>
 </dialog>
 
-<dialog id="paywall">
-  <h2 class="pw-title">More room to create</h2>
+<dialog class="sheet" id="creditsSheet" aria-labelledby="creditsTitle">
+  <div class="sheet-head"><h2 class="t-section" id="creditsTitle">AI credits</h2><button class="icon-btn" data-close aria-label="Close"></button></div>
+  <div id="creditsBody"></div>
+  <div class="stack">
+    <button class="btn" id="creditsPro">See Glow Pro</button>
+  </div>
+</dialog>
+
+<dialog class="sheet" id="paywall" aria-labelledby="pwTitle">
+  <div class="sheet-head"><h2 class="t-h" id="pwTitle">More room to create</h2><button class="icon-btn" data-close aria-label="Close"></button></div>
   <p class="pw-sub">Glow Pro · 40 AI credits each week</p>
-  <ul class="perks">
-    <li>Every style: headshot, fashion, anime, 3D and more</li>
-    <li>AI hairstyles and outfit try-on</li>
-    <li>Magic erase and Expand</li>
-    <li>No ads</li>
+  <ul class="perks" id="perks">
+    <li data-icon-li="check">40 AI credits every week, instead of 3 a day</li>
+    <li data-icon-li="check">Use them on any AI tool: Enhance, styles, hair, try-on, erase and expand</li>
+    <li data-icon-li="check">No ads</li>
+    <li data-icon-li="check">Camera, filters and on-device tools stay free for everyone</li>
   </ul>
-  <div class="plans" id="plans">
-    <button class="plan on" data-plan="yearly"><span><b>Yearly</b><small>About $2.08/month, billed yearly</small></span><span id="priceYearly">$24.99/year</span><em>Save 84%</em></button>
-    <button class="plan" data-plan="weekly"><span><b>Weekly</b><small>Billed weekly</small></span><span id="priceWeekly">$2.99/week</span></button>
+  <div class="plans" id="plans" role="radiogroup" aria-label="Plan">
+    <button class="plan" role="radio" aria-checked="true" data-plan="yearly"><span class="radio" aria-hidden="true"></span><span style="flex:1"><b>Yearly</b><small id="yearlyNote">About $2.08 a month, billed yearly</small></span><span class="price" id="priceYearly">$24.99/year</span><em>Save 84%</em></button>
+    <button class="plan" role="radio" aria-checked="false" data-plan="weekly"><span class="radio" aria-hidden="true"></span><span style="flex:1"><b>Weekly</b><small>Billed every week</small></span><span class="price" id="priceWeekly">$2.99/week</span></button>
   </div>
-  <button class="btn" id="buyBtn" style="margin-top:16px">Get yearly Pro</button>
-  <button class="btn ghost" id="adBtn" style="margin-top:12px" hidden>Watch a short ad for 1 free credit</button>
+  <button class="btn" id="buyBtn" style="margin-top:16px">Continue with yearly</button>
+  <button class="btn ghost" id="adBtn" style="margin-top:12px" hidden>Watch a short ad for 1 AI credit</button>
   <p class="fine" id="pwNote"></p>
-  <div class="row" style="margin-top:8px">
-    <button class="btn ghost" id="closePaywall">Not now</button>
-    <button class="btn ghost" id="restoreBtn2">Restore</button>
-  </div>
-  <p class="fine"><a href="/privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="/terms.html" target="_blank" rel="noopener">Terms</a></p>
+  <div class="links"><button id="restoreBtn2">Restore purchases</button><a href="/terms.html" target="_blank" rel="noopener">Terms</a><a href="/privacy.html" target="_blank" rel="noopener">Privacy</a></div>
+</dialog>
+
+<dialog class="alert" id="ask" aria-labelledby="askTitle">
+  <h2 class="t-section" id="askTitle"></h2>
+  <p id="askText"></p>
+  <div class="stack" id="askActions"></div>
 </dialog>
 
 <script src="icons.js"></script>
+<script src="platform.js"></script>
+<script src="engine.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
