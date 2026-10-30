@@ -495,7 +495,7 @@ test('first launch opens Enhance: sample before/after, Choose a photo, then the 
   const h = await p.evaluate(() => { const b = (id) => $(id).getBoundingClientRect();
     return { nav: [...document.querySelectorAll('#nav button')].map((x) => x.dataset.dest), current: document.querySelector('#nav [aria-current]').dataset.dest,
       order: ['enhPick', 'enhSample'].map((id) => Math.round(b(id).top)), fits: b('enhSample').bottom <= innerHeight, onboarded: store.get('glowOnboarded'),
-      hero: [...document.querySelectorAll('.enh-hero img')].map((i) => i.src.split('/').pop()) }; });
+      hero: [...document.querySelectorAll('#enhanceHome .enh-hero img')].map((i) => i.src.split('/').pop()) }; });
   eq([h.nav, h.current, h.onboarded, h.hero], [['enhance', 'camera', 'editor'], 'enhance', '1', ['original.png', 'enhance.jpg']], 'Enhance first, with the sample before/after');
   assert(h.order[0] < h.order[1] && h.fits, 'Choose a photo, then Try the sample, both on screen: ' + h.order);
   eq(await p.evaluate(() => window.__streams.length), 0, 'no camera request on the first screen');

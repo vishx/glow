@@ -215,22 +215,22 @@
           <button class="btn small" id="recoveredOpen">Open</button>
         </div>
       </div>
-      <div class="hero">
-        <h1 class="t-h">Edit a photo</h1>
-        <p>Refine light, try a look, and keep what feels like you.</p>
-        <div class="actions">
-          <button class="btn" id="pickBtn">Choose a photo</button>
-        </div>
+      <!-- The sample cycles through real results from the editor's tools (the prepared previews). -->
+      <div class="enh-hero ed-hero" role="img" aria-label="An AI-generated sample portrait shown as the original, then with Retouch, Golden hour and two outfits">
+        <img src="/samples/demo-v2/home/original.webp" alt="">
+        <img class="lk" src="/samples/demo-v2/home/retouch.webp" alt="" loading="lazy">
+        <img class="lk" src="/samples/demo-v2/home/golden.webp" alt="" loading="lazy">
+        <img class="lk" src="/samples/demo-v2/home/suit.webp" alt="" loading="lazy">
+        <img class="lk" src="/samples/demo-v2/home/sundress.webp" alt="" loading="lazy">
+        <span class="ed-looks" aria-hidden="true"><span>Original</span><span>Retouch</span><span>Golden hour</span><span>Suit</span><span>Sundress</span></span>
+        <span class="enh-pill ai">AI-generated sample</span>
+        <div class="cap"><h1>Edit</h1><p>Retouch, looks, makeup and outfits.</p></div>
       </div>
-      <button class="card sample-card" id="sampleBtn" aria-describedby="sampleCardText">
-        <img src="/samples/demo-v2/thumb.jpg" alt="" width="88" height="117">
-        <span>
-          <b>Try a sample · Free</b>
-          <span id="sampleCardText">Explore every tool on an AI portrait. No account needed.</span>
-        </span>
-        <span class="chev" data-icon="chevron"></span>
-      </button>
-      <button class="credit-summary" id="homeCredits" hidden></button>
+      <div class="enh-cta">
+        <button class="btn" id="pickBtn"><span data-icon="wand"></span>Choose a photo</button>
+        <button class="btn quiet" id="sampleBtn">Try it on the sample · Free</button>
+      </div>
+      <div class="enh-meta"><button id="homeCredits" hidden></button></div>
     </div>
   </section>
 

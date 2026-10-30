@@ -1,5 +1,5 @@
 // Caches the app shell so Glow opens instantly from the home screen.
-const CACHE = "glow-v20";
+const CACHE = "glow-v21";
 // The introduction's small photos are part of the shell. The full sample photo and its prepared
 // previews are cached as they are first fetched (below), so they work offline only after
 // someone has opened them once.

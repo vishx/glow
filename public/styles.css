@@ -180,27 +180,12 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 
 /* ---------- Editor landing ---------- */
 .home { flex: 1 1 auto; overflow-y: auto; padding: var(--s2) var(--gutter) var(--s5); display: flex; flex-direction: column; gap: var(--s4); }
-.hero { flex: 0 0 auto; display: grid; place-content: center; justify-items: center; text-align: center; gap: var(--s3); padding: var(--s5) 0; }
-.hero p { margin: 0; color: var(--muted); max-width: 22rem; }
-.hero .actions { display: grid; gap: var(--s3); width: min(100%, 340px); margin-top: var(--s3); }
-.sample-card { display: grid; grid-template-columns: 88px 1fr auto; align-items: center; gap: var(--s4); width: 100%; padding: var(--s3); border: 0; text-align: left;
-  color: var(--text); box-shadow: inset 0 0 0 1px var(--control); transition: transform var(--t-press-up); }
-.sample-card:active { transform: scale(0.99); transition-duration: var(--t-press-down); }
-.sample-card img { width: 88px; height: 110px; object-fit: cover; border-radius: var(--r-well); background: #18171b; }
-.sample-card b { display: block; font-size: 1.0625rem; line-height: 1.5rem; }
-.sample-card span span { display: block; color: var(--muted); font-size: 0.9375rem; line-height: 1.375rem; margin-top: 2px; }
-.sample-card .chev svg { width: 20px; height: 20px; color: var(--muted); }
 .card { background: var(--surface); border-radius: var(--r-card); padding: var(--s4); }
 .resume { display: grid; grid-template-columns: 64px 1fr; gap: var(--s3); align-items: center; }
 .resume img { width: 64px; height: 64px; object-fit: cover; border-radius: var(--r-well); background: var(--surface-2); }
 .resume h2 { font-size: 1rem; line-height: 1.5rem; margin: 0; }
 .resume p { margin: 0; }
 .resume .row { grid-column: 1 / -1; }
-.credit-summary { display: flex; align-items: center; gap: var(--s2); width: 100%; min-height: 48px; padding: var(--s2) var(--s4); border: 0; text-align: left;
-  border-radius: var(--r-card); background: var(--surface); color: var(--text); font-size: 0.9375rem; }
-.credit-summary svg:first-child { color: var(--accent); width: 20px; height: 20px; }
-.credit-summary span { flex: 1; }
-.credit-summary svg:last-child { color: var(--muted); width: 18px; height: 18px; }
 
 /* ---------- Active editor ---------- */
 /* Layout: the photo takes whatever height is left. Everything under it (view bar, demo bar,
@@ -828,10 +813,7 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
   color: #fff; font-size: 0.8125rem; font-weight: 600; }
 .adj-parts button[aria-checked="true"] { background: #fff; color: #000; box-shadow: none; }
 
-/* Small phones (320 px): keep the sample card and the Settings buttons on one line each */
+/* Small phones (320 px): keep the Settings buttons on one line */
 @media (max-width: 359px) {
-  .sample-card { grid-template-columns: 64px 1fr auto; gap: var(--s3); }
-  .sample-card img { width: 64px; height: 80px; }
-  .sample-card span span { font-size: 0.8125rem; line-height: 1.125rem; }
   #settings .plan-card .btn { padding-left: 12px; padding-right: 12px; font-size: .875rem; white-space: nowrap; }
 }

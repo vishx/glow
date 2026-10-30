@@ -55,6 +55,26 @@
   color: var(--muted); font-size: 0.8125rem; font-weight: 600; }
 .enh-meta svg { width: 16px; height: 16px; color: var(--accent); }
 
+/* ---------- Editor home: the same hero, cycling through real results on the sample ---------- */
+.ed-hero .lk { opacity: 0; animation: ed-look 12s ease-in-out infinite backwards; }
+.ed-hero .lk:nth-of-type(2) { animation-delay: 2.4s; } .ed-hero .lk:nth-of-type(3) { animation-delay: 4.8s; }
+.ed-hero .lk:nth-of-type(4) { animation-delay: 7.2s; } .ed-hero .lk:nth-of-type(5) { animation-delay: 9.6s; }
+.ed-looks { position: absolute; top: var(--s3); left: var(--s3); display: grid; }
+.ed-looks span { grid-area: 1 / 1; padding: 4px var(--s3); border-radius: 999px; background: rgb(18 16 20 / .66); color: #fff; font-size: 0.8125rem; font-weight: 700;
+  line-height: 1.125rem; white-space: nowrap; justify-self: start; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); opacity: 0; animation: ed-look 12s ease-in-out infinite backwards; }
+.ed-looks span:nth-child(2) { animation-delay: 2.4s; } .ed-looks span:nth-child(3) { animation-delay: 4.8s; }
+.ed-looks span:nth-child(4) { animation-delay: 7.2s; } .ed-looks span:nth-child(5) { animation-delay: 9.6s; }
+@keyframes ed-look { 0% { opacity: 0; } 4%, 20% { opacity: 1; } 24%, 100% { opacity: 0; } }
+/* The first label is already showing when the page opens. */
+.ed-looks span:first-child { animation-name: ed-look-first; }
+@keyframes ed-look-first { 0%, 20% { opacity: 1; } 24%, 96% { opacity: 0; } 100% { opacity: 1; } }
+.ed-hero .enh-pill.ai { top: var(--s3); }
+#editorHome .enh-meta button svg { width: 16px; height: 16px; color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .ed-hero .lk, .ed-looks span { animation: none; }
+  .ed-looks span:first-child { opacity: 1; }
+}
+
 /* ---------- Pick sheet: the photo, then one big Enhance button ---------- */
 dialog.enh-sheet { width: min(92vw, 440px); max-height: 92dvh; margin: auto; padding: 0; border: 0; border-radius: var(--r-sheet); overflow: hidden;
   background: var(--surface); color: var(--text); box-shadow: 0 24px 64px rgb(0 0 0 / .45); }

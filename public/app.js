@@ -2364,7 +2364,7 @@ function renderCredits() {
   const n = a.remaining;
   chip.innerHTML = `<span>${icon("sparkle")}${n}</span>`;
   chip.setAttribute("aria-label", `${balanceText(a)}. Details`);
-  $("homeCredits").innerHTML = icon("sparkle") + `<span>${balanceText(a)}. On-device tools are always free.</span>` + icon("chevron");
+  $("homeCredits").innerHTML = icon("sparkle") + `<span>${balanceText(a)}</span>`;
 }
 function renderCreditsSheet() {
   // A balance card on top, then a few short facts. The rules are unchanged; only the layout is.
