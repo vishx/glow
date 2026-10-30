@@ -621,6 +621,18 @@ test('retouch: reshape at 0 is untouched, previews come from the baseline, tools
   const sz = imageSize(state.downloads[0].file); eq([sz.w, sz.h], [1122, 1402], 'saved at the photo size');
   eq([state.posts.length, state.used], [0, 0], 'no AI request and no credit used');
 });
+test('retouch: Compare puts the divider on the face; Settings shows which build this is', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'retouch', 'face', 'fslim'); await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 });
+  await p.fill('.panel input[type=range]', '100'); await settle(200); await idle(p);
+  await p.click('.views [data-view="split"]');
+  const r = await p.evaluate(() => { const f = $('frame').getBoundingClientRect(), d = $('divider').getBoundingClientRect(), P = faceCache.get(committed())[0];
+    return { x: d.left + d.width / 2, nose: f.left + P[1][0] * f.width, f: [f.left, f.right] }; });
+  near(r.x, r.nose, 2, 'divider runs down the nose'); assert(r.x > r.f[0] && r.x < r.f[1], 'divider is on the photo');
+  await p.click('#cancelBtn'); await p.click('#settingsBtn').catch(() => p.evaluate(() => openSettings()));
+  await p.waitForFunction(() => /Build/.test($('buildId').textContent) && !/checking/.test($('buildId').textContent));
+  assert(/reshape-v2 · crop-v2/.test(await p.textContent('#buildId')), 'build line names the features: ' + await p.textContent('#buildId'));
+});
 test('retouch: no trustworthy face shows an unavailable note instead of a guessed warp', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('coords-600x400.png'));
   await tool(p, 'retouch', 'face', 'fslim');

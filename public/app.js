@@ -532,9 +532,16 @@ function setSplit(pct) {
 }
 document.querySelector(".views").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-view]"); if (!b || b.disabled) return;
+  if (b.dataset.view === "split" && ed.view !== "split") centerDividerOnFace();
   ed.view = b.dataset.view; renderEditor();
   if (ed.view === "split") $("alertLive").textContent = "Compare: drag the divider, or use the arrow keys on it.";
 });
+// Compare starts with the divider down the middle of the face when one is known (the
+// landmarks found by a face tool), otherwise down the middle of the photo.
+function centerDividerOnFace() {
+  const faces = faceCache.get(committed()) || faceCache.get(ed.pending ? ed.pending.data : "") || [];
+  ed.split = faces.length ? Math.max(5, Math.min(95, faces[0][1][0] * 100)) : 50;
+}
 // Drag the divider (or anywhere on the photo) to compare; arrow keys move the handle.
 let dragging = false;
 const dragTo = (e) => { const r = $("frame").getBoundingClientRect(); setSplit(((e.clientX - r.left) / r.width) * 100); };
@@ -1864,8 +1871,17 @@ function openSettings() {
   document.querySelectorAll("#startSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.start === start)));
   $("saveOrigToggle").checked = store.get("glowSaveOrig") === "on";
   $("autoSaveToggle").checked = store.get("glowAutoSave") === "on";
-  applyTheme();
+  applyTheme(); showBuild();
   $("settings").showModal();
+}
+// Which build this is, so a test on a phone can be matched to a commit. build.json is written
+// by the Vercel build (vercel.json); FEATURES names what this code contains either way.
+const FEATURES = "reshape-v2 · crop-v2";
+async function showBuild() {
+  let b = null;
+  try { const r = await fetch("/build.json", { cache: "no-store" }); if (r.ok) b = await r.json(); } catch {}
+  const sha = b && b.sha ? b.sha.slice(0, 7) : "";
+  $("buildId").textContent = sha ? `Build ${sha} · ${b.env || "?"} · ${b.ref || "?"} · ${FEATURES}` : `Build: local copy (no deployment info) · ${FEATURES}`;
 }
 $("camSettingsBtn").addEventListener("click", openSettings);
 $("homeSettingsBtn").addEventListener("click", openSettings);
