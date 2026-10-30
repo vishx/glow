@@ -58,9 +58,9 @@
     <div class="cam-controls" id="camControls">
       <div id="liveControls">
         <div class="adjust-panel" id="adjustPanel" hidden>
-          <label class="slider">Smooth skin <input type="range" min="0" max="100" id="sSmooth"><output for="sSmooth"></output></label>
-          <label class="slider">Brighten <input type="range" min="0" max="100" id="sBright"><output for="sBright"></output></label>
-          <label class="slider">Warmth <input type="range" min="0" max="100" id="sWarm"><output for="sWarm"></output></label>
+          <label class="slider">Smooth skin <input type="range" min="0" max="100" id="sSmooth"><output for="sSmooth" aria-hidden="true"></output></label>
+          <label class="slider">Brighten <input type="range" min="0" max="100" id="sBright"><output for="sBright" aria-hidden="true"></output></label>
+          <label class="slider">Warmth <input type="range" min="0" max="100" id="sWarm"><output for="sWarm" aria-hidden="true"></output></label>
           <div class="looks" id="camFilters" style="padding:4px 0 0;justify-content:flex-start" aria-label="Filters"></div>
         </div>
         <div class="looks" id="camLooks" role="group" aria-label="Looks"></div>
@@ -95,6 +95,17 @@
         <div class="row">
           <button class="btn ghost small" id="discardBtn">Discard</button>
           <button class="btn small" id="resumeBtn">Continue</button>
+        </div>
+      </div>
+      <div class="card resume" id="recoveredCard" hidden>
+        <img id="recoveredImg" alt="">
+        <div>
+          <h2 id="recoveredTitle">Your AI result is ready</h2>
+          <p class="t-meta">It finished after you left that photo. Open it to keep editing or save it.</p>
+        </div>
+        <div class="row">
+          <button class="btn ghost small" id="recoveredDiscard">Discard</button>
+          <button class="btn small" id="recoveredOpen">Open</button>
         </div>
       </div>
       <div class="hero">
@@ -133,6 +144,11 @@
       <div class="busy" id="busy" hidden><div><div class="spinner"></div><div id="busyText">Working…</div><p id="busyNote"></p></div></div>
     </div>
     <div class="side">
+      <div class="jobbar" id="jobBar" role="status" hidden>
+        <div class="spinner small" id="jobSpin" aria-hidden="true"></div>
+        <p id="jobText"></p>
+        <div class="row" id="jobActions"></div>
+      </div>
       <div class="toolbar">
         <button class="icon-btn" id="undoBtn" aria-label="Undo" disabled></button>
         <button class="icon-btn" id="redoBtn" aria-label="Redo" disabled></button>
@@ -198,8 +214,12 @@
     </div>
   </div>
   <div class="setting">
-    <label class="toggle">Also save the original photo <input type="checkbox" id="saveOrigToggle"></label>
-    <p class="fine" style="margin:0">When you save a camera photo or an edit, the untouched original is saved too.</p>
+    <label class="toggle">Automatically save captures <input type="checkbox" role="switch" id="autoSaveToggle" aria-describedby="autoSaveHelp"></label>
+    <p class="fine" id="autoSaveHelp" style="margin:0"></p>
+  </div>
+  <div class="setting">
+    <label class="toggle">Also save the original photo <input type="checkbox" role="switch" id="saveOrigToggle" aria-describedby="saveOrigHelp"></label>
+    <p class="fine" id="saveOrigHelp" style="margin:0">When a photo has a look or edits, the untouched original is saved once as well, at its full size. A photo taken with the Original look is only saved once.</p>
   </div>
   <div class="setting">
     <div class="links">

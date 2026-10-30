@@ -1,5 +1,5 @@
 // Glow image engine: everything that changes pixels. Runs on the device
-// (canvas, WebGL, MediaPipe) except runModel in app.js, which calls the AI server.
+// (canvas, WebGL, MediaPipe); AI edits are started from app.js.
 
 const BG_LABELS = { bgblur: "Blur background", bgremove: "Remove background", bgwhite: "White background",
   bgblush: "Blush background", bgsky: "Sky background" };
@@ -37,7 +37,9 @@ function loadImg(src) {
   });
 }
 
-function canvasFor(img, maxSide = 2048) {
+// The working size for previews. Saving raises it for a moment to redo each step at full size.
+let IMG_MAX = 2048;
+function canvasFor(img, maxSide = IMG_MAX) {
   const s = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
   const c = document.createElement("canvas");
   c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
@@ -58,9 +60,12 @@ async function loadAndShrink(file) {
 }
 
 async function shrinkData(dataUrl, maxSide = 2048) {
-  const img = await loadImg(dataUrl), c = canvasFor(img, maxSide);
+  // Keeps PNG (and its transparency) as PNG.
+  const img = await loadImg(dataUrl);
+  if (Math.max(img.naturalWidth, img.naturalHeight) <= maxSide) return dataUrl;
+  const c = canvasFor(img, maxSide);
   c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-  return c.toDataURL("image/jpeg", 0.9);
+  return isPng(dataUrl) ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", 0.92);
 }
 
 // Expand: pad the photo on every side and ask the model to fill the new border.
@@ -87,15 +92,6 @@ async function uploadable(src) {
   c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
   return c.toDataURL("image/jpeg", 0.9);
 }
-// AI results come back as links that expire after about an hour. Keep a copy in
-// the app so Save and the next tool still work later.
-async function keepLocal(url) {
-  try {
-    const blob = await (await fetch(url)).blob();
-    return await new Promise((ok, fail) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = fail; fr.readAsDataURL(blob); });
-  } catch { return url; }
-}
-
 // Background tools run on the phone with MediaPipe's selfie model, so they're free and private.
 const MP_CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 const MP_MODEL = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite";
@@ -122,7 +118,9 @@ function segmenter() {
 async function cutout(src) {
   if (cutoutCache[src]) return cutoutCache[src];
   const [seg, img] = await Promise.all([segmenter(), loadImg(src)]);
-  const result = seg.segment(img);
+  const c = canvasFor(img), ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  const result = seg.segment(detectCopy(c));
   const m = result.confidenceMasks[0], conf = m.getAsFloat32Array();
   // Turn the subject confidence into a soft alpha mask.
   const mc = document.createElement("canvas"); mc.width = m.width; mc.height = m.height;
@@ -130,8 +128,6 @@ async function cutout(src) {
   for (let i = 0; i < conf.length; i++) px.data[i * 4 + 3] = Math.max(0, Math.min(255, ((conf[i] - 0.35) / 0.3) * 255));
   mctx.putImageData(px, 0, 0);
   if (result.close) result.close();
-  const c = canvasFor(img), ctx = c.getContext("2d");
-  ctx.drawImage(img, 0, 0, c.width, c.height);
   ctx.globalCompositeOperation = "destination-in";
   ctx.filter = `blur(${Math.max(1, Math.round(c.width / 600))}px)`;
   ctx.drawImage(mc, 0, 0, c.width, c.height);
@@ -353,7 +349,7 @@ async function faceEdit(src, toolId, amt) {
   const [finder, img] = await Promise.all([faceFinder(), loadImg(src)]);
   const c = canvasFor(img), ctx = c.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(img, 0, 0, c.width, c.height);
-  const faces = finder.detect(c).faceLandmarks || [];
+  const faces = finder.detect(detectCopy(c)).faceLandmarks || [];
   if (!faces.length) throw new Error("Couldn't find a face. Try a clear, front-facing photo.");
   for (const f of faces) faceOps(ctx, f.map((p) => [p.x * c.width, p.y * c.height]), amt, toolId);
   return /^data:image\/png/.test(src) ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", 0.92);
@@ -361,14 +357,42 @@ async function faceEdit(src, toolId, amt) {
 
 // Edge-preserving skin smoothing for still photos, using the camera's beauty shader.
 function glSmooth(srcCanvas, spread) {
-  const c = newCanvas(srcCanvas.width, srcCanvas.height), g = initGl(c);
-  if (!g) return filtered(srcCanvas, `blur(${Math.round(spread * 3)}px)`);
-  g.gl.viewport(0, 0, c.width, c.height);
-  g.gl.texImage2D(g.gl.TEXTURE_2D, 0, g.gl.RGB, g.gl.RGB, g.gl.UNSIGNED_BYTE, srcCanvas);
-  drawBeauty(g, c.width / spread, c.height / spread, false, { smooth: 100, bright: 0, warm: 0 });
-  const out = newCanvas(c.width, c.height); out.getContext("2d").drawImage(c, 0, 0);
-  const lose = g.gl.getExtension("WEBGL_lose_context"); if (lose) lose.loseContext();
+  return beautyTiled(srcCanvas, { smooth: 100, bright: 0, warm: 0 }, spread) || filtered(srcCanvas, `blur(${Math.round(spread * 3)}px)`);
+}
+// Runs the beauty shader over a canvas in tiles of up to 2048px, so a full-size photo never
+// needs a texture bigger than a phone's GPU allows. Each tile carries a margin as wide as the
+// shader's reach, so the seams match. `spread` scales the reach with the photo's size.
+// Returns null when WebGL isn't available.
+function beautyTiled(src, b, spread = 1) {
+  const W = src.width, H = src.height, T = 2048, m = Math.ceil(6 * spread) + 2;
+  const tile = newCanvas(1, 1), g = initGl(tile);
+  if (!g) return null;
+  const out = newCanvas(W, H), octx = out.getContext("2d");
+  const piece = newCanvas(1, 1), pctx = piece.getContext("2d");
+  try {
+    for (let y = 0; y < H; y += T) for (let x = 0; x < W; x += T) {
+      const x0 = Math.max(0, x - m), y0 = Math.max(0, y - m), x1 = Math.min(W, x + T + m), y1 = Math.min(H, y + T + m);
+      const w = x1 - x0, h = y1 - y0;
+      piece.width = tile.width = w; piece.height = tile.height = h;
+      pctx.drawImage(src, x0, y0, w, h, 0, 0, w, h);
+      g.gl.viewport(0, 0, w, h);
+      g.gl.texImage2D(g.gl.TEXTURE_2D, 0, g.gl.RGB, g.gl.RGB, g.gl.UNSIGNED_BYTE, piece);
+      drawBeauty(g, w / spread, h / spread, false, b);
+      const cw = Math.min(T, W - x), ch = Math.min(T, H - y);
+      octx.drawImage(tile, x - x0, y - y0, cw, ch, x, y, cw, ch);
+    }
+  } finally { const lose = g.gl.getExtension("WEBGL_lose_context"); if (lose) lose.loseContext(); }
+  // The shader works in RGB; put back any transparency the photo had.
+  octx.globalCompositeOperation = "destination-in"; octx.drawImage(src, 0, 0);
   return out;
+}
+// MediaPipe only needs a modest copy to find landmarks; results are in 0–1 coordinates.
+function detectCopy(c, max = 2048) {
+  const s = Math.min(1, max / Math.max(c.width, c.height));
+  if (s === 1) return c;
+  const d = newCanvas(Math.round((c.width * s) / 2) * 2, Math.round((c.height * s) / 2) * 2);
+  d.getContext("2d").drawImage(c, 0, 0, d.width, d.height);
+  return d;
 }
 
 // Body reshape: MediaPipe's pose model finds the shoulders, hips, knees and
@@ -498,7 +522,7 @@ async function hairColor(src, amt, color) {
   const [seg, img] = await Promise.all([hairFinder(), loadImg(src)]);
   const c = canvasFor(img), ctx = c.getContext("2d");
   ctx.drawImage(img, 0, 0, c.width, c.height);
-  const res = seg.segment(c), masks = res.confidenceMasks || [];
+  const res = seg.segment(detectCopy(c)), masks = res.confidenceMasks || [];
   const m = masks[masks.length - 1], conf = m.getAsFloat32Array();
   const mc = newCanvas(m.width, m.height), mctx = mc.getContext("2d"), px = mctx.createImageData(m.width, m.height);
   let hairPx = 0;
@@ -524,14 +548,14 @@ async function composite(src, cut, paint) {
 }
 
 // Draws a canvas or image with one of the photo filters baked in.
-function withFilter(srcEl, w, h, filterId) {
+function withFilterCanvas(srcEl, filterId, w = srcEl.width, h = srcEl.height) {
   const flt = FILTERS.find((f) => f.id === filterId) || FILTERS[0];
-  const c = document.createElement("canvas"); c.width = w; c.height = h;
-  const ctx = c.getContext("2d");
+  const c = newCanvas(w, h), ctx = c.getContext("2d");
   ctx.filter = flt.f; ctx.drawImage(srcEl, 0, 0, w, h); ctx.filter = "none";
   if (flt.wash) { ctx.globalCompositeOperation = "soft-light"; ctx.fillStyle = flt.wash; ctx.fillRect(0, 0, w, h); }
-  return c.toDataURL("image/jpeg", 0.92);
+  return c;
 }
+function withFilter(srcEl, w, h, filterId) { return withFilterCanvas(srcEl, filterId, w, h).toDataURL("image/jpeg", 0.92); }
 
 // Beauty shader: smooths skin, brightens and warms, live in the camera and on still photos.
 const VERT = `attribute vec2 p; varying vec2 uv; uniform float mirror;
@@ -586,18 +610,16 @@ function drawBeauty(g, w, h, mirror, b) {
 }
 
 // "My Look" for gallery photos: the same beauty filter as the camera, run once on a still photo.
+// The shader's reach grows with the photo, so a full-size save looks like the 2048px preview.
 async function applyLook(src, look) {
-  const img = await loadImg(src), c = canvasFor(img, 2048);
-  const base = document.createElement("canvas"); base.width = c.width; base.height = c.height;
-  base.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-  const g = initGl(c);
-  if (!g) throw new Error("This phone can't run My Look.");
-  g.gl.viewport(0, 0, c.width, c.height);
-  g.gl.texImage2D(g.gl.TEXTURE_2D, 0, g.gl.RGB, g.gl.RGB, g.gl.UNSIGNED_BYTE, base);
-  drawBeauty(g, c.width, c.height, false, look);
-  const out = withFilter(c, c.width, c.height, look.filter);
-  const lose = g.gl.getExtension("WEBGL_lose_context"); if (lose) lose.loseContext();
-  return out;
+  const img = await loadImg(src), c = canvasFor(img);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  const out = beautyTiled(c, look, Math.max(1, Math.max(c.width, c.height) / 2048));
+  if (!out) throw new Error("This phone can't run My Look.");
+  const res = newCanvas(c.width, c.height), ctx = res.getContext("2d");
+  ctx.drawImage(withFilterCanvas(out, look.filter), 0, 0);
+  if (isPng(src)) { ctx.globalCompositeOperation = "destination-in"; ctx.drawImage(c, 0, 0); }
+  return encode(res, src);
 }
 
 // Photo filters and the Edit adjustments, applied to a committed photo.

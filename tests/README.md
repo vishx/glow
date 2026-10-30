@@ -1,13 +1,17 @@
 # Browser checks
 
-Playwright scripts that drive the web app in headless Chromium with a fake camera
-(`--use-fake-device-for-media-stream`) and mocked Supabase, Replicate and MediaPipe hosts.
-They are browser simulations, not real-device tests.
+`npm run test:setup` once (MediaPipe library and models), then `npm test`.
+`npm test -- export` runs only the checks whose names contain "export".
 
-- `t1.js`: onboarding, camera, capture, review, Edit photo
-- `t2.js`: editor flow, on-device preview and Apply, AI Apply, Run again, undo/redo, compare,
-  2-credit style, zero credits, paywall, save with a pending preview, back, refresh and resume
-- `t3.js`: 320×568, desktop light mode, keyboard, camera denied, AI failures, 125% text
-- `t4.js`: every on-device tool kind, magic-erase brush and its charge
+Every check is a **mocked browser simulation**: headless Chromium with a fake camera
+(`--use-fake-device-for-media-stream`), a fake enhance/account server, and local copies of the
+MediaPipe models. A pass proves the app's own logic in a browser. It is not evidence about real
+phones, real cameras, Replicate, RevenueCat or the deployed Supabase functions.
 
-`harness.js` expects the MediaPipe package and model files at the paths at its top; adjust them for your machine.
+- `run.js`: the checks, with assertions. Results go to `tests/out/results.json`.
+- `harness.js`: the fake servers. `server: "current"` mimics the deployed enhance function;
+  `server: "patched"` mimics the prepared change in `supabase/` (request ids, `?request=`, `refunded`).
+- `fixtures/`: synthetic photos made by `make-fixtures.py` (gradients, no people).
+- Set `GLOW_TEST_FACE=/path/to/portrait.jpg` to add the face-tool check.
+
+The earlier exploratory scripts (t1–t4, log output only) were replaced by `run.js`.

@@ -158,9 +158,14 @@ $("obSkip").addEventListener("click", finishOnboarding);
 function showOnboarding() { slide = 0; renderSlide(); showScreen("onboarding"); }
 
 // ---------- Editor state ----------
+// hist[i] = { data, op, full }. data is the working-size picture (up to 2048px) used for
+// previews; op records how to redo the step at full size on export; full holds a fixed
+// result (an AI output or a camera look) at the size it was made.
 // hist[0] is the photo as opened; hist[idx] is the committed result Save exports.
 // pending is an on-device preview that only becomes part of the photo on Apply.
-const ed = { hist: [], idx: 0, pending: null, savedIdx: 0, fullOriginal: null, name: "", view: "split", split: 50 };
+const ed = { hist: [], idx: 0, floor: 0, pending: null, savedIdx: 0, original: null, originalSaved: false, name: "", view: "split", split: 50, session: "", job: null };
+const MAX_UNDO = 25;
+let savingEdit = false;
 let sel = null;          // selected tool id, or null when no panel is open
 let cat = store.get("glowCat") || "foryou";
 let chipFor = {};
@@ -171,8 +176,9 @@ let lastCommitTool = null;  // the AI tool behind the latest commit, to disclose
 let outfitData = null, strokes = [], painting = false, busyNow = false, thumb = "";
 
 const hasPhoto = () => ed.hist.length > 0;
-const committed = () => ed.hist[ed.idx];
+const committed = () => ed.hist[ed.idx].data;
 const unsaved = () => hasPhoto() && ed.idx > 0 && ed.savedIdx !== ed.idx;
+const newSession = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 // Tool settings. Reshaping tools start at 0, so nothing is reshaped unless the user asks.
 const toolAmt = { light: 0, color: 0, warmth: 0, detail: 0 };
@@ -184,51 +190,85 @@ try {
 const saveFace = () => store.set("glowFace2", JSON.stringify(faceSet));
 let cropSet = { ratio: 0, turns: 0 }, lookPick = null;
 
-async function openPhoto(data, opts = {}) {
-  ed.hist = [data]; ed.idx = 0; ed.pending = null; ed.savedIdx = 0; ed.fullOriginal = opts.fullOriginal || null;
-  ed.name = opts.name || "Photo"; lastCommitTool = null; cutoutCache = {}; strokes = [];
-  if (opts.processed) { ed.hist.push(opts.processed); ed.idx = 1; lastCommitTool = null; }
+// Reads a photo once at full size: the untouched file is kept as the original, and a
+// working copy of up to 2048px drives previews.
+async function readPhoto(blob, name) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await loadImg(url);
+    const c = canvasFor(img, 2048);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    const png = blob.type === "image/png";
+    return { work: png ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", 0.92),
+      original: { blob, w: img.naturalWidth, h: img.naturalHeight, name: name || "photo", type: blob.type || "image/jpeg" } };
+  } catch { throw new Error("Couldn't read that photo. Try a JPEG or PNG."); }
+  finally { URL.revokeObjectURL(url); }
+}
+
+async function openPhoto(work, original, opts = {}) {
+  ed.hist = [{ data: work, op: null }]; ed.idx = 0; ed.floor = 0; ed.pending = null; ed.savedIdx = 0;
+  ed.original = original; ed.originalSaved = !!opts.originalSaved; ed.session = newSession();
+  ed.name = opts.name || "Photo"; ed.shotStamp = opts.shotStamp || 0; lastCommitTool = null; cutoutCache = {}; strokes = [];
+  if (opts.processed) { ed.hist.push({ data: opts.processed.data, full: opts.processed.full, op: { tool: "camlook", fixed: true, label: opts.processed.label } }); ed.idx = 1; }
   if (opts.savedAlready) ed.savedIdx = ed.idx;
   sel = null; ed.view = "split"; ed.split = 50;
   showScreen("editorScreen");
   renderEditor(); saveDraft();
 }
 async function confirmReplace() {
+  if (jobActive() && job.session === ed.session) {
+    const c = await ask({ title: `${job.title} is still running`, text: "If you start a new edit, its result will wait on the Editor screen instead of being added to this photo.",
+      actions: [{ label: "Start a new edit", value: "go" }, { label: "Keep this one", value: "", kind: "ghost" }] });
+    if (!c) return false;
+  }
   if (!unsaved()) return true;
   const c = await ask({ title: "Start a new edit?", text: "Your current edit hasn't been saved.", actions: [
     { label: "Save it first", value: "save" }, { label: "Discard it", value: "discard", kind: "ghost" }, { label: "Keep editing", value: "", kind: "ghost" }] });
   if (c === "save") return saveEdit();
   return c === "discard";
 }
+async function openFile(f, name) {
+  const r = await readPhoto(f, name || f.name);
+  await openPhoto(r.work, r.original, { name: name || f.name });
+}
 async function pickAndOpen() {
   if (!(await confirmReplace())) return;
   const f = await Platform.pickPhoto("file");
   if (!f) return;
-  try { await openPhoto(await loadAndShrink(f), { name: f.name }); }
-  catch (err) { say(err.message, true); }
+  try { await openFile(f); } catch (err) { say(err.message, true); }
 }
 $("pickBtn").addEventListener("click", pickAndOpen);
 $("sampleBtn").addEventListener("click", async () => {
   if (!(await confirmReplace())) return;
-  try { await openPhoto(await shrinkData("/samples/sample.jpg"), { name: "Sample" }); } catch { say("Couldn't open the sample. Check your connection.", true); }
+  try {
+    const blob = await (await fetch("/samples/sample.jpg")).blob();
+    await openFile(new File([blob], "glow-sample.jpg", { type: blob.type || "image/jpeg" }), "Sample");
+  } catch { say("Couldn't open the sample. Check your connection.", true); }
 });
 
-// ---------- Draft: keeps the session through a refresh or the app closing ----------
+// ---------- Draft: keeps the session (and any AI job) through a refresh or the app closing ----------
 let draftWarn = false;
 async function saveDraft() {
   if (!hasPhoto()) return Drafts.clear();
   try {
-    await Drafts.put({ orig: ed.hist[0], cur: committed(), saved: !unsaved(), name: ed.name, ts: Date.now() });
+    await Drafts.put({ v: 2, original: ed.original, hist: ed.hist.slice(0, ed.idx + 1), idx: ed.idx, floor: ed.floor, savedIdx: ed.savedIdx,
+      originalSaved: ed.originalSaved, name: ed.name, session: ed.session, ts: Date.now() });
     draftWarn = false;
   } catch { draftWarn = true; }
 }
 window.addEventListener("beforeunload", (e) => { if (draftWarn && unsaved()) { e.preventDefault(); e.returnValue = ""; } });
 async function restoreDraft() {
   const d = await Drafts.get();
-  if (!d || !d.orig) return;
-  ed.hist = d.cur && d.cur !== d.orig ? [d.orig, d.cur] : [d.orig];
-  ed.idx = ed.hist.length - 1; ed.savedIdx = d.saved ? ed.idx : 0; ed.name = d.name || "Photo";
+  if (d && d.v === 2 && d.hist && d.hist.length) {
+    Object.assign(ed, { original: d.original, hist: d.hist, idx: d.idx, floor: d.floor || 0, savedIdx: d.savedIdx, originalSaved: !!d.originalSaved,
+      name: d.name || "Photo", session: d.session || newSession() });
+  }
+  recovered = await Drafts.getRecovered();
+  job = await Drafts.getJob();
   if (screen === "editorHome") renderHome();
+  if (screen === "editorScreen") renderEditor();
+  if (job && job.status === "starting") { job.status = "unknown"; job.error = "Glow was closed before it heard back."; }
+  if (jobActive()) checkJob(); // a free status check, never a new charge
 }
 async function discardSession() {
   if (unsaved()) {
@@ -236,17 +276,39 @@ async function discardSession() {
       actions: [{ label: "Discard", value: "yes" }, { label: "Keep it", value: "", kind: "ghost" }] });
     if (!c) return;
   }
-  ed.hist = []; ed.idx = 0; ed.pending = null; sel = null;
+  ed.hist = []; ed.idx = 0; ed.pending = null; sel = null; ed.session = "";
   await Drafts.clear(); renderHome(); say("Edit discarded.");
 }
 $("discardBtn").addEventListener("click", discardSession);
 $("resumeBtn").addEventListener("click", () => { showScreen("editorScreen"); renderEditor(); });
+// A result that finished after its photo was replaced opens as a new photo of its own.
+$("recoveredOpen").addEventListener("click", async () => {
+  const r = recovered; if (!r) return;
+  if (!(await confirmReplace())) return;
+  try {
+    const blob = await (await fetch(r.full)).blob();
+    await openFile(new File([blob], "glow-ai-result", { type: blob.type || "image/jpeg" }), `${r.title} result`);
+    recovered = null; Drafts.clearRecovered();
+  } catch { say("Couldn't open that result. Try again.", true); }
+});
+$("recoveredDiscard").addEventListener("click", async () => {
+  const c = await ask({ title: "Discard this AI result?", text: "It hasn't been saved. The credit it used isn't returned.",
+    actions: [{ label: "Discard", value: "yes" }, { label: "Keep it", value: "", kind: "ghost" }] });
+  if (!c) return;
+  recovered = null; await Drafts.clearRecovered(); renderHome();
+});
 
 function renderHome() {
   $("resumeCard").hidden = !hasPhoto();
   if (hasPhoto()) {
     $("resumeImg").src = committed();
-    $("resumeMeta").textContent = unsaved() ? "Not saved yet" : ed.idx > 0 ? "Saved" : "No edits yet";
+    const j = job && job.session === ed.session ? ` · ${job.title}: ${JOB_SHORT[job.status]}` : "";
+    $("resumeMeta").textContent = (unsaved() ? "Not saved yet" : ed.idx > 0 ? "Saved" : "No edits yet") + j;
+  }
+  $("recoveredCard").hidden = !recovered;
+  if (recovered) {
+    $("recoveredImg").src = recovered.data;
+    $("recoveredTitle").textContent = `Your ${recovered.title} result is ready`;
   }
   renderCredits();
 }
@@ -257,7 +319,7 @@ function renderEditor() {
   const st = $("stage"), brushing = sel === "erase";
   const after = ed.pending ? ed.pending.data : ed.idx > 0 ? committed() : null;
   const b = $("before"), a = $("after");
-  const wantBefore = brushing ? committed() : ed.hist[0];
+  const wantBefore = brushing ? committed() : ed.hist[0].data;
   if (b.getAttribute("src") !== wantBefore) b.src = wantBefore;
   if (after && !brushing) {
     if (a.getAttribute("src") !== after) {
@@ -273,12 +335,15 @@ function renderEditor() {
   setSplit(ed.split);
   $("brush").hidden = !brushing;
   if (brushing) requestAnimationFrame(drawStrokes);
-  $("undoBtn").disabled = !!busyNow || (ed.idx === 0 && !ed.pending);
+  $("undoBtn").disabled = !!busyNow || (ed.idx <= ed.floor && !ed.pending);
   $("redoBtn").disabled = !!busyNow || ed.idx >= ed.hist.length - 1;
-  $("saveBtn").disabled = !!busyNow || (ed.idx === 0 && !ed.pending);
+  // Saving the same version twice would only make a duplicate copy.
+  const savedNow = ed.idx > 0 && ed.savedIdx === ed.idx && !ed.pending;
+  $("saveBtn").disabled = !!busyNow || savingEdit || (ed.idx === 0 && !ed.pending) || savedNow;
+  $("saveBtn").textContent = savedNow ? "Saved" : "Save";
   $("editorScreen").classList.toggle("editing-tool", !!sel);
   if (thumbFor !== committed()) { thumbFor = committed(); refreshThumb(); }
-  renderTabs(); renderTools(); renderPanel(); renderCredits();
+  renderTabs(); renderTools(); renderPanel(); renderCredits(); renderJob();
 }
 let thumbFor = null;
 function setSplit(pct) {
@@ -310,10 +375,12 @@ $("handle").addEventListener("keydown", (e) => {
 });
 
 // History
-function commit(data, t) {
-  ed.hist = ed.hist.slice(0, ed.idx + 1); ed.hist.push(data);
-  if (ed.hist.length > 21) { ed.hist.splice(1, 1); ed.savedIdx = Math.max(-1, ed.savedIdx - 1); }
+// Every step's recipe is kept so Save can redo it at full size; only the working-size
+// pictures of steps older than MAX_UNDO are dropped (those steps can no longer be undone).
+function commit(data, t, op, full) {
+  ed.hist = ed.hist.slice(0, ed.idx + 1); ed.hist.push({ data, op: op || { tool: t.id }, full });
   ed.idx = ed.hist.length - 1; ed.pending = null;
+  while (ed.idx - ed.floor > MAX_UNDO) { ed.floor++; if (ed.floor > 1) ed.hist[ed.floor - 1].data = null; }
   lastCommitTool = t && t.kind === "ai" ? t.id : null;
   if (t) { recent = [t.id, ...recent.filter((x) => x !== t.id)].slice(0, 8); store.set("glowRecent", JSON.stringify(recent)); }
   ed.view = "split"; ed.split = 50;
@@ -321,7 +388,7 @@ function commit(data, t) {
 }
 $("undoBtn").addEventListener("click", () => {
   if (ed.pending) { ed.pending = null; previewToken++; }
-  else if (ed.idx > 0) ed.idx--;
+  else if (ed.idx > ed.floor) ed.idx--;
   lastCommitTool = null; renderEditor(); saveDraft(); say("Undone.");
 });
 $("redoBtn").addEventListener("click", () => {
@@ -445,8 +512,12 @@ $("favBtn").addEventListener("click", () => {
 function slider(label, min, max, value, onInput, onChange, fmt = (v) => v) {
   const l = document.createElement("label"); l.className = "slider";
   const r = document.createElement("input"); r.type = "range"; r.min = min; r.max = max; r.value = value;
-  const o = document.createElement("output"); o.textContent = fmt(value);
-  r.addEventListener("input", () => { o.textContent = fmt(+r.value); onInput && onInput(+r.value); });
+  // Screen readers hear the tool's name and a spoken value, e.g. "Smooth skin strength, 50 percent".
+  if (sel) r.setAttribute("aria-label", `${TOOL[sel].title} ${label.toLowerCase()}`);
+  const spoken = (v) => (min < 0 ? (v === 0 ? "No change" : v > 0 ? `Plus ${v}` : `Minus ${-v}`) : `${v} percent`);
+  const o = document.createElement("output"); o.textContent = fmt(value); o.setAttribute("aria-hidden", "true");
+  r.setAttribute("aria-valuetext", spoken(value));
+  r.addEventListener("input", () => { o.textContent = fmt(+r.value); r.setAttribute("aria-valuetext", spoken(+r.value)); onInput && onInput(+r.value); });
   r.addEventListener("change", () => onChange(+r.value));
   l.append(label, r, o); return l;
 }
@@ -542,22 +613,39 @@ function panelState(t) {
       const bal = a ? ` You have ${a.remaining} left ${a.plan === "pro" ? "this week" : "today"}.` : "";
       note = again ? `Running it again makes a new version and uses another ${credits(cost).replace(/^1 /, "")}.${bal}` : `${note}${bal}`.trim();
     }
+    if (jobActive()) { apply.disabled = true; note = `Wait for ${job.title} to finish, or check its status above. Glow runs one AI edit at a time so nothing is charged twice.`; }
     if (t.id === "outfit" && !outfitData && !short) apply.disabled = true;
     if (t.id === "erase" && !strokes.length && !short) apply.disabled = true;
   }
   $("panelNote").textContent = note;
 }
 
-// On-device previews. A newer preview replaces an older one that is still running.
+// On-device steps are recorded as recipes (tool + settings), so the same step can be
+// previewed at working size and redone at full size when the photo is saved.
 let previewToken = 0;
-async function computeLocal(t, base) {
-  if (t.kind === "face") return faceEdit(base, t.id, (faceSet.amt[t.id] ?? 50) / 100);
-  if (t.kind === "body") return bodyEdit(base, t.id, (faceSet.amt[t.id] ?? 50) / 100);
-  if (t.kind === "hair") return hairColor(base, (faceSet.amt[t.id] ?? 50) / 100, faceSet.shade.hcolor);
+function opFor(t) {
+  const op = { tool: t.id };
+  if (t.kind === "face" || t.kind === "body" || t.kind === "hair") { op.amt = (faceSet.amt[t.id] ?? 50) / 100; op.shades = { ...faceSet.shade }; }
+  if (t.kind === "adjust") op.value = toolAmt[t.id];
+  if (t.kind === "crop") { op.ratio = cropSet.ratio; op.turns = cropSet.turns; }
+  if (t.kind === "look") op.look = { ...(editorLooks().find((l) => l.id === lookPick) || PRESET_LOOKS[1]) };
+  return op;
+}
+async function computeOp(op, base) {
+  const t = TOOL[op.tool];
+  if (t.kind === "face" || t.kind === "body" || t.kind === "hair") {
+    const keep = { ...faceSet.shade };
+    Object.assign(faceSet.shade, op.shades);
+    try {
+      if (t.kind === "face") return await faceEdit(base, t.id, op.amt);
+      if (t.kind === "body") return await bodyEdit(base, t.id, op.amt);
+      return await hairColor(base, op.amt, op.shades.hcolor);
+    } finally { Object.assign(faceSet.shade, keep); }
+  }
   if (t.kind === "filter") return applyFilter(base, t.filter);
-  if (t.kind === "adjust") return toolAmt[t.id] ? adjust(base, t.id, toolAmt[t.id]) : null;
-  if (t.kind === "crop") return cropSet.ratio || cropSet.turns % 4 ? cropRotate(base, cropSet.ratio, cropSet.turns) : null;
-  if (t.kind === "look") return applyLook(base, editorLooks().find((l) => l.id === lookPick) || PRESET_LOOKS[1]);
+  if (t.kind === "adjust") return op.value ? adjust(base, t.id, op.value) : null;
+  if (t.kind === "crop") return op.ratio || op.turns % 4 ? cropRotate(base, op.ratio, op.turns) : null;
+  if (t.kind === "look") return applyLook(base, op.look);
   if (t.kind === "bg") {
     const cut = await cutout(base);
     if (t.id === "bgremove") return cut;
@@ -570,13 +658,13 @@ async function computeLocal(t, base) {
 }
 async function preview() {
   const t = sel && TOOL[sel]; if (!t || costOf(t)) return;
-  const token = ++previewToken, base = committed();
+  const token = ++previewToken, base = committed(), op = opFor(t);
   const slow = setTimeout(() => { if (token === previewToken) setBusy(true, t.kind === "face" || t.kind === "body" || t.kind === "hair" || t.kind === "bg" ? "Finding the details…" : "Working…"); }, 250);
   try {
-    const out = await computeLocal(t, base);
+    const out = await computeOp(op, base);
     if (token !== previewToken || sel !== t.id) return;
-    ed.pending = out ? { tool: t.id, data: out } : null;
-    if (out) { ed.view = "split"; $("alertLive").textContent = ""; }
+    ed.pending = out ? { tool: t.id, data: out, op } : null;
+    if (out) { ed.view = "split"; $("alertLive").textContent = `${t.title} preview ready. Apply to keep it.`; }
   } catch (err) {
     if (token === previewToken) { ed.pending = null; say(err.message, true); }
   } finally {
@@ -599,13 +687,14 @@ async function applyCurrent() {
   const t = sel && TOOL[sel]; if (!t || busyNow) return;
   const cost = costOf(t);
   if (!cost) {
-    let data = ed.pending && ed.pending.tool === t.id ? ed.pending.data : null;
-    if (!data) {
+    let pend = ed.pending && ed.pending.tool === t.id ? ed.pending : null;
+    if (!pend) {
       setBusy(true, "Working…");
-      try { data = await computeLocal(t, committed()); } catch (err) { say(err.message, true); } finally { setBusy(false); }
+      const op = opFor(t);
+      try { const data = await computeOp(op, committed()); if (data) pend = { data, op }; } catch (err) { say(err.message, true); } finally { setBusy(false); }
     }
-    if (!data) return;
-    commit(data, t); sel = null; renderEditor();
+    if (!pend) return;
+    commit(pend.data, t, pend.op); sel = null; renderEditor();
     say(`${t.title} applied.`); Platform.haptic();
     return;
   }
@@ -614,35 +703,162 @@ async function applyCurrent() {
     if (account.plan === "pro") say("You've used this week's AI credits. Each one comes back 7 days after it was used.", true); else openPaywall();
     return;
   }
+  if (jobActive()) { say(`${job.title} is still running. Check its status first.`, true); return; }
+  await startAiEdit(t);
+}
+
+// ---------- AI jobs ----------
+// A paid AI edit is started exactly once. Its job id, plus a request id of our own, are
+// saved on the device, so a timeout, a refresh, the app going to the background or a
+// dropped connection only means asking for its status again. Checking is free and
+// never starts another paid request. The result goes back into the session it came from.
+let job = null;        // { requestId, id, tool, title, session, baseIdx, status, startedAt, error, refunded, result }
+let recovered = null;  // a finished result whose editing session is gone
+let following = false;
+const JOB_TEXT = { starting: "is starting…", processing: "is still being made…", unknown: "couldn't be confirmed.", failed: "failed.", done: "is ready." };
+const JOB_SHORT = { starting: "starting", processing: "still processing", unknown: "status unknown", failed: "failed", done: "ready" };
+const jobActive = () => !!job && ["starting", "processing", "unknown"].includes(job.status);
+const saveJob = () => { (job ? Drafts.putJob(job) : Drafts.clearJob()).catch(() => {}); renderJob(); if (screen === "editorHome") renderHome(); };
+const rid = () => (crypto.randomUUID ? crypto.randomUUID() : newSession() + newSession());
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function startAiEdit(t) {
   const before = account ? account.remaining : null;
   setBusy(true, `${t.title}…`, "AI edits can take up to a minute.");
   $("alertLive").textContent = `${t.title} is running.`;
+  let body;
   try {
     const base = committed();
-    let out;
     if (t.id === "erase") {
       const up = await uploadable(base), dims = await loadImg(up);
-      out = await runModel("erase", up, t.title, eraseMask(dims.naturalWidth, dims.naturalHeight));
-      strokes = [];
+      body = { image: up, mode: "erase", mask: eraseMask(dims.naturalWidth, dims.naturalHeight) };
     } else if (t.id === "expand") {
-      const x = await expandInputs(base);
-      out = await runModel("expand", x.image, t.title, x.mask);
-    } else if (t.id === "outfit") {
-      out = await runModel("outfit", base, t.title, undefined, outfitData);
-    } else out = await runModel(t.id, base, t.title);
-    commit(out, t); sel = null;
-    say(`${t.title} done. Drag the line to compare.`); Platform.haptic();
+      const x = await expandInputs(base); body = { image: x.image, mode: "expand", mask: x.mask };
+    } else body = { image: await uploadable(base), mode: t.id, extra: t.id === "outfit" ? outfitData : undefined };
+  } catch (err) { setBusy(false); say(err.message, true); return; }
+  job = { requestId: rid(), id: null, tool: t.id, title: t.title, session: ed.session, baseIdx: ed.idx, status: "starting", startedAt: Date.now(), before };
+  saveJob();
+  let res;
+  try {
+    res = await call("enhance", { method: "POST", body: JSON.stringify({ ...body, request_id: job.requestId }) });
   } catch (err) {
-    if (err.limit) { say(err.message, true); if (!account || account.plan !== "pro") openPaywall(); renderPanel(); }
-    else {
-      // Only report what the server confirms about the credit.
+    setBusy(false);
+    if (err.status) {
+      // The server answered, so the edit didn't start. It returns the credit itself if it had taken one.
+      job = null; saveJob();
+      if (err.limit) { say(err.message, true); if (!account || account.plan !== "pro") openPaywall(); renderPanel(); return; }
       await refreshAccount();
-      let extra = "";
-      if (before != null && account) extra = account.remaining >= before ? " No AI credit was used." : ` This used ${credits(before - account.remaining)}.`;
+      const extra = before != null && account ? (account.remaining >= before ? " No AI credit was used." : ` Your balance shows ${account.remaining} left.`) : "";
       say(err.message + extra, true);
+      return;
     }
-  } finally { setBusy(false); }
+    // No answer: the edit may or may not have started. Don't send it again.
+    job.status = "unknown"; job.error = "The connection dropped before Glow heard back."; saveJob();
+    return;
+  }
+  if (t.id === "erase") strokes = [];
+  job.id = res.id; job.status = "processing"; saveJob();
+  await followJob(res, 60000, true);
 }
+
+// Polls the job. The first minute keeps the photo busy; after that the editor is free
+// and polling continues in the bar for up to 10 minutes, then waits for Check status.
+async function followJob(first, blockMs, blocking) {
+  if (following || !job) return;
+  following = true;
+  const started = Date.now(), mine = job;
+  let res = first;
+  try {
+    while (job === mine) {
+      if (res && ["succeeded", "failed", "canceled"].includes(res.status)) { await settleJob(res); return; }
+      if (blocking && Date.now() - started > blockMs) { blocking = false; setBusy(false); say(`${mine.title} is taking a while. You can keep editing; it will be added when it's ready.`); }
+      if (Date.now() - started > 600000) { mine.status = "processing"; saveJob(); return; }
+      if (blocking) $("busyText").textContent = res && res.status === "starting" ? "Warming up the model…" : `${mine.title}…`;
+      await sleep(blocking ? 1500 : 4000);
+      if (document.hidden) { mine.status = "processing"; saveJob(); return; } // checked again on return
+      const q = mine.id ? "id=" + encodeURIComponent(mine.id) : "request=" + encodeURIComponent(mine.requestId);
+      try { res = await call("enhance?" + q, { method: "GET" }); if (res.id) mine.id = res.id; mine.status = "processing"; }
+      catch { mine.status = "unknown"; mine.error = "Glow couldn't reach its server to check."; saveJob(); return; }
+    }
+  } finally {
+    following = false;
+    if (blocking) setBusy(false);
+    renderJob();
+  }
+}
+
+// A free status check. Never starts a new paid request.
+async function checkJob() {
+  if (!job || following) return;
+  const mine = job;
+  if (mine.id) { mine.status = "processing"; renderJob(); return followJob(null, 0, false); }
+  // We never got a job id: ask the server by our request id (needs the backend update).
+  let res;
+  try { res = await call("enhance?request=" + encodeURIComponent(mine.requestId), { method: "GET" }); }
+  catch (err) {
+    if (err.status === 404) { job = null; saveJob(); say(`${mine.title} never started, so no AI credit was used.`); return; }
+    mine.status = "unknown";
+    mine.error = err.status === 400 ? "Glow's server can't look up this edit yet." : "Glow couldn't reach its server to check.";
+    saveJob(); await refreshAccount(); renderJob(); return;
+  }
+  mine.id = res.id || null; mine.status = "processing"; saveJob();
+  return followJob(res, 0, false);
+}
+
+async function settleJob(res) {
+  const mine = job;
+  if (res.status !== "succeeded" || !res.output) {
+    mine.status = "failed"; mine.error = res.error || "The AI service couldn't process this photo."; mine.refunded = res.refunded === true;
+    saveJob(); await refreshAccount(); renderJob();
+    $("alertLive").textContent = `${mine.title} failed.`;
+    return;
+  }
+  let full;
+  try {
+    const r = await fetch(res.output); if (!r.ok) throw new Error();
+    full = await blobToData(await r.blob());
+  } catch { mine.status = "unknown"; mine.error = "The result couldn't be downloaded yet."; saveJob(); return; }
+  const data = await shrinkData(full, 2048);
+  const op = { tool: mine.tool, fixed: true };
+  if (mine.session === ed.session && hasPhoto() && ed.idx === mine.baseIdx) {
+    job = null; saveJob();
+    commit(data, TOOL[mine.tool], op, full); if (sel === mine.tool) sel = null;
+    renderEditor(); say(`${mine.title} done. Drag the line to compare.`); Platform.haptic();
+  } else if (mine.session === ed.session && hasPhoto()) {
+    mine.status = "done"; mine.result = { data, full }; saveJob();
+  } else {
+    recovered = { title: mine.title, data, full }; job = null; saveJob();
+    Drafts.putRecovered(recovered).catch(() => {}); if (screen === "editorHome") renderHome();
+    say(`${mine.title} is ready. Find it on the Editor screen.`);
+  }
+}
+const blobToData = (b) => new Promise((ok, fail) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = fail; fr.readAsDataURL(b); });
+
+function renderJob() {
+  const bar = $("jobBar");
+  const show = !!job && job.session === ed.session && screen === "editorScreen";
+  bar.hidden = !show;
+  if (!show) return;
+  const working = job.status === "starting" || (job.status === "processing" && following);
+  $("jobSpin").hidden = !working;
+  let text = `${job.title} ${JOB_TEXT[job.status] || ""}`;
+  if (job.status === "processing" && !following) text = `${job.title} may still be processing.`;
+  if (job.status === "unknown") text += ` ${job.error || ""} Glow won't charge you again to check.`;
+  if (job.status === "failed") text += ` ${job.error}` + (job.refunded ? " Glow's server returned the AI credit." : account ? ` Your balance shows ${balanceText(account)}.` : "");
+  if (job.status === "done") text += " It was made from an earlier version of this photo.";
+  $("jobText").textContent = text;
+  const btn = (label, fn, kind) => { const b = document.createElement("button"); b.className = "btn small " + (kind || "quiet"); b.textContent = label; b.addEventListener("click", fn); return b; };
+  const acts = [];
+  if (job.status === "unknown" || (job.status === "processing" && !following)) acts.push(btn("Check status", () => checkJob()));
+  if (job.status === "done") acts.push(btn("Use it", () => {
+    const r = job.result, t = TOOL[job.tool]; job = null; saveJob();
+    commit(r.data, t, { tool: t.id, fixed: true }, r.full); renderEditor(); say(`${t.title} added. Undo removes it.`);
+  }, ""));
+  if (job.status === "failed" || job.status === "done" || job.status === "unknown") acts.push(btn("Dismiss", () => { job = null; saveJob(); }, "ghost"));
+  $("jobActions").replaceChildren(...acts);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && job && job.status === "processing" && !following) checkJob(); });
+window.addEventListener("online", () => { if (jobActive() && !following) checkJob(); });
 
 // Magic-erase brush: strokes are kept in the committed photo's pixel coordinates.
 function imageRect() {
@@ -691,28 +907,79 @@ function eraseMask(w, h) {
 window.addEventListener("resize", () => { if (sel === "erase") drawStrokes(); });
 
 // ---------- Save and leave ----------
+// Saving redoes every step from the full-size original (or the latest AI result, at the size
+// the AI returned it) instead of exporting the 2048px preview. Nothing is ever upscaled.
+const EXPORT_AREA = 16e6, EXPORT_SIDE = 8192; // below iOS's canvas limit of 16.7 megapixels
+function exportFit(w, h) { const s = Math.min(1, EXPORT_SIDE / Math.max(w, h), Math.sqrt(EXPORT_AREA / (w * h))); return { w: Math.round(w * s), h: Math.round(h * s), capped: s < 1 }; }
+async function exportBase(src, png) {
+  const url = src instanceof Blob ? URL.createObjectURL(src) : src;
+  try {
+    const img = await loadImg(url), f = exportFit(img.naturalWidth, img.naturalHeight);
+    const c = newCanvas(f.w, f.h); c.getContext("2d").drawImage(img, 0, 0, f.w, f.h);
+    return { data: png ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", 0.95), capped: f.capped, srcW: img.naturalWidth, srcH: img.naturalHeight };
+  } finally { if (src instanceof Blob) URL.revokeObjectURL(url); }
+}
+async function renderExport() {
+  const steps = ed.hist.slice(0, ed.idx + 1);
+  let k = 0;
+  for (let i = steps.length - 1; i >= 1; i--) if (steps[i].op && steps[i].op.fixed) { k = i; break; }
+  const from = k ? steps[k].full || steps[k].data : (ed.original && ed.original.blob) || steps[0].data;
+  const png = from instanceof Blob ? from.type === "image/png" : isPng(from);
+  const base = await exportBase(from, png);
+  let data = base.data;
+  const keep = IMG_MAX; IMG_MAX = EXPORT_SIDE;
+  try {
+    for (let i = k + 1; i < steps.length; i++) { const out = await computeOp(steps[i].op, data); if (out) data = out; }
+  } finally { IMG_MAX = keep; }
+  const img = await loadImg(data);
+  return { data, w: img.naturalWidth, h: img.naturalHeight, capped: base.capped, ai: k && steps[k].op.tool !== "camlook" ? TOOL[steps[k].op.tool] : null };
+}
+function exportNote(r) {
+  if (r.preview) return ` Saved at ${r.w} × ${r.h}, the preview size, because the full-size version couldn't be made on this device.`;
+  if (r.ai) return ` Saved at ${r.w} × ${r.h}, the size ${r.ai.title} returned.`;
+  if (r.capped) return ` Saved at ${r.w} × ${r.h}, Glow's 16-megapixel limit.`;
+  return ` Saved at ${r.w} × ${r.h}.`;
+}
 async function saveEdit() {
   if (ed.pending) {
     const t = TOOL[ed.pending.tool];
     const c = await ask({ title: `Apply ${t.title} before saving?`, text: "This change is only a preview so far.", actions: [
       { label: "Apply and save", value: "apply" }, { label: "Save without it", value: "skip", kind: "ghost" }, { label: "Keep editing", value: "", kind: "ghost" }] });
     if (!c) return false;
-    if (c === "apply") { commit(ed.pending.data, t); sel = null; } else { discardPending(); sel = null; }
+    if (c === "apply") { commit(ed.pending.data, t, ed.pending.op); sel = null; } else { discardPending(); sel = null; }
     renderEditor();
   }
   if (ed.idx === 0) { say("Nothing to save yet. Apply a tool first."); return false; }
-  const stamp = Date.now(), items = [{ data: committed(), name: `glow-${stamp}` }];
-  if (store.get("glowSaveOrig") === "on") items.unshift({ data: ed.fullOriginal || ed.hist[0], name: `glow-${stamp}-original` });
+  if (savingEdit) return false;
+  savingEdit = true;
+  setBusy(true, "Preparing the full-size photo…");
+  let out;
+  try { out = await renderExport(); }
+  catch {
+    out = null;
+  } finally { setBusy(false); }
+  if (!out) {
+    const c = await ask({ title: "Couldn't make the full-size photo", text: "This device ran out of room while redoing your edits at full size. You can save the preview size instead.",
+      actions: [{ label: "Save preview size", value: "preview" }, { label: "Cancel", value: "", kind: "ghost" }] });
+    if (!c) { savingEdit = false; return false; }
+    const img = await loadImg(committed());
+    out = { data: committed(), w: img.naturalWidth, h: img.naturalHeight, preview: true };
+  }
+  const stamp = Date.now(), items = [{ data: out.data, name: `glow-${stamp}` }];
+  const withOrig = store.get("glowSaveOrig") === "on" && !ed.originalSaved && ed.original && ed.original.blob;
+  if (withOrig) items.unshift({ blob: ed.original.blob, name: `glow-${stamp}-original` });
   try {
     const where = await Platform.savePhotos(items);
-    ed.savedIdx = ed.idx; saveDraft(); renderEditor();
-    say(where === "photos" ? "Saved to your Glow album." : where === "downloaded" ? "Saved to your downloads." : "Choose Save Image to keep it.");
+    ed.savedIdx = ed.idx; if (withOrig) ed.originalSaved = true;
+    ed.lastExport = { w: out.w, h: out.h, original: ed.original ? [ed.original.w, ed.original.h] : null };
+    saveDraft(); renderEditor();
+    say(savedText(where, items.length, exportNote(out)));
     return true;
   } catch (err) {
     if (err && err.name === "AbortError") return false;
-    say(native ? "Couldn't save. Allow photo access for Glow in your phone's settings." : "Couldn't save the photo. Try again.", true);
+    say(saveFailText(), true);
     return false;
-  }
+  } finally { savingEdit = false; }
 }
 $("saveBtn").addEventListener("click", saveEdit);
 // Back keeps the session; it's waiting on the Editor landing under "Continue editing".
@@ -820,19 +1087,6 @@ async function call(path, opts = {}, retried) {
   return body;
 }
 
-async function runModel(mode, src, label, mask, extra) {
-  let job = await call("enhance", { method: "POST", body: JSON.stringify({ image: await uploadable(src), mode, mask, extra }) });
-  const started = Date.now();
-  while (!["succeeded", "failed", "canceled"].includes(job.status)) {
-    await new Promise((r) => setTimeout(r, 1500));
-    if (Date.now() - started > 180000) throw new Error("This is taking too long. Try again in a minute.");
-    $("busyText").textContent = job.status === "starting" ? "Warming up the model…" : label + "…";
-    job = await call("enhance?id=" + job.id, { method: "GET" });
-  }
-  if (job.status !== "succeeded" || !job.output) throw new Error(job.error || "The model couldn't process this photo.");
-  return keepLocal(job.output);
-}
-
 // ---------- Camera ----------
 // Looks: one-tap beauty settings, remembered between sessions.
 const PRESET_LOOKS = [
@@ -857,12 +1111,12 @@ const lookName = () => (allLooks().find((l) => l.id === lookId) || { name: "Cust
 function saveBeauty() { store.set("glowBeauty", JSON.stringify(beauty)); store.set("glowLook", lookId); store.set("glowLooks", JSON.stringify(myLooks)); }
 function useLook(l) { lookId = l.id; Object.assign(beauty, { smooth: l.smooth, bright: l.bright, warm: l.warm, filter: l.filter }); saveBeauty(); renderLooks(); }
 
-const cam = { stream: null, facing: store.get("glowFacing") || "user", gl: null, raf: 0, state: "", torch: false, shot: null, thumb: "" };
+const cam = { stream: null, facing: store.get("glowFacing") || "user", gl: null, raf: 0, state: "", torch: false, shot: null, thumb: "", gen: 0, opened: 0 };
 const isOriginalLook = () => !beauty.smooth && !beauty.bright && !beauty.warm && beauty.filter === "none";
 function renderLooks() {
   const live = !!cam.gl;
   $("camLooks").hidden = !live;
-  ["sSmooth", "sBright", "sWarm"].forEach((id, i) => { const v = beauty[["smooth", "bright", "warm"][i]]; $(id).value = v; $(id).nextElementSibling.textContent = v; });
+  ["sSmooth", "sBright", "sWarm"].forEach((id, i) => { const v = beauty[["smooth", "bright", "warm"][i]]; $(id).value = v; $(id).nextElementSibling.textContent = v; $(id).setAttribute("aria-valuetext", `${v} percent`); });
   const flt = FILTERS.find((f) => f.id === beauty.filter) || FILTERS[0];
   $("camCanvas").style.filter = flt.f === "none" ? "" : flt.f;
   const chip = (text, on, cls, fn) => {
@@ -897,7 +1151,7 @@ function renderLooks() {
   })));
 }
 [["sSmooth", "smooth"], ["sBright", "bright"], ["sWarm", "warm"]].forEach(([id, k]) => $(id).addEventListener("input", (e) => {
-  beauty[k] = +e.target.value; e.target.nextElementSibling.textContent = e.target.value;
+  beauty[k] = +e.target.value; e.target.nextElementSibling.textContent = e.target.value; e.target.setAttribute("aria-valuetext", `${e.target.value} percent`);
   if (lookId !== "custom") { lookId = "custom"; renderLooks(); }
   saveBeauty();
 }));
@@ -928,7 +1182,7 @@ $("camStateAlt").addEventListener("click", galleryToEditor);
 $("sysCamera").addEventListener("change", async (e) => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
   if (!(await confirmReplace())) return;
-  try { await openPhoto(await loadAndShrink(f), { name: "Camera photo" }); } catch (err) { say(err.message, true); }
+  try { await openFile(f, "Camera photo"); } catch (err) { say(err.message, true); }
 });
 
 async function enterCamera() {
@@ -940,22 +1194,28 @@ async function enterCamera() {
   if (perm === "granted") startCamera();
   else camState(perm === "denied" ? "denied" : "prompt");
 }
+// Only the newest start may keep its stream: a flip, a return from the background or a second
+// tap while the camera is opening never leaves an older stream running.
 async function startCamera() {
   stopCamera();
+  const gen = cam.gen;
   camState("starting");
   cam.gl = cam.gl || initGl($("camCanvas"));
   renderLooks();
   $("camNote").hidden = !!cam.gl;
   $("camNote").textContent = "Live looks aren't available on this device. Your photo is captured as is; tap Edit photo afterwards to add looks, filters and retouching.";
+  let stream;
   try {
-    cam.stream = await Platform.camera.open(cam.facing);
+    stream = await Platform.camera.open(cam.facing);
   } catch (e) {
+    if (gen !== cam.gen) return;
     const n = e && e.name;
     camState(n === "NotAllowedError" || n === "SecurityError" ? "denied" : n === "NotFoundError" || n === "OverconstrainedError" ? "none" : n === "NotReadableError" ? "busy" : "none");
     return;
   }
-  if (screen !== "cameraScreen" || cam.shot) { stopCamera(); return; }
-  const v = $("camVideo"); v.srcObject = cam.stream;
+  if (gen !== cam.gen || screen !== "cameraScreen" || cam.shot || document.hidden) { stream.getTracks().forEach((t) => t.stop()); return; }
+  cam.stream = stream; cam.opened++;
+  const v = $("camVideo"); v.srcObject = stream;
   try { await v.play(); } catch {}
   camState("live");
   const torch = Platform.camera.torchSupported(cam.stream);
@@ -965,9 +1225,11 @@ async function startCamera() {
   drawFrame();
 }
 function stopCamera() {
+  cam.gen++;
   cancelAnimationFrame(cam.raf);
   if (cam.stream) cam.stream.getTracks().forEach((t) => t.stop());
   cam.stream = null;
+  const v = $("camVideo"); if (v.srcObject) { v.pause(); v.srcObject = null; }
 }
 function drawFrame() {
   const v = $("camVideo"), c = $("camCanvas");
@@ -986,10 +1248,23 @@ function drawFrame() {
   }
   cam.raf = requestAnimationFrame(drawFrame);
 }
+// The camera light goes off whenever Glow is in the background, and comes back once on return.
 document.addEventListener("visibilitychange", () => {
   if (screen !== "cameraScreen" || cam.shot) return;
   if (document.hidden) stopCamera(); else if (cam.state === "live" || cam.state === "starting") startCamera();
 });
+window.addEventListener("pagehide", stopCamera);
+// Permission changed in the browser's or phone's settings while Glow is open.
+(async () => {
+  try {
+    const st = await navigator.permissions.query({ name: "camera" });
+    st.addEventListener("change", () => {
+      if (screen !== "cameraScreen" || cam.shot) return;
+      if (st.state === "denied") { stopCamera(); camState("denied"); }
+      else if (st.state === "granted" && cam.state !== "live" && cam.state !== "starting") startCamera();
+    });
+  } catch {}
+})();
 $("camFlip").addEventListener("click", () => {
   cam.facing = cam.facing === "user" ? "environment" : "user"; store.set("glowFacing", cam.facing); Platform.haptic(); startCamera();
 });
@@ -1000,24 +1275,33 @@ $("flashBtn").addEventListener("click", async () => {
   $("flashBtn").setAttribute("aria-label", cam.torch ? "Flash on" : "Flash off");
 });
 
-// Capture: the preview and the photo match, mirroring included.
-$("shutter").addEventListener("click", () => {
-  const v = $("camVideo"); if (!v.videoWidth || cam.state !== "live") return;
+// Capture: the preview and the photo match, mirroring included. The untouched frame is kept
+// as the original; the look is baked into a second copy at the same size.
+const canvasBlob = (c, type = "image/jpeg", q = 0.95) => new Promise((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error("Couldn't take the photo."))), type, q));
+$("shutter").addEventListener("click", async () => {
+  const v = $("camVideo"); if (!v.videoWidth || cam.state !== "live" || cam.shot) return;
   Platform.haptic("heavy");
   const flash = document.createElement("div"); flash.className = "cam-flash"; document.body.append(flash); setTimeout(() => flash.remove(), 400);
+  let shot;
   try {
     const o = newCanvas(v.videoWidth, v.videoHeight), octx = o.getContext("2d");
     if (cam.facing === "user") { octx.translate(o.width, 0); octx.scale(-1, 1); }
     octx.drawImage(v, 0, 0);
-    const raw = o.toDataURL("image/jpeg", 0.92);
-    const processed = cam.gl && !isOriginalLook() ? withFilter($("camCanvas"), o.width, o.height, beauty.filter) : raw;
-    cam.shot = { raw, processed, look: isOriginalLook() ? null : lookName(), stamp: Date.now(), saved: false };
-    stopCamera(); renderReview();
-    makeThumb(processed).then((t) => { cam.thumb = t; }).catch(() => {});
-    $("alertLive").textContent = "Photo taken. Save it, edit it, or retake.";
+    const looked = cam.gl && !isOriginalLook();
+    const processed = looked ? withFilter($("camCanvas"), o.width, o.height, beauty.filter) : null;
+    const stamp = Date.now();
+    shot = { raw: o.toDataURL("image/jpeg", 0.92), rawBlob: await canvasBlob(o), processed, w: o.width, h: o.height,
+      look: looked ? lookName() : null, stamp, saved: false, originalSaved: false, saving: null };
   } catch {
-    say("Couldn't take the photo. Try again.", true);
+    say("Couldn't take the photo. Try again.", true); return;
   }
+  cam.shot = shot;
+  stopCamera(); renderReview();
+  makeThumb(shot.processed || shot.raw).then((t) => { cam.thumb = t; renderReview(); }).catch(() => {});
+  if (store.get("glowAutoSave") === "on") {
+    $("alertLive").textContent = "Photo taken. Saving it now.";
+    saveShot(shot, true);
+  } else $("alertLive").textContent = "Photo taken. Save it, edit it, or retake.";
 });
 function renderReview() {
   const s = cam.shot;
@@ -1025,36 +1309,66 @@ function renderReview() {
   $("liveControls").hidden = !!s; $("reviewControls").hidden = !s;
   $("nav").hidden = screen !== "cameraScreen" ? $("nav").hidden : !!s;
   if (s) {
-    $("reviewImg").src = s.processed; $("camState").hidden = true; $("camNote").hidden = true;
-    $("saveShotBtn").disabled = s.saved; $("saveShotBtn").innerHTML = s.saved ? icon("check") + "Saved" : "Save";
+    $("reviewImg").src = s.processed || s.raw; $("camState").hidden = true; $("camNote").hidden = true;
+    $("saveShotBtn").disabled = s.saved || !!s.saving;
+    $("saveShotBtn").innerHTML = s.saved ? icon("check") + "Saved" : s.saving ? "Saving…" : "Save";
   }
   const g = $("camGallery");
   if (cam.thumb) { g.innerHTML = `<img alt="" src="${cam.thumb}">`; } else setIcon(g, "gallery");
 }
 async function makeThumb(src) { const img = await loadImg(src), c = canvasFor(img, 160); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); return c.toDataURL("image/jpeg", 0.8); }
+
+// What a finished save means, in words that match what the platform confirmed.
+function savedText(where, n, extra = "") {
+  const what = n > 1 ? "Photos" : "Photo";
+  if (where === "photos") return `${what} saved to your Glow album.${extra}`;
+  if (where === "downloaded") return `Download started. Your browser keeps ${n > 1 ? "them" : "it"} in Downloads.${extra}`;
+  return `Sent to the share sheet. Choose Save Image there to keep ${n > 1 ? "them" : "it"}.${extra}`;
+}
+const saveFailText = () => (native ? "Couldn't save. Allow photo access for Glow in your phone's Settings, then try Save again." : "Couldn't save the photo. Try again.");
+
+// Saves a camera photo once. Auto-save and the Save button share this, so a photo is never
+// saved twice; with "Also save the original", the untouched frame goes too (only when a look
+// changed it). Success is only shown once the platform says the save finished.
+function saveShot(s, auto) {
+  if (s.saved) return Promise.resolve(true);
+  if (s.saving) return s.saving;
+  const items = [];
+  const withOrig = store.get("glowSaveOrig") === "on" && !!s.processed && !s.originalSaved;
+  if (withOrig) items.push({ blob: s.rawBlob, name: `glow-${s.stamp}-original` });
+  items.push(s.processed ? { data: s.processed, name: `glow-${s.stamp}` } : { blob: s.rawBlob, name: `glow-${s.stamp}` });
+  s.saving = (async () => {
+    try {
+      // Auto-save never opens a share sheet on its own; browsers get a download.
+      const where = await Platform.savePhotos(items, { download: auto });
+      s.saved = true; if (withOrig || !s.processed) s.originalSaved = true;
+      if (cam.shot === s || ed.shotStamp === s.stamp) say(savedText(where, items.length));
+      if (ed.shotStamp === s.stamp) {
+        ed.originalSaved = ed.originalSaved || s.originalSaved;
+        if (ed.idx <= 1 && !ed.pending) ed.savedIdx = ed.idx;
+        saveDraft(); if (screen === "editorScreen") renderEditor();
+      }
+      return true;
+    } catch (err) {
+      if (!(err && err.name === "AbortError")) say(auto ? "Auto-save didn't finish. " + saveFailText() : saveFailText(), true);
+      return false;
+    } finally { s.saving = null; if (cam.shot === s) renderReview(); }
+  })();
+  renderReview();
+  return s.saving;
+}
 $("retakeBtn").addEventListener("click", () => {
   cam.shot = null; renderReview(); $("nav").hidden = false; startCamera();
 });
-$("saveShotBtn").addEventListener("click", async () => {
-  const s = cam.shot; if (!s) return;
-  const items = [{ data: s.processed, name: `glow-${s.stamp}` }];
-  if (store.get("glowSaveOrig") === "on" && s.processed !== s.raw) items.unshift({ data: s.raw, name: `glow-${s.stamp}-original` });
-  $("saveShotBtn").disabled = true;
-  try {
-    const where = await Platform.savePhotos(items);
-    s.saved = true;
-    say(where === "photos" ? "Saved to your Glow album." : where === "downloaded" ? "Saved to your downloads." : "Choose Save Image to keep it.");
-  } catch (err) {
-    if (!(err && err.name === "AbortError")) say(native ? "Couldn't save. Allow photo access for Glow in your phone's settings." : "Couldn't save the photo. Try again.", true);
-  }
-  renderReview();
-});
+$("saveShotBtn").addEventListener("click", () => { if (cam.shot) saveShot(cam.shot, false); });
 $("editShotBtn").addEventListener("click", async () => {
   const s = cam.shot; if (!s) return;
   if (!(await confirmReplace())) return;
-  const raw = await shrinkData(s.raw), processed = s.processed === s.raw ? null : await shrinkData(s.processed);
+  const original = { blob: s.rawBlob, w: s.w, h: s.h, name: "Camera photo", type: "image/jpeg" };
+  const work = await shrinkData(s.raw), processed = s.processed ? { data: await shrinkData(s.processed), full: s.processed, label: s.look } : null;
   cam.shot = null; renderReview();
-  await openPhoto(raw, { name: "Camera photo", processed, fullOriginal: s.raw, savedAlready: s.saved });
+  // Still saving in the background: the editor learns the result when it lands.
+  await openPhoto(work, original, { name: "Camera photo", processed, savedAlready: s.saved, originalSaved: s.originalSaved, shotStamp: s.saving ? s.stamp : 0 });
   if (processed) say(`${s.look} look applied. Undo removes it.`);
 });
 async function galleryToEditor() {
@@ -1062,7 +1376,7 @@ async function galleryToEditor() {
   if (!(await confirmReplace())) { if (screen === "cameraScreen") enterCamera(); return; }
   const f = await Platform.pickPhoto("file");
   if (!f) { if (screen === "cameraScreen") enterCamera(); return; }
-  try { cam.shot = null; await openPhoto(await loadAndShrink(f), { name: f.name }); } catch (err) { say(err.message, true); }
+  try { cam.shot = null; await openFile(f); } catch (err) { say(err.message, true); }
 }
 $("camGallery").addEventListener("click", galleryToEditor);
 
@@ -1072,6 +1386,7 @@ function openSettings() {
   const start = store.get("glowStart") || "last";
   document.querySelectorAll("#startSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.start === start)));
   $("saveOrigToggle").checked = store.get("glowSaveOrig") === "on";
+  $("autoSaveToggle").checked = store.get("glowAutoSave") === "on";
   applyTheme();
   $("settings").showModal();
 }
@@ -1084,6 +1399,10 @@ $("startSeg").addEventListener("click", (e) => {
 });
 $("themeSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { store.set("glowTheme", b.dataset.theme); applyTheme(); } });
 $("saveOrigToggle").addEventListener("change", (e) => store.set("glowSaveOrig", e.target.checked ? "on" : "off"));
+$("autoSaveToggle").addEventListener("change", (e) => store.set("glowAutoSave", e.target.checked ? "on" : "off"));
+$("autoSaveHelp").textContent = native && plugins.Media
+  ? "Off: after each photo you choose Save, Retake or Edit photo. On: each photo is saved to the Glow album as soon as you take it, and you can still edit or retake it. Edits are saved separately when you tap Save in the editor."
+  : "Off: after each photo you choose Save, Retake or Edit photo. On: each photo is downloaded to this device as soon as you take it. Browsers can't put photos straight into your photo library, so look in Downloads.";
 $("replayIntro").addEventListener("click", () => { $("settings").close(); showOnboarding(); });
 $("goProBtn").addEventListener("click", () => { $("settings").close(); openPaywall(); });
 $("deleteAccount").addEventListener("click", async (e) => {
