@@ -62,16 +62,15 @@
       },
       "provenance": {
         "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
-        "model": "sczhou/codeformer",
-        "version": "cc4956dd26fa5a7185d5660cc9100fab1b8070a1d1654a8bb5eb6d443b020bb2",
-        "predictionId": "eq26wdqgn1rmy0d1hnq8g43fcr",
-        "generatedAt": "2026-10-30T15:31:03.219Z",
+        "model": "nightmareai/real-esrgan",
+        "version": null,
+        "predictionId": "q0ha1p8625rgc0d1hs4b92ymtc",
+        "generatedAt": "2026-10-30T19:27:42Z",
         "metrics": {
-          "predict_time": 41.732441091,
-          "total_time": 41.812082032
+          "total_time": 16.3
         },
         "pipeline": "supabase/functions/enhance/pipeline.ts",
-        "run": "tools/demo/all/all-tools.ts, GitHub Actions run 41081284106"
+        "run": "tools/demo/refresh/refresh.py through the live enhance function (v11), GitHub Actions"
       },
       "fit": "resized",
       "rawSize": [
@@ -85,7 +84,7 @@
       "width": 1086,
       "height": 1448,
       "aligned": true,
-      "sha256": "04823deaf38c189f0ecea885f366ce761124ff0d149140c93162167d816afd3d",
+      "sha256": "212a6e7874b070fa5454febaf32ecd5608e889ddcff13bff87625cb94791b672",
       "assetVersion": 2
     },
     {
@@ -138,21 +137,20 @@
       },
       "provenance": {
         "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
-        "model": "sczhou/codeformer",
-        "version": "cc4956dd26fa5a7185d5660cc9100fab1b8070a1d1654a8bb5eb6d443b020bb2",
-        "predictionId": "7jb9thvnasrmr0d1hnr93qdj6m",
-        "generatedAt": "2026-10-30T15:32:05.131Z",
+        "model": "tencentarc/gfpgan",
+        "version": null,
+        "predictionId": "cc5kvxqk0srmt0d1hsbs0x30v4",
+        "generatedAt": "2026-10-30T19:44:58Z",
         "metrics": {
-          "predict_time": 4.53496872,
-          "total_time": 4.56880333
+          "total_time": 10.5
         },
         "pipeline": "supabase/functions/enhance/pipeline.ts",
-        "run": "tools/demo/all/all-tools.ts, GitHub Actions run 41081284106"
+        "run": "tools/demo/refresh/refresh.py through the live enhance function (v11), GitHub Actions"
       },
       "fit": "resized",
       "rawSize": [
-        1086,
-        1448
+        2172,
+        2896
       ],
       "faceShiftPx": [
         0,
@@ -161,7 +159,7 @@
       "width": 1086,
       "height": 1448,
       "aligned": true,
-      "sha256": "95879b8f0eed0ae930fb392b16b6e857316d230c1924f70d55f93d87049608d1",
+      "sha256": "3ff5198cee2de7fd3e1f07520e4c44c6637bca4157797699406f252ec372a896",
       "assetVersion": 2
     },
     {
