@@ -14,8 +14,8 @@
     {
       "tool": "retouch",
       "title": "Retouch",
-      "status": "needs-generation",
-      "result": null,
+      "status": "ready",
+      "result": "retouch.jpg",
       "why": "Skin retouch, the AI counterpart of Remove blemishes",
       "settings": {
         "mode": "retouch",
@@ -32,13 +32,27 @@
         }
       },
       "credits": 1,
-      "provenance": null
+      "provenance": {
+        "generatedAt": "2026-10-30T05:33:51.844Z",
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "model": "sczhou/codeformer",
+        "version": "cc4956dd26fa5a7185d5660cc9100fab1b8070a1d1654a8bb5eb6d443b020bb2",
+        "predictionId": "v239ty6hvxrmw0d1hd68xjbaeg",
+        "metrics": {
+          "predict_time": 0.901028198,
+          "total_time": 0.936950512
+        }
+      },
+      "width": 1122,
+      "height": 1402,
+      "aligned": true,
+      "sha256": "d4038aa8d4825fdf9b410efee894e713563a626f88eb95f2edb95db84a1f8c57"
     },
     {
       "tool": "pro",
       "title": "Enhance",
-      "status": "needs-generation",
-      "result": null,
+      "status": "ready",
+      "result": "pro.jpg",
       "why": "Glow's main AI fix: color, light, skin and background",
       "settings": {
         "mode": "pro",
@@ -54,13 +68,28 @@
         }
       },
       "credits": 1,
-      "provenance": null
+      "provenance": {
+        "generatedAt": "2026-10-30T05:34:17.203Z",
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "model": "google/nano-banana",
+        "version": null,
+        "predictionId": "babyr08p3nrmy0d1hd6rp6w6ng",
+        "metrics": {
+          "image_output_count": 1,
+          "predict_time": 9.216602651,
+          "total_time": 9.256080444
+        }
+      },
+      "width": 896,
+      "height": 1152,
+      "aligned": false,
+      "sha256": "146504e783157dc708e786713b706d7e9b6c746d28c3d8b7c09b29e8f7c3a1b9"
     },
     {
       "tool": "relight",
       "title": "Relight",
-      "status": "needs-generation",
-      "result": null,
+      "status": "ready",
+      "result": "relight.jpg",
       "why": "Soft studio light",
       "settings": {
         "mode": "relight",
@@ -76,13 +105,28 @@
         }
       },
       "credits": 1,
-      "provenance": null
+      "provenance": {
+        "generatedAt": "2026-10-30T05:34:26.165Z",
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "model": "google/nano-banana",
+        "version": null,
+        "predictionId": "2m101p1xcxrmr0d1hd6ta3jg7r",
+        "metrics": {
+          "image_output_count": 1,
+          "predict_time": 8.281365174,
+          "total_time": 8.313131264
+        }
+      },
+      "width": 896,
+      "height": 1152,
+      "aligned": false,
+      "sha256": "78d5ce3e40b30adc5c9723a98a4de937d0ee23e07ada81ad5117bc61d650f12e"
     },
     {
       "tool": "golden",
       "title": "Golden hour",
-      "status": "needs-generation",
-      "result": null,
+      "status": "ready",
+      "result": "golden.jpg",
       "why": "Warm side light",
       "settings": {
         "mode": "golden",
@@ -98,13 +142,28 @@
         }
       },
       "credits": 1,
-      "provenance": null
+      "provenance": {
+        "generatedAt": "2026-10-30T05:34:51.051Z",
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "model": "google/nano-banana",
+        "version": null,
+        "predictionId": "fzh1w3cvyhrmr0d1hd6tazj9kw",
+        "metrics": {
+          "image_output_count": 1,
+          "predict_time": 9.092081549,
+          "total_time": 9.125375019
+        }
+      },
+      "width": 896,
+      "height": 1152,
+      "aligned": false,
+      "sha256": "dcbf8b7a0337acc828081bc3c0a9609733535df3e2d7d73e5a158f96c94ea37e"
     },
     {
       "tool": "hair_bob",
       "title": "Sleek bob",
-      "status": "needs-generation",
-      "result": null,
+      "status": "ready",
+      "result": "hair_bob.jpg",
       "why": "One hairstyle",
       "settings": {
         "mode": "hair_bob",
@@ -120,13 +179,28 @@
         }
       },
       "credits": 1,
-      "provenance": null
+      "provenance": {
+        "generatedAt": "2026-10-30T05:35:14.606Z",
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "model": "google/nano-banana",
+        "version": null,
+        "predictionId": "ewmjhzfwanrmy0d1hd6vzdr0e8",
+        "metrics": {
+          "image_output_count": 1,
+          "predict_time": 7.75725077,
+          "total_time": 7.790076598
+        }
+      },
+      "width": 896,
+      "height": 1152,
+      "aligned": false,
+      "sha256": "eb43af7153063c6f9aff5724ee97a75e9319ba432b057c9c3727b627b72e9704"
     },
     {
       "tool": "toon3d",
       "title": "3D Toon",
-      "status": "needs-generation",
-      "result": null,
+      "status": "ready",
+      "result": "toon3d.jpg",
       "why": "One creative style (regenerates the picture, so framing can shift)",
       "settings": {
         "mode": "toon3d",
@@ -141,7 +215,21 @@
         }
       },
       "credits": 1,
-      "provenance": null
+      "provenance": {
+        "generatedAt": "2026-10-30T05:35:52.843Z",
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "model": "fofr/face-to-many",
+        "version": "a07f252abbbd832009640b27f063ea52d87d7a23a185ca165bec23b5adc8deaf",
+        "predictionId": "0c9qgwjvx9rmw0d1hd79ye8gjg",
+        "metrics": {
+          "predict_time": 6.8355301090000005,
+          "total_time": 21.793025891
+        }
+      },
+      "width": 1122,
+      "height": 1402,
+      "aligned": true,
+      "sha256": "acebd6d5c9cf1224a604b143464287e2d7bda6a8d8cecef095d8cb905f52976c"
     }
   ]
 }
