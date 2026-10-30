@@ -130,45 +130,62 @@ function initLive(canvas) {
 }
 
 // ---------- Face tracking ----------
-// The face model loads once, in VIDEO mode for one face. It tries the phone's GPU first.
-const liveFace = { finder: null, loading: null, failed: false, pts: null, seen: 0, cost: 0, frame: 0, lastT: 0 };
+// The face model runs in a worker (faceworker.js), so finding the face never holds up the
+// preview, the buttons or the shutter, however slow the phone. The preview always draws with
+// the newest points it has; one small copy of the frame is in the worker at a time.
+const liveFace = { worker: null, ready: false, failed: false, busy: false, pts: null, seen: 0, cost: 0, sent: 0, size: null };
+const FACE_SIDE = 320;   // the model looks at a 256px face crop, so a small frame loses nothing
 function liveFinder() {
-  if (!liveFace.loading) liveFace.loading = (async () => {
-    const { vision, fileset } = await visionLib();
-    const make = (delegate) => vision.FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: native ? "vendor/face_landmarker.task" : FACE_MODEL, delegate }, runningMode: "VIDEO", numFaces: 1,
-    });
-    try { liveFace.finder = await make("GPU"); } catch { liveFace.finder = await make("CPU"); }
-    liveFace.failed = false;
-  })().catch(() => { liveFace.failed = true; liveFace.loading = null; });
-  return liveFace.loading;
+  if (liveFace.worker || liveFace.failed) return;
+  try {
+    const base = native ? new URL("vendor/mediapipe", location.href).href : MP_CDN;
+    const model = native ? new URL("vendor/face_landmarker.task", location.href).href : FACE_MODEL;
+    const w = (liveFace.worker = new Worker("faceworker.js"));
+    w.onmessage = (e) => onFaceMessage(e.data);
+    w.onerror = () => onFaceMessage({ type: "failed" });
+    w.postMessage({ type: "init", base, model });
+  } catch { liveFace.failed = true; }
 }
-// Finds the face in the current frame and eases the points toward it, so makeup doesn't shimmer
-// when the face is still but keeps up when it moves. Slow phones, and frames with no face, look every other frame.
+function onFaceMessage(m) {
+  if (m.type === "ready") { liveFace.ready = true; liveFace.failed = false; }
+  else if (m.type === "failed") { liveFace.error = m.error || "worker error"; liveFace.ready = false; liveFace.failed = true; liveFace.busy = false; resetFace(); }
+  else if (m.type === "result") { liveFace.busy = false; liveFace.cost = liveFace.cost * 0.8 + m.cost * 0.2; takeFace(m.pts); }
+  if (typeof renderAdjNote === "function") renderAdjNote();
+}
+// Sends the worker a small copy of the current frame when it is free. Frames with no face in
+// view are checked about 5 times a second, to save battery.
+const faceCopy = newCanvas(1, 1);
 function trackFace(video) {
-  const f = liveFace.finder;
-  if (!f || video.readyState < 2) return;
-  liveFace.frame++;
-  if ((liveFace.cost > 24 || !liveFace.seen) && liveFace.frame % 2) return;   // also rests while no face is in view
-  const t0 = performance.now(), t = Math.max(t0, liveFace.lastT + 1);
-  let res;
-  try { res = f.detectForVideo(video, t); } catch { return; }
-  liveFace.lastT = t;
-  liveFace.cost = liveFace.cost * 0.85 + (performance.now() - t0) * 0.15;
-  const lm = res && res.faceLandmarks && res.faceLandmarks[0];
-  if (!lm) { liveFace.seen = Math.max(0, liveFace.seen - 0.2); return; }
-  const W = video.videoWidth, H = video.videoHeight, raw = lm.map((p) => [p.x * W, p.y * H]);
+  if (!liveFace.ready || liveFace.busy || video.readyState < 2 || !video.videoWidth) return;
+  const now = performance.now();
+  if (now - liveFace.sent < (liveFace.seen ? 30 : 200)) return;
+  const W = video.videoWidth, H = video.videoHeight, s = Math.min(1, FACE_SIDE / Math.max(W, H));
+  const w = Math.round(W * s), h = Math.round(H * s);
+  if (faceCopy.width !== w || faceCopy.height !== h) { faceCopy.width = w; faceCopy.height = h; }
+  faceCopy.getContext("2d").drawImage(video, 0, 0, w, h);
+  liveFace.busy = true; liveFace.sent = now; liveFace.size = [W, H];
+  createImageBitmap(faceCopy).then((image) => {
+    if (!liveFace.worker) { image.close(); return; }
+    liveFace.worker.postMessage({ type: "frame", image, t: now }, [image]);
+  }).catch(() => { liveFace.busy = false; });
+}
+// Eases the points toward the new ones, so makeup doesn't shimmer when the face is still but
+// keeps up when it moves.
+function takeFace(norm) {
+  if (!norm || !liveFace.size) { liveFace.seen = Math.max(0, liveFace.seen - 0.34); if (!liveFace.seen) liveFace.pts = null; return; }
+  const [W, H] = liveFace.size, raw = [];
+  for (let i = 0; i < norm.length; i += 2) raw.push([norm[i] * W, norm[i + 1] * H]);
   const old = liveFace.pts;
-  if (!old || liveFace.seen === 0) liveFace.pts = raw;
+  if (!old || !liveFace.seen || old.length !== raw.length) liveFace.pts = raw;
   else {
     const faceW = Math.max(1, dist(raw[LIVE_PTS.cheekL], raw[LIVE_PTS.cheekR]));
     const move = [1, 33, 263, 61, 291, 152].reduce((s, i) => s + dist(raw[i], old[i]), 0) / 6 / faceW;
-    const k = Math.min(1, 0.3 + move * 12);
+    const k = Math.min(1, 0.4 + move * 12);
     liveFace.pts = old.map((o, i) => [o[0] + (raw[i][0] - o[0]) * k, o[1] + (raw[i][1] - o[1]) * k]);
   }
-  liveFace.seen = Math.min(1, liveFace.seen + 0.34);
+  liveFace.seen = Math.min(1, liveFace.seen + 0.5);
 }
-function resetFace() { liveFace.pts = null; liveFace.seen = 0; }
+function resetFace() { liveFace.pts = null; liveFace.seen = 0; liveFace.size = null; }   // a late answer is then ignored
 
 // ---------- Masks ----------
 // Two small canvases in the camera's pixels. A is coarse, so its edges blend over a wide band:
@@ -217,13 +234,15 @@ function drawMasks(W, H, P) {
 // ---------- Drawing ----------
 const rgb01 = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
 // Draws one camera frame with look `b`. `plain` shows the untouched frame (hold to compare).
+// w and h are the camera's size: the look is worked out in camera pixels, whatever size the
+// canvas is, so a small preview and the full-size photo look the same.
 function drawLive(g, video, w, h, mirror, b, plain) {
   const { gl, u } = g;
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, g.tex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
-  const P = liveFace.pts, on = !!(P && liveFace.seen > 0 && liveFace.finder);
+  const P = liveFace.pts, on = !!(P && liveFace.seen > 0 && liveFace.ready);
   // Until the face model is ready (or if it can't load), smoothing covers the whole frame as before.
-  const face = on || (liveFace.finder && !liveFace.failed);
+  const face = on || (liveFace.ready && !liveFace.failed);
   gl.uniform2f(u.size, w, h);
   gl.uniform1f(u.mirror, mirror ? 1 : 0);
   gl.uniform1f(u.plain, plain ? 1 : 0);
@@ -250,7 +269,7 @@ function drawLive(g, video, w, h, mirror, b, plain) {
     gl.uniform4f(u.eyeL, 0, 0, 1, 0); gl.uniform4f(u.eyeR, 0, 0, 1, 0);
     if (on) setShape(g, P, amt);
   }
-  gl.viewport(0, 0, w, h);
+  gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 // The reshape controls, kept as gentle as the still-photo tools.

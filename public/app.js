@@ -2597,7 +2597,7 @@ function renderAdjNote() {
   const msg = !faceTab || cam.state !== "live" ? ""
     : liveFace.failed ? "Face effects couldn't load. Check your connection, then reopen the camera."
     : !cam.gl || !cam.gl.live ? "Face effects aren't available on this device."
-    : !liveFace.finder ? "Getting face effects ready…"
+    : !liveFace.ready ? "Getting face effects ready…"
     : !liveFace.seen ? "Point the camera at a face to see these." : "";
   if ($("adjNote").textContent !== msg) $("adjNote").textContent = msg;
   $("adjNote").hidden = !msg;
@@ -2657,7 +2657,7 @@ async function startCamera() {
   const gen = cam.gen;
   camState("starting");
   cam.gl = cam.gl || initLive($("camCanvas")) || initGl($("camCanvas"));
-  if (cam.gl && cam.gl.live) liveFinder().then(renderAdjNote);
+  if (cam.gl && cam.gl.live) liveFinder();
   renderLooks();
   $("camNote").hidden = !!cam.gl;
   $("camNote").textContent = "Live looks aren't available on this device. Your photo is captured as is; tap Edit photo afterwards to add looks, filters and retouching.";
@@ -2688,16 +2688,21 @@ function stopCamera() {
   cam.stream = null; resetFace(); endCompare();
   const v = $("camVideo"); if (v.srcObject) { v.pause(); v.srcObject = null; }
 }
+const LIVE_PREVIEW = Math.round(Math.min(1280, Math.max(window.screen.width, window.screen.height) * Math.min(2, devicePixelRatio || 1)));
 function drawFrame() {
   const v = $("camVideo"), c = $("camCanvas");
   if (!cam.stream) return;
   if (v.videoWidth) {
-    if (c.width !== v.videoWidth) { c.width = v.videoWidth; c.height = v.videoHeight; if (cam.gl) cam.gl.gl.viewport(0, 0, c.width, c.height); }
+    // The live look is drawn at about screen size (it is worked out in camera pixels, so it
+    // looks the same); the photo itself is drawn at full size when the shutter is pressed.
+    const s = cam.gl && cam.gl.live ? Math.min(1, LIVE_PREVIEW / Math.max(v.videoWidth, v.videoHeight)) : 1;
+    const cw = Math.round(v.videoWidth * s), ch = Math.round(v.videoHeight * s);
+    if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; if (cam.gl) cam.gl.gl.viewport(0, 0, c.width, c.height); }
     if (cam.gl && cam.gl.live) {
       const seen = liveFace.seen > 0;
       // The Original look (no smoothing, reshape or makeup) needs no face tracking.
       if (beauty.smooth || LIVE_KEYS.some((k) => beauty[k])) trackFace(v); else resetFace();
-      drawLive(cam.gl, v, c.width, c.height, cam.facing === "user", beauty, cam.compare);
+      drawLive(cam.gl, v, v.videoWidth, v.videoHeight, cam.facing === "user", beauty, cam.compare);
       if (seen !== liveFace.seen > 0) renderAdjNote();
     } else if (cam.gl) {
       const { gl } = cam.gl;
@@ -2751,6 +2756,11 @@ $("shutter").addEventListener("click", async () => {
     if (cam.facing === "user") { octx.translate(o.width, 0); octx.scale(-1, 1); }
     octx.drawImage(v, 0, 0);
     const looked = cam.gl && !isOriginalLook();
+    if (looked && cam.gl.live) {
+      // One frame at the camera's full size for the photo; the next preview frame shrinks it back.
+      const c = $("camCanvas"); c.width = v.videoWidth; c.height = v.videoHeight;
+      drawLive(cam.gl, v, v.videoWidth, v.videoHeight, cam.facing === "user", beauty, false);
+    }
     const processed = looked ? withFilter($("camCanvas"), o.width, o.height, beauty.filter) : null;
     const stamp = Date.now();
     shot = { raw: o.toDataURL("image/jpeg", 0.92), rawBlob: await canvasBlob(o), processed, w: o.width, h: o.height,
