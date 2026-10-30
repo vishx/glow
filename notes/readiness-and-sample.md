@@ -7,7 +7,7 @@ published, or changed in billing, Supabase or Vercel.
 |---|---|
 | `3f669db` | Readiness: full-size export, camera auto-save, AI job recovery, accessibility, `npm test` |
 | `5cd4c06` | Backend change for AI job recovery, **prepared only, not deployed** |
-| (latest) | Free sample demo with prepared AI previews; the AI pipeline shared with the generator |
+| `cf92cc6` | Free sample demo with prepared AI previews; the AI pipeline shared with the generator |
 
 Screenshots are in `notes/shots/`. The files whose names end in `-TESTASSET` show the demo with
 test stand-in results, which are tone changes, not Glow output.
