@@ -1,0 +1,37 @@
+# One-off (approved by the owner on 2026-10-30): runs every Glow AI tool once on the new sample
+# portrait with tools/demo/all/all-tools.ts and commits the results to this branch. Replicate is
+# reached through a temporary Supabase function that checks this workflow's GitHub OIDC token, so
+# there is no shared secret and the Replicate token never leaves Supabase. Remove once done.
+name: Demo previews
+on:
+  push:
+    branches: [demo-gen]
+    paths: [.github/workflows/demo-previews.yml]
+permissions:
+  contents: write
+  id-token: write
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run every AI tool on the sample
+        env:
+          REPLICATE_API_BASE: https://vahtdouihsnpnaskrtka.supabase.co/functions/v1/demo-gen
+          DENO_NO_PACKAGE_JSON: "1"
+        run: |
+          REPLICATE_API_TOKEN=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=glow-demo-gen" | jq -r .value)
+          export REPLICATE_API_TOKEN
+          deno run --node-modules-dir=none --allow-env --allow-net --allow-read --allow-write tools/demo/all/all-tools.ts
+      - name: Commit
+        if: always()
+        run: |
+          git config user.name "glow-demo-previews"
+          git config user.email "actions@users.noreply.github.com"
+          git add tools/demo/all/out
+          git commit -m "Every AI tool on the new sample portrait" || echo "nothing to commit"
+          git push origin HEAD:demo-gen
