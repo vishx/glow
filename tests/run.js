@@ -1588,8 +1588,8 @@ if (faceVideo) test('camera live: Adjust tabs, one makeup part at a time, and lo
   eq(await p.evaluate(() => [beauty.eyes, lookId]), [60, 'custom'], 'Eye size changes the look');
   await p.click('[data-adj="makeup"]'); await p.click('[data-part="blush"]');
   eq(await p.textContent('#sMakeupName'), 'Blush', 'blush slider');
-  eq(await p.locator('#swMakeup .swatch').count(), 4, 'blush shades');
-  await p.click('#swMakeup .swatch:nth-child(2)');
+  eq(await p.locator('#swMakeup .cam-swatch').count(), 4, 'blush shades');
+  await p.click('#swMakeup .cam-swatch:nth-child(2)');
   eq(await p.evaluate(() => beauty.blushShade), '#ff7f98', 'shade picked');
   await p.click('.look.add');
   const saved = await p.evaluate(() => myLooks[myLooks.length - 1]);

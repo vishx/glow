@@ -58,7 +58,7 @@ exports.launch = async (opts = {}) => {
   if (opts.init) await ctx.addInitScript(opts.init);
   // Glow opens on Enhance by default; most checks here start where they always did (Camera), and
   // the Enhance checks pass start: 'enhance'.
-  if (opts.onboarded !== false) await ctx.addInitScript((start) => { localStorage.setItem('glowOnboarded', '1'); localStorage.setItem('glowStart', start); }, opts.start || 'camera');
+  if (opts.onboarded !== false) await ctx.addInitScript((start) => { localStorage.setItem('glowOnboarded', '1'); localStorage.setItem('glowStart', start); if (!localStorage.getItem('glowLastDest')) localStorage.setItem('glowLastDest', start); }, opts.start || 'camera');
   const p = await ctx.newPage();
   const state = { used: 0, plan: opts.plan || 'free', quota: opts.quota || 3, posts: [], polls: 0, lookups: 0, refunds: 0, errs: [], downloads: [],
     ai: { ...defaultAi(), ...(opts.ai || {}) }, jobs: {}, flaked: {}, authFail: !!opts.authFail };

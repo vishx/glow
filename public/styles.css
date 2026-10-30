@@ -818,8 +818,8 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
 .adj-tabs button[aria-selected="true"] { background: #ffffff1f; color: #fff; }
 .adj-group { display: grid; gap: var(--s1); }
 .swatches { display: flex; gap: var(--s2); padding: 0 0 var(--s1) calc(6.5rem + var(--s2)); }
-.swatch { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #000; box-shadow: 0 0 0 1px #ffffff55; padding: 0; }
-.swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--rose); }
+.cam-swatch { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #000; box-shadow: 0 0 0 1px #ffffff55; padding: 0; }
+.cam-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--rose); }
 .adj-note { margin: 0; color: #ffffffb3; font-size: 0.8125rem; text-align: center; }
 .vf-pill { position: absolute; top: var(--s3); left: 50%; transform: translateX(-50%); margin: 0; padding: 4px var(--s3); border-radius: 14px;
   background: var(--scrim); color: #fff; font-size: 0.8125rem; font-weight: 600; pointer-events: none; }

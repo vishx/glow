@@ -2512,7 +2512,7 @@ function renderLooks() {
   $("sMakeupName").textContent = partName; $("swMakeup").setAttribute("aria-label", `${partName} shade`);
   $("sMakeup").value = mv; $("sMakeup").nextElementSibling.textContent = mv; $("sMakeup").setAttribute("aria-valuetext", `${mv} percent`);
   $("swMakeup").replaceChildren(...LIVE_SHADES[makeupPart].map((hex, i) => {
-    const b = document.createElement("button"); b.className = "swatch"; b.style.background = hex;
+    const b = document.createElement("button"); b.className = "cam-swatch"; b.style.background = hex;
     b.setAttribute("aria-label", `Shade ${i + 1}`); b.setAttribute("aria-pressed", String(beauty[sk] === hex));
     b.addEventListener("click", () => {
       beauty[sk] = hex; if (!beauty[makeupPart]) beauty[makeupPart] = 40;
