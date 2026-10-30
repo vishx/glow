@@ -4,9 +4,15 @@ Branch `redesign/camera-editor`. This builds on the redesign and the readiness p
 `notes/readiness-and-sample.md`, which is still accurate for camera saving, export quality and AI
 job recovery.
 
-Everything below is on the branch only. The live site still runs the previous push of this branch
-(commit `ef32ac0`, deployed 2026-10-30 with the owner's OK). It has the sample with on-device
-tools only, and none of the changes listed here.
+Everything below is on the branch only.
+
+- **Live site.** It still runs the previous push of this branch (commit `ef32ac0`, deployed
+  2026-10-30 with the owner's OK). It has the sample with on-device tools only, and none of the
+  changes listed here.
+- **Preview.** A Vercel preview deployment (not production) of commit `652f083` is at
+  https://glow-photo-enhancer-git-redesign-camera-editor-mo-zone360.vercel.app. It needs a Vercel
+  sign-in, because the project has deployment protection on.
+- **Not in the preview.** The handoff notes and screenshots were committed after `652f083`.
 
 ## 1. What changed
 
