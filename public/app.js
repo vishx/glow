@@ -2212,9 +2212,9 @@ $("saveBtn").addEventListener("click", saveEdit);
 const isPro = () => !!(account && account.plan === "pro");
 let shareOffered = false;
 async function markFonts() {
-  try { await Promise.all([document.fonts.load('600 40px "Cormorant Garamond"'), document.fonts.load("600 20px Manrope")]); } catch {}
+  try { await Promise.all([document.fonts.load('500 40px Fraunces'), document.fonts.load("600 20px Figtree")]); } catch {}
 }
-const MARK_SERIF = (px) => `600 ${px}px "Cormorant Garamond", Georgia, serif`, MARK_SANS = (px) => `600 ${px}px Manrope, system-ui, sans-serif`;
+const MARK_SERIF = (px) => `500 ${px}px Fraunces, Georgia, serif`, MARK_SANS = (px) => `600 ${px}px Figtree, system-ui, sans-serif`;
 // Sized from the picture's shorter side, with an inset of most of a letter height. The address
 // is left out when it would be too small to read or take more than half the width.
 function markLayout(ctx, w, h) {
