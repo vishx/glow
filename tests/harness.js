@@ -50,6 +50,8 @@ exports.launch = async (opts = {}) => {
     const q = navigator.permissions.query.bind(navigator.permissions);
     navigator.permissions.query = (d) => d.name === 'camera' ? Promise.resolve({ state: 'denied', addEventListener() {} }) : q(d);
   });
+  // The one-time "Free saves include a small Glow mark" note is assumed seen, except in the tests about it.
+  if (!opts.markIntro) await ctx.addInitScript(() => { localStorage.setItem('glowMarkSeen', '1'); });
   if (opts.init) await ctx.addInitScript(opts.init);
   if (opts.onboarded !== false) await ctx.addInitScript((start) => { localStorage.setItem('glowOnboarded', '1'); if (start) localStorage.setItem('glowStart', start); }, opts.start || '');
   const p = await ctx.newPage();

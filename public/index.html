@@ -140,6 +140,7 @@
       </div>
     </header>
     <div class="canvas-col">
+      <p class="demo-note" id="demoNote" hidden>Demo · AI-generated sample, not a real person</p>
       <div class="stage" id="stage" data-view="edited">
         <div class="frame" id="frame">
           <div class="view" id="view">
@@ -151,7 +152,6 @@
           </div>
           <span class="tag left" id="tagLeft"></span>
           <span class="tag right" id="tagRight"></span>
-          <span class="tag bottom" id="tagSample" hidden>Demo · AI-generated sample</span>
         </div>
         <canvas id="brush" hidden></canvas>
         <div class="crop-view" id="cropView" hidden tabindex="0" role="application" aria-roledescription="crop area"
@@ -166,6 +166,7 @@
           </div>
           <p class="crop-hint" id="cropHint">Drag to reposition · Pinch to zoom</p>
         </div>
+        <button class="icon-btn viewer-toggle" id="expandView" aria-label="Expand photo" aria-pressed="false"></button>
         <div class="zoomctl" id="zoomCtl" role="group" aria-label="Photo zoom">
           <button class="icon-btn" id="zoomIn" aria-label="Zoom in"></button>
           <button class="icon-btn" id="zoomOut" aria-label="Zoom out"></button>
@@ -308,6 +309,7 @@
 <dialog class="alert" id="ask" aria-labelledby="askTitle">
   <h2 class="t-section" id="askTitle"></h2>
   <p id="askText"></p>
+  <figure class="ask-figure" id="askFigure" hidden><img id="askImg" alt=""><figcaption id="askCaption"></figcaption></figure>
   <div class="stack" id="askActions"></div>
 </dialog>
 

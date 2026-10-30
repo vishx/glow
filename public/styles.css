@@ -8,7 +8,7 @@
   --bg: #121014; --surface: #201b21; --surface-2: #2a242b; --line: #3d343f; --control: #857682;
   --text: #faf5f7; --muted: #bfb2bc; --accent: #f0b8cc; --on-accent: #28131e;
   --tint: rgb(240 184 204 / 0.12); --free: #9fd8b0; --danger: #ffa3a3; --scrim: rgb(18 16 20 / 0.72);
-  --checker-a: #2a232b; --checker-b: #201b21;
+  --checker-a: #2a232b; --checker-b: #201b21; --viewer: #1d1a1f;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
@@ -16,7 +16,7 @@
     --bg: #fbf7f8; --surface: #ffffff; --surface-2: #f4edf1; --line: #e8dee5; --control: #82727d;
     --text: #281e25; --muted: #72646f; --accent: #813b59; --on-accent: #ffffff;
     --tint: rgb(129 59 89 / 0.08); --free: #2c6e48; --danger: #b3261e; --scrim: rgb(40 30 37 / 0.45);
-    --checker-a: #efe7ec; --checker-b: #ffffff;
+    --checker-a: #efe7ec; --checker-b: #ffffff; --viewer: #f2ebe3;
   }
 }
 :root[data-theme="light"] {
@@ -24,7 +24,7 @@
   --bg: #fbf7f8; --surface: #ffffff; --surface-2: #f4edf1; --line: #e8dee5; --control: #82727d;
   --text: #281e25; --muted: #72646f; --accent: #813b59; --on-accent: #ffffff;
   --tint: rgb(129 59 89 / 0.08); --free: #2c6e48; --danger: #b3261e; --scrim: rgb(40 30 37 / 0.45);
-  --checker-a: #efe7ec; --checker-b: #ffffff;
+  --checker-a: #efe7ec; --checker-b: #ffffff; --viewer: #f2ebe3;
 }
 :root {
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
@@ -114,6 +114,7 @@ a { color: var(--accent); }
   opacity: 0; pointer-events: none; transition: opacity var(--t-result); }
 .toast.on { opacity: 1; pointer-events: auto; }
 .toast.err { box-shadow: 0 0 0 1px var(--danger); }
+.toast-act { min-height: 44px; margin: -10px -8px -10px 4px; padding: 0 var(--s3); border: 0; background: none; color: var(--accent); font-weight: 700; }
 
 /* ---------- Camera ---------- */
 #cameraScreen { max-width: none; background: #000; color: var(--text); }
@@ -201,7 +202,8 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 /* Layout: the photo takes whatever height is left. Everything under it (view bar, demo bar,
    tabs, the chip/search slot and the tool row) has a fixed height, so switching categories
    never resizes the photo. */
-#editorScreen { max-width: 560px; --canvas: #18171b; --tile-h: calc(8px + 40px + 4px + 1rem); --tools-h: calc(var(--s2) * 2 + 1rem + 2px + var(--tile-h)); }
+/* The photo's surround: warm ivory in light mode, a quiet neutral in dark mode. On screen only. */
+#editorScreen { max-width: 560px; --canvas: var(--viewer); --tile-h: calc(8px + 40px + 4px + 1rem); --tools-h: calc(var(--s2) * 2 + 1rem + 2px + var(--tile-h)); }
 .canvas-col { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .stage { position: relative; flex: 1 1 auto; min-height: 160px; margin: 0 var(--gutter); border-radius: 16px; overflow: hidden;
   background: var(--canvas); touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -232,7 +234,21 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .tag { position: absolute; top: var(--s2); padding: 2px var(--s2); border-radius: 8px; background: rgb(18 16 20 / 0.72); color: #fff;
   font-size: 0.75rem; line-height: 1.125rem; font-weight: 600; pointer-events: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .frame .tag { top: calc(var(--vy, 0px) + var(--s2)); }
-.tag.left { left: calc(var(--vx, 0px) + var(--s2)); } .tag.right { right: calc(100% - var(--vx, 0px) - var(--vw, 100%) + var(--s2)); }
+.tag.left { left: calc(var(--vx, 0px) + var(--s2)); } .tag.right { right: max(calc(100% - var(--vx, 0px) - var(--vw, 100%) + var(--s2)), 56px); }
+/* Expand / close full view: always there, small, top-right of the viewer. */
+.viewer-toggle { position: absolute; top: var(--s1); right: var(--s1); border-radius: 50%; color: #fff; }
+.viewer-toggle::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: rgb(18 16 20 / 0.55); }
+.viewer-toggle svg { position: relative; width: 18px; height: 18px; }
+.stage.cropping .viewer-toggle, .stage:not(.has-photo) .viewer-toggle { display: none; }
+/* Demo: one small line above the photo, never on it. */
+.demo-note { flex: none; margin: 0 var(--gutter) var(--s1); color: var(--muted); font-size: 0.75rem; line-height: 1rem; text-align: center; }
+/* Full view: everything but the photo and Original / Compare / Edited steps aside. */
+#editorScreen.viewer-expanded .topbar, #editorScreen.viewer-expanded .side, #editorScreen.viewer-expanded .history,
+#editorScreen.viewer-expanded .demo-note { display: none; }
+#editorScreen.viewer-expanded .stage { margin: 0; border-radius: 0; }
+#editorScreen.viewer-expanded .viewbar { justify-content: center; padding-bottom: calc(var(--s2) + env(safe-area-inset-bottom)); }
+#editorScreen.viewer-expanded .canvas-col { grid-column: 1 / -1; grid-row: 1 / -1; padding: 0; }
+#editorScreen.viewer-expanded .viewer-toggle { top: var(--s2); right: var(--s2); }
 .frame.narrow .tag.bottom { display: none; }
 .frame.narrow .tag { font-size: 0.6875rem; max-width: 48%; }
 .frame .tag.bottom { top: auto; bottom: calc(100% - var(--vy, 0px) - var(--vh, 100%) + var(--s2)); left: calc(var(--vx, 0px) + var(--s2)); max-width: calc(var(--vw, 100%) - 72px); }
@@ -432,7 +448,8 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 /* Phones: the controls under the photo keep one height (the dock), so the photo keeps its size
    while tools open and change. Collapsing the panel, or expanding All, is the only way it grows. */
 @media (max-width: 959px) {
-  #editorScreen { --dock-h: 274px; }   /* tool row + a panel with a one-line note and a slider */
+  #editorScreen { --dock-h: 274px; }
+  #editorScreen .stage { margin: 0; border-radius: 0; }   /* edge to edge: a portrait gets the full width */   /* tool row + a panel with a one-line note and a slider */
   #editorScreen .side { display: flex; flex-direction: column; flex: none; min-height: 0; height: calc(var(--dock-h) + env(safe-area-inset-bottom)); overflow: hidden; }
   #editorScreen .side > .tools { flex: 1 1 auto; height: auto; min-height: 0; }
   #editorScreen.editing-tool .side > .tools { flex: none; height: calc(var(--s2) * 2 + var(--tile-h)); }
@@ -496,6 +513,9 @@ dialog.sheet[open] { animation: sheet var(--t-sheet) cubic-bezier(.2, .8, .2, 1)
 @keyframes sheet { from { transform: translateY(40px); opacity: 0.4; } }
 @media (min-width: 600px) { dialog.sheet { margin: auto; border-radius: var(--r-sheet); width: min(92vw, 480px); } }
 dialog.alert { width: min(92vw, 400px); border-radius: var(--r-card); padding: var(--s5); }
+.ask-figure { margin: var(--s3) 0 0; }
+.ask-figure img { display: block; width: 100%; max-height: 46dvh; object-fit: contain; border-radius: var(--r-well); background: var(--surface-2); }
+.ask-figure figcaption { margin-top: var(--s1); color: var(--muted); font-size: 0.8125rem; text-align: center; }
 .sheet-head { display: flex; align-items: flex-start; gap: var(--s2); margin-bottom: var(--s3); }
 .sheet-head > :first-child { flex: 1; }
 .sheet-head .icon-btn { margin: -10px -10px 0 0; }

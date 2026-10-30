@@ -334,7 +334,8 @@ test('demo: Try a sample opens the attached original with demo labels', async ({
   const o = await p.evaluate(async () => { const b = new Uint8Array(await ed.original.blob.arrayBuffer()); const h = await crypto.subtle.digest('SHA-256', b);
     return { w: ed.original.w, h: ed.original.h, sha: [...new Uint8Array(h)].map((x) => x.toString(16).padStart(2, '0')).join('') }; });
   eq(o, { w: 1122, h: 1402, sha: demoManifest.original.sha256 }, 'unchanged original');
-  eq((await p.textContent('#tagSample')).trim(), 'Demo · AI-generated sample', 'demo and source label on the photo'); assert(await p.isVisible('#tagSample'), 'label shown');
+  assert(/AI-generated sample/.test(await p.textContent('#demoNote')) && await p.isVisible('#demoNote'), 'demo label shown');
+  const nb = await p.evaluate(() => [$('demoNote').getBoundingClientRect().bottom, $('stage').getBoundingClientRect().top]); assert(nb[0] <= nb[1], 'demo label is outside the photo');
   const row = await p.evaluate(() => { const b = $('demoOwnBtn').getBoundingClientRect(), st = $('stage').getBoundingClientRect(); return { inHeader: b.bottom <= st.top, bh: b.height, name: $('demoOwnBtn').getAttribute('aria-label') }; });
   eq([row.inHeader, row.bh >= 44, row.name], [true, true, 'Use your photo'], 'compact Use your photo action in the header');
   assert(/Free demo/.test(await p.textContent('#toast')), 'the free demo is explained once');
@@ -429,7 +430,7 @@ test('demo: Try your own photo exits the demo completely, then real AI is charge
   await tool(p, 'foryou', null, 'pro'); await p.waitForFunction(() => ed.idx === 1);
   const fc = p.waitForEvent('filechooser'); await p.click('#demoOwnBtn'); await (await fc).setFiles(fx('phone-12mp-exif6.jpg'));
   await p.waitForFunction(() => !ed.demo && ed.original && ed.original.w === 3024, null, { timeout: 15000 });
-  const s = await p.evaluate(() => ({ demo: !!demo, bar: $('demoBar').hidden, sel, n: ed.hist.length, badge: $('tagSample').hidden && !$('tagRight').textContent, amt: faceSet.amt.fsmooth,
+  const s = await p.evaluate(() => ({ demo: !!demo, bar: $('demoBar').hidden, sel, n: ed.hist.length, badge: $('demoNote').hidden && !$('tagRight').textContent, amt: faceSet.amt.fsmooth,
     costs: [...document.querySelectorAll('.tool .cost')].map((c) => c.textContent) }));
   eq([s.demo, s.bar, s.sel, s.n, s.badge], [false, true, null, 1, true], 'no demo state, labels gone, nothing selected, no sample result carried');
   eq(s.amt, faceBefore, 'tool settings restored'); assert(s.costs.includes('AI · 1'), 'real pricing back: ' + s.costs);
@@ -525,14 +526,14 @@ for (const [w, h] of [[390, 844], [320, 640], [412, 915]]) test(`layout: categor
   }
 }, { viewport: { width: w, height: h } });
 
-test('layout: charcoal canvas in both themes, photo contained, edited view first, compare only after an edit', async ({ p, state }) => {
+test('layout: ivory (light) and neutral (dark) surround, photo contained, edited view first, compare only after an edit', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   const bg = () => p.evaluate(() => getComputedStyle($('stage')).backgroundColor);
-  eq(await bg(), 'rgb(24, 23, 27)', 'dark');
-  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(24, 23, 27)', 'light');
+  eq(await bg(), 'rgb(29, 26, 31)', 'dark: quiet neutral');
+  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(242, 235, 227)', 'light: warm ivory');
   const st = await p.evaluate(() => ({ view: $('stage').dataset.view, disabled: [...document.querySelectorAll('.views button')].map((b) => b.disabled), radius: getComputedStyle($('stage')).borderTopLeftRadius,
     fit: getComputedStyle($('before')).objectFit, frame: (() => { const f = $('view').getBoundingClientRect(), s = $('stage').getBoundingClientRect(); return f.width <= s.width + 0.5 && f.height <= s.height + 0.5 && Math.abs(f.width / f.height - ed.original.w / ed.original.h) < 0.02; })() }));
-  eq(st, { view: 'edited', disabled: [true, true, true], radius: '16px', fit: 'contain', frame: true }, 'before any edit');
+  eq(st, { view: 'edited', disabled: [true, true, true], radius: '0px', fit: 'contain', frame: true }, 'before any edit (edge to edge on phones)');
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending);
   eq(await p.evaluate(() => [$('stage').dataset.view, [...document.querySelectorAll('.views button')].map((b) => b.disabled)]), ['edited', [false, false, false]], 'comparison available once there is a preview');
   eq(await p.isVisible('#divider'), false, 'no divider outside Compare');
@@ -908,6 +909,17 @@ test('zoom: with the erase brush one finger draws and two fingers navigate', asy
   const pt = await p.evaluate(() => { const r = imageRect(), q = strokes[strokes.length - 1].pts[0], st = $('stage').getBoundingClientRect(); return [st.left + r.x + q[0] * r.s, st.top + r.y + q[1] * r.s]; });
   near(pt[0], cx, 1, 'stroke under the finger (x)'); near(pt[1], cy, 1, '(y)');
 }, { viewport: { width: 390, height: 844 } });
+test('filters: a Strength slider blends the filter; 100 is the full filter and the saved file follows it', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'looks', 'filters', 'filter:vivid'); await p.waitForFunction(() => !!ed.pending); const full = await p.evaluate(() => ed.pending.data);
+  await p.fill('.panel input[type=range]', '40'); await p.waitForFunction((f) => ed.pending && ed.pending.data !== f, full); await idle(p);
+  await p.click('#applyBtn'); await idle(p);
+  const r = await p.evaluate(async () => { const px = async (s) => { const i = await loadImg(s), c = newCanvas(64, 64), x = c.getContext('2d'); x.drawImage(i, 0, 0, 64, 64); return x.getImageData(0, 0, 64, 64).data; };
+    const o = await px(ed.hist[0].data), f = await px(await applyFilter(ed.hist[0].data, TOOL['filter:vivid'].filter)), e = await px((await renderExport()).data);
+    let df = 0, de = 0; for (let i = 0; i < o.length; i += 4) { df += Math.abs(f[i] - o[i]); de += Math.abs(e[i] - o[i]); }
+    return { op: ed.hist[ed.idx].op.amt, ratio: de / df }; });
+  eq(r.op, 0.4, 'strength recorded in the edit'); near(r.ratio, 0.4, 0.08, 'saved file is 40% of the filter');
+}, { viewport: { width: 390, height: 844 } });
 test('layout: on phones the photo keeps one size while tools open, change and close', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   const sizes = {}, box = async (n) => { await settle(400); sizes[n] = JSON.stringify(await stageBox(p)); };
@@ -944,6 +956,100 @@ test('layout: photo-first editor, collapsible panel, no sideways scroll on small
   eq(await p.getAttribute('#collapseBtn', 'aria-expanded'), 'false', 'collapse state is announced');
   await p.click('#collapseBtn'); await settle(150); near((await m()).stage, a.stage, 1, 'expands again');
 }, { viewport: { width: 320, height: 640 } });
+
+// ---------- Glow mark on free saves, Share Glow card, full view ----------
+const fileB64 = (f) => fs.readFileSync(f).toString('base64');
+// Pixel difference between two images of the same size, as the bounding box of changed pixels.
+const diffBox = (p, a, b) => p.evaluate(async ([a, b]) => {
+  const px = async (s) => { const i = await loadImg(s), c = newCanvas(i.naturalWidth, i.naturalHeight), x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(i, 0, 0); return { w: c.width, h: c.height, d: x.getImageData(0, 0, c.width, c.height).data }; };
+  const A = await px(a), B = await px(b); if (A.w !== B.w || A.h !== B.h) return { size: [A.w, A.h, B.w, B.h] };
+  let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+  for (let y = 0; y < A.h; y++) for (let x = 0; x < A.w; x++) { const i = (y * A.w + x) * 4; if (Math.abs(A.d[i] - B.d[i]) + Math.abs(A.d[i + 1] - B.d[i + 1]) + Math.abs(A.d[i + 2] - B.d[i + 2]) > 90) { if (x < x0) x0 = x; if (y < y0) y0 = y; if (x > x1) x1 = x; if (y > y1) y1 = y; } }
+  return { w: A.w, h: A.h, box: x1 < 0 ? null : [x0, y0, x1, y1] };
+}, [a, b]);
+const mime = (f) => /\.png$/.test(f) ? 'image/png' : 'image/jpeg';
+test('mark: free saves carry a small Glow mark bottom-right, shown once before the first save; no credit or request', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
+  await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
+  await p.click('#saveBtn'); await p.waitForSelector('#ask[open] #askImg');
+  eq(await p.textContent('#askTitle'), 'Free saves include a small Glow mark', 'disclosed before the first free save');
+  assert(await p.evaluate(() => $('askImg').naturalWidth > 100), 'shows a preview of the marked corner');
+  await p.click('#ask .btn:has-text("Save")'); const [d] = await downloads(state, 1);
+  const clean = await p.evaluate(async () => (await renderExport()).data);
+  const r = await diffBox(p, `data:${mime(d.file)};base64,${fileB64(d.file)}`, clean);
+  assert(r.box, 'the saved photo has a mark'); const [x0, y0, x1, y1] = r.box;
+  assert(x0 > r.w * 0.5 && y0 > r.h * 0.9, `only in the bottom-right corner: ${r.box} of ${r.w}x${r.h}`);
+  assert(x1 < r.w - 4 && y1 < r.h - 4, 'inset from the edges');
+  assert((x1 - x0) < r.w * 0.5 && (y1 - y0) < r.h * 0.06, 'small: ' + [x1 - x0, y1 - y0]);
+  eq(await p.evaluate(() => PUBLIC_HOST), 'glow-photo-enhancer.vercel.app', 'uses the configured production address');
+  // A second save in the session: no dialog again.
+  await tool(p, 'looks', 'filters', 'filter:warm'); await p.click('#applyBtn'); await idle(p);
+  await p.click('#saveBtn'); await downloads(state, 2); eq(await p.evaluate(() => $('ask').open), false, 'told once, not every save');
+  eq([state.posts.length, state.used, state.lookups], [0, 0, state.lookups], 'no AI request and no credit for marking');
+}, { viewport: { width: 390, height: 844 }, markIntro: true });
+test('mark: placed after crop and rotation, at small and large sizes; paid saves stay clean', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('coords-600x400.png'));
+  await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr);
+  await p.click('.panel .opt:has-text("Square")'); await p.click('[aria-label="Rotate 90°"]'); await settle(300);
+  await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); const [d] = await downloads(state, 1);
+  const clean = await p.evaluate(async () => (await renderExport()).data);
+  const r = await diffBox(p, `data:${mime(d.file)};base64,${fileB64(d.file)}`, clean);
+  assert(r.box && r.box[0] > r.w * 0.4 && r.box[1] > r.h * 0.85, `small cropped and rotated save: mark bottom-right ${r.box} of ${r.w}x${r.h}`);
+  eq(r.w, r.h, 'square crop kept');
+  await p.click('#backBtn'); await pick(p, fx('large-24mp.jpg'));
+  await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); const d2 = (await downloads(state, 2, 60000))[1];
+  const clean2 = await p.evaluate(async () => (await renderExport()).data);
+  const r2 = await diffBox(p, `data:${mime(d2.file)};base64,${fileB64(d2.file)}`, clean2);
+  assert(r2.box && r2.box[0] > r2.w * 0.5 && r2.box[1] > r2.h * 0.9 && (r2.box[2] - r2.box[0]) > r2.w * 0.1, `large save: proportional mark ${r2.box} of ${r2.w}x${r2.h}`);
+  eq([state.posts.length, state.used], [0, 0], 'no AI request, no credit');
+}, { viewport: { width: 390, height: 844 } });
+test('mark: Glow Pro saves have no mark', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
+  await p.waitForFunction(() => account && account.plan === 'pro');
+  await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
+  await p.click('#saveBtn'); const [d] = await downloads(state, 1);
+  eq(await p.evaluate(() => $('ask').open), false, 'no mark note for Pro');
+  const clean = await p.evaluate(async () => (await renderExport()).data);
+  eq(fileB64(d.file), clean.split(',')[1], 'saved file is exactly the clean export');
+}, { viewport: { width: 390, height: 844 }, plan: 'pro', markIntro: true });
+test('mark: Share and Download give the same marked file; Share Glow card only on request, and its QR scans', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
+  await p.evaluate(() => { window.__shared = []; navigator.canShare = () => true; navigator.share = async (d) => { for (const f of d.files) window.__shared.push(await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); })); }; });
+  await p.click('#saveBtn'); await p.waitForFunction(() => window.__shared.length === 1);
+  const shared = await p.evaluate(() => window.__shared[0]);
+  const expected = await p.evaluate(async () => { const o = await renderExport(); return (await addMark(o.data, isPng(o.data))).data; });
+  eq(shared.split(',')[1], expected.split(',')[1], 'share sheet gets the same marked file the download path makes');
+  eq(await p.evaluate(() => document.querySelectorAll('#ask[open]').length), 0, 'no card or dialog opened by itself');
+  assert(await p.isVisible('.toast-act'), 'a quiet Share Glow offer after saving'); eq(await p.textContent('.toast-act'), 'Share Glow', 'offer label');
+  await p.click('.toast-act'); await p.waitForSelector('#ask[open] #askImg');
+  eq(await p.evaluate(() => window.__shared.length), 1, 'nothing shared until chosen');
+  await p.addScriptTag({ path: path.join(__dirname, 'vendor', 'jsQR.js') });
+  const qr = await p.evaluate(async () => { const i = await loadImg($('askImg').src), c = newCanvas(i.naturalWidth, i.naturalHeight), x = c.getContext('2d'); x.drawImage(i, 0, 0);
+    const d = x.getImageData(0, c.height - 280, 340, 280); const r = jsQR(d.data, d.width, d.height); return r && r.data; });
+  eq(qr, 'https://glow-photo-enhancer.vercel.app', 'the card QR scans to the public address');
+  await p.click('#ask .btn:has-text("Save card")'); const [card] = await downloads(state, 1);
+  assert(/glow-share-card/.test(card.file), 'card saved only when chosen');
+  eq([state.posts.length, state.used], [0, 0], 'no AI request, no credit');
+}, { viewport: { width: 390, height: 844 } });
+test('view: full view keeps the preview, zoom and comparison, and Back closes it', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending);
+  await p.click('.views [data-view="split"]'); await p.evaluate(() => document.activeElement.blur()); await p.keyboard.press('+'); await settle(300);
+  const s0 = await viewState(p), h0 = s0.st.h; assert(s0.z > 1.5, 'zoomed with the keyboard');
+  await p.click('#expandView'); await settle(200);
+  const s1 = await viewState(p);
+  assert(s1.st.h > h0 + 150, `full view is much taller: ${h0} -> ${s1.st.h}`);
+  eq([s1.z, s1.pending === s0.pending, s1.hist, await p.evaluate(() => $('stage').dataset.view)], [s0.z, true, s0.hist, 'split'], 'zoom, preview and Compare kept');
+  eq(await p.evaluate(() => [getComputedStyle(document.querySelector('#editorScreen .topbar')).display, getComputedStyle(document.querySelector('#editorScreen .side')).display]), ['none', 'none'], 'header and tools step aside');
+  eq(await p.getAttribute('#expandView', 'aria-label'), 'Close full view', 'close button named');
+  near(s1.clipX, s1.divider, 1, 'comparison still aligned');
+  await p.goBack(); await settle(200);
+  const s2 = await viewState(p);
+  eq([await p.evaluate(() => [expanded, screen, sel])], [[false, 'editorScreen', 'filter:glow']], 'Back closes full view only');
+  near(s2.st.h, h0, 0.5, 'editing layout restored'); eq([s2.z, s2.pending === s0.pending, s2.hist], [s0.z, true, s0.hist], 'state unchanged');
+  await p.click('#expandView'); await p.keyboard.press('Escape'); await settle(100); eq(await p.evaluate(() => expanded), false, 'Escape closes too');
+}, { viewport: { width: 390, height: 844 } });
 
 // ---------- Runner ----------
 (async () => {

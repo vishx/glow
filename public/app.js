@@ -10,7 +10,12 @@ const CONFIG = {
   // From AdMob > Apps > Ad units (rewarded). These are Google's test units until real ones are added.
   admobRewardIos: "ca-app-pub-3940256099942544/1712485313",
   admobRewardAndroid: "ca-app-pub-3940256099942544/5224354917",
+  // Glow's public address: printed in the mark on free saves and encoded in the Share Glow
+  // QR card. This is the project's production domain on Vercel. Leave it "" and free saves
+  // show "Glow" alone and Share Glow is not offered.
+  publicUrl: "https://glow-photo-enhancer.vercel.app",
 };
+const PUBLIC_HOST = CONFIG.publicUrl ? new URL(CONFIG.publicUrl).host : "";
 
 // ---------- Tools ----------
 // kind: "ai" runs on the AI server and uses credits; every other kind runs on the device and is free.
@@ -82,19 +87,25 @@ const CROPS = [["Free", "free"], ["Original", 0], ["Square", 1], ["4:5", 4 / 5],
 
 // ---------- Small UI helpers ----------
 let toastTimer = 0;
-function say(text, isErr) {
+// action: an optional { label, run } shown as a small button in the toast.
+function say(text, isErr, action) {
   const t = $("toast");
   clearTimeout(toastTimer);
   if (!text) { t.classList.remove("on"); return; }
   t.textContent = text; t.classList.toggle("err", !!isErr); t.classList.add("on");
+  if (action) {
+    const b = document.createElement("button"); b.className = "toast-act"; b.textContent = action.label;
+    b.addEventListener("click", () => { t.classList.remove("on"); action.run(); }); t.append(" ", b);
+  }
   if (isErr) $("alertLive").textContent = text;
-  toastTimer = setTimeout(() => t.classList.remove("on"), isErr ? 7000 : 3800);
+  toastTimer = setTimeout(() => t.classList.remove("on"), isErr ? 7000 : action ? 7000 : 3800);
 }
 // A small in-app dialog. Resolves with the chosen action's value, or null.
-function ask({ title, text, actions }) {
+function ask({ title, text, actions, image, caption }) {
   return new Promise((done) => {
     const d = $("ask");
     $("askTitle").textContent = title; $("askText").textContent = text || ""; $("askText").hidden = !text;
+    $("askFigure").hidden = !image; $("askImg").src = image || ""; $("askImg").alt = caption || ""; $("askCaption").textContent = caption || "";
     $("askActions").replaceChildren(...actions.map((a) => {
       const b = document.createElement("button"); b.className = "btn" + (a.kind ? " " + a.kind : ""); b.textContent = a.label;
       b.addEventListener("click", () => { d.returnValue = a.value || ""; d.close(); }); return b;
@@ -110,7 +121,7 @@ document.querySelectorAll("[data-icon-li]").forEach((li) => li.insertAdjacentHTM
 document.querySelectorAll("dialog [data-close]").forEach((b) => { setIcon(b, "close"); b.addEventListener("click", () => b.closest("dialog").close()); });
 [["camSettingsBtn", "settings"], ["homeSettingsBtn", "settings"], ["backBtn", "back"], ["undoBtn", "undo"], ["redoBtn", "redo"], ["favBtn", "star"],
   ["camGallery", "gallery"], ["camFlip", "flip"], ["flashBtn", "flashoff"], ["obBack", "back"], ["expandBtn", "chevup"],
-  ["zoomIn", "zoomin"], ["zoomOut", "zoomout"], ["zoomFit", "fit"], ["collapseBtn", "chevdown"]].forEach(([id, n]) => setIcon($(id), n));
+  ["zoomIn", "zoomin"], ["zoomOut", "zoomout"], ["zoomFit", "fit"], ["collapseBtn", "chevdown"], ["expandView", "expand"]].forEach(([id, n]) => setIcon($(id), n));
 setIcon(document.querySelector("#handle i"), "compare");
 $("retakeBtn").innerHTML = icon("retake") + "<span>Retake</span>";
 const fmtTime = (d) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -490,7 +501,7 @@ function renderEditor() {
   const view = st.dataset.view;
   $("tagLeft").textContent = hasAfter && (view === "split" || view === "original") ? "Original" : "";
   $("tagRight").textContent = hasAfter && view === "split" ? editedName : hasAfter && view === "edited" && editedName !== "Edited" ? editedName : "";
-  $("demoBar").hidden = !ed.demo; $("tagSample").hidden = !ed.demo;
+  $("demoBar").hidden = !ed.demo; $("demoNote").hidden = !ed.demo;
   setSplit(ed.split);
   if ($("frame").classList.contains("narrow") && view === "split") $("tagRight").textContent = editedName.replace(" preview", "");
   $("brush").hidden = !brushing;
@@ -704,6 +715,26 @@ function hideZoomHint() {
   setTimeout(() => { $("zoomHint").hidden = true; $("frame").classList.remove("hinting"); }, 400);
 }
 new ResizeObserver(() => { applyView(); if (sel === "erase") drawStrokes(); if (cr) renderCrop(); }).observe($("stage"));
+// ---------- Expanded view ----------
+// A near full-screen look at the photo: the header and the tool panels step aside and nothing
+// else changes (the preview, zoom, position, comparison and unapplied settings all stay).
+// Close, Escape or the browser/phone Back button bring the editing layout back.
+let expanded = false;
+function setExpanded(on, fromHistory) {
+  if (on === expanded) return;
+  expanded = on;
+  $("editorScreen").classList.toggle("viewer-expanded", on);
+  const b = $("expandView");
+  b.setAttribute("aria-pressed", String(on)); b.setAttribute("aria-label", on ? "Close full view" : "Expand photo"); setIcon(b, on ? "shrink" : "expand");
+  if (on) { try { history.pushState({ glowView: 1 }, ""); } catch {} }
+  else if (!fromHistory && history.state && history.state.glowView) history.back();
+  $("alertLive").textContent = on ? "Full view. Close, Escape or Back returns to editing." : "Editing controls are back.";
+}
+$("expandView").addEventListener("click", () => setExpanded(!expanded));
+addEventListener("popstate", () => { if (expanded) setExpanded(false, true); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && expanded && !document.querySelector("dialog[open]")) { e.preventDefault(); setExpanded(false); }
+});
 // Keyboard: + and - zoom, 0 fits, and the arrow keys pan once zoomed (not while typing,
 // not on the Compare handle or a slider, and not in crop, which has its own keys).
 document.addEventListener("keydown", (e) => {
@@ -863,7 +894,7 @@ function selectTool(id) {
   if (ed.pending && ed.pending.tool !== id) say(`${TOOL[ed.pending.tool].title} wasn't applied.`);
   discardPending();
   if (cr) closeCrop();
-  if (id !== sel) panelCollapsed = false;   // a newly opened tool always shows its controls
+  if (id !== sel) { panelCollapsed = false; filterAmt = 100; }   // a newly opened tool always shows its controls
   sel = id; strokes = []; outfitData = null; toolsOpen = false; panelBuilt = null; reshapeNote = null;
   lookPick = editorLooks().some((l) => l.id === lookId) ? lookId : "natural";
   if (id in toolAmt) toolAmt[id] = 0; // adjustments start from the committed photo
@@ -923,7 +954,7 @@ function options(list, isOn, onPick) {
   return box;
 }
 const signed = (v) => (v > 0 ? "+" + v : String(v));
-let adjustTimer = 0;
+let adjustTimer = 0, filterAmt = 100;
 
 // The panel's controls are built once per tool (so a slider isn't replaced mid-drag);
 // its cost, note and Apply button are refreshed on every render.
@@ -957,6 +988,11 @@ function buildPanel(t) {
     body.append(slider("Strength", 0, 100, faceSet.amt[t.id] ?? 50, null, (v) => { faceSet.amt[t.id] = v; saveFace(); preview(); }));
     const shades = SHADES[t.id];
     if (shades) body.append(swatches(shades, faceSet.shade[t.id], (c) => { faceSet.shade[t.id] = c; saveFace(); renderPanel(true); preview(); }));
+  } else if (t.kind === "filter") {
+    // How much of the filter to use; 100 is the full filter (what earlier versions applied).
+    body.append(slider("Strength", 0, 100, filterAmt, (v) => {
+      filterAmt = v; clearTimeout(adjustTimer); adjustTimer = setTimeout(preview, 120);
+    }, (v) => { filterAmt = v; clearTimeout(adjustTimer); preview(); }));
   } else if (t.kind === "adjust") {
     body.append(slider("Amount", -50, 50, toolAmt[t.id], (v) => {
       toolAmt[t.id] = v; clearTimeout(adjustTimer); adjustTimer = setTimeout(preview, 120);
@@ -1040,6 +1076,7 @@ function opFor(t) {
   const op = { tool: t.id };
   if (t.kind === "face" || t.kind === "body" || t.kind === "hair") { op.amt = (faceSet.amt[t.id] ?? 50) / 100; op.shades = { ...faceSet.shade }; }
   if (t.kind === "adjust") op.value = toolAmt[t.id];
+  if (t.kind === "filter" && filterAmt < 100) op.amt = filterAmt / 100;
   if (t.kind === "look") op.look = { ...(editorLooks().find((l) => l.id === lookPick) || PRESET_LOOKS[1]) };
   return op;
 }
@@ -1054,7 +1091,7 @@ async function computeOp(op, base) {
       return await hairColor(base, op.amt, op.shades.hcolor);
     } finally { Object.assign(faceSet.shade, keep); }
   }
-  if (t.kind === "filter") return applyFilter(base, t.filter);
+  if (t.kind === "filter") return applyFilter(base, t.filter, op.amt ?? 1);
   if (t.kind === "adjust") return op.value ? adjust(base, t.id, op.value) : null;
   if (t.kind === "crop") {
     if (op.rect) return cropRect(base, op.turns, op.rect, op.aspect);
@@ -1642,6 +1679,21 @@ async function saveEdit() {
     const img = await loadImg(committed());
     out = { data: committed(), w: img.naturalWidth, h: img.naturalHeight, preview: true };
   }
+  // Free plan: the small Glow mark goes on the finished picture. The first time, the person
+  // sees exactly where it sits before anything is saved.
+  if (!isPro()) {
+    let m;
+    try { m = await addMark(out.data, isPng(out.data)); } catch { m = null; }
+    if (m) {
+      if (!store.get("glowMarkSeen")) {
+        const c = await ask({ title: "Free saves include a small Glow mark", text: "It sits in the bottom-right corner, like this. Glow Pro saves don't have it.",
+          image: m.preview, caption: "The corner of your saved photo", actions: [{ label: "Save", value: "yes" }, { label: "Cancel", value: "", kind: "ghost" }] });
+        if (!c) { savingEdit = false; return false; }
+        store.set("glowMarkSeen", "1");
+      }
+      out = { ...out, data: m.data, marked: true };
+    }
+  }
   const stamp = Date.now(), items = [{ data: out.data, name: ed.demo ? `glow-ai-sample-${demoSaveTag()}${stamp}` : `glow-${stamp}` }];
   const withOrig = !ed.demo && store.get("glowSaveOrig") === "on" && !ed.originalSaved && ed.original && ed.original.blob;
   if (withOrig) items.unshift({ blob: ed.original.blob, name: `glow-${stamp}-original` });
@@ -1650,7 +1702,10 @@ async function saveEdit() {
     ed.savedIdx = ed.idx; if (withOrig) ed.originalSaved = true;
     ed.lastExport = { w: out.w, h: out.h, original: ed.original ? [ed.original.w, ed.original.h] : null };
     saveDraft(); renderEditor();
-    say(savedText(where, items.length, exportNote(out)));
+    // One quiet offer per session to make a Share Glow card; nothing happens unless it's tapped.
+    const offer = CONFIG.publicUrl && !shareOffered ? { label: "Share Glow", run: () => openShareCard(out.data) } : null;
+    if (offer) shareOffered = true;
+    say(savedText(where, items.length, exportNote(out)), false, offer);
     return true;
   } catch (err) {
     if (err && err.name === "AbortError") return false;
@@ -1659,8 +1714,79 @@ async function saveEdit() {
   } finally { savingEdit = false; }
 }
 $("saveBtn").addEventListener("click", saveEdit);
+
+// ---------- Glow mark on free saves ----------
+// Saves on the free plan get a small "Glow · address" mark in the bottom-right corner, drawn on
+// the final full-size picture (after crop, rotation and every edit), never on the screen view.
+// Glow Pro saves stay clean. The mark is part of saving only: no credit, request or allowance.
+const isPro = () => !!(account && account.plan === "pro");
+let shareOffered = false;
+async function markFonts() {
+  try { await Promise.all([document.fonts.load('600 40px "Cormorant Garamond"'), document.fonts.load("600 20px Manrope")]); } catch {}
+}
+const MARK_SERIF = (px) => `600 ${px}px "Cormorant Garamond", Georgia, serif`, MARK_SANS = (px) => `600 ${px}px Manrope, system-ui, sans-serif`;
+// Sized from the picture's shorter side, with an inset of most of a letter height. The address
+// is left out when it would be too small to read or take more than half the width.
+function markLayout(ctx, w, h) {
+  const s = Math.max(12, Math.round(Math.min(w, h) * 0.026)), u = Math.max(9, Math.round(s * 0.6)), inset = Math.round(s * 0.8);
+  ctx.font = MARK_SERIF(s); const gw = ctx.measureText("Glow").width;
+  let host = PUBLIC_HOST ? ` · ${PUBLIC_HOST}` : "";
+  ctx.font = MARK_SANS(u); let hw = host ? ctx.measureText(host).width : 0;
+  if (u < 11 || gw + hw > w * 0.5) { host = ""; hw = 0; }   // too small to read: "Glow" alone
+  return { s, u, gw, hw, host, x: Math.round(w - inset - gw - hw), y: h - inset };
+}
+async function addMark(data, png) {
+  await markFonts();
+  const img = await loadImg(data), w = img.naturalWidth, h = img.naturalHeight, c = newCanvas(w, h), ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0);
+  const m = markLayout(ctx, w, h);
+  ctx.save();
+  ctx.fillStyle = "rgba(255, 255, 255, 0.94)"; ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+  ctx.shadowBlur = Math.max(2, m.s * 0.3); ctx.shadowOffsetY = Math.max(1, Math.round(m.s * 0.04));
+  ctx.font = MARK_SERIF(m.s); ctx.fillText("Glow", m.x, m.y);
+  if (m.host) { ctx.font = MARK_SANS(m.u); ctx.fillText(m.host, m.x + m.gw, m.y); }
+  ctx.restore();
+  // The disclosure preview: the corner of this exact picture, around the mark.
+  const bw = m.gw + m.hw, pw = Math.min(w, Math.round(bw * 1.3 + m.s * 1.6)), ph = Math.min(h, Math.round(pw * 0.36));
+  const pc = canvasFor({ naturalWidth: pw, naturalHeight: ph }, 640), sc = pc.width / pw;
+  pc.getContext("2d").drawImage(c, w - pw, h - ph, pw, ph, 0, 0, pw * sc, ph * sc);
+  return { data: png ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", 0.95), preview: pc.toDataURL("image/jpeg", 0.9),
+    box: { x: m.x, y: m.y - m.s, w: bw, h: Math.round(m.s * 1.3) }, host: m.host };
+}
+
+// ---------- Share Glow card (only when chosen) ----------
+// The saved photo with a footer under it: a QR code for Glow's public address and "Try Glow".
+// Nothing is shared or sent until the person picks Share or Save on the preview.
+function loadScript(src) {
+  return new Promise((ok, bad) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = bad; document.head.append(s); });
+}
+async function makeShareCard(photo) {
+  if (!window.qrcode) await loadScript("vendor/qrcode.js");
+  await markFonts();
+  const img = await loadImg(photo), W = 1080, F = 280, k = Math.min(W / img.naturalWidth, 1350 / img.naturalHeight);
+  const pw = Math.round(img.naturalWidth * k), ph = Math.round(img.naturalHeight * k), c = newCanvas(W, ph + F), ctx = c.getContext("2d");
+  ctx.fillStyle = "#f6f0ea"; ctx.fillRect(0, 0, W, ph + F);
+  ctx.drawImage(img, Math.round((W - pw) / 2), 0, pw, ph);
+  const q = window.qrcode(0, "M"); q.addData(CONFIG.publicUrl); q.make();
+  const n = q.getModuleCount(), cell = Math.floor(200 / (n + 8)), qs = cell * (n + 8), qx = 48, qy = ph + Math.round((F - qs) / 2);
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(qx, qy, qs, qs); ctx.fillStyle = "#1d1418";
+  for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (q.isDark(r, col)) ctx.fillRect(qx + (col + 4) * cell, qy + (r + 4) * cell, cell, cell);
+  const tx = qx + qs + 40;
+  ctx.fillStyle = "#813b59"; ctx.font = MARK_SERIF(76); ctx.fillText("Try Glow", tx, ph + F / 2 + 4);
+  ctx.fillStyle = "#72646f"; ctx.font = MARK_SANS(30); ctx.fillText(PUBLIC_HOST, tx, ph + F / 2 + 52);
+  return c.toDataURL("image/jpeg", 0.92);
+}
+async function openShareCard(photo) {
+  let card;
+  try { card = await makeShareCard(photo); } catch { say("Couldn't make the share card. Try again.", true); return; }
+  const c = await ask({ title: "Share Glow", text: "Your photo with a QR code to Glow underneath. Nothing is sent until you choose.", image: card, caption: "Share card preview",
+    actions: [{ label: "Share card", value: "share" }, { label: "Save card", value: "save", kind: "ghost" }, { label: "Close", value: "", kind: "ghost" }] });
+  if (!c) return;
+  try { const where = await Platform.savePhotos([{ data: card, name: `glow-share-card-${Date.now()}` }], { download: c === "save" }); say(savedText(where, 1)); }
+  catch (err) { if (!(err && err.name === "AbortError")) say(saveFailText(), true); }
+}
 // Back keeps the session; it's waiting on the Editor landing under "Continue editing".
-$("backBtn").addEventListener("click", () => { discardPending(); sel = null; go("editor"); });
+$("backBtn").addEventListener("click", () => { setExpanded(false); discardPending(); sel = null; go("editor"); });
 
 // ---------- Credits ----------
 let account = null;

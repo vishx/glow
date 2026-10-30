@@ -795,11 +795,15 @@ async function applyLook(src, look) {
 // Photo filters and the Edit adjustments, applied to a committed photo.
 const isPng = (src) => /^data:image\/png/.test(src);
 const encode = (c, src) => (isPng(src) ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", 0.92));
-async function applyFilter(src, flt) {
+// amt (0 to 1) blends the filtered picture over the original; 1 is the full filter.
+async function applyFilter(src, flt, amt = 1) {
   const img = await loadImg(src), c = canvasFor(img), ctx = c.getContext("2d");
   ctx.filter = flt.f; ctx.drawImage(img, 0, 0, c.width, c.height); ctx.filter = "none";
-  if (flt.wash) { ctx.globalCompositeOperation = "soft-light"; ctx.fillStyle = flt.wash; ctx.fillRect(0, 0, c.width, c.height); }
-  return encode(c, src);
+  if (flt.wash) { ctx.globalCompositeOperation = "soft-light"; ctx.fillStyle = flt.wash; ctx.fillRect(0, 0, c.width, c.height); ctx.globalCompositeOperation = "source-over"; }
+  if (amt >= 1) return encode(c, src);
+  const out = newCanvas(c.width, c.height), o = out.getContext("2d");
+  o.drawImage(img, 0, 0, c.width, c.height); o.globalAlpha = Math.max(0, amt); o.drawImage(c, 0, 0);
+  return encode(out, src);
 }
 // v runs from -50 to 50, with 0 meaning no change.
 async function adjust(src, kind, v) {
