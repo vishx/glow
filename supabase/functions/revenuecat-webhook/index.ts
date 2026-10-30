@@ -20,9 +20,13 @@ function same(a: string, b: string) {
   return d === 0;
 }
 
-async function setPlan(ids: string[], plan: "pro" | "free", expires: string | null) {
+// Which plan was bought: the yearly plan has an extra monthly credit cap (migration 007).
+const periodOf = (productId?: string) => (/year|annual/i.test(productId ?? "") ? "yearly" : productId ? "weekly" : null);
+async function setPlan(ids: string[], plan: "pro" | "free", expires: string | null, period: string | null = null) {
   for (const id of ids) {
-    const { error } = await admin.from("profiles").upsert({ id, plan, plan_expires_at: plan === "pro" ? expires : null });
+    const row: Record<string, unknown> = { id, plan, plan_expires_at: plan === "pro" ? expires : null };
+    if (period) row.plan_period = period;
+    const { error } = await admin.from("profiles").upsert(row);
     // A user deleted since purchase has no auth row to reference; skip it.
     if (error && !/foreign key/i.test(error.message)) throw error;
   }
@@ -50,7 +54,7 @@ Deno.serve(async (req) => {
     if (!ids.length) return new Response("ignored", { status: 200 });
     const expires = event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null;
     if (event.type === "EXPIRATION") await setPlan(ids, "free", null);
-    else if (ACTIVE.has(event.type) && expires) await setPlan(ids, "pro", expires);
+    else if (ACTIVE.has(event.type) && expires) await setPlan(ids, "pro", expires, periodOf(event.new_product_id ?? event.product_id));
     else return new Response("ignored", { status: 200 });
     console.log("revenuecat", event.type, ids.join(","), expires);
     return new Response("ok", { status: 200 });

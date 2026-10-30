@@ -17,6 +17,9 @@ const CONFIG = {
   // Fill sends mode "fill" with a short prompt. The live server doesn't have that mode yet (it is
   // in supabase/functions/enhance in this repo, undeployed). Turn on once it is deployed.
   aiFill: false,
+  // Pricing v2 (migration 007): Fill and Expand cost 2 credits. Turn on only once 007 is applied,
+  // so the cost shown always matches what the server charges.
+  pricingV2: false,
 };
 const PUBLIC_HOST = CONFIG.publicUrl ? new URL(CONFIG.publicUrl).host : "";
 
@@ -70,7 +73,7 @@ const TOOL = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
 
 // AI cost per tool. Must match ai_edit_cost() on the server, which is what actually charges.
 const TWO_CREDITS = ["headshot", "anime", "watercolor", "fashion"];
-const costOf = (t) => (t.kind !== "ai" ? 0 : TWO_CREDITS.includes(t.id) ? 2 : 1);
+const costOf = (t) => (t.kind !== "ai" ? 0 : TWO_CREDITS.includes(t.id) || (CONFIG.pricingV2 && ["fill", "expand"].includes(t.id)) ? 2 : 1);
 const credits = (n) => `${n} credit${n === 1 ? "" : "s"}`;
 
 const ORIGINAL_CATS = [["fix", "Fix"], ["face", "Face"], ["hair", "Hair"], ["body", "Body"], ["styles", "Styles"], ["bg", "Backdrop"], ["edit", "Edit"], ["ai", "AI"], ["filters", "Filters"]];
@@ -2058,7 +2061,7 @@ function renderCreditsSheet() {
   if (!a) html = p("Your balance will show once Glow can reach its server.");
   else if (a.plan === "pro") {
     html = p(`<b>${a.remaining} of ${a.quota} AI credits left.</b>`) +
-      p("Glow Pro includes 40 AI credits each week. Each credit comes back 7 days after you use it. Unused credits don't carry over.");
+      p("Glow Pro includes 40 AI credits each week. Each credit comes back 7 days after you use it. Unused credits don't carry over. The yearly plan also has a limit of 80 credits in any 30 days.");
   } else {
     const r = nextUtcMidnight(), mins = Math.max(1, Math.round((r - Date.now()) / 60000));
     const left = mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
