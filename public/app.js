@@ -561,6 +561,11 @@ function renderEditor() {
   const savedNow = ed.idx > 0 && ed.savedIdx === ed.idx && !ed.pending;
   $("saveBtn").disabled = !!busyNow || savingEdit || (ed.idx === 0 && !ed.pending) || savedNow;
   $("saveBtn").textContent = savedNow ? "Saved" : "Save";
+  // A small sparkle the moment a save lands (once per save, not when reopening a saved photo).
+  const sb = $("saveBtn"), wasSaved = sb.classList.contains("saved");
+  sb.classList.toggle("saved", savedNow);
+  if (savedNow && !wasSaved && savingEdit === false && sb.dataset.armed) { sb.classList.add("just-saved"); setTimeout(() => sb.classList.remove("just-saved"), 900); }
+  sb.dataset.armed = savedNow ? "" : "1";
   $("editorScreen").classList.toggle("editing-tool", !!sel);
   $("editorScreen").classList.toggle("tools-open", searching && !sel);
   if (thumbFor !== committed()) { thumbFor = committed(); refreshThumb(); }

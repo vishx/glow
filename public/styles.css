@@ -752,3 +752,26 @@ dialog.pw .links { justify-content: center; }
   #editorScreen .stage.cropping ~ .viewbar { display: none; }
   #editorScreen .zoomctl, #editorScreen .zoom-hint { bottom: calc(var(--s3) + 56px); }
 }
+
+/* ---------- Motion ----------
+   Springs on selection, a shimmer while AI works, a sparkle when a save lands.
+   The reduced-motion rule near the top of the file turns all of these into instant changes. */
+@keyframes glow-in { 0% { transform: scaleX(0.55); opacity: 0.4; } 70% { transform: scaleX(1.06); } 100% { transform: scaleX(1); opacity: 1; } }
+.tab[aria-selected="true"] > span:first-child { animation: glow-in 300ms cubic-bezier(.3, .7, .4, 1.3); }
+.tool[aria-pressed="true"] .well { animation: glow-pop 380ms cubic-bezier(.3, .7, .4, 1.4); }
+.plan { transition: box-shadow var(--t-select), transform 160ms cubic-bezier(.3, .7, .4, 1.4); }
+.plan:active { transform: scale(0.97); }
+
+/* AI working: a soft light sweeps across the photo under the progress text. */
+.busy { background: rgb(20 16 19 / 0.42); overflow: hidden; }
+.busy::before { content: ""; position: absolute; inset: -20% -60%; background: linear-gradient(105deg, transparent 38%, rgb(255 240 245 / 0.28) 50%, transparent 62%);
+  animation: glow-sweep 1.8s cubic-bezier(.4, 0, .2, 1) infinite; pointer-events: none; }
+.busy > div { position: relative; padding: var(--s3) var(--s4); border-radius: 20px; background: rgb(20 16 19 / 0.55); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.busy .spinner { border-color: rgb(255 255 255 / 0.25); border-top-color: #f2a5bb; }
+@keyframes glow-sweep { from { transform: translateX(-45%); } to { transform: translateX(45%); } }
+
+/* Saved: a quiet blush pill, with a sparkle the moment it lands. */
+#editorScreen #saveBtn.saved:disabled { background: var(--blush); color: var(--rose); }
+#editorScreen #saveBtn.just-saved::before { content: ""; position: absolute; top: -6px; left: -6px; width: 14px; height: 14px; background: var(--rose);
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); animation: glow-twinkle 900ms ease-out both; pointer-events: none; }
+@keyframes glow-twinkle { 0% { transform: scale(0) rotate(0); opacity: 0; } 35% { transform: scale(1.2) rotate(30deg); opacity: 1; } 100% { transform: translate(-6px, -8px) scale(0) rotate(90deg); opacity: 0; } }
