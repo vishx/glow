@@ -827,3 +827,11 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
 .adj-parts button { min-height: 36px; padding: 0 var(--s3); border: 0; border-radius: 18px; background: transparent; box-shadow: inset 0 0 0 1px #ffffff55;
   color: #fff; font-size: 0.8125rem; font-weight: 600; }
 .adj-parts button[aria-checked="true"] { background: #fff; color: #000; box-shadow: none; }
+
+/* Small phones (320 px): keep the sample card and the Settings buttons on one line each */
+@media (max-width: 359px) {
+  .sample-card { grid-template-columns: 64px 1fr auto; gap: var(--s3); }
+  .sample-card img { width: 64px; height: 80px; }
+  .sample-card span span { font-size: 0.8125rem; line-height: 1.125rem; }
+  #settings .plan-card .btn { padding-left: 12px; padding-right: 12px; font-size: .875rem; white-space: nowrap; }
+}
