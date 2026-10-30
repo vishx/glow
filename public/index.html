@@ -148,6 +148,18 @@
           <span class="tag bottom" id="tagSample" hidden>AI-generated sample</span>
         </div>
         <canvas id="brush" hidden></canvas>
+        <div class="crop-view" id="cropView" hidden tabindex="0" role="application" aria-roledescription="crop area"
+          aria-label="Crop area. Drag to reposition, pinch to zoom. Arrow keys move the photo, plus and minus zoom.">
+          <canvas id="cropImg"></canvas>
+          <div class="crop-box" id="cropBox">
+            <div class="crop-grid"></div>
+            <span class="crop-h c nw" data-h="nw"></span><span class="crop-h c ne" data-h="ne"></span>
+            <span class="crop-h c se" data-h="se"></span><span class="crop-h c sw" data-h="sw"></span>
+            <span class="crop-h edge n" data-h="n"></span><span class="crop-h edge e" data-h="e"></span>
+            <span class="crop-h edge s" data-h="s"></span><span class="crop-h edge w" data-h="w"></span>
+          </div>
+          <p class="crop-hint" id="cropHint">Drag to reposition · Pinch to zoom</p>
+        </div>
         <div class="history">
           <button class="icon-btn" id="undoBtn" aria-label="Undo" disabled></button>
           <button class="icon-btn" id="redoBtn" aria-label="Redo" disabled></button>

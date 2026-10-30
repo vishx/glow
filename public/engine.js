@@ -224,6 +224,155 @@ function push(ctx, c, r, m) {
   warp(ctx, c, r, (dx, dy, d) => { const e = ((r * r - d * d) / (r * r - d * d + mm)) ** 2; return [dx - e * m[0], dy - e * m[1]]; });
 }
 
+// ---------- Face reshape: Eye size, Face shape, Nose ----------
+// Each tool builds one smooth displacement field per face and moves every pixel once.
+// A field says, for each output pixel, how far away its colour is read from. The fields
+// fade to exactly zero at the edge of their area (so there is no seam), and they change
+// slowly enough that neighbouring pixels never cross (so nothing folds, doubles or tears).
+// The slider's 0–100 maps onto the gentle ranges below; 0 leaves the photo untouched.
+const RESHAPE_MAX = { fslim: 0.1, fnose: 0.2, fbigeyes: 0.13 };
+const RESHAPE_TOOLS = Object.keys(RESHAPE_MAX);
+
+// Applies `field(x, y)` -> [dx, dy] or null inside box `bx`, in strips so a full-size photo
+// never needs one huge pixel buffer. `maxD` is the largest offset the field returns.
+function fieldWarp(ctx, bx, maxD, field) {
+  if (bx.w < 2 || bx.h < 2) return;
+  const W = ctx.canvas.width, H = ctx.canvas.height, m = Math.ceil(maxD) + 2, STRIP = 256;
+  const dst = newCanvas(bx.w, bx.h), dctx = dst.getContext("2d");
+  for (let y0 = bx.y0; y0 < bx.y0 + bx.h; y0 += STRIP) {
+    const h = Math.min(STRIP, bx.y0 + bx.h - y0);
+    const sx0 = Math.max(0, bx.x0 - m), sy0 = Math.max(0, y0 - m), sw = Math.min(W, bx.x0 + bx.w + m) - sx0, sh = Math.min(H, y0 + h + m) - sy0;
+    const s = ctx.getImageData(sx0, sy0, sw, sh).data, out = dctx.createImageData(bx.w, h), o = out.data;
+    for (let y = 0; y < h; y++) for (let x = 0; x < bx.w; x++) {
+      const X = bx.x0 + x, Y = y0 + y, i = (y * bx.w + x) * 4, f = field(X, Y);
+      let sx = X - sx0, sy = Y - sy0;
+      if (f) { sx = Math.max(0, Math.min(sw - 1.001, sx + f[0])); sy = Math.max(0, Math.min(sh - 1.001, sy + f[1])); }
+      const x1 = sx | 0, y1 = sy | 0, fx = sx - x1, fy = sy - y1, j = (y1 * sw + x1) * 4, k = j + sw * 4;
+      if (!fx && !fy) { o[i] = s[j]; o[i + 1] = s[j + 1]; o[i + 2] = s[j + 2]; o[i + 3] = s[j + 3]; continue; }
+      for (let ch = 0; ch < 4; ch++) o[i + ch] = (s[j + ch] * (1 - fx) + s[j + 4 + ch] * fx) * (1 - fy) + (s[k + ch] * (1 - fx) + s[k + 4 + ch] * fx) * fy;
+    }
+    dctx.putImageData(out, 0, y0 - bx.y0);
+  }
+  ctx.clearRect(bx.x0, bx.y0, bx.w, bx.h); ctx.drawImage(dst, bx.x0, bx.y0);
+}
+// A face-aligned frame: x runs across the face, y down it (from `o` toward `p`), so tilted
+// heads are handled the same as upright ones.
+function faceAxes(o, p) {
+  const L = dist(o, p), d = [(p[0] - o[0]) / L, (p[1] - o[1]) / L], a = [d[1], -d[0]];
+  return { o, L, a, d,
+    to: (x, y) => { const rx = x - o[0], ry = y - o[1]; return [rx * a[0] + ry * a[1], rx * d[0] + ry * d[1]]; },
+    back: (u, v) => [u * a[0] + v * d[0], u * a[1] + v * d[1]],
+    // The image box around frame rectangle u0..u1 × v0..v1.
+    box(ctx, u0, u1, v0, v1) {
+      const cs = [[u0, v0], [u1, v0], [u0, v1], [u1, v1]].map(([u, v]) => { const q = this.back(u, v); return [q[0] + o[0], q[1] + o[1]]; });
+      const xs = cs.map((c) => c[0]), ys = cs.map((c) => c[1]), W = ctx.canvas.width, H = ctx.canvas.height;
+      const x0 = Math.max(0, Math.floor(Math.min(...xs))), y0 = Math.max(0, Math.floor(Math.min(...ys)));
+      return { x0, y0, w: Math.min(W, Math.ceil(Math.max(...xs)) + 1) - x0, h: Math.min(H, Math.ceil(Math.max(...ys)) + 1) - y0 };
+    } };
+}
+// Bell profiles: 0 at t=0, 1 at t=1, back to 0 at t=out, with zero slope at all three.
+const bell = (t, out) => (t < 1 ? smoothstep(0, 1, t) : 1 - smoothstep(1, out, t));
+
+// Face shape: narrows the lower cheeks and jaw toward the face's centre line. Strongest
+// along the jaw, gentler at the chin, nothing at the cheekbones or below the neck. Each
+// side follows its own outline, so a turned face narrows naturally on both sides.
+function slimField(ctx, P, s) {
+  const F = faceAxes(P[168], P[152]), oval = FACE.oval.map((i) => { const [u, v] = F.to(...P[i]); return [u, v / F.L]; });
+  const V0 = -0.4, STEP = 0.02, N = 101, side = [new Float64Array(N), new Float64Array(N)];
+  for (let k = 0; k < N; k++) {
+    const v = V0 + k * STEP;
+    oval.forEach((p, n) => {
+      const q = oval[(n + 1) % oval.length];
+      if ((p[1] - v) * (q[1] - v) > 0 || p[1] === q[1]) return;
+      const u = p[0] + ((v - p[1]) / (q[1] - p[1])) * (q[0] - p[0]);
+      if (u < 0) side[0][k] = Math.max(side[0][k], -u); else side[1][k] = Math.max(side[1][k], u);
+    });
+  }
+  const jaw = side.map((t) => Math.max(...t.slice(Math.round((0.3 - V0) / STEP), Math.round((0.8 - V0) / STEP))));
+  if (!(jaw[0] > 0 && jaw[1] > 0)) return null;
+  // Never narrower than half the jaw (the chin tip and the neck), then smoothed twice.
+  side.forEach((t, n) => { for (let k = 0; k < N; k++) t[k] = Math.max(t[k], jaw[n] * 0.5); for (let r = 0; r < 2; r++) boxBlur1(t, 3); });
+  const hwAt = (t, v) => { const k = Math.max(0, Math.min(N - 1.001, (v - V0) / STEP)), i = k | 0; return t[i] + (t[i + 1] - t[i]) * (k - i); };
+  const fv = (v) => smoothstep(0.12, 0.6, v) * (1 - 0.55 * smoothstep(0.75, 1, v)) * (1 - smoothstep(1, 1.35, v));
+  const reach = 1.7, maxW = Math.max(...jaw) * 1.2;
+  return {
+    box: F.box(ctx, -reach * maxW, reach * maxW, 0.12 * F.L, 1.35 * F.L), maxD: s * maxW,
+    at(x, y) {
+      const [u, vp] = F.to(x, y), v = vp / F.L;
+      if (v <= 0.12 || v >= 1.35) return null;
+      const hw = hwAt(side[u < 0 ? 0 : 1], v), t = Math.abs(u) / hw;
+      if (t >= reach) return null;
+      const b = Math.sign(u) * s * hw * fv(v) * bell(t, reach); // read from further out
+      return b ? [b * F.a[0], b * F.a[1]] : null;
+    } };
+}
+function boxBlur1(t, r) {
+  const c = Float64Array.from(t);
+  for (let k = 0; k < t.length; k++) { let sum = 0, n = 0; for (let j = k - r; j <= k + r; j++) if (j >= 0 && j < t.length) { sum += c[j]; n++; } t[k] = sum / n; }
+}
+// Nose: narrows the nostril wings toward the nose's centre line, with a lighter touch up
+// the bridge, fading out before the inner eye corners, the cheeks and the upper lip.
+function noseField(ctx, P, s) {
+  const F = faceAxes(P[168], P[2]), wing = [129, 358, 64, 294, 49, 279, 48, 278, 98, 327, 102, 331];
+  const w = [0, 0]; let vAla = 0;
+  for (const i of wing) { const [u, v] = F.to(...P[i]); w[u < 0 ? 0 : 1] = Math.max(w[u < 0 ? 0 : 1], Math.abs(u)); }
+  for (const i of [129, 358, 64, 294]) vAla += F.to(...P[i])[1] / F.L / 4;
+  if (!(w[0] > 0 && w[1] > 0)) return null;
+  const vLip = F.to(...P[0])[1] / F.L, vEnd = Math.max(vLip, vAla + 0.3), reach = 2;
+  const fv = (v) => smoothstep(-0.25, vAla, v) * (1 - smoothstep(vAla, vEnd, v));
+  const maxW = Math.max(...w);
+  return {
+    box: F.box(ctx, -reach * maxW, reach * maxW, -0.25 * F.L, vEnd * F.L), maxD: s * maxW,
+    at(x, y) {
+      const [u, vp] = F.to(x, y), v = vp / F.L;
+      if (v <= -0.25 || v >= vEnd) return null;
+      const hw = w[u < 0 ? 0 : 1] * (0.6 + 0.4 * smoothstep(0, vAla, v)), t = Math.abs(u) / hw;
+      if (t >= reach) return null;
+      const b = Math.sign(u) * s * hw * fv(v) * bell(t, reach);
+      return b ? [b * F.a[0], b * F.a[1]] : null;
+    } };
+}
+// Eye size: a gentle magnify inside an oval that follows the eye's tilt. The oval stops
+// short of the brow, and the effect fades smoothly to nothing at its edge.
+function eyeField(ctx, P, s) {
+  const parts = [[FACE.eyeL, FACE.browL], [FACE.eyeR, FACE.browR]].map(([eye, brow]) => {
+    const c = mean(eye.map((i) => P[i])), A = P[eye[0]], B = P[eye[8]], ew = dist(A, B);
+    const e = [(B[0] - A[0]) / ew, (B[1] - A[1]) / ew], gap = dist(c, mean(brow.map((i) => P[i])));
+    return { c, e, ra: ew * 0.95, rb: Math.min(ew * 0.8, gap * 0.85) };
+  });
+  const xs = parts.flatMap((p) => [p.c[0] - p.ra, p.c[0] + p.ra]), ys = parts.flatMap((p) => [p.c[1] - p.ra, p.c[1] + p.ra]);
+  const W = ctx.canvas.width, H = ctx.canvas.height, x0 = Math.max(0, Math.floor(Math.min(...xs))), y0 = Math.max(0, Math.floor(Math.min(...ys)));
+  return {
+    box: { x0, y0, w: Math.min(W, Math.ceil(Math.max(...xs)) + 1) - x0, h: Math.min(H, Math.ceil(Math.max(...ys)) + 1) - y0 },
+    maxD: s * Math.max(...parts.map((p) => p.ra)) * 0.4,
+    at(x, y) {
+      for (const p of parts) {
+        const dx = x - p.c[0], dy = y - p.c[1], u = dx * p.e[0] + dy * p.e[1], v = -dx * p.e[1] + dy * p.e[0];
+        const r2 = (u / p.ra) ** 2 + (v / p.rb) ** 2;
+        if (r2 < 1) { const g = s * (1 - r2) ** 2; return [-dx * g, -dy * g]; }
+      }
+      return null;
+    } };
+}
+const RESHAPE_FIELDS = { fslim: slimField, fnose: noseField, fbigeyes: eyeField };
+function reshapeFace(ctx, P, toolId, amt) {
+  const s = clamp01(amt) * RESHAPE_MAX[toolId];
+  if (!s) return;
+  const f = RESHAPE_FIELDS[toolId](ctx, P, s);
+  if (f) fieldWarp(ctx, f.box, f.maxD, (x, y) => f.at(x, y));
+}
+// Reshaping needs landmarks it can trust: a guessed outline would bend the wrong pixels.
+// Returns why a face can't be reshaped, or "" when it can.
+function reshapeProblem(P, W, H) {
+  const faceW = dist(P[234], P[454]);
+  if (faceW < Math.max(70, Math.min(W, H) * 0.06)) return "The face is too small in this photo to reshape well. Try a closer photo.";
+  const out = FACE.oval.filter((i) => P[i][0] < -W * 0.01 || P[i][0] > W * 1.01 || P[i][1] < -H * 0.01 || P[i][1] > H * 1.01).length;
+  if (out > 2) return "Part of the face is outside the photo, so it can't be reshaped safely.";
+  const l = dist(P[1], P[234]), r = dist(P[1], P[454]);
+  if (Math.min(l, r) / Math.max(l, r) < 0.35) return "The face is turned too far to the side to reshape safely. Try a more front-facing photo.";
+  return "";
+}
+
 // Per-pixel pass inside a mask: fn(r, g, b, maskAlpha, i) edits rgb in place.
 function pixelPass(ctx, mask, bx, fn) {
   const img = ctx.getImageData(bx.x0, bx.y0, bx.w, bx.h), m = mask.getContext("2d").getImageData(bx.x0, bx.y0, bx.w, bx.h).data, d = img.data;
@@ -236,7 +385,6 @@ function faceOps(ctx, P, amt, toolId) {
   const pts = (idx) => idx.map((i) => P[i]);
   const faceW = dist(P[234], P[454]), faceC = mean(pts(FACE.oval));
   const eyes = [FACE.eyeL, FACE.eyeR].map((e) => ({ poly: pts(e), w: dist(P[e[0]], P[e[8]]), c: mean(pts(e)) }));
-  const iris = P.length > 473 ? [P[468], P[473]] : eyes.map((e) => e.c);
   const faceBox = box(ctx.canvas, faceC[0], faceC[1], faceW * 0.9);
   const skinMask = () => softMask(W, H, faceW / 40, (m) => {
     tracePoly(m, pts(FACE.oval)); m.fill();
@@ -284,13 +432,9 @@ function faceOps(ctx, P, amt, toolId) {
       const mask = softMask(W, H, faceW / 160, (m) => { for (const e of eyes) { tracePoly(m, e.poly); m.fill(); } });
       blendMasked(ctx, filtered(ctx.canvas, "brightness(1.18) contrast(1.15) saturate(1.15)"), mask, a);
     },
-    fbigeyes(a) { eyes.forEach((e, n) => bulge(ctx, iris[n], e.w * 1.1, a * 0.28)); },
-    fslim(a) {
-      for (const i of FACE.jaw) push(ctx, P[i], faceW * 0.2, [(faceC[0] - P[i][0]) * 0.07 * a, (faceC[1] - P[i][1]) * 0.02 * a]);
-    },
-    fnose(a) {
-      for (const i of [129, 358, 49, 279]) push(ctx, P[i], faceW * 0.09, [(P[1][0] - P[i][0]) * 0.35 * a, 0]);
-    },
+    fbigeyes(a) { reshapeFace(ctx, P, "fbigeyes", a); },
+    fslim(a) { reshapeFace(ctx, P, "fslim", a); },
+    fnose(a) { reshapeFace(ctx, P, "fnose", a); },
     flips(a) {
       const mask = softMask(W, H, faceW / 250, (m) => {
         tracePoly(m, pts(FACE.lipsOut)); m.fill(); m.globalCompositeOperation = "destination-out"; tracePoly(m, pts(FACE.lipsIn)); m.fill();
@@ -345,13 +489,39 @@ function faceOps(ctx, P, amt, toolId) {
   ops[toolId](amt);
 }
 
+// Landmarks for the last few pictures, so moving a slider doesn't search for faces again.
+// Stored in 0–1 coordinates, so they fit the picture at any size.
+const faceCache = new Map();
+async function findFaces(src, c) {
+  if (faceCache.has(src)) return faceCache.get(src);
+  const finder = await faceFinder();
+  const faces = (finder.detect(detectCopy(c)).faceLandmarks || []).map((f) => f.map((p) => [p.x, p.y]));
+  faceCache.set(src, faces); if (faceCache.size > 4) faceCache.delete(faceCache.keys().next().value);
+  return faces;
+}
+// An error that means "this tool can't be used on this photo", shown in the tool's panel.
+function unavailable(msg) { const e = new Error(msg); e.unavailable = true; return e; }
+// Whether the reshape tools can be used on a photo: "" if yes, otherwise why not.
+async function reshapeStatus(src) {
+  const img = await loadImg(src), c = canvasFor(img);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  const faces = await findFaces(src, c);
+  if (!faces.length) return "Couldn't find a face clearly enough to reshape. Try a clear, front-facing photo.";
+  const why = faces.map((f) => reshapeProblem(f.map(([x, y]) => [x * c.width, y * c.height]), c.width, c.height));
+  return why.includes("") ? "" : why[0];
+}
+
 async function faceEdit(src, toolId, amt) {
-  const [finder, img] = await Promise.all([faceFinder(), loadImg(src)]);
+  const reshape = RESHAPE_TOOLS.includes(toolId);
+  if (reshape && !(amt > 0)) return src; // 0 leaves the photo exactly as it was
+  const img = await loadImg(src);
   const c = canvasFor(img), ctx = c.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(img, 0, 0, c.width, c.height);
-  const faces = finder.detect(detectCopy(c)).faceLandmarks || [];
-  if (!faces.length) throw new Error("Couldn't find a face. Try a clear, front-facing photo.");
-  for (const f of faces) faceOps(ctx, f.map((p) => [p.x * c.width, p.y * c.height]), amt, toolId);
+  const faces = (await findFaces(src, c)).map((f) => f.map(([x, y]) => [x * c.width, y * c.height]));
+  if (!faces.length) throw reshape ? unavailable("Couldn't find a face clearly enough to reshape. Try a clear, front-facing photo.") : new Error("Couldn't find a face. Try a clear, front-facing photo.");
+  const use = reshape ? faces.filter((P) => !reshapeProblem(P, c.width, c.height)) : faces;
+  if (!use.length) throw unavailable(reshapeProblem(faces[0], c.width, c.height));
+  for (const P of use) faceOps(ctx, P, amt, toolId);
   return /^data:image\/png/.test(src) ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", 0.92);
 }
 
@@ -650,6 +820,19 @@ async function adjust(src, kind, v) {
     for (let i = 0; i < d.length; i += 4) for (let ch = 0; ch < 3; ch++) d[i + ch] += (d[i + ch] - b[i + ch]) * k;
     ctx.putImageData(a, 0, 0);
   }
+  return encode(c, src);
+}
+// Rotates by quarter turns, then cuts out `r`, given as fractions of the rotated picture, so
+// the same crop fits the working copy and the full-size original. A fixed shape (`aspect`,
+// width / height) is kept exact in whole pixels.
+async function cropRect(src, turns, r, aspect) {
+  const img = await loadImg(src), W = img.naturalWidth, H = img.naturalHeight, q = ((turns % 4) + 4) % 4;
+  const RW = q % 2 ? H : W, RH = q % 2 ? W : H, x = r.x * RW, y = r.y * RH, w = r.w * RW, h = r.h * RH;
+  const cw = Math.max(1, Math.round(w)), ch = Math.max(1, Math.min(Math.ceil(h), Math.round(aspect > 0 ? cw / aspect : h)));
+  const c = newCanvas(cw, ch), ctx = c.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  ctx.scale(cw / w, ch / h); ctx.translate(-x, -y);
+  ctx.translate(RW / 2, RH / 2); ctx.rotate((q * Math.PI) / 2); ctx.drawImage(img, -W / 2, -H / 2);
   return encode(c, src);
 }
 // Crop to an aspect ratio around the centre, then rotate by quarter turns.

@@ -1,0 +1,145 @@
+{
+  "metrics": {
+    "sample": {
+      "status": "ok",
+      "zeroIdentical": true,
+      "fslim": {
+        "minDet": 0.785,
+        "maxShiftPx": 21.5,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      },
+      "fnose": {
+        "minDet": 0.7,
+        "maxShiftPx": 15.1,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      },
+      "fbigeyes": {
+        "minDet": 0.757,
+        "maxShiftPx": 3.5,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      }
+    },
+    "mirrored": {
+      "status": "ok",
+      "zeroIdentical": true,
+      "fslim": {
+        "minDet": 0.784,
+        "maxShiftPx": 21.6,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      },
+      "fnose": {
+        "minDet": 0.7,
+        "maxShiftPx": 15,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      },
+      "fbigeyes": {
+        "minDet": 0.757,
+        "maxShiftPx": 3.5,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      }
+    },
+    "tilted": {
+      "status": "ok",
+      "zeroIdentical": true,
+      "fslim": {
+        "minDet": 0.783,
+        "maxShiftPx": 24.8,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      },
+      "fnose": {
+        "minDet": 0.7,
+        "maxShiftPx": 17.3,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      },
+      "fbigeyes": {
+        "minDet": 0.757,
+        "maxShiftPx": 4,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      }
+    },
+    "wide": {
+      "status": "ok",
+      "zeroIdentical": true,
+      "fslim": {
+        "minDet": 0.784,
+        "maxShiftPx": 26.2,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      },
+      "fnose": {
+        "minDet": 0.7,
+        "maxShiftPx": 18,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      },
+      "fbigeyes": {
+        "minDet": 0.757,
+        "maxShiftPx": 4.2,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      }
+    },
+    "narrow": {
+      "status": "ok",
+      "zeroIdentical": true,
+      "fslim": {
+        "minDet": 0.785,
+        "maxShiftPx": 18.2,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      },
+      "fnose": {
+        "minDet": 0.7,
+        "maxShiftPx": 12.9,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      },
+      "fbigeyes": {
+        "minDet": 0.757,
+        "maxShiftPx": 3,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 0
+      }
+    },
+    "small": {
+      "status": "ok",
+      "zeroIdentical": true,
+      "fslim": {
+        "minDet": 0.784,
+        "maxShiftPx": 15.6,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 1328169
+      },
+      "fnose": {
+        "minDet": 0.7,
+        "maxShiftPx": 10.9,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 1590805
+      },
+      "fbigeyes": {
+        "minDet": 0.757,
+        "maxShiftPx": 2.5,
+        "edgeShiftPx": 0,
+        "changedOutsideBox": 1593898
+      }
+    },
+    "cutoff": {
+      "status": "Part of the face is outside the photo, so it can't be reshaped safely."
+    }
+  },
+  "unavailable": {
+    "cutoff": {
+      "unavailable": true,
+      "msg": "Part of the face is outside the photo, so it can't be reshaped safely."
+    }
+  }
+}

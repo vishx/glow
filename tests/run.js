@@ -112,8 +112,8 @@ test('export: a 12 MP phone photo with EXIF rotation saves at full size, upright
   assert(red(px[0]), 'top-right is red: ' + px[0]); assert(!red(px[1]), 'top-left is not red: ' + px[1]);
   await tool(p, 'edit', 'light', 'light'); await p.fill('.panel input[type=range]', '20'); await idle(p);
   await p.click('#applyBtn'); await idle(p);
-  await tool(p, 'edit', 'crop', 'crop'); await p.click('.panel .opt:has-text("Square")'); await idle(p);
-  await p.waitForFunction(() => !!ed.pending, null, { timeout: 15000 }); const cropped = true; await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr); await p.click('.panel .opt:has-text("Square")');
+  const cropped = true; await p.click('#applyBtn'); await idle(p);
   await p.click('#saveBtn'); await downloads(state, 1); await settle(300);
   const s = imageSize(state.downloads[0].file);
   if (cropped) eq([s.w, s.h], [3024, 3024], 'square crop at full size'); else eq([s.w, s.h], [3024, 4032], 'full size');
@@ -589,6 +589,194 @@ test('demo: canceling Try your own photo keeps the sample; reduced motion turns 
   eq(await p.evaluate(() => parseFloat(getComputedStyle($('after')).transitionDuration)), 0.00001, 'no crossfade with reduced motion');
   eq(state.posts.length, 0, 'no AI request');
 }, { files: demoFiles(), reducedMotion: true });
+
+
+// ---------- Face reshape (the owner's sample portrait, opened as an ordinary photo) ----------
+const PORTRAIT = path.join(__dirname, '../public/samples/demo/original.png');
+const pixelsOf = (p, src) => p.evaluate(async (s) => { const i = await loadImg(s), c = newCanvas(i.naturalWidth, i.naturalHeight), x = c.getContext('2d'); x.drawImage(i, 0, 0); return Array.from(x.getImageData(0, 0, c.width, c.height).data.filter((_, k) => k % 997 === 0)); }, src);
+test('retouch: reshape at 0 is untouched, previews come from the baseline, tools combine, all on-device', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  const base = await p.evaluate(() => committed());
+  await tool(p, 'retouch', 'face', 'fslim');
+  await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 });
+  eq(await p.evaluate(() => [faceSet.amt.fslim, $('applyBtn').disabled, !!ed.pending]), [0, true, false], 'starts at 0 with nothing to apply');
+  const set = async (v) => { await p.fill('.panel input[type=range]', String(v)); await settle(200); await idle(p); };
+  await set(100); const first = await p.evaluate(() => ed.pending && ed.pending.data);
+  assert(first && first !== base, 'a preview at 100');
+  await set(40); await set(100);
+  eq(await p.evaluate((f) => ed.pending.data === f, first), true, 'the same setting gives the same picture: each preview starts from the baseline, not the last preview');
+  await set(0);
+  eq(await p.evaluate(() => [!!ed.pending, committed() === ed.hist[0].data]), [false, true], '0 shows the photo exactly as it was');
+  await set(100); await p.click('#applyBtn'); await idle(p);
+  for (const id of ['fnose', 'fbigeyes']) {
+    await tool(p, 'retouch', 'face', id); await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 });
+    await set(100); await p.click('#applyBtn'); await idle(p);
+  }
+  eq(await p.evaluate(() => ed.hist.map((h) => h.op && h.op.tool)), [null, 'fslim', 'fnose', 'fbigeyes'], 'three reshape steps, one each');
+  // Undo/redo walk the same pictures back and forth.
+  const last = await p.evaluate(() => committed());
+  await p.click('#undoBtn'); await p.click('#undoBtn'); await p.click('#redoBtn'); await p.click('#redoBtn');
+  eq(await p.evaluate((l) => committed() === l, last), true, 'redo returns to the combined result');
+  await p.click('#saveBtn'); await downloads(state, 1);
+  const sz = imageSize(state.downloads[0].file); eq([sz.w, sz.h], [1122, 1402], 'saved at the photo size');
+  eq([state.posts.length, state.used], [0, 0], 'no AI request and no credit used');
+});
+test('retouch: no trustworthy face shows an unavailable note instead of a guessed warp', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('coords-600x400.png'));
+  await tool(p, 'retouch', 'face', 'fslim');
+  await p.waitForFunction(() => reshapeNote && reshapeNote.msg, null, { timeout: 30000 });
+  const r = await p.evaluate(() => [$('panelNote').textContent, $('applyBtn').disabled, $('panelBody').querySelector('input[type=range]').disabled, !!ed.pending]);
+  assert(/Couldn't find a face clearly enough to reshape/.test(r[0]), 'explains why: ' + r[0]);
+  eq(r.slice(1), [true, true, false], 'slider and Apply are off, nothing is previewed');
+  eq(state.posts.length, 0, 'no AI request');
+});
+
+// ---------- Crop and rotate ----------
+// coords-600x400.png: red = x, green = y, so any pixel says where it came from.
+const cropInfo = (p) => p.evaluate(() => {
+  const F = $('cropBox').getBoundingClientRect(), I = $('cropImg').getBoundingClientRect();
+  return { rect: { ...cr.rect }, W: cr.W, H: cr.H, turns: cr.turns, aspect: cr.aspect, F: [F.left, F.top, F.width, F.height], I: [I.left, I.top, I.width, I.height] };
+});
+const near = (a, b, tol, msg) => assert(Math.abs(a - b) <= tol, `${msg}: ${a} vs ${b}`);
+function covered(c, msg) {
+  // The frame is always fully on the photo, so a crop never has blank edges.
+  assert(c.F[0] >= c.I[0] - 0.6 && c.F[1] >= c.I[1] - 0.6 && c.F[0] + c.F[2] <= c.I[0] + c.I[2] + 0.6 && c.F[1] + c.F[3] <= c.I[1] + c.I[3] + 0.6, msg + ': frame leaves the photo ' + JSON.stringify(c));
+  assert(c.rect.x >= -0.01 && c.rect.y >= -0.01 && c.rect.x + c.rect.w <= c.W + 0.01 && c.rect.y + c.rect.h <= c.H + 0.01, msg + ': crop leaves the photo');
+}
+async function openCropOn(p, file) {
+  await p.goto('https://app.test/'); await pick(p, file);
+  await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr && !$('cropView').hidden);
+}
+test('crop: frame, grid, dimmed outside, hint; drag, wheel, pinch and the zoom slider keep the photo covering the frame', async ({ p, state }) => {
+  await openCropOn(p, fx('coords-600x400.png'));
+  const ui = await p.evaluate(() => ({ hint: $('cropHint').textContent, dim: getComputedStyle($('cropBox')).boxShadow, grid: !!$('cropBox').querySelector('.crop-grid'),
+    handles: [...document.querySelectorAll('.crop-h')].map((h) => h.dataset.h).sort().join(), touch: getComputedStyle($('cropView')).touchAction,
+    shapes: [...document.querySelectorAll('.panel .opt')].map((b) => b.textContent) }));
+  eq(ui.hint, 'Drag to reposition · Pinch to zoom', 'hint'); assert(/rgba?\(12, 11, 14/.test(ui.dim), 'outside is dimmed: ' + ui.dim); assert(ui.grid, 'thirds grid');
+  eq(ui.handles, 'e,n,ne,nw,s,se,sw,w', 'corner and edge handles'); eq(ui.touch, 'none', 'page does not scroll while touching the crop');
+  eq(ui.shapes, ['Free', 'Original', 'Square', '4:5', '3:4', '9:16', '16:9'], 'shapes');
+  let c = await cropInfo(p); eq([Math.round(c.rect.w), Math.round(c.rect.h)], [600, 400], 'starts on the whole photo'); covered(c, 'start');
+  // Slider: 2x zoom keeps the centre.
+  await p.fill('#cropZoom', '200'); c = await cropInfo(p);
+  near(c.rect.w, 300, 1, 'slider 2x'); near(c.rect.x + c.rect.w / 2, 300, 1, 'zoom keeps the centre'); covered(c, 'slider');
+  // Mouse drag moves the photo under the frame (dragging right shows more of the left).
+  const mid = [c.F[0] + c.F[2] / 2, c.F[1] + c.F[3] / 2], k = c.F[2] / c.rect.w;
+  await p.mouse.move(mid[0], mid[1]); await p.mouse.down(); await p.mouse.move(mid[0] + 40, mid[1] + 10, { steps: 4 }); await p.mouse.up();
+  const d = await cropInfo(p); near(c.rect.x - d.rect.x, 40 / k, 0.6, 'drag moves the crop by the drag distance'); near(c.rect.y - d.rect.y, 10 / k, 0.6, 'vertical drag');
+  // Dragging far past the edge stops at the photo's edge.
+  await p.mouse.move(mid[0], mid[1]); await p.mouse.down(); await p.mouse.move(mid[0] + 2000, mid[1] + 2000, { steps: 4 }); await p.mouse.up();
+  c = await cropInfo(p); near(c.rect.x, 0, 0.01, 'stops at the left edge'); near(c.rect.y, 0, 0.01, 'stops at the top edge'); covered(c, 'drag limit');
+  // Wheel zooms around the cursor: the photo point under the cursor stays put.
+  const at = [c.F[0] + c.F[2] * 0.7, c.F[1] + c.F[3] * 0.6], under = (q) => [(at[0] - q.I[0]) / q.I[2] * q.W, (at[1] - q.I[1]) / q.I[3] * q.H];
+  const u0 = under(c); await p.mouse.move(at[0], at[1]); await p.mouse.wheel(0, -200); await settle(100);
+  const w = await cropInfo(p), u1 = under(w);
+  assert(w.rect.w < c.rect.w, 'wheel up zooms in'); near(u1[0], u0[0], 0.6, 'wheel anchor x'); near(u1[1], u0[1], 0.6, 'wheel anchor y'); covered(w, 'wheel');
+  eq(await p.evaluate(() => scrollY), 0, 'the page did not scroll');
+  // Pinch (two real touch points through the browser's input pipeline), anchored at the midpoint.
+  await p.fill('#cropZoom', '150'); c = await cropInfo(p);
+  const cdp = await p.context().newCDPSession(p), cx = c.F[0] + c.F[2] * 0.4, cy = c.F[1] + c.F[3] * 0.5;
+  const touch = (type, g) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: cx - g, y: cy, id: 1 }, { x: cx + g, y: cy, id: 2 }] });
+  const pu0 = under({ ...c, I: c.I }); at[0] = cx; at[1] = cy; const before = under(c);
+  await touch('touchStart', 30); for (let g = 35; g <= 80; g += 5) await touch('touchMove', g); await touch('touchEnd', 0); await settle(100);
+  const pz = await cropInfo(p), after = under(pz);
+  near(c.rect.w / pz.rect.w, 80 / 30, 0.15, 'pinch zooms by the finger spread'); near(after[0], before[0], 1, 'pinch anchored at the midpoint (x)'); near(after[1], before[1], 1, 'pinch anchored at the midpoint (y)'); covered(pz, 'pinch');
+  // Zoom out as far as it goes: the frame is still fully covered.
+  await p.fill('#cropZoom', '100'); await p.mouse.move(cx, cy); for (let i = 0; i < 5; i++) await p.mouse.wheel(0, 400); covered(await cropInfo(p), 'zoomed out');
+  eq([state.posts.length, state.used], [0, 0], 'no AI request and no credit used');
+});
+test('crop: every shape is exact, Free and locked handles resize correctly, rotate and reset update the bounds', async ({ p }) => {
+  await openCropOn(p, fx('coords-600x400.png'));
+  for (const [name, a] of [['Square', 1], ['4:5', 0.8], ['3:4', 0.75], ['9:16', 9 / 16], ['16:9', 16 / 9], ['Original', 1.5]]) {
+    await p.click(`.panel .opt:has-text("${name}")`); await settle(260); const c = await cropInfo(p);
+    near(c.rect.w / c.rect.h, a, 0.002, name + ' shape'); near(c.F[2] / c.F[3], a, 0.01, name + ' frame on screen'); covered(c, name);
+    eq(await p.evaluate((n) => document.querySelector('.panel .opt[aria-pressed=true]').textContent, name), name, name + ' selected');
+  }
+  // Locked 4:5: dragging a corner or an edge keeps 4:5.
+  await p.click('.panel .opt:has-text("4:5")'); await settle(260);
+  for (const h of ['se', 'nw', 'e', 'n']) {
+    const b = await p.$eval(`.crop-h[data-h="${h}"]`, (e) => { const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+    const dir = h.includes('n') || h === 'w' ? 1 : -1;
+    await p.mouse.move(b[0], b[1]); await p.mouse.down(); await p.mouse.move(b[0] + 30 * dir, b[1] + 45 * dir, { steps: 4 });
+    const mid = await cropInfo(p); near(mid.rect.w / mid.rect.h, 0.8, 0.002, `4:5 while dragging ${h}`); covered(mid, `locked ${h}`);
+    await p.mouse.up(); await settle(260); const c = await cropInfo(p); near(c.rect.w / c.rect.h, 0.8, 0.002, `4:5 after ${h}`);
+  }
+  // Free: an edge changes only its own side.
+  await p.click('.panel .opt:has-text("Free")'); await settle(260); let c = await cropInfo(p);
+  const e = await p.$eval('.crop-h[data-h="e"]', (x) => { const r = x.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+  await p.mouse.move(e[0], e[1]); await p.mouse.down(); await p.mouse.move(e[0] - 50, e[1] + 30, { steps: 4 });
+  const f = await cropInfo(p); near(f.rect.h, c.rect.h, 0.01, 'free edge keeps height'); near(f.rect.x, c.rect.x, 0.01, 'free edge keeps the left side'); assert(f.rect.w < c.rect.w - 10, 'free edge narrows');
+  // Dragging a free corner far outside stops at the photo.
+  await p.mouse.up(); await settle(260);
+  const se = await p.$eval('.crop-h[data-h="se"]', (x) => { const r = x.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+  await p.mouse.move(se[0], se[1]); await p.mouse.down(); await p.mouse.move(se[0] + 900, se[1] + 900, { steps: 4 }); covered(await cropInfo(p), 'free corner limit'); await p.mouse.up(); await settle(260);
+  // Rotate: the photo's bounds swap and the crop moves with it.
+  await p.click('#cropReset'); await p.click('.panel .opt:has-text("Square")'); await p.fill('#cropZoom', '200'); await settle(260);
+  c = await cropInfo(p);
+  await p.click('text=Rotate 90°'); await settle(260); const r = await cropInfo(p);
+  eq([r.W, r.H, r.turns], [400, 600, 1], 'rotated bounds'); near(r.rect.x, 400 - (c.rect.y + c.rect.h), 0.5, 'crop follows the turn (x)'); near(r.rect.y, c.rect.x, 0.5, 'crop follows the turn (y)');
+  near(r.rect.w / r.rect.h, 1, 0.002, 'still square'); covered(r, 'rotated');
+  await p.click('.panel .opt:has-text("9:16")'); await p.click('text=Rotate 90°'); await settle(260); const r2 = await cropInfo(p);
+  near(r2.rect.w / r2.rect.h, 9 / 16, 0.002, '9:16 stays 9:16 after a turn'); covered(r2, 'rotated 9:16');
+  await p.click('#cropReset'); await settle(260); c = await cropInfo(p);
+  eq([c.turns, c.aspect, Math.round(c.rect.w), Math.round(c.rect.h)], [0, 0, 600, 400], 'reset framing');
+  eq(await p.evaluate(() => $('applyBtn').disabled), true, 'nothing to apply after reset');
+});
+test('crop: Cancel restores, Apply exports exactly the framed area at full size, one undo step, and re-opening keeps the framing', async ({ p, state }) => {
+  await openCropOn(p, fx('coords-600x400.png'));
+  await p.fill('#cropZoom', '250'); await p.click('text=Rotate 90°');
+  await p.click('#cancelBtn'); await idle(p);
+  eq(await p.evaluate(() => [ed.hist.length, ed.idx, !!cr, $('cropView').hidden, $('stage').classList.contains('cropping')]), [1, 0, false, true, false], 'cancel leaves the photo as it was');
+  await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr);
+  eq(await p.evaluate(() => [cr.turns, Math.round(cr.rect.w)]), [0, 600], 'a canceled crop is not remembered');
+  await p.click('.panel .opt:has-text("4:5")'); await p.fill('#cropZoom', '160'); await settle(260);
+  const c = await cropInfo(p), m = [c.F[0] + c.F[2] / 2, c.F[1] + c.F[3] / 2];
+  await p.mouse.move(m[0], m[1]); await p.mouse.down(); await p.mouse.move(m[0] + 25, m[1] - 15, { steps: 3 }); await p.mouse.up();
+  await settle(100); const v = await cropInfo(p);
+  // What the frame shows on screen, as fractions of the photo.
+  const shown = { x: (v.F[0] - v.I[0]) / v.I[2], y: (v.F[1] - v.I[1]) / v.I[3], w: v.F[2] / v.I[2], h: v.F[3] / v.I[3] };
+  await p.click('#applyBtn'); await idle(p);
+  const op = await p.evaluate(() => ed.hist[ed.idx].op);
+  for (const k of ['x', 'y', 'w', 'h']) near(op.rect[k], shown[k], 0.003, 'saved crop matches the frame on screen: ' + k);
+  eq(await p.evaluate(() => [ed.hist.length, ed.idx]), [2, 1], 'one undo step');
+  const px = await p.evaluate(async () => { const i = await loadImg(committed()), c = newCanvas(i.naturalWidth, i.naturalHeight), x = c.getContext('2d'); x.drawImage(i, 0, 0);
+    const g = (a, b) => Array.from(x.getImageData(a, b, 1, 1).data.slice(0, 2)); return { w: c.width, h: c.height, tl: g(0, 0), br: g(c.width - 1, c.height - 1) }; });
+  near(px.w / px.h, 0.8, 0.01, 'result is 4:5');
+  near(px.tl[0], op.rect.x * 255, 3, 'top-left pixel came from the frame\'s left edge'); near(px.tl[1], op.rect.y * 255, 3, 'top-left pixel came from the frame\'s top edge');
+  near(px.br[0], (op.rect.x + op.rect.w) * 255, 3, 'bottom-right pixel (x)'); near(px.br[1], (op.rect.y + op.rect.h) * 255, 3, 'bottom-right pixel (y)');
+  // Undo, redo.
+  const cropped = await p.evaluate(() => committed());
+  await p.click('#undoBtn'); eq(await p.evaluate(() => [ed.idx, committed() === ed.hist[0].data]), [0, true], 'undo restores the uncropped photo');
+  await p.click('#redoBtn'); eq(await p.evaluate((c) => [ed.idx, committed() === c], cropped), [1, true], 'redo restores the crop');
+  // Re-opening shows the uncropped photo with the same framing, and Apply replaces the crop.
+  await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr);
+  const re = await cropInfo(p);
+  eq([Math.round(re.W), Math.round(re.H), re.aspect], [600, 400, 0.8], 're-opened on the full photo with 4:5');
+  for (const k of ['x', 'y', 'w', 'h']) near(re.rect[k] / (k === 'x' || k === 'w' ? 600 : 400), op.rect[k], 0.002, 'same framing ' + k);
+  eq(await p.evaluate(() => $('applyBtn').disabled), true, 'unchanged framing has nothing to apply');
+  await p.click('text=Rotate 90°'); await p.click('#applyBtn'); await idle(p);
+  const op2 = await p.evaluate(() => ed.hist[ed.idx].op); eq([op2.base, op2.turns], [0, 1], 'the new crop is made from the uncropped photo');
+  // Saved file: the full-size render of the same crop.
+  await p.click('#saveBtn'); await downloads(state, 1);
+  const sz = imageSize(state.downloads[0].file), want = await p.evaluate(async () => { const i = await loadImg(committed()); return [i.naturalWidth, i.naturalHeight]; });
+  eq([sz.w, sz.h], want, 'saved file is exactly the cropped size');
+  const same = await p.evaluate(async (file) => {
+    const [a, b] = await Promise.all([loadImg(committed()), loadImg(file)]), w = a.naturalWidth, h = a.naturalHeight;
+    const ca = newCanvas(w, h).getContext('2d'), cb = newCanvas(w, h).getContext('2d'); ca.drawImage(a, 0, 0); cb.drawImage(b, 0, 0, w, h);
+    const da = ca.getImageData(0, 0, w, h).data, db = cb.getImageData(0, 0, w, h).data; let sum = 0; for (let i = 0; i < da.length; i += 4) sum += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]);
+    return sum / (da.length / 2);
+  }, 'data:image/png;base64,' + fs.readFileSync(state.downloads[0].file).toString('base64'));
+  assert(same < 1.5, 'saved file matches the preview pixel for pixel (mean difference ' + same.toFixed(2) + ')');
+  eq([state.posts.length, state.used], [0, 0], 'no AI request and no credit used');
+});
+test('crop: a 12 MP photo crops at full resolution from the original', async ({ p, state }) => {
+  await openCropOn(p, fx('phone-12mp-exif6.jpg'));
+  await p.click('.panel .opt:has-text("9:16")'); await p.fill('#cropZoom', '200'); await p.click('text=Rotate 90°');
+  await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
+  const op = await p.evaluate(() => ed.hist[ed.idx].op), s = imageSize(state.downloads[0].file);
+  // Rotated original is 4032 × 3024; 9:16 at 2× zoom is half the tallest 9:16 that fits.
+  near(s.h, Math.round(op.rect.h * 3024), 2, 'height from the original'); near(s.w / s.h, 9 / 16, 0.002, 'exact 9:16'); assert(s.w > 800, 'full resolution, not the preview: ' + s.w);
+  state.report = { case: '12 MP crop', exported: [s.w, s.h], rect: op.rect };
+});
 
 // ---------- Face tools on a real portrait (only with GLOW_TEST_FACE) ----------
 if (face) test('face: smooth skin previews at 2048px and saves at full size', async ({ p, state }) => {

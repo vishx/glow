@@ -78,7 +78,7 @@ const CATS = {
 };
 // Fixed starting points, not image analysis. Reshaping is never suggested.
 const SUGGESTED = ["pro", "fauto", "relight", "bgblur"];
-const CROPS = [["Original", 0], ["Square", 1], ["4:5", 4 / 5], ["3:4", 3 / 4], ["9:16", 9 / 16], ["16:9", 16 / 9]];
+const CROPS = [["Free", "free"], ["Original", 0], ["Square", 1], ["4:5", 4 / 5], ["3:4", 3 / 4], ["9:16", 9 / 16], ["16:9", 16 / 9]];
 
 // ---------- Small UI helpers ----------
 let toastTimer = 0;
@@ -233,7 +233,9 @@ try {
   Object.assign(faceSet.amt, s.amt || {}); Object.assign(faceSet.shade, s.shade || {});
 } catch {}
 const saveFace = () => store.set("glowFace2", JSON.stringify(faceSet));
-let cropSet = { ratio: 0, turns: 0 }, lookPick = null;
+let lookPick = null;
+let cr = null;            // the open crop: { base, baseIdx, img, canvas, turns, W, H, aspect, rect, start, view, hint }
+let reshapeNote = null;   // why a reshape tool can't be used on this face (null while checking)
 
 // Reads a photo once at full size: the untouched file is kept as the original, and a
 // working copy of up to 2048px drives previews.
@@ -474,7 +476,7 @@ function renderEditor() {
   st.dataset.view = brushing ? "original" : ed.view;
   // Comparing only means something once there's an edit or a preview.
   document.querySelectorAll(".views button").forEach((v) => {
-    v.setAttribute("aria-pressed", String(v.dataset.view === ed.view)); v.disabled = !hasAfter;
+    v.setAttribute("aria-pressed", String(v.dataset.view === ed.view)); v.disabled = !hasAfter || !!cr;
   });
   const prepared = !ed.pending && ed.idx > 0 && ed.hist[ed.idx].op && ed.hist[ed.idx].op.demo;
   const editedName = ed.pending ? "Preview" : prepared ? "Prepared preview" : "Edited";
@@ -520,7 +522,7 @@ function layoutFrame() {
   Object.assign(f.style, { left: Math.round((W - w) / 2) + "px", top: Math.round((H - h) / 2) + "px", width: w + "px", height: h + "px" });
   f.classList.toggle("narrow", w < 220);
 }
-new ResizeObserver(() => { layoutFrame(); if (sel === "erase") drawStrokes(); }).observe($("stage"));
+new ResizeObserver(() => { layoutFrame(); if (sel === "erase") drawStrokes(); if (cr) renderCrop(); }).observe($("stage"));
 function setSplit(pct) {
   ed.split = Math.max(0, Math.min(100, pct));
   $("after").style.clipPath = $("stage").dataset.view === "split" ? `inset(0 0 0 ${ed.split}%)` : "";
@@ -686,7 +688,8 @@ function discardPending() { if (ed.pending) { ed.pending = null; previewToken++;
 function selectTool(id) {
   if (ed.pending && ed.pending.tool !== id) say(`${TOOL[ed.pending.tool].title} wasn't applied.`);
   discardPending();
-  sel = id; strokes = []; outfitData = null; toolsOpen = false; cropSet = { ratio: 0, turns: 0 }; panelBuilt = null;
+  if (cr) closeCrop();
+  sel = id; strokes = []; outfitData = null; toolsOpen = false; panelBuilt = null; reshapeNote = null;
   lookPick = editorLooks().some((l) => l.id === lookId) ? lookId : "natural";
   if (id in toolAmt) toolAmt[id] = 0; // adjustments start from the committed photo
   if (ed.demo && id) {
@@ -699,7 +702,9 @@ function selectTool(id) {
   renderEditor();
   if (id) {
     const t = TOOL[id];
-    if (t.kind === "adjust" || t.kind === "crop") return; // previews once changed
+    if (t.kind === "adjust") return; // previews once changed
+    if (t.kind === "crop") { openCrop().catch((err) => { say(err.message, true); selectTool(null); }); return; }
+    if (t.kind === "face" && t.reshape) checkReshape(id);
     if (t.kind === "face" || t.kind === "body" || t.kind === "hair") { if ((faceSet.amt[id] ?? 50) > 0) preview(); return; }
     if (t.kind === "look") { preview(); return; }
     if (t.kind === "filter" || t.kind === "bg") preview();
@@ -771,9 +776,21 @@ function buildPanel(t) {
       toolAmt[t.id] = v; clearTimeout(adjustTimer); adjustTimer = setTimeout(preview, 120);
     }, (v) => { toolAmt[t.id] = v; clearTimeout(adjustTimer); preview(); }, signed));
   } else if (t.kind === "crop") {
-    body.append(options(CROPS, (v) => v === cropSet.ratio, (v) => { cropSet.ratio = v; renderPanel(true); preview(); }));
-    const r = document.createElement("button"); r.className = "btn quiet small"; r.innerHTML = icon("rotate") + "Rotate";
-    r.addEventListener("click", () => { cropSet.turns++; preview(); }); body.append(r);
+    if (!cr) return;
+    const shapes = options(CROPS, (v) => v === cr.aspect, (v) => setCropAspect(v));
+    shapes.setAttribute("role", "group"); shapes.setAttribute("aria-label", "Crop shape"); body.append(shapes);
+    const z = slider("Zoom", 100, ZOOM_MAX * 100, Math.round(cropZoom() * 100), (v) => {
+      const { F } = cropView(); zoomCrop((v / 100) / cropZoom(), F.x + F.w / 2, F.y + F.h / 2);
+    }, () => {}, (v) => (v / 100).toFixed(1) + "×");
+    const zi = z.querySelector("input"); zi.id = "cropZoom"; zi.setAttribute("aria-valuetext", `${(zi.value / 100).toFixed(1)} times`);
+    zi.addEventListener("input", () => zi.setAttribute("aria-valuetext", `${(zi.value / 100).toFixed(1)} times`));
+    body.append(z);
+    const row = document.createElement("div"); row.className = "crop-tools";
+    const rot = document.createElement("button"); rot.className = "btn quiet small"; rot.innerHTML = icon("rotate") + "Rotate 90°";
+    rot.addEventListener("click", rotateCrop);
+    const rs = document.createElement("button"); rs.className = "btn quiet small"; rs.id = "cropReset"; rs.textContent = "Reset";
+    rs.addEventListener("click", resetCrop);
+    row.append(rot, rs); body.append(row);
   } else if (t.kind === "look") {
     body.append(options(editorLooks().map((l) => [l.name, l.id]), (v) => v === lookPick, (v) => { lookPick = v; renderPanel(true); preview(); }));
   } else if (t.id === "outfit") {
@@ -797,6 +814,9 @@ function panelState(t) {
   if (!cost) { chip.textContent = "Free · on-device"; chip.className = "chip free"; }
   else { chip.textContent = `AI · ${credits(cost)}`; chip.className = "chip"; }
   if (t.reshape && !(faceSet.amt[t.id] > 0)) note = (note ? note + " " : "") + "Starts at 0. Move the slider to reshape.";
+  const blocked = t.reshape && t.kind === "face" && reshapeNote && reshapeNote.tool === t.id ? reshapeNote : null;
+  if (blocked) note = blocked.msg === null ? "Finding the face…" : blocked.msg || note;
+  if (t.kind === "crop") note = "";
   if ($("clearMarks")) $("clearMarks").disabled = !strokes.length;
 
   // Apply: on-device tools commit the preview; AI tools charge here, once.
@@ -804,7 +824,10 @@ function panelState(t) {
   if (!cost) {
     apply.textContent = "Apply";
     if (t.kind === "adjust") apply.disabled ||= !ed.pending;
-    if (t.reshape) apply.disabled ||= !(faceSet.amt[t.id] > 0);
+    if (t.reshape) apply.disabled ||= !(faceSet.amt[t.id] > 0) || !!(blocked && blocked.msg !== "");
+    if (t.kind === "crop") apply.disabled ||= !cropChanged();
+    const sl = $("panelBody").querySelector(".slider input");
+    if (sl && t.reshape && t.kind === "face") sl.disabled = !!(blocked && blocked.msg);
   } else {
     const again = lastCommitTool === t.id;
     const a = account, short = a && a.remaining < cost;
@@ -832,7 +855,6 @@ function opFor(t) {
   const op = { tool: t.id };
   if (t.kind === "face" || t.kind === "body" || t.kind === "hair") { op.amt = (faceSet.amt[t.id] ?? 50) / 100; op.shades = { ...faceSet.shade }; }
   if (t.kind === "adjust") op.value = toolAmt[t.id];
-  if (t.kind === "crop") { op.ratio = cropSet.ratio; op.turns = cropSet.turns; }
   if (t.kind === "look") op.look = { ...(editorLooks().find((l) => l.id === lookPick) || PRESET_LOOKS[1]) };
   return op;
 }
@@ -849,7 +871,10 @@ async function computeOp(op, base) {
   }
   if (t.kind === "filter") return applyFilter(base, t.filter);
   if (t.kind === "adjust") return op.value ? adjust(base, t.id, op.value) : null;
-  if (t.kind === "crop") return op.ratio || op.turns % 4 ? cropRotate(base, op.ratio, op.turns) : null;
+  if (t.kind === "crop") {
+    if (op.rect) return cropRect(base, op.turns, op.rect, op.aspect);
+    return op.ratio || op.turns % 4 ? cropRotate(base, op.ratio, op.turns) : null; // steps saved before interactive crop
+  }
   if (t.kind === "look") return applyLook(base, op.look);
   if (t.kind === "bg") {
     const cut = await cutout(base);
@@ -862,16 +887,20 @@ async function computeOp(op, base) {
   return null;
 }
 async function preview() {
-  const t = sel && TOOL[sel]; if (!t || costOf(t)) return;
+  const t = sel && TOOL[sel]; if (!t || costOf(t) || t.kind === "crop") return;
   const token = ++previewToken, base = committed(), op = opFor(t);
   const slow = setTimeout(() => { if (token === previewToken) setBusy(true, t.kind === "face" || t.kind === "body" || t.kind === "hair" || t.kind === "bg" ? "Finding the details…" : "Working…"); }, 250);
   try {
     const out = await computeOp(op, base);
     if (token !== previewToken || sel !== t.id) return;
-    ed.pending = out ? { tool: t.id, data: out, op } : null;
-    if (out) { if (ed.view === "original") ed.view = "edited"; $("alertLive").textContent = `${t.title} preview ready. Apply to keep it.`; }
+    ed.pending = out && out !== base ? { tool: t.id, data: out, op } : null;
+    if (ed.pending) { if (ed.view === "original") ed.view = "edited"; $("alertLive").textContent = `${t.title} preview ready. Apply to keep it.`; }
   } catch (err) {
-    if (token === previewToken) { ed.pending = null; say(err.message, true); }
+    if (token === previewToken) {
+      ed.pending = null;
+      // A face the reshape tools can't trust: say so in the panel instead of guessing.
+      if (err.unavailable) reshapeNote = { tool: t.id, msg: err.message }; else say(err.message, true);
+    }
   } finally {
     clearTimeout(slow);
     if (token === previewToken) { setBusy(false); renderEditor(); }
@@ -893,12 +922,14 @@ async function applyCurrent() {
   // Sample: prepared previews are already showing. Nothing is generated or charged.
   if (ed.demo && t.kind === "ai") { if (demo && demo.failed[t.id]) showDemoPreview(t.id); else { sel = null; renderEditor(); } return; }
   const cost = costOf(t);
+  if (t.kind === "crop") { if (cr && cropChanged()) await applyCrop(); return; }
   if (!cost) {
     let pend = ed.pending && ed.pending.tool === t.id ? ed.pending : null;
     if (!pend) {
       setBusy(true, "Working…");
       const op = opFor(t);
-      try { const data = await computeOp(op, committed()); if (data) pend = { data, op }; } catch (err) { say(err.message, true); } finally { setBusy(false); }
+      try { const data = await computeOp(op, committed()); if (data && data !== committed()) pend = { data, op }; }
+    catch (err) { if (err.unavailable) reshapeNote = { tool: t.id, msg: err.message }; say(err.message, true); } finally { setBusy(false); }
     }
     if (!pend) return;
     commit(pend.data, t, pend.op); sel = null; renderEditor();
@@ -912,6 +943,228 @@ async function applyCurrent() {
   }
   if (jobActive()) { say(`${job.title} is still running. Check its status first.`, true); return; }
   await startAiEdit(t);
+}
+
+
+// Reshape tools first check that the face's landmarks can be trusted on this picture.
+// null while checking, "" when fine, otherwise the reason shown in the panel.
+async function checkReshape(id) {
+  const base = committed();
+  reshapeNote = { tool: id, msg: null }; renderPanel();
+  let msg = "";
+  try { msg = await reshapeStatus(base); } catch (err) { msg = err.message; }
+  if (sel === id && committed() === base) { reshapeNote = { tool: id, msg }; renderPanel(); }
+}
+
+// ---------- Crop and rotate ----------
+// The photo moves under a fixed frame. The crop is kept as a rectangle in the rotated
+// photo's own pixels, so the frame on screen, the drag and zoom limits and the saved file
+// all come from the same numbers. Applying records it as fractions of the photo, so Save
+// can cut exactly the same area from the full-size original.
+// Reopening Crop right after a crop shows the uncropped photo with that framing, so a crop
+// can be widened again; applying then replaces the earlier crop instead of cropping twice.
+const CROP_MARGIN = 20, CROP_MIN = 48, ZOOM_MAX = 8;
+const aspectOf = (a) => (a === "free" ? 0 : a === 0 ? cr.W / cr.H : a);
+function maxRect(asp) { return cr.W / cr.H > asp ? { w: cr.H * asp, h: cr.H } : { w: cr.W, h: cr.W / asp }; }
+function rotatedCanvas(img, turns) {
+  const q = ((turns % 4) + 4) % 4, W = img.naturalWidth, H = img.naturalHeight, c = newCanvas(q % 2 ? H : W, q % 2 ? W : H), x = c.getContext("2d");
+  x.translate(c.width / 2, c.height / 2); x.rotate((q * Math.PI) / 2); x.drawImage(img, -W / 2, -H / 2);
+  return c;
+}
+function setTurns(turns) {
+  cr.turns = turns; cr.canvas = rotatedCanvas(cr.img, turns); cr.W = cr.canvas.width; cr.H = cr.canvas.height;
+  const ci = $("cropImg"); ci.width = cr.W; ci.height = cr.H; ci.getContext("2d").drawImage(cr.canvas, 0, 0);
+}
+async function openCrop() {
+  // Re-edit the last crop if that is what's showing, otherwise start on the current picture.
+  const h = ed.hist[ed.idx], o = h.op;
+  const bi = o && o.tool === "crop" && o.rect ? (o.base ?? ed.idx - 1) : -1;
+  const reuse = bi >= 0 && ed.hist[bi] && ed.hist[bi].data;
+  const base = reuse ? ed.hist[bi].data : committed(), id = sel;
+  const img = await loadImg(base);
+  if (sel !== id) return;
+  cr = { base, baseIdx: reuse ? bi : null, img, aspect: 0, hint: true };
+  setTurns(reuse ? o.turns : 0);
+  if (reuse) { cr.aspect = o.aspectKey ?? "free"; cr.rect = { x: o.rect.x * cr.W, y: o.rect.y * cr.H, w: o.rect.w * cr.W, h: o.rect.h * cr.H }; }
+  else cr.rect = { x: 0, y: 0, w: cr.W, h: cr.H };
+  cr.start = cropKey();
+  $("cropView").hidden = false; $("stage").classList.add("cropping"); $("cropHint").classList.remove("gone");
+  setTimeout(hideCropHint, 5000);
+  renderPanel(true); renderCrop();
+}
+function closeCrop() { cr = null; $("cropView").hidden = true; $("stage").classList.remove("cropping"); }
+const cropKey = () => JSON.stringify([cr.turns % 4, cr.aspect, ...["x", "y", "w", "h"].map((k) => Math.round(cr.rect[k]))]);
+const cropChanged = () => !!cr && (cropKey() !== cr.start || (cr.baseIdx === null && (cr.turns % 4 || cr.rect.w < cr.W - 0.5 || cr.rect.h < cr.H - 0.5)));
+// Where things are on screen: frame F (stage pixels), scale k (screen px per photo px) and
+// the photo's top-left t. Derived from the crop, except while a handle is being dragged.
+function cropView() {
+  if (cr.view) return cr.view;
+  const st = $("stage"), aw = st.clientWidth - CROP_MARGIN * 2, ah = st.clientHeight - CROP_MARGIN * 2 - 24, r = cr.rect, asp = r.w / r.h;
+  const w = Math.min(aw, ah * asp), h = w / asp, F = { x: (st.clientWidth - w) / 2, y: CROP_MARGIN + 24 + (ah - h) / 2, w, h };
+  const k = w / r.w;
+  return { F, k, t: { x: F.x - r.x * k, y: F.y - r.y * k } };
+}
+function renderCrop() {
+  if (!cr) return;
+  const { F, k, t } = cropView(), ci = $("cropImg"), bx = $("cropBox");
+  Object.assign(ci.style, { left: t.x + "px", top: t.y + "px", width: cr.W * k + "px", height: cr.H * k + "px" });
+  Object.assign(bx.style, { left: F.x + "px", top: F.y + "px", width: F.w + "px", height: F.h + "px" });
+  bx.classList.toggle("small", Math.min(F.w, F.h) < 120);
+  const z = $("cropZoom");
+  if (z && document.activeElement !== z) { const v = Math.round(cropZoom() * 100); z.value = v; z.nextElementSibling.textContent = (v / 100).toFixed(1) + "×"; z.setAttribute("aria-valuetext", `${(v / 100).toFixed(1)} times`); }
+  panelState(TOOL.crop);
+}
+function cropZoom() { const m = maxRect(cr.rect.w / cr.rect.h); return m.w / cr.rect.w; }
+// Keeps the crop inside the photo (so the result never has blank edges) and within zoom limits.
+function clampCrop() {
+  const r = cr.rect, m = maxRect(r.w / r.h);
+  let s = Math.min(1, m.w / r.w); const minW = Math.max(m.w / ZOOM_MAX, 16);
+  if (r.w * s < minW) s = minW / r.w;
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2; r.w *= s; r.h *= s; r.x = cx - r.w / 2; r.y = cy - r.h / 2;
+  r.x = Math.max(0, Math.min(cr.W - r.w, r.x)); r.y = Math.max(0, Math.min(cr.H - r.h, r.y));
+}
+function panCrop(dx, dy) { const { k } = cropView(); cr.rect.x -= dx / k; cr.rect.y -= dy / k; clampCrop(); renderCrop(); }
+// Zooms by `f` keeping the photo point under screen point (sx, sy) where it is.
+function zoomCrop(f, sx, sy) {
+  const { F, k, t } = cropView(), r = cr.rect, m = maxRect(r.w / r.h);
+  const nw = Math.max(m.w / ZOOM_MAX, Math.min(m.w, r.w / f)), k2 = F.w / nw;
+  const ix = (sx - t.x) / k, iy = (sy - t.y) / k;
+  r.w = nw; r.h = F.h / k2; r.x = ix - (sx - F.x) / k2; r.y = iy - (sy - F.y) / k2;
+  clampCrop(); renderCrop();
+}
+function hideCropHint() { if (cr && cr.hint) { cr.hint = false; $("cropHint").classList.add("gone"); } }
+function setCropAspect(a) {
+  const z = cropZoom(), cx = cr.rect.x + cr.rect.w / 2, cy = cr.rect.y + cr.rect.h / 2;
+  cr.aspect = a;
+  if (a !== "free") { const m = maxRect(aspectOf(a)); cr.rect = { w: m.w / z, h: m.h / z, x: cx - m.w / z / 2, y: cy - m.h / z / 2 }; }
+  clampCrop(); settleCrop(); renderPanel(true); renderCrop();
+}
+function rotateCrop() {
+  const r = cr.rect, oldH = cr.H, z = cropZoom();
+  setTurns(cr.turns + 1);
+  // A quarter turn clockwise: photo point (x, y) goes to (oldH - y, x).
+  cr.rect = { x: oldH - (r.y + r.h), y: r.x, w: r.h, h: r.w };
+  if (typeof cr.aspect === "number" && cr.aspect !== 0 && cr.aspect !== 1) {
+    // A chosen shape (4:5, 9:16…) stays that shape; re-fit it around the same spot.
+    const m = maxRect(cr.aspect), cx = cr.rect.x + cr.rect.w / 2, cy = cr.rect.y + cr.rect.h / 2;
+    cr.rect = { w: m.w / z, h: m.h / z, x: cx - m.w / z / 2, y: cy - m.h / z / 2 };
+  }
+  clampCrop(); renderCrop();
+  $("alertLive").textContent = `Rotated to ${(cr.turns % 4) * 90} degrees.`;
+}
+function resetCrop() {
+  setTurns(0); cr.aspect = 0; cr.rect = { x: 0, y: 0, w: cr.W, h: cr.H };
+  settleCrop(); renderPanel(true); renderCrop(); $("alertLive").textContent = "Framing reset.";
+}
+function settleCrop() { const v = $("cropView"); v.classList.add("settle"); clearTimeout(settleCrop.t); settleCrop.t = setTimeout(() => v.classList.remove("settle"), 220); }
+// Dragging a corner or edge moves the frame over the photo, which stays still. The frame
+// can't leave the photo or the canvas; a chosen shape keeps its proportions. On release
+// the frame grows back to fill the canvas, showing the same area larger.
+function resizeCrop(h, g, x, y) {
+  const { F, k, t } = g.view, st = $("stage");
+  const lim = { l: Math.max(t.x, 4), t: Math.max(t.y, 4), r: Math.min(t.x + cr.W * k, st.clientWidth - 4), b: Math.min(t.y + cr.H * k, st.clientHeight - 4) };
+  const dx = x - g.x, dy = y - g.y, asp = cr.aspect === "free" ? 0 : F.w / F.h;
+  let L = F.x, T = F.y, R = F.x + F.w, B = F.y + F.h;
+  if (!asp) {
+    if (h.includes("w")) L = Math.max(lim.l, Math.min(R - CROP_MIN, L + dx));
+    if (h.includes("e")) R = Math.min(lim.r, Math.max(L + CROP_MIN, R + dx));
+    if (h.includes("n")) T = Math.max(lim.t, Math.min(B - CROP_MIN, T + dy));
+    if (h.includes("s")) B = Math.min(lim.b, Math.max(T + CROP_MIN, B + dy));
+  } else if (h.length === 2) {
+    // Corner: the opposite corner stays put; the larger of the two movements wins.
+    const ax = h.includes("w") ? R : L, ay = h.includes("n") ? B : T, sx = h.includes("w") ? -1 : 1, sy = h.includes("n") ? -1 : 1;
+    let w = Math.max(F.w + sx * dx, (F.h + sy * dy) * asp);
+    const wmax = Math.min(sx > 0 ? lim.r - ax : ax - lim.l, (sy > 0 ? lim.b - ay : ay - lim.t) * asp);
+    w = Math.max(Math.max(CROP_MIN, CROP_MIN * asp), Math.min(wmax, w));
+    const hh = w / asp; L = sx > 0 ? ax : ax - w; R = L + w; T = sy > 0 ? ay : ay - hh; B = T + hh;
+  } else {
+    // Edge: that edge moves, the frame stays centred the other way.
+    const cx = (L + R) / 2, cy = (T + B) / 2, horiz = h === "e" || h === "w";
+    let w = horiz ? F.w + (h === "e" ? dx : -dx) : (F.h + (h === "s" ? dy : -dy)) * asp;
+    const wmax = horiz ? Math.min(h === "e" ? lim.r - L : R - lim.l, 2 * Math.min(cy - lim.t, lim.b - cy) * asp)
+      : Math.min(2 * Math.min(cx - lim.l, lim.r - cx), (h === "s" ? lim.b - T : B - lim.t) * asp);
+    w = Math.max(Math.max(CROP_MIN, CROP_MIN * asp), Math.min(wmax, w));
+    const hh = w / asp;
+    if (horiz) { if (h === "e") R = L + w; else L = R - w; T = cy - hh / 2; B = cy + hh / 2; }
+    else { if (h === "s") B = T + hh; else T = B - hh; L = cx - w / 2; R = cx + w / 2; }
+  }
+  const nF = { x: L, y: T, w: R - L, h: B - T };
+  cr.view = { F: nF, k, t };
+  cr.rect = { x: (nF.x - t.x) / k, y: (nF.y - t.y) / k, w: nF.w / k, h: nF.h / k };
+  renderCrop();
+}
+{
+  const view = $("cropView"), ptrs = new Map();
+  let handle = null;
+  view.addEventListener("pointerdown", (e) => {
+    if (!cr || e.button > 0) return;
+    e.preventDefault(); view.focus({ preventScroll: true }); hideCropHint();
+    const h = e.target.closest(".crop-h");
+    if (h) { handle = { h: h.dataset.h, x: e.clientX, y: e.clientY, view: cropView(), id: e.pointerId }; h.setPointerCapture(e.pointerId); return; }
+    view.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+  });
+  // Each gesture is measured from where it started (re-based whenever a finger is added or
+  // lifted), so pushing against an edge and coming back feels natural, and a pinch keeps
+  // the photo point under the fingers' midpoint exactly there.
+  let g0 = null;
+  const rebase = () => {
+    const pts = [...ptrs.values()];
+    g0 = !pts.length ? null : { rect: { ...cr.rect }, view: cropView(), pts,
+      mid: pts.length > 1 ? [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2] : pts[0],
+      gap: pts.length > 1 ? Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]) : 0 };
+  };
+  view.addEventListener("pointerdown", () => { if (cr && ptrs.size) rebase(); });
+  view.addEventListener("pointermove", (e) => {
+    if (!cr) return;
+    if (handle && e.pointerId === handle.id) { resizeCrop(handle.h, handle, e.clientX, e.clientY); return; }
+    if (!ptrs.has(e.pointerId) || !g0) return;
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    const now = [...ptrs.values()].slice(0, 2), { F, k, t } = g0.view, sr = $("stage").getBoundingClientRect();
+    const mid = now.length > 1 ? [(now[0][0] + now[1][0]) / 2, (now[0][1] + now[1][1]) / 2] : now[0];
+    const f = now.length > 1 && g0.gap > 0 ? Math.hypot(now[0][0] - now[1][0], now[0][1] - now[1][1]) / g0.gap : 1;
+    const m = maxRect(g0.rect.w / g0.rect.h), w = Math.max(m.w / ZOOM_MAX, Math.min(m.w, g0.rect.w / f)), k2 = F.w / w;
+    // The photo point that was under the starting midpoint goes under the current one.
+    const ix = (g0.mid[0] - sr.left - t.x) / k, iy = (g0.mid[1] - sr.top - t.y) / k;
+    cr.rect = { w, h: F.h / k2, x: ix - (mid[0] - sr.left - F.x) / k2, y: iy - (mid[1] - sr.top - F.y) / k2 };
+    clampCrop(); renderCrop();
+  });
+  const end = (e) => {
+    if (handle && e.pointerId === handle.id) { handle = null; if (cr) { cr.view = null; settleCrop(); renderCrop(); } return; }
+    if (ptrs.delete(e.pointerId) && cr) rebase();
+  };
+  view.addEventListener("pointerup", end); view.addEventListener("pointercancel", end);
+  view.addEventListener("wheel", (e) => {
+    if (!cr) return;
+    e.preventDefault(); hideCropHint();
+    const sr = $("stage").getBoundingClientRect(), d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    zoomCrop(Math.exp(-d * (e.ctrlKey ? 0.01 : 0.0015)), e.clientX - sr.left, e.clientY - sr.top);
+  }, { passive: false });
+  view.addEventListener("keydown", (e) => {
+    if (!cr) return;
+    const s = e.shiftKey ? 40 : 8, { F } = cropView(), k = e.key;
+    if (k === "ArrowLeft") panCrop(s, 0); else if (k === "ArrowRight") panCrop(-s, 0);
+    else if (k === "ArrowUp") panCrop(0, s); else if (k === "ArrowDown") panCrop(0, -s);
+    else if (k === "+" || k === "=") zoomCrop(1.1, F.x + F.w / 2, F.y + F.h / 2);
+    else if (k === "-" || k === "_") zoomCrop(1 / 1.1, F.x + F.w / 2, F.y + F.h / 2);
+    else return;
+    e.preventDefault(); hideCropHint();
+  });
+}
+function cropOp() {
+  const r = cr.rect, asp = cr.aspect === "free" ? 0 : r.w / r.h;
+  const op = { tool: "crop", turns: cr.turns % 4, rect: { x: r.x / cr.W, y: r.y / cr.H, w: r.w / cr.W, h: r.h / cr.H }, aspect: asp, aspectKey: cr.aspect };
+  if (cr.baseIdx !== null) op.base = cr.baseIdx;
+  return op;
+}
+async function applyCrop() {
+  const t = TOOL.crop, op = cropOp();
+  setBusy(true, "Working…");
+  try {
+    const data = await computeOp(op, cr.base);
+    if (!data) return;
+    closeCrop(); commit(data, t, op); sel = null; renderEditor();
+    say(`${t.title} applied.`); Platform.haptic();
+  } catch (err) { say(err.message, true); } finally { setBusy(false); }
 }
 
 // ---------- AI jobs ----------
@@ -1137,7 +1390,12 @@ async function renderExport() {
   let data = base.data;
   const keep = IMG_MAX; IMG_MAX = EXPORT_SIDE;
   try {
-    for (let i = k + 1; i < steps.length; i++) { const out = await computeOp(steps[i].op, data); if (out) data = out; }
+    const keepFor = new Set(steps.map((s) => s.op && s.op.base).filter((b) => b != null)), kept = { [k]: data };
+    for (let i = k + 1; i < steps.length; i++) {
+      const op = steps[i].op, from = op && op.base != null && kept[op.base] !== undefined ? kept[op.base] : data;
+      const out = await computeOp(op, from); if (out) data = out; else data = from;
+      if (keepFor.has(i)) kept[i] = data;
+    }
   } finally { IMG_MAX = keep; }
   const img = await loadImg(data);
   return { data, w: img.naturalWidth, h: img.naturalHeight, capped: base.capped, ai: k && steps[k].op.tool !== "camlook" ? TOOL[steps[k].op.tool] : null };
@@ -1791,7 +2049,7 @@ if (native && plugins.App) plugins.App.addListener("backButton", () => {
 document.addEventListener("keydown", (e) => {
   if (screen !== "editorScreen" || document.querySelector("dialog[open]") || e.target.matches("input[type=search]")) return;
   if (e.key === "Escape" && sel) selectTool(null);
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); (e.shiftKey ? $("redoBtn") : $("undoBtn")).click(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !cr) { e.preventDefault(); (e.shiftKey ? $("redoBtn") : $("undoBtn")).click(); }
 });
 
 // ---------- Start ----------

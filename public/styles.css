@@ -238,6 +238,41 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner.small { width: 20px; height: 20px; margin: 0; border-width: 2px; border-color: var(--control); border-top-color: var(--accent); flex: none; }
 #brush { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+/* Crop and rotate: the photo moves under a fixed frame. Outside the frame is dimmed; the
+   frame has a rule-of-thirds grid and corner/edge handles with 44px targets. */
+.stage.cropping .frame, .stage.cropping .history { display: none; }
+.crop-view { position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab; outline: none; }
+.crop-view:active { cursor: grabbing; }
+.crop-view:focus-visible .crop-box { outline: 2px solid var(--accent); outline-offset: 3px; }
+#cropImg { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
+.crop-box { position: absolute; box-shadow: 0 0 0 200vmax rgb(12 11 14 / 0.72); border: 1px solid #fffd; pointer-events: none; }
+.crop-grid { position: absolute; inset: 0; opacity: 0.5;
+  background: linear-gradient(90deg, transparent calc(33.333% - 0.5px), #fff calc(33.333% - 0.5px) calc(33.333% + 0.5px), transparent 0,
+      transparent calc(66.667% - 0.5px), #fff calc(66.667% - 0.5px) calc(66.667% + 0.5px), transparent 0),
+    linear-gradient(transparent calc(33.333% - 0.5px), #fff calc(33.333% - 0.5px) calc(33.333% + 0.5px), transparent 0,
+      transparent calc(66.667% - 0.5px), #fff calc(66.667% - 0.5px) calc(66.667% + 0.5px), transparent 0); }
+.crop-h { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; pointer-events: auto; touch-action: none; }
+.crop-h::after { content: ""; position: absolute; left: 50%; top: 50%; }
+.crop-h.c::after { width: 20px; height: 20px; border: 0 solid #fff; filter: drop-shadow(0 0 2px #0009); }
+.crop-h.nw { left: 0; top: 0; cursor: nwse-resize; } .crop-h.nw::after { margin: -2px 0 0 -2px; border-width: 4px 0 0 4px; }
+.crop-h.ne { left: 100%; top: 0; cursor: nesw-resize; } .crop-h.ne::after { margin: -2px 0 0 -18px; border-width: 4px 4px 0 0; }
+.crop-h.se { left: 100%; top: 100%; cursor: nwse-resize; } .crop-h.se::after { margin: -18px 0 0 -18px; border-width: 0 4px 4px 0; }
+.crop-h.sw { left: 0; top: 100%; cursor: nesw-resize; } .crop-h.sw::after { margin: -18px 0 0 -2px; border-width: 0 0 4px 4px; }
+.crop-h.edge::after { background: #fff; border-radius: 2px; box-shadow: 0 0 3px #0009; }
+.crop-h.n, .crop-h.s { left: 50%; cursor: ns-resize; } .crop-h.n { top: 0; } .crop-h.s { top: 100%; }
+.crop-h.n::after, .crop-h.s::after { width: 24px; height: 4px; margin: -2px 0 0 -12px; }
+.crop-h.e, .crop-h.w { top: 50%; cursor: ew-resize; } .crop-h.e { left: 100%; } .crop-h.w { left: 0; }
+.crop-h.e::after, .crop-h.w::after { width: 4px; height: 24px; margin: -12px 0 0 -2px; }
+.crop-box.small .crop-h.edge { display: none; }
+.crop-hint { position: absolute; left: 50%; top: var(--s2); transform: translateX(-50%); margin: 0; padding: 4px var(--s3); border-radius: 12px;
+  background: rgb(18 16 20 / 0.72); color: #fff; font-size: 0.8125rem; line-height: 1.125rem; white-space: nowrap; pointer-events: none;
+  transition: opacity 0.4s ease-out; }
+.crop-hint.gone { opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .crop-view.settle #cropImg, .crop-view.settle .crop-box { transition: left 0.18s ease-out, top 0.18s ease-out, width 0.18s ease-out, height 0.18s ease-out; }
+}
+.crop-tools { display: flex; gap: var(--s2); }
+.crop-tools .btn { flex: 1; }
 
 /* Under the photo: Original / Compare / Edited, and the credit chip. */
 .viewbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); padding: var(--s2) var(--gutter) 0; }
