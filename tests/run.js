@@ -879,7 +879,13 @@ test('zoom: desktop wheel zooms around the cursor and the mouse pans; crop keeps
   near((y - s1.st.y - s1.v.y) / s1.v.h, P0[1], 0.003, 'cursor stays on the same picture point (y)');
   await p.mouse.down(); await p.mouse.move(x + 30, y + 10, { steps: 4 }); await p.mouse.up();
   const s2 = await viewState(p); near(s2.v.x - s1.v.x, 30, 0.5, 'mouse drag pans');
-  eq(await p.evaluate(() => document.documentElement.style.touchAction || getComputedStyle(document.documentElement).touchAction), 'auto', 'page zoom is not disabled');
+  await p.click('#backBtn').catch(() => {}); await p.evaluate(() => document.activeElement && document.activeElement.blur());
+  await pick(p, fx('phone-12mp-exif6.jpg')); eq((await viewState(p)).z, 1, 'a newly opened photo starts at fit');
+  await p.keyboard.press('+'); await settle(300); near((await viewState(p)).z, 1.6, 0.01, '+ zooms in');
+  assert(/Zoom 160%/.test(await p.textContent('#alertLive')), 'zoom level announced');
+  await p.keyboard.press('0'); await settle(300); eq((await viewState(p)).z, 1, '0 fits');
+  await p.click('#backBtn').catch(() => {}); await pick(p, PORTRAIT);
+    eq(await p.evaluate(() => document.documentElement.style.touchAction || getComputedStyle(document.documentElement).touchAction), 'auto', 'page zoom is not disabled');
   assert(!/user-scalable=no|maximum-scale=1/.test(await p.getAttribute('meta[name=viewport]', 'content')), 'viewport allows browser zoom');
   // Crop mode: the inspection view and its controls step aside; crop gestures change the crop.
   await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr);
@@ -902,6 +908,14 @@ test('zoom: with the erase brush one finger draws and two fingers navigate', asy
   const pt = await p.evaluate(() => { const r = imageRect(), q = strokes[strokes.length - 1].pts[0], st = $('stage').getBoundingClientRect(); return [st.left + r.x + q[0] * r.s, st.top + r.y + q[1] * r.s]; });
   near(pt[0], cx, 1, 'stroke under the finger (x)'); near(pt[1], cy, 1, '(y)');
 }, { viewport: { width: 390, height: 844 } });
+test('layout: a phone held sideways puts the photo and the tools side by side', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending);
+  const r = await p.evaluate(() => { const g = (s) => document.querySelector(s).getBoundingClientRect(), st = g('#stage'), vb = g('#editorScreen .viewbar'), side = g('#editorScreen .side'), ap = g('#applyBtn'), tl = g('#tools');
+    return { stageH: st.height, viewbarIn: vb.bottom <= innerHeight + 0.5, besides: side.left >= st.right, apply: ap.bottom <= innerHeight, tools: tl.height > 40, sideways: document.documentElement.scrollWidth > innerWidth }; });
+  assert(r.stageH > 250, 'photo keeps its height: ' + r.stageH);
+  eq([r.viewbarIn, r.besides, r.apply, r.tools, r.sideways], [true, true, true, true, false], 'side by side, nothing overlapping or off screen');
+}, { viewport: { width: 844, height: 390 } });
 test('layout: photo-first editor, collapsible panel, no sideways scroll on small phones', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'retouch', 'face', 'fslim'); await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 });

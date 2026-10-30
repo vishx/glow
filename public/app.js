@@ -554,8 +554,8 @@ function viewRect(F = fitRect()) {
 }
 function applyView() {
   const F = fitRect(), f = $("frame"), st = $("stage");
-  const key = F.nw ? `${F.nw}x${F.nh}` : insp.key;
-  if (key !== insp.key) { insp.key = key; insp.z = 1; insp.cx = insp.cy = 0.5; }   // a new picture size starts at fit
+  const key = F.nw ? `${ed.session}|${F.nw}x${F.nh}` : insp.key;
+  if (key !== insp.key) { insp.key = key; insp.z = 1; insp.cx = insp.cy = 0.5; }   // a new photo, or a new picture size (crop), starts at fit
   const v = viewRect(F);
   Object.assign($("view").style, { width: F.w + "px", height: F.h + "px", transform: `translate(${v.x}px, ${v.y}px) scale(${insp.z})` });
   const x0 = Math.max(0, v.x), y0 = Math.max(0, v.y);
@@ -597,10 +597,12 @@ function zoomTo(z, x, y, { centre = false, animate = false } = {}) {
   zoomAnim = requestAnimationFrame(step);
 }
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-const zoomBy = (k) => { const F = fitRect(); pokeZoomCtl(); zoomTo(insp.z * k, F.W / 2, F.H / 2, { animate: true }); };
+const zoomBy = (k) => { const F = fitRect(); pokeZoomCtl(); zoomTo(insp.z * k, F.W / 2, F.H / 2, { animate: true }); sayZoom(); };
+// Screen readers hear the zoom level after the buttons or keys change it.
+const sayZoom = () => setTimeout(() => { $("alertLive").textContent = insp.z <= 1.001 ? "Photo fits the screen" : `Zoom ${Math.round(insp.z * 100)}%`; }, 260);
 $("zoomIn").addEventListener("click", () => zoomBy(1.6));
 $("zoomOut").addEventListener("click", () => zoomBy(1 / 1.6));
-$("zoomFit").addEventListener("click", () => { pokeZoomCtl(); const F = fitRect(); zoomTo(1, F.W / 2, F.H / 2, { animate: true }); });
+$("zoomFit").addEventListener("click", () => { pokeZoomCtl(); const F = fitRect(); zoomTo(1, F.W / 2, F.H / 2, { animate: true }); sayZoom(); });
 function setSplit(pct) {
   ed.split = Math.max(0, Math.min(100, pct));
   applyView();
@@ -626,7 +628,7 @@ function centerDividerOnFace() {
 // that becomes a one-finger pan (or the reverse) never jumps. In Compare, dragging on the
 // divider line moves it; anywhere else one finger pans (once zoomed) and two fingers pinch.
 const navPtrs = new Map();
-let ng = null, divDrag = null, lastTap = null;
+let ng = null, divDrag = null, divPt = null, lastTap = null;
 function navBase() {
   const pts = [...navPtrs.values()].slice(0, 2);
   if (!pts.length) { ng = null; return; }
@@ -665,12 +667,12 @@ const onDivider = (e) => $("stage").dataset.view === "split" && $("stage").class
 $("frame").addEventListener("pointerdown", (e) => {
   if (cr || (e.pointerType === "mouse" && e.button !== 0)) return;
   $("frame").setPointerCapture(e.pointerId);
-  if (!navPtrs.size && divDrag == null && onDivider(e)) { divDrag = e.pointerId; hideZoomHint(); return; }
-  if (divDrag != null) { navPtrs.set(divDrag, stagePt(e)); divDrag = null; }   // a second finger turns a divider drag into a pinch
+  if (!navPtrs.size && divDrag == null && onDivider(e)) { divDrag = e.pointerId; divPt = stagePt(e); hideZoomHint(); return; }
+  if (divDrag != null) { navPtrs.set(divDrag, divPt); divDrag = null; }   // a second finger turns a divider drag into a pinch
   navDown(e);
 });
 $("frame").addEventListener("pointermove", (e) => {
-  if (divDrag === e.pointerId) { setSplit(((stagePt(e).x - vis.x) / vis.w) * 100); return; }
+  if (divDrag === e.pointerId) { divPt = stagePt(e); setSplit(((divPt.x - vis.x) / vis.w) * 100); return; }
   if (!navPtrs.has(e.pointerId)) return;
   navPtrs.set(e.pointerId, stagePt(e)); navMove();
 });
@@ -691,6 +693,7 @@ let hintTimer = 0;
 function maybeZoomHint() {
   if (localStorage.getItem("glow.zoomHint") || !$("zoomHint").hidden || $("toast").classList.contains("on") || !fitRect().nw) return;
   try { localStorage.setItem("glow.zoomHint", "1"); } catch {}
+  $("zoomHint").textContent = matchMedia("(pointer: coarse)").matches ? "Pinch or double-tap to zoom" : "Scroll or double-click to zoom";
   $("zoomHint").hidden = false; $("zoomHint").classList.remove("gone"); $("frame").classList.add("hinting");
   hintTimer = setTimeout(hideZoomHint, 3500);
 }
@@ -700,6 +703,20 @@ function hideZoomHint() {
   setTimeout(() => { $("zoomHint").hidden = true; $("frame").classList.remove("hinting"); }, 400);
 }
 new ResizeObserver(() => { applyView(); if (sel === "erase") drawStrokes(); if (cr) renderCrop(); }).observe($("stage"));
+// Keyboard: + and - zoom, 0 fits, and the arrow keys pan once zoomed (not while typing,
+// not on the Compare handle or a slider, and not in crop, which has its own keys).
+document.addEventListener("keydown", (e) => {
+  if (screen !== "editorScreen" || cr || e.ctrlKey || e.metaKey || e.altKey || !fitRect().nw || document.querySelector("dialog[open]")) return;
+  const t = e.target; if (t.closest && t.closest("input, textarea, select, [role=slider], .tools, .tabs, .chips")) return;
+  const F = fitRect(), k = e.key, pan = 48 / (F.w * insp.z);
+  if (k === "+" || k === "=") zoomBy(1.6);
+  else if (k === "-" || k === "_") zoomBy(1 / 1.6);
+  else if (k === "0") { pokeZoomCtl(); zoomTo(1, F.W / 2, F.H / 2, { animate: true }); sayZoom(); }
+  else if (insp.z > 1.001 && k.startsWith("Arrow") && t === document.body) {
+    insp.cx += k === "ArrowLeft" ? -pan : k === "ArrowRight" ? pan : 0; insp.cy += k === "ArrowUp" ? -pan : k === "ArrowDown" ? pan : 0; applyView();
+  } else return;
+  e.preventDefault();
+});
 $("handle").addEventListener("keydown", (e) => {
   const step = e.shiftKey ? 10 : 2, k = e.key;
   if (k === "ArrowLeft" || k === "ArrowDown") setSplit(ed.split - step);
@@ -845,6 +862,7 @@ function selectTool(id) {
   if (ed.pending && ed.pending.tool !== id) say(`${TOOL[ed.pending.tool].title} wasn't applied.`);
   discardPending();
   if (cr) closeCrop();
+  if (id !== sel) panelCollapsed = false;   // a newly opened tool always shows its controls
   sel = id; strokes = []; outfitData = null; toolsOpen = false; panelBuilt = null; reshapeNote = null;
   lookPick = editorLooks().some((l) => l.id === lookId) ? lookId : "natural";
   if (id in toolAmt) toolAmt[id] = 0; // adjustments start from the committed photo
