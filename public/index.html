@@ -134,6 +134,7 @@
       <button class="icon-btn" id="backBtn" aria-label="Back to Editor home"></button>
       <p class="wordmark" aria-hidden="true">Glow</p>
       <div class="top-actions">
+        <span class="demo-own" id="demoBar" hidden><button class="link-btn" id="demoOwnBtn" aria-label="Use your photo"><span data-icon="upload"></span><span class="lbl">Use your photo</span></button></span>
         <button class="credit-chip" id="balanceBtn" hidden></button>
         <button class="pill" id="saveBtn" disabled>Save</button>
       </div>
@@ -150,7 +151,7 @@
           </div>
           <span class="tag left" id="tagLeft"></span>
           <span class="tag right" id="tagRight"></span>
-          <span class="tag bottom" id="tagSample" hidden>AI-generated sample</span>
+          <span class="tag bottom" id="tagSample" hidden>Demo · AI-generated sample</span>
         </div>
         <canvas id="brush" hidden></canvas>
         <div class="crop-view" id="cropView" hidden tabindex="0" role="application" aria-roledescription="crop area"
@@ -186,10 +187,6 @@
       </div>
     </div>
     <div class="side">
-      <div class="demorow" id="demoBar" hidden>
-        <p>Demo · Free preview</p>
-        <button class="link-btn" id="demoOwnBtn"><span data-icon="upload"></span>Use your photo</button>
-      </div>
       <div class="jobbar" id="jobBar" role="status" hidden>
         <div class="spinner small" id="jobSpin" aria-hidden="true"></div>
         <p id="jobText"></p>

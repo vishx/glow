@@ -334,9 +334,9 @@ test('demo: Try a sample opens the attached original with demo labels', async ({
   const o = await p.evaluate(async () => { const b = new Uint8Array(await ed.original.blob.arrayBuffer()); const h = await crypto.subtle.digest('SHA-256', b);
     return { w: ed.original.w, h: ed.original.h, sha: [...new Uint8Array(h)].map((x) => x.toString(16).padStart(2, '0')).join('') }; });
   eq(o, { w: 1122, h: 1402, sha: demoManifest.original.sha256 }, 'unchanged original');
-  eq((await p.textContent('#demoBar p')).trim(), 'Demo · Free preview', 'slim demo label'); assert(/AI-generated sample/.test(await p.textContent('#tagSample')) && await p.isVisible('#tagSample'), 'source label on the photo');
-  const row = await p.evaluate(() => { const r = $('demoBar').getBoundingClientRect(), b = $('demoOwnBtn').getBoundingClientRect(); return { h: r.height, bh: b.height, filled: getComputedStyle($('demoOwnBtn')).backgroundColor }; });
-  assert(row.h <= 50 && row.bh >= 44, 'one slim row with a 44px action: ' + JSON.stringify(row));
+  eq((await p.textContent('#tagSample')).trim(), 'Demo · AI-generated sample', 'demo and source label on the photo'); assert(await p.isVisible('#tagSample'), 'label shown');
+  const row = await p.evaluate(() => { const b = $('demoOwnBtn').getBoundingClientRect(), st = $('stage').getBoundingClientRect(); return { inHeader: b.bottom <= st.top, bh: b.height, name: $('demoOwnBtn').getAttribute('aria-label') }; });
+  eq([row.inHeader, row.bh >= 44, row.name], [true, true, 'Use your photo'], 'compact Use your photo action in the header');
   assert(/Free demo/.test(await p.textContent('#toast')), 'the free demo is explained once');
   assert(await p.isVisible('#demoOwnBtn'), 'Try your own photo'); assert(await p.isHidden('#balanceBtn'), 'no credit balance in the demo');
   eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].map((c) => c.textContent)), ['Preview', 'Preview'], 'AI tools offered = prepared ones');
@@ -353,7 +353,7 @@ test('demo: prepared previews make no AI request, use no credits, and never stac
   }
   eq(credit(state), before, 'no enhance calls, credits unchanged'); eq(state.posts.length, 0, 'no POST');
   assert(!(await p.evaluate(() => $('paywall').open)), 'no paywall');
-  assert(/one effect at a time/.test(await p.textContent('#panelNote')), 'states one effect at a time');
+  assert(/No credits used/.test(await p.textContent('#panelNote')), 'says no credits are used');
   await p.screenshot({ path: path.join(__dirname, 'out', 'demo-prepared.png') });
 }, { files: demoFiles(), quota: 0 });
 
@@ -727,10 +727,10 @@ test('crop: every shape is exact, Free and locked handles resize correctly, rota
   // Rotate: the photo's bounds swap and the crop moves with it.
   await p.click('#cropReset'); await p.click('.panel .opt:has-text("Square")'); await p.fill('#cropZoom', '200'); await settle(260);
   c = await cropInfo(p);
-  await p.click('text=Rotate 90°'); await settle(260); const r = await cropInfo(p);
+  await p.click('[aria-label="Rotate 90°"]'); await settle(260); const r = await cropInfo(p);
   eq([r.W, r.H, r.turns], [400, 600, 1], 'rotated bounds'); near(r.rect.x, 400 - (c.rect.y + c.rect.h), 0.5, 'crop follows the turn (x)'); near(r.rect.y, c.rect.x, 0.5, 'crop follows the turn (y)');
   near(r.rect.w / r.rect.h, 1, 0.002, 'still square'); covered(r, 'rotated');
-  await p.click('.panel .opt:has-text("9:16")'); await p.click('text=Rotate 90°'); await settle(260); const r2 = await cropInfo(p);
+  await p.click('.panel .opt:has-text("9:16")'); await p.click('[aria-label="Rotate 90°"]'); await settle(260); const r2 = await cropInfo(p);
   near(r2.rect.w / r2.rect.h, 9 / 16, 0.002, '9:16 stays 9:16 after a turn'); covered(r2, 'rotated 9:16');
   await p.click('#cropReset'); await settle(260); c = await cropInfo(p);
   eq([c.turns, c.aspect, Math.round(c.rect.w), Math.round(c.rect.h)], [0, 0, 600, 400], 'reset framing');
@@ -738,7 +738,7 @@ test('crop: every shape is exact, Free and locked handles resize correctly, rota
 });
 test('crop: Cancel restores, Apply exports exactly the framed area at full size, one undo step, and re-opening keeps the framing', async ({ p, state }) => {
   await openCropOn(p, fx('coords-600x400.png'));
-  await p.fill('#cropZoom', '250'); await p.click('text=Rotate 90°');
+  await p.fill('#cropZoom', '250'); await p.click('[aria-label="Rotate 90°"]');
   await p.click('#cancelBtn'); await idle(p);
   eq(await p.evaluate(() => [ed.hist.length, ed.idx, !!cr, $('cropView').hidden, $('stage').classList.contains('cropping')]), [1, 0, false, true, false], 'cancel leaves the photo as it was');
   await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr);
@@ -768,7 +768,7 @@ test('crop: Cancel restores, Apply exports exactly the framed area at full size,
   eq([Math.round(re.W), Math.round(re.H), re.aspect], [600, 400, 0.8], 're-opened on the full photo with 4:5');
   for (const k of ['x', 'y', 'w', 'h']) near(re.rect[k] / (k === 'x' || k === 'w' ? 600 : 400), op.rect[k], 0.002, 'same framing ' + k);
   eq(await p.evaluate(() => $('applyBtn').disabled), true, 'unchanged framing has nothing to apply');
-  await p.click('text=Rotate 90°'); await p.click('#applyBtn'); await idle(p);
+  await p.click('[aria-label="Rotate 90°"]'); await p.click('#applyBtn'); await idle(p);
   const op2 = await p.evaluate(() => ed.hist[ed.idx].op); eq([op2.base, op2.turns], [0, 1], 'the new crop is made from the uncropped photo');
   // Saved file: the full-size render of the same crop.
   await p.click('#saveBtn'); await downloads(state, 1);
@@ -785,7 +785,7 @@ test('crop: Cancel restores, Apply exports exactly the framed area at full size,
 });
 test('crop: a 12 MP photo crops at full resolution from the original', async ({ p, state }) => {
   await openCropOn(p, fx('phone-12mp-exif6.jpg'));
-  await p.click('.panel .opt:has-text("9:16")'); await p.fill('#cropZoom', '200'); await p.click('text=Rotate 90°');
+  await p.click('.panel .opt:has-text("9:16")'); await p.fill('#cropZoom', '200'); await p.click('[aria-label="Rotate 90°"]');
   await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
   const op = await p.evaluate(() => ed.hist[ed.idx].op), s = imageSize(state.downloads[0].file);
   // Rotated original is 4032 × 3024; 9:16 at 2× zoom is half the tallest 9:16 that fits.
@@ -907,6 +907,20 @@ test('zoom: with the erase brush one finger draws and two fingers navigate', asy
   await T('touchStart', [[cx, cy, 0]]); await T('touchEnd', []); await wait();
   const pt = await p.evaluate(() => { const r = imageRect(), q = strokes[strokes.length - 1].pts[0], st = $('stage').getBoundingClientRect(); return [st.left + r.x + q[0] * r.s, st.top + r.y + q[1] * r.s]; });
   near(pt[0], cx, 1, 'stroke under the finger (x)'); near(pt[1], cy, 1, '(y)');
+}, { viewport: { width: 390, height: 844 } });
+test('layout: on phones the photo keeps one size while tools open, change and close', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  const sizes = {}, box = async (n) => { await settle(400); sizes[n] = JSON.stringify(await stageBox(p)); };
+  await box('home');
+  await tool(p, 'retouch', 'face', 'fslim'); await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 }); await box('face shape');
+  await p.fill('.panel input[type=range]', '60'); await idle(p); await box('slider moved');
+  await p.click('.tool[data-tool="fnose"]'); await box('nose');
+  await p.click('#cancelBtn'); await box('cancelled');
+  await tool(p, 'looks', 'filters', 'filter:glow'); await box('filter');
+  await p.click('#cancelBtn'); await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr); await box('crop');
+  await p.click('#cancelBtn'); await tool(p, 'foryou', null, 'pro'); await box('AI tool');
+  for (const [n, v] of Object.entries(sizes)) eq(v, sizes.home, 'photo size: ' + n);
+  assert(JSON.parse(sizes.home)[1] >= 400, 'photo height on a 390x844 phone: ' + sizes.home);
 }, { viewport: { width: 390, height: 844 } });
 test('layout: a phone held sideways puts the photo and the tools side by side', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);

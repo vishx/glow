@@ -376,8 +376,9 @@ function demoPanelState(t) {
   } else {
     apply.textContent = "Done";
     const shifted = demo && demo.entry[t.id] && demo.entry[t.id].aligned === false ? " The AI reframed the picture a little, so Compare won't line up exactly." : "";
-    $("panelNote").textContent = `A saved result from Glow's ${t.title} tool on this photo. Nothing is generated and no credits are used. Sample previews show one effect at a time.${shifted}`;
+    $("panelNote").textContent = `A prepared ${t.title} result. No credits used.${shifted}`;
   }
+  fitDock();
 }
 // "prepared-preview-relight-" when the shown result is a prepared preview, so the file says what it is.
 function demoSaveTag() { const op = ed.hist[ed.idx].op; return op && op.demo ? `prepared-preview-${op.tool}-` : ""; }
@@ -930,16 +931,27 @@ let panelBuilt = null;
 function renderPanel(rebuild) {
   const t = sel && TOOL[sel];
   $("panel").hidden = !t;
-  if (!t) { panelBuilt = null; return; }
+  if (!t) { panelBuilt = null; fitDock(); return; }
   if (rebuild || panelBuilt !== t.id) { buildPanel(t); panelBuilt = t.id; }
-  panelState(t);
+  panelState(t); fitDock();
+}
+// On phones the controls under the photo keep one fixed height (the dock), so the photo never
+// changes size as tools open, close or change. A tool whose controls need the whole dock
+// hides the row of neighbouring tools instead of pushing the photo up.
+const dockFixed = () => matchMedia("(max-width: 959px)").matches && !matchMedia("(min-width: 560px) and (max-height: 560px) and (orientation: landscape)").matches;
+function fitDock() {
+  const es = $("editorScreen"), p = $("panel");
+  es.classList.remove("no-tools");
+  if (!sel || panelCollapsed || p.hidden || !dockFixed()) return;
+  if (p.scrollHeight > p.clientHeight + 1) es.classList.add("no-tools");
 }
 function buildPanel(t) {
   $("toolName").textContent = t.title; $("toolName").tabIndex = -1;
   $("favBtn").setAttribute("aria-pressed", String(favs.includes(t.id)));
   $("favBtn").setAttribute("aria-label", favs.includes(t.id) ? "Remove from favorites" : "Add to favorites");
   const body = $("panelBody");
-  body.replaceChildren();
+  body.replaceChildren(); document.querySelectorAll(".panel-head .head-extra").forEach((b) => b.remove());
+  $("favBtn").hidden = t.kind === "crop";
 
   if (t.kind === "face" || t.kind === "body" || t.kind === "hair") {
     body.append(slider("Strength", 0, 100, faceSet.amt[t.id] ?? 50, null, (v) => { faceSet.amt[t.id] = v; saveFace(); preview(); }));
@@ -959,12 +971,12 @@ function buildPanel(t) {
     const zi = z.querySelector("input"); zi.id = "cropZoom"; zi.setAttribute("aria-valuetext", `${(zi.value / 100).toFixed(1)} times`);
     zi.addEventListener("input", () => zi.setAttribute("aria-valuetext", `${(zi.value / 100).toFixed(1)} times`));
     body.append(z);
-    const row = document.createElement("div"); row.className = "crop-tools";
-    const rot = document.createElement("button"); rot.className = "btn quiet small"; rot.innerHTML = icon("rotate") + "Rotate 90°";
+    // Rotate and Reset sit in the panel's title row, so the crop controls stay short.
+    const rot = document.createElement("button"); rot.className = "icon-btn head-extra"; rot.innerHTML = icon("rotate"); rot.setAttribute("aria-label", "Rotate 90°");
     rot.addEventListener("click", rotateCrop);
-    const rs = document.createElement("button"); rs.className = "btn quiet small"; rs.id = "cropReset"; rs.textContent = "Reset";
+    const rs = document.createElement("button"); rs.className = "link-btn head-extra"; rs.id = "cropReset"; rs.textContent = "Reset";
     rs.addEventListener("click", resetCrop);
-    row.append(rot, rs); body.append(row);
+    $("collapseBtn").before(rot, rs);
   } else if (t.kind === "look") {
     body.append(options(editorLooks().map((l) => [l.name, l.id]), (v) => v === lookPick, (v) => { lookPick = v; renderPanel(true); preview(); }));
   } else if (t.id === "outfit") {
@@ -987,8 +999,6 @@ function panelState(t) {
   let note = t.hint || "";
   if (!cost) { chip.textContent = "Free · on-device"; chip.className = "chip free"; }
   else { chip.textContent = `AI · ${credits(cost)}`; chip.className = "chip"; }
-  // Reshape tools always have a one-line note, so the photo doesn't change size as the slider moves.
-  if (t.reshape) note = (note ? note + " " : "") + (faceSet.amt[t.id] > 0 ? "Use Compare to check the change." : "Starts at 0. Move the slider to reshape.");
   const blocked = t.reshape && t.kind === "face" && reshapeNote && reshapeNote.tool === t.id ? reshapeNote : null;
   if (blocked) note = blocked.msg === null ? "Finding the face…" : blocked.msg || note;
   if (t.kind === "crop") note = "";
@@ -1020,7 +1030,7 @@ function panelState(t) {
     if (t.id === "outfit" && !outfitData && !short) apply.disabled = true;
     if (t.id === "erase" && !strokes.length && !short) apply.disabled = true;
   }
-  $("panelNote").textContent = note;
+  $("panelNote").textContent = note; fitDock();
 }
 
 // On-device steps are recorded as recipes (tool + settings), so the same step can be
