@@ -1,0 +1,24 @@
+{
+  "name": "glow-mobile",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "./build-web.sh",
+    "sync": "./build-web.sh && npx cap sync",
+    "android": "npm run sync && npx cap open android",
+    "ios": "npm run sync && npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor-community/admob": "^8.3.0",
+    "@capacitor-community/media": "^9.1.0",
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/ios": "^8.6.0",
+    "@capacitor/share": "^8.0.3",
+    "@mediapipe/tasks-vision": "^0.10.14",
+    "@revenuecat/purchases-capacitor": "^14.0.0"
+  },
+  "private": true
+}
