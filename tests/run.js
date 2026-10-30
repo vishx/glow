@@ -489,31 +489,52 @@ test('demo: phone layouts at 320 and 390 wide have no sideways scroll', async ({
 }, { files: demoFiles() });
 
 // ---------- Onboarding ----------
-test('onboarding: one welcome screen with the whole sample portrait; Choose a photo first, then the sample, then a small camera action', async ({ p }) => {
-  await p.goto('https://app.test/'); await p.waitForSelector('#onboarding:not([hidden])');
+test('first launch opens Enhance: sample before/after, Choose a photo, then the sample; the welcome screen is still in Settings', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const h = await p.evaluate(() => { const b = (id) => $(id).getBoundingClientRect();
+    return { nav: [...document.querySelectorAll('#nav button')].map((x) => x.dataset.dest), current: document.querySelector('#nav [aria-current]').dataset.dest,
+      order: ['enhPick', 'enhSample'].map((id) => Math.round(b(id).top)), fits: b('enhSample').bottom <= innerHeight, onboarded: store.get('glowOnboarded'),
+      hero: [...document.querySelectorAll('.enh-hero img')].map((i) => i.src.split('/').pop()) }; });
+  eq([h.nav, h.current, h.onboarded, h.hero], [['enhance', 'camera', 'editor'], 'enhance', '1', ['original.png', 'enhance.jpg']], 'Enhance first, with the sample before/after');
+  assert(h.order[0] < h.order[1] && h.fits, 'Choose a photo, then Try the sample, both on screen: ' + h.order);
+  eq(await p.evaluate(() => window.__streams.length), 0, 'no camera request on the first screen');
+  // The welcome screen: Settings can still show it, with the whole sample portrait.
+  await p.evaluate(() => { $('settings').showModal(); }); await p.click('#replayIntro'); await p.waitForSelector('#onboarding:not([hidden])');
   const r = await p.evaluate(() => { const ph = document.querySelector('.ob-photo'), img = ph.querySelector('img'), b = (id) => $(id).getBoundingClientRect();
-    return { h: $('obSlide').querySelector('h1').textContent, photo: /demo-v2\/intro\.jpg$/.test(img.src), fit: getComputedStyle(img).objectFit,
-      boxRatio: ph.getBoundingClientRect().width / ph.getBoundingClientRect().height, imgRatio: img.naturalWidth / img.naturalHeight,
-      order: ['obPick', 'obSample', 'obCamera'].map((id) => Math.round(b(id).top)), heights: ['obPick', 'obSample', 'obCamera'].map((id) => Math.round(b(id).height)),
-      primary: getComputedStyle($('obPick')).backgroundColor !== getComputedStyle($('obSample')).backgroundColor,
-      fits: b('obCamera').bottom <= innerHeight, steps: !!document.querySelector('#obDots, #obSkip, #obBack'), text: $('onboarding').textContent }; });
-  eq([r.h, r.photo, r.fit, r.steps, r.fits], ['Your light. Your look.', true, 'contain', false, true], 'one screen, the new portrait, everything on screen');
-  near(r.boxRatio, r.imgRatio, 0.01, 'the portrait keeps its shape: nothing cropped');
-  assert(r.order[0] < r.order[1] && r.order[1] < r.order[2], 'Choose a photo, then Try the sample, then the camera: ' + r.order);
-  assert(r.heights[0] >= 48 && r.heights[2] >= 44 && r.heights[2] < r.heights[0] && r.primary, 'primary, secondary and a smaller camera action: ' + r.heights);
-  assert(!/AI credits each day/.test(r.text), 'no credit claim on the welcome screen');
-  eq(await p.evaluate(() => window.__streams.length), 0, 'no camera request on the welcome screen');
+    return { h: $('obSlide').querySelector('h1').textContent, fit: getComputedStyle(img).objectFit, order: ['obPick', 'obSample', 'obCamera'].map((id) => Math.round(b(id).top)), fits: b('obCamera').bottom <= innerHeight }; });
+  eq([r.h, r.fit, r.fits], ['Your light. Your look.', 'contain', true], 'welcome screen intact');
+  assert(r.order[0] < r.order[1] && r.order[1] < r.order[2], 'Choose a photo, Try the sample, camera: ' + r.order);
   await p.click('#obSample');
   await p.waitForFunction(() => screen === 'editorScreen' && ed.demo && $('before').naturalWidth > 0, null, { timeout: 15000 });
-  eq(await p.evaluate(() => [store.get('glowOnboarded'), $('before').naturalWidth, $('before').naturalHeight]), ['1', 1086, 1448], 'finished, and the sample is the new portrait');
-  // Returning people skip the welcome; Settings can show it again.
-  await p.reload(); await p.waitForFunction(() => screen === 'editorHome' || screen === 'cameraScreen');
-  await p.evaluate(() => go('editor')); assert(await p.isVisible('#sampleBtn'), 'Try a sample · Free on Editor home');
-  await p.evaluate(() => { $('settings').showModal(); }); await p.click('#replayIntro'); await p.waitForSelector('#onboarding:not([hidden])');
+  await p.reload(); await p.waitForFunction(() => screen === 'enhanceHome');
 }, { onboarded: false, camera: false, viewport: { width: 390, height: 740 } });
 
-test('onboarding: Choose a photo opens the picker and the editor', async ({ p }) => {
-  await p.goto('https://app.test/'); await p.waitForSelector('#onboarding:not([hidden])');
+test('enhance: pick, one AI request, before/after, toggles on the phone, save, share screen, editor hand-off', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); assert(/1 AI credit/.test(await p.textContent('#enhCost')), 'cost shown before Enhance');
+  await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  eq(state.posts.length, 1, 'one AI request'); eq(state.posts[0], 'enhance', 'the enhance mode');
+  for (const k of ['colors', 'bg']) { await p.click(`.enh-t[data-k=${k}]`); await p.waitForFunction(() => !$('enhWorking').classList.contains('on'), null, { timeout: 30000 }); }
+  await p.waitForTimeout(300);
+  eq(state.posts.length, 1, 'toggles never call the AI again');
+  await p.click('#enhDownload'); await downloads(state, 1);
+  await p.waitForFunction(() => screen === 'enhanceShare'); eq(await p.textContent('#enhSavedText'), 'Downloaded', 'honest save label in a browser');
+  await p.click('#enhEdit'); await p.waitForFunction(() => screen === 'editorScreen' && ed.hist.length === 2 && ed.idx === 1);
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false });
+
+test('enhance: the sample is free and never calls the AI', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]');
+  assert(/No credits used/.test(await p.textContent('#enhCost')), 'free on the sample');
+  await p.click('#enhGo'); await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  eq(state.posts.length, 0, 'no AI request for the sample');
+}, { start: 'enhance', camera: false, files: demoFiles() });
+
+test('onboarding: Choose a photo on the welcome screen opens the picker and the editor', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.evaluate(() => showOnboarding()); await p.waitForSelector('#onboarding:not([hidden])');
   const fc = p.waitForEvent('filechooser'); await p.click('#obPick'); await (await fc).setFiles(PORTRAIT);
   await p.waitForFunction(() => screen === 'editorScreen' && ed.hist.length > 0 && !ed.demo, null, { timeout: 15000 });
 }, { onboarded: false, camera: false });

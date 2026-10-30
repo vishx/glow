@@ -53,7 +53,9 @@ exports.launch = async (opts = {}) => {
   // The one-time "Free saves include a small Glow mark" note is assumed seen, except in the tests about it.
   if (!opts.markIntro) await ctx.addInitScript(() => { localStorage.setItem('glowMarkSeen', '1'); });
   if (opts.init) await ctx.addInitScript(opts.init);
-  if (opts.onboarded !== false) await ctx.addInitScript((start) => { localStorage.setItem('glowOnboarded', '1'); if (start) localStorage.setItem('glowStart', start); }, opts.start || '');
+  // Glow opens on Enhance by default; most checks here start where they always did (Camera), and
+  // the Enhance checks pass start: 'enhance'.
+  if (opts.onboarded !== false) await ctx.addInitScript((start) => { localStorage.setItem('glowOnboarded', '1'); localStorage.setItem('glowStart', start); }, opts.start || 'camera');
   const p = await ctx.newPage();
   const state = { used: 0, plan: opts.plan || 'free', quota: opts.quota || 3, posts: [], polls: 0, lookups: 0, refunds: 0, errs: [], downloads: [],
     ai: { ...defaultAi(), ...(opts.ai || {}) }, jobs: {}, flaked: {}, authFail: !!opts.authFail };

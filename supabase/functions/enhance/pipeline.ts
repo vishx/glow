@@ -25,7 +25,9 @@ export const MODES: Record<string, Mode> = {
   upscale: { model: "nightmareai/real-esrgan", input: { scale: 4, face_enhance: false } },
   faces: { model: "tencentarc/gfpgan", input: { version: "v1.4", scale: 2 } },
   colorize: { model: "piddnad/ddcolor", input: { model_size: "large" } },
-  retouch: { model: "tencentarc/gfpgan", input: { version: "v1.4", scale: 1 } },
+  // AI Retouch: GFPGAN v1.3, the softer, more natural version (Face repair uses v1.4). Scale 2,
+  // because at scale 1 this model returns half the input's size.
+  retouch: { model: "tencentarc/gfpgan", input: { version: "v1.3", scale: 2 } },
   headshot: { model: STYLE_MODELS, input: style("professional studio headshot photo, soft key light, smart business attire, neutral gray backdrop, sharp focus") },
   anime: { model: STYLE_MODELS, input: style("anime style illustration portrait, vibrant colors, clean line art, soft cel shading") },
   watercolor: { model: STYLE_MODELS, input: style("watercolor painting portrait, soft pastel washes, paper texture, delicate brush strokes") },
