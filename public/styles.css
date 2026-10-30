@@ -730,3 +730,9 @@ dialog.pw .links { justify-content: center; }
 /* Quieter utility row and glass zoom buttons. (The photo sits on the page itself: --viewer matches --bg.) */
 .util-row .sep, .utils .sep, i.sep { opacity: 0; }
 .zoomctl .icon-btn { background: var(--glass); color: var(--text); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+
+/* Photo tiles: the face the tool will change, with the tool's icon on a small blush badge. */
+.tool.photo .well { width: 52px; height: 52px; border-radius: 16px; background-color: var(--surface-2); background-size: cover; background-position: center; box-shadow: none; }
+.tool.photo .glyph { position: absolute; right: -5px; bottom: -5px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  background: linear-gradient(var(--blush), var(--blush)), var(--bg); color: var(--rose); box-shadow: 0 0 0 2px var(--bg); }
+.tool.photo .glyph svg { width: 13px; height: 13px; stroke-width: 2.2; }

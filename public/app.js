@@ -281,6 +281,7 @@ async function readPhoto(blob, name) {
 }
 
 async function openPhoto(work, original, opts = {}) {
+  tileFace.box = null; tileFace.dims = "";
   if (!opts.demo && demo) exitDemo();
   ed.demo = !!opts.demo;
   ed.hist = [{ data: work, op: null }]; ed.idx = 0; ed.floor = 0; ed.pending = null; ed.savedIdx = 0;
@@ -969,7 +970,15 @@ function toolButton(t) {
   const well = document.createElement("i"); well.className = "well";
   if (t.kind === "filter") {
     if (thumb) { well.style.backgroundImage = `url(${thumb})`; well.style.filter = t.filter.f; }
-  } else well.innerHTML = icon(t.id);
+  } else {
+    // Every other tool shows the face it will change, with the tool's icon on a small badge;
+    // the sample's AI tools show their prepared result.
+    const pic = ed.demo && demo && demo.ready.includes(t.id) ? `${DEMO_DIR}thumbs/${t.id}.jpg` : faceThumb;
+    if (pic) {
+      b.classList.add("photo"); well.style.backgroundImage = `url(${pic})`;
+      const g = document.createElement("span"); g.className = "glyph"; g.setAttribute("aria-hidden", "true"); g.innerHTML = icon(t.id); well.append(g);
+    } else well.innerHTML = icon(t.id);
+  }
   if (badge) { const c = document.createElement("span"); c.className = "cost"; c.textContent = badge; c.setAttribute("aria-hidden", "true"); well.append(c); }
   const name = document.createElement("span"); name.className = "name"; name.textContent = t.label;
   b.append(well, name);
@@ -998,11 +1007,36 @@ function renderToolGroups(box, groups, showLabels) {
   }));
 }
 async function refreshThumb() {
+  const src = committed();
   try {
-    const img = await loadImg(committed()), c = canvasFor(img, 120);
+    const img = await loadImg(src), c = canvasFor(img, 120);
     c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); thumb = c.toDataURL("image/jpeg", 0.8);
-  } catch { thumb = ""; }
+    faceThumb = faceSquare(img, tileFace.dims === `${img.width}x${img.height}` ? tileFace.box : null);
+  } catch { thumb = ""; faceThumb = ""; }
   if (screen === "editorScreen") renderTools();
+  // Find the face once per picture size (edits rarely move it); later edits reuse the box.
+  if (thumb && !tileFace.box) {
+    try {
+      const img = await loadImg(src), boxes = await faceBoxes(src);
+      if (boxes[0] && src === committed()) {
+        tileFace.dims = `${img.width}x${img.height}`; tileFace.box = boxes[0];
+        faceThumb = faceSquare(img, boxes[0]);
+        if (screen === "editorScreen") renderTools();
+      }
+    } catch {}
+  }
+}
+// A small square around the largest face (or the upper middle when none is known yet).
+let faceThumb = "";
+const tileFace = { dims: "", box: null };
+function faceSquare(img, box) {
+  const W = img.width, H = img.height;
+  const side = box ? Math.min(W, H, Math.max(box.w * W, box.h * H) * 1.9) : Math.min(W, H) * 0.62;
+  const cx = box ? box.cx * W : W / 2, cy = box ? box.cy * H : Math.min(H * 0.34, H - side / 2);
+  const x = Math.max(0, Math.min(W - side, cx - side / 2)), y = Math.max(0, Math.min(H - side, cy - side / 2));
+  const c = document.createElement("canvas"); c.width = c.height = 120;
+  c.getContext("2d").drawImage(img, x, y, side, side, 0, 0, 120, 120);
+  return c.toDataURL("image/jpeg", 0.8);
 }
 function setSearching(on) {
   if (on && sel) selectTool(null);
