@@ -53,9 +53,11 @@ const Platform = {
       await plugins.Share.share({ title: "Glow", files: uris });
       return "shared";
     }
-    // Phones: the share sheet has "Save Image". Computers: a normal download.
-    const touch = matchMedia("(pointer: coarse)").matches;
-    if (!opts.download && (touch || opts.share) && navigator.canShare && navigator.canShare({ files })) {
+    // iPhone: the share sheet has "Save Image". Android's share sheet has no save option (only
+    // apps such as Drive), so Android and computers get a normal download, which lands in
+    // Downloads and shows up in the phone's Gallery and Google Photos.
+    const touch = matchMedia("(pointer: coarse)").matches, android = /Android/i.test(navigator.userAgent);
+    if (!opts.download && ((touch && !android) || opts.share) && navigator.canShare && navigator.canShare({ files })) {
       await navigator.share({ files, title: "Glow" });
       return "shared";
     }

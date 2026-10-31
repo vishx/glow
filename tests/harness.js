@@ -55,6 +55,8 @@ exports.launch = async (opts = {}) => {
   });
   // The one-time "Free saves include a small Glow badge" note is assumed seen, except in the tests about it.
   if (!opts.markIntro) await ctx.addInitScript(() => { localStorage.setItem('glowBadgeSeen', '1'); });
+  // Camera auto-save is on by default in the app; most checks were written with it off.
+  if (!opts.autoSaveDefault) await ctx.addInitScript(() => { if (!localStorage.getItem('glowAutoSave')) localStorage.setItem('glowAutoSave', 'off'); });
   if (opts.init) await ctx.addInitScript(opts.init);
   // Glow opens on Enhance by default; most checks here start where they always did (Camera), and
   // the Enhance checks pass start: 'enhance'.
@@ -66,7 +68,7 @@ exports.launch = async (opts = {}) => {
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|^INFO:|^W\d{4}|XNNPACK/.test(m.text())) state.errs.push('console: ' + m.text()); });
   p.on('download', async (d) => {
     const file = path.join(require('os').tmpdir(), `glow-dl-${Date.now()}-${d.suggestedFilename()}`);
-    const rec = { name: d.suggestedFilename(), file, ready: d.saveAs(file).then(() => true) };
+    const rec = { name: d.suggestedFilename(), file, ready: d.saveAs(file).then(() => true, () => false) };
     state.downloads.push(rec);
   });
   await p.route('**/*', async (r) => {

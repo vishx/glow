@@ -2636,7 +2636,7 @@ function renderLooks() {
   };
   const adjustBtn = chip("Adjust", null, "adjust", () => {
     const open = $("adjustPanel").hidden; $("adjustPanel").hidden = !open; adjustBtn.setAttribute("aria-expanded", String(open));
-    $("cameraScreen").classList.toggle("adjusting", open); cam.focusY = null; $("camCanvas").style.objectPosition = "";
+    $("cameraScreen").classList.toggle("adjusting", open); cam.focusY = null; cam.posY = null; $("camCanvas").style.objectPosition = "";
   });
   adjustBtn.insertAdjacentHTML("afterbegin", icon("sliders"));
   adjustBtn.setAttribute("aria-expanded", String(!$("adjustPanel").hidden)); adjustBtn.setAttribute("aria-controls", "adjustPanel");
@@ -2830,15 +2830,17 @@ function drawCamFrame(v, c) {
     }
   }
 }
-// While Adjust is open the preview fills the space left above it (cropped, not shrunk) and keeps
-// the face in the middle of it, so the changes stay big enough to see.
+// The preview fills the whole screen (cropped, not shrunk), with the controls over it. While
+// Adjust is open, it keeps the face in the middle of the part the panel leaves, where it can.
 function followFace(c) {
   const P = liveFace.pts, H = c.height;
   const fy = P ? (P[LIVE_PTS.brow][1] + P[LIVE_PTS.chin][1]) / 2 / liveFace.size[1] : 0.45;
   cam.focusY = cam.focusY == null ? fy : cam.focusY + (fy - cam.focusY) * 0.15;
   const bw = c.clientWidth, bh = c.clientHeight, k = Math.max(bw / c.width, bh / H), hs = H * k;
   if (!bw || hs - bh < 1) return;
-  const p = Math.min(1, Math.max(0, (cam.focusY * hs - bh / 2) / (hs - bh)));
+  const open = $("camControls").getBoundingClientRect().top - c.getBoundingClientRect().top, vh = Math.max(bh / 3, Math.min(bh, open));
+  const p = Math.min(1, Math.max(0, (cam.focusY * hs - vh / 2) / (hs - bh)));
+  cam.posY = p;
   const pos = `50% ${(p * 100).toFixed(1)}%`;
   if (c.style.objectPosition !== pos) c.style.objectPosition = pos;
 }
@@ -2888,9 +2890,11 @@ $("shutter").addEventListener("click", async () => {
       const c = $("camCanvas"); c.width = v.videoWidth; c.height = v.videoHeight;
       drawLive(cam.gl, v, v.videoWidth, v.videoHeight, cam.facing === "user", beauty, false);
     }
-    const processed = looked ? withFilter($("camCanvas"), o.width, o.height, beauty.filter) : null;
+    // The photo is what the screen showed: the full-screen preview's crop of the frame.
+    const r = visibleRect(o.width, o.height), raw = cropTo(o, r);
+    const processed = looked ? cropTo(withFilterCanvas($("camCanvas"), beauty.filter, o.width, o.height), r).toDataURL("image/jpeg", 0.92) : null;
     const stamp = Date.now();
-    shot = { raw: o.toDataURL("image/jpeg", 0.92), rawBlob: await canvasBlob(o), processed, w: o.width, h: o.height,
+    shot = { raw: raw.toDataURL("image/jpeg", 0.92), rawBlob: await canvasBlob(raw), processed, w: raw.width, h: raw.height,
       look: looked ? lookName() : null, stamp, saved: false, originalSaved: false, saving: null };
   } catch {
     say("Couldn't take the photo. Try again.", true); return;
@@ -2898,15 +2902,30 @@ $("shutter").addEventListener("click", async () => {
   cam.shot = shot;
   stopCamera(); renderReview();
   makeThumb(shot.processed || shot.raw).then((t) => { cam.thumb = t; renderReview(); }).catch(() => {});
-  if (store.get("glowAutoSave") === "on") {
+  // With AI Enhance on, the photo goes straight to Enhance (enhance.js); auto-save then keeps
+  // the enhanced photo, or this one if Enhance can't run.
+  if (camAIOn()) camEnhance(shot, true);
+  else if (autoSaveOn()) {
     $("alertLive").textContent = "Photo taken. Saving it now.";
     saveShot(shot, true);
   } else $("alertLive").textContent = "Photo taken. Save it, edit it, or retake.";
 });
+// The part of a W×H frame the preview shows (object-fit: cover, and Adjust's face position).
+function visibleRect(W, H) {
+  const c = $("camCanvas"), bw = c.clientWidth, bh = c.clientHeight;
+  if (!bw || !bh) return { x: 0, y: 0, w: W, h: H };
+  const k = Math.max(bw / W, bh / H), w = Math.min(W, Math.round(bw / k)), h = Math.min(H, Math.round(bh / k));
+  return { x: Math.round((W - w) / 2), y: Math.round((H - h) * (cam.posY == null ? 0.5 : cam.posY)), w, h };
+}
+function cropTo(src, r) {
+  if (r.x === 0 && r.y === 0 && r.w === src.width && r.h === src.height) return src;
+  const c = newCanvas(r.w, r.h); c.getContext("2d").drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h); return c;
+}
 function renderReview() {
   const s = cam.shot;
   $("reviewImg").hidden = !s; $("camCanvas").hidden = !!s;
   $("liveControls").hidden = !!s; $("reviewControls").hidden = !s;
+  $("camAI").hidden = !!s; $("shotAIBtn").hidden = !s;
   $("nav").hidden = screen !== "cameraScreen" ? $("nav").hidden : !!s;
   if (s) {
     $("reviewImg").src = s.processed || s.raw; $("camState").hidden = true; $("camNote").hidden = true;
@@ -2922,7 +2941,9 @@ async function makeThumb(src) { const img = await loadImg(src), c = canvasFor(im
 function savedText(where, n, extra = "") {
   const what = n > 1 ? "Photos" : "Photo";
   if (where === "photos") return `${what} saved to your Glow album.${extra}`;
-  if (where === "downloaded") return `Download started. Your browser keeps ${n > 1 ? "them" : "it"} in Downloads.${extra}`;
+  if (where === "downloaded") return /Android/i.test(navigator.userAgent)
+    ? `${what} saved to Downloads. ${n > 1 ? "They show" : "It shows"} in your Gallery.${extra}`
+    : `Download started. Your browser keeps ${n > 1 ? "them" : "it"} in Downloads.${extra}`;
   return `Sent to the share sheet. Choose Save Image there to keep ${n > 1 ? "them" : "it"}.${extra}`;
 }
 const saveFailText = () => (native ? "Couldn't save. Allow photo access for Glow in your phone's Settings, then try Save again." : "Couldn't save the photo. Try again.");
@@ -2930,7 +2951,10 @@ const saveFailText = () => (native ? "Couldn't save. Allow photo access for Glow
 // Saves a camera photo once. Auto-save and the Save button share this, so a photo is never
 // saved twice; with "Also save the original", the untouched frame goes too (only when a look
 // changed it). Success is only shown once the platform says the save finished.
-function saveShot(s, auto) {
+// Auto-save is on unless turned off, like a phone's own camera, except in iPhone browsers,
+// where a save can only go through the share sheet (an automatic one would land in Files).
+const autoSaveOn = () => { const v = store.get("glowAutoSave"); return v ? v === "on" : native || !/iPhone|iPad|iPod/.test(navigator.userAgent); };
+function saveShot(s, auto, note = "") {
   if (s.saved) return Promise.resolve(true);
   if (s.saving) return s.saving;
   const items = [];
@@ -2943,7 +2967,7 @@ function saveShot(s, auto) {
       const where = await Platform.savePhotos(items, { download: auto });
       track("save", { from: "camera", auto: !!auto, look: lookId, where: String(where || "") });
       s.saved = true; if (withOrig || !s.processed) s.originalSaved = true;
-      if (cam.shot === s || ed.shotStamp === s.stamp) say(savedText(where, items.length));
+      if (cam.shot === s || ed.shotStamp === s.stamp) say(savedText(where, items.length, note));
       if (ed.shotStamp === s.stamp) {
         ed.originalSaved = ed.originalSaved || s.originalSaved;
         if (ed.idx <= 1 && !ed.pending) ed.savedIdx = ed.idx;
@@ -2985,7 +3009,7 @@ $("camGallery").addEventListener("click", galleryToEditor);
 function openSettings() {
   refreshAccount();
   $("saveOrigToggle").checked = store.get("glowSaveOrig") === "on";
-  $("autoSaveToggle").checked = store.get("glowAutoSave") === "on";
+  $("autoSaveToggle").checked = autoSaveOn();
   applyTheme(); showBuild();
   $("settings").showModal();
 }

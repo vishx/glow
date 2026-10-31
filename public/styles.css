@@ -847,3 +847,36 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
   border: 0; border-radius: 14px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--control); color: var(--text); font: 400 1rem/1.4 var(--font); }
 .support-form textarea { resize: vertical; min-height: 120px; }
 .support-form .stack { margin-top: 0; }
+
+/* ---------- Full-screen camera ----------
+   Like a phone's own camera: the preview fills the screen edge to edge (cropped, not shrunk) and
+   the controls float over it on soft fades. The saved photo is cropped to the same framing. */
+#cameraScreen { position: relative; }
+#cameraScreen .viewfinder { position: absolute; inset: 0; z-index: 0; }
+#cameraScreen .viewfinder canvas, #cameraScreen .viewfinder img { object-fit: cover; }
+#cameraScreen .cam-top { background: linear-gradient(#000a, #0000); }
+#cameraScreen .cam-top .wordmark { visibility: hidden; }
+#cameraScreen .cam-controls { position: relative; z-index: 2; margin-top: auto; padding-top: var(--s6, 32px); max-width: none;
+  background: linear-gradient(#0000, #0000008c 30%, #000000b3); }
+#cameraScreen .cam-controls > * { max-width: 560px; margin-left: auto; margin-right: auto; }
+#cameraScreen .look:not([aria-pressed="true"]) { background: #0000004d; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+#cameraScreen .look.adjust, #cameraScreen .look.add { background: #00000033; }
+#cameraScreen .round-btn { background: #0000004d; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+#cameraScreen .adjust-panel { background: #000000a6; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+#cameraScreen .vf-note, #cameraScreen .vf-pill { top: 68px; bottom: auto; }
+#cameraScreen .vf-note { left: var(--s4); right: var(--s4); }
+#cameraScreen .vf-state { z-index: 3; }
+
+/* AI Enhance in the camera: the switch in the top bar and the one-photo button on review. */
+.cam-right { display: flex; align-items: center; gap: var(--s1); justify-self: end; }
+.cam-ai { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0 12px 0 10px; margin: 4px 0; border: 0; border-radius: 18px;
+  background: #0000004d; box-shadow: inset 0 0 0 1px #ffffff80; color: #fff; font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.3px;
+  transition: background var(--t-select), color var(--t-select); }
+.cam-ai svg { width: 16px; height: 16px; }
+.cam-ai[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+.vf-ai { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; width: calc(100% - 2 * var(--gutter)); margin: 0 auto var(--s3) !important;
+  border: 0; border-radius: 24px; background: #ffffff26; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: #fff; font-weight: 700; font-size: 0.9375rem; box-shadow: inset 0 0 0 1px #ffffff40; }
+.vf-ai > svg { color: var(--rose, var(--accent)); }
+.vf-ai[hidden] { display: none; }
+.vf-ai svg { width: 18px; height: 18px; }
+.vf-ai .cost { margin-left: 4px; padding: 2px 8px; border-radius: 10px; background: #ffffff26; font-size: 0.75rem; font-weight: 600; }

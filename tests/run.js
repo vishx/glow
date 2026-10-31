@@ -57,7 +57,18 @@ test('camera: auto-save off keeps Save, Retake and Edit photo, and saves once', 
   assert(/Saved/.test(await p.textContent('#saveShotBtn')), 'button says Saved');
   assert(/^Download started/.test(await toast(p)), 'browser save says download started, not saved to library: ' + await toast(p));
   await p.click('#saveShotBtn', { force: true }); await settle(500); eq(state.downloads.length, 1, 'no duplicate on second tap');
-}, { start: 'camera' });
+}, { start: 'camera', init: () => { localStorage.setItem('glowAutoSave', 'off'); } });
+
+test('camera: auto-save is on by default, and Android saves download to the phone instead of the share sheet', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  await p.click('#shutter'); await downloads(state, 1); await settle(400);
+  eq(state.downloads.length, 1, 'saved without tapping Save');
+  assert(/saved to Downloads.*Gallery/.test(await toast(p)), 'Android wording: ' + await toast(p));
+  eq(await p.evaluate(() => Platform.savePhotos([{ blob: new Blob(['x'], { type: 'image/jpeg' }), name: 't' }])), 'downloaded', 'manual save downloads too');
+}, { start: 'camera', autoSaveDefault: true, init: () => {
+  Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 Chrome/130 Mobile Safari/537.36' });
+  navigator.canShare = () => true; navigator.share = async () => { throw new Error('share sheet opened'); };
+} });
 
 test('camera: auto-save on saves each capture once, with the original only when a look changed it', async ({ p, state }) => {
   await p.goto('https://app.test/'); await camLive(p);
@@ -82,6 +93,46 @@ test('camera: auto-save on saves each capture once, with the original only when 
 }, { start: 'camera', init: () => { localStorage.setItem('glowAutoSave', 'on'); localStorage.setItem('glowSaveOrig', 'on'); } });
 
 // ---------- Camera lifecycle ----------
+// ---------- AI Enhance in the camera, full-screen preview ----------
+test('camera: full-screen preview, and the photo is cropped to what the screen showed', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  const r = await p.evaluate(() => { const c = $('camCanvas').getBoundingClientRect(), s = $('cameraScreen').getBoundingClientRect(); return { cw: c.width, ch: c.height, sw: s.width, sh: s.height, fit: getComputedStyle($('camCanvas')).objectFit }; });
+  eq([r.cw, r.ch, r.fit], [r.sw, r.sh, 'cover'], 'preview fills the camera screen');
+  await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot);
+  const a = await p.evaluate(() => cam.shot.w / cam.shot.h);
+  assert(Math.abs(a - r.cw / r.ch) < 0.01, 'photo shape matches the preview: ' + [a, r.cw / r.ch]);
+}, { start: 'camera' });
+
+test('camera: AI Enhance button on review runs Enhance for 1 credit, closing goes back to the camera', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  assert(await p.isVisible('#camAI'), 'AI switch visible'); eq(await p.getAttribute('#camAI', 'aria-pressed'), 'false', 'AI off by default');
+  await p.click('#shutter'); await p.waitForSelector('#shotAIBtn:not([hidden])');
+  await settle(300); eq(state.posts.length, 0, 'nothing sent before tapping');
+  await p.click('#shotAIBtn'); await p.waitForSelector('#enhSheet[open]');
+  assert(/1 AI credit/.test(await p.textContent('#enhCost')), 'cost shown');
+  await p.click('#enhGo'); await p.waitForFunction(() => screen === 'enhanceResult', null, { timeout: 30000 });
+  eq(state.posts, ['enhance'], 'one Enhance request'); eq(state.used, 1, 'one credit');
+  await p.click('#enhDownload'); await downloads(state, 1); await p.waitForFunction(() => screen === 'enhanceShare');
+  assert(/Take another/.test(await p.textContent('#enhAnother')), 'Take another');
+  await p.click('#enhAnother'); await p.waitForFunction(() => screen === 'cameraScreen' && !cam.shot); await camLive(p);
+}, { start: 'camera' });
+
+test('camera: AI switch enhances right after the shutter and auto-save keeps the enhanced photo', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  await p.click('#camAI'); await p.waitForSelector('#ask[open]'); await p.click('#askActions button:has-text("Turn on")');
+  eq(await p.getAttribute('#camAI', 'aria-pressed'), 'true', 'AI on');
+  await p.click('#shutter'); await p.waitForFunction(() => screen === 'enhanceResult', null, { timeout: 30000 });
+  eq(state.posts, ['enhance'], 'enhanced at once'); await downloads(state, 1); await settle(500);
+  eq(state.downloads.length, 1, 'one save'); assert(/enhanced/.test(state.downloads[0].name), 'the enhanced photo was saved: ' + state.downloads[0].name);
+  await p.click('#enhClose'); await p.waitForFunction(() => screen === 'cameraScreen'); await camLive(p);
+  // Out of credits: the photo is kept and auto-saved without AI.
+  state.used = state.quota; await p.evaluate(() => refreshAccount());
+  await p.click('#shutter'); await downloads(state, 2); await settle(500);
+  eq(state.posts.length, 1, 'no request without credits'); eq(await p.evaluate(() => screen), 'cameraScreen', 'stays on review');
+  assert(/No AI credits/.test(await toast(p)), 'says why: ' + await toast(p));
+  eq(state.downloads.length, 2, 'the plain photo was saved instead');
+}, { start: 'camera', init: () => { localStorage.setItem('glowAutoSave', 'on'); } });
+
 test('camera: streams stop on leaving, backgrounding and flipping, with no duplicates', async ({ p }) => {
   await p.goto('https://app.test/'); await camLive(p);
   eq(await p.evaluate(() => __liveTracks()), 1, 'one live track');
@@ -1659,9 +1710,11 @@ if (faceVideo) test('camera live: no flicker: a missed frame fades, never cuts, 
   });
   eq(r.fit, 'cover', 'preview fills the space');
   assert(r.brow >= -2 && r.chin <= r.h + 2, `face in view: brow ${r.brow}, chin ${r.chin}, of ${r.h}`);
+  const open = await p.evaluate(() => $('camControls').getBoundingClientRect().top - $('camCanvas').getBoundingClientRect().top);
+  assert(r.chin <= open + 2, `face above the Adjust panel: chin ${r.chin}, panel ${open}`);
   assert(r.scale >= before - 1, `picture not smaller than before Adjust: ${r.scale} vs ${before}`);
   await p.click('.look.adjust');
-  eq(await p.evaluate(() => [getComputedStyle($('camCanvas')).objectFit, $('camCanvas').style.objectPosition]), ['contain', ''], 'closing Adjust shows the whole frame again');
+  eq(await p.evaluate(() => [getComputedStyle($('camCanvas')).objectFit, $('camCanvas').style.objectPosition]), ['cover', ''], 'closing Adjust keeps the full-screen preview, centred again');
 }, liveOpts());
 
 // A selfie stays a selfie: the chosen side is asked for exactly, then any camera if the phone has one.

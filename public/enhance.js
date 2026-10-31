@@ -63,7 +63,7 @@ async function enhanceSample() {
 setIcon($("enhSheetClose"), "close");
 function openEnhSheet(work, original, name, demo) {
   if (enh.busy) return;
-  Object.assign(enh, { src: work, original, name, demo, ai: null, full: null, base: null, faces: [], pending: null, saved: null, fromBatch: null });
+  Object.assign(enh, { src: work, original, name, demo, ai: null, full: null, base: null, faces: [], pending: null, saved: null, fromBatch: null, fromCamera: null });
   enh.cache.clear();
   $("enhSheetImg").src = work;
   $("enhSheetSample").hidden = !demo;
@@ -108,7 +108,7 @@ async function runEnhance() {
   try {
     let url;
     if (enh.demo) { await sleep(1800); url = ENH_SAMPLE.result; }   // a prepared result: no request, no credit
-    else url = await enhanceRequest();
+    else url = await enhanceRequest(enh, enh.src, enhLabel, enh.fromCamera ? "camera" : "enhance");
     if (!url || enh.src !== mine) return;
     setSheetWorking(true, "Almost there…");
     let full;
@@ -122,6 +122,7 @@ async function runEnhance() {
     if ($("enhSheet").open) $("enhSheet").close();
     showEnhResult();
     Platform.haptic("heavy");
+    return true;
   } catch (err) {
     setSheetWorking(false);
     if (err.limit) { say(err.message, true); if (!err.blocked && !isPro()) openPaywall(); }
@@ -416,7 +417,13 @@ async function closeEnhResult() {
     if (c === "save") { enhDownload(); return; }
     if (c !== "discard") return;
   }
-  showScreen("enhanceHome");
+  enhExit();
+}
+// Where Enhance goes when it's finished: the batch, the camera (ready for the next photo), or home.
+function enhExit() {
+  if (enh.fromBatch) showScreen("enhanceBatch");
+  else if (enh.fromCamera) { if (cam.shot === enh.fromCamera.shot) { cam.shot = null; renderReview(); } showScreen("cameraScreen"); }
+  else showScreen("enhanceHome");
 }
 
 // ---------- Save and Share ----------
@@ -446,6 +453,7 @@ function showEnhShare() {
   $("enhShareImg").src = enh.saved.data;
   $("enhSavedText").textContent = SAVED_LABEL[enh.saved.where] || "Saved";
   $("enhAnother").hidden = !!enh.fromBatch;
+  $("enhAnother").innerHTML = enh.fromCamera ? "Take another" + icon("camera") : "Enhance another" + icon("sparkle");
   const st = $("enhSavedState"); st.style.animation = "none"; void st.offsetWidth; st.style.animation = "";
   showScreen("enhanceShare");
   fitEnhFrame();
@@ -453,12 +461,12 @@ function showEnhShare() {
 }
 setIcon($("enhShareBack"), "back"); setIcon($("enhShareBtn"), "share"); setIcon(document.querySelector("#enhSavedState .ok"), "check");
 $("enhShareBack").addEventListener("click", () => { showScreen("enhanceResult"); fitEnhFrame(); });
-$("enhShareDone").addEventListener("click", () => showScreen(enh.fromBatch ? "enhanceBatch" : "enhanceHome"));
+$("enhShareDone").addEventListener("click", enhExit);
 $("enhShareBtn").addEventListener("click", async () => {
   try { await Platform.savePhotos([{ data: enh.saved.data, name: enh.saved.name }], { share: true }); track("share", { from: "enhance" }); }
   catch (err) { if (!(err && err.name === "AbortError")) say("Couldn't open sharing. Try again.", true); }
 });
-$("enhAnother").addEventListener("click", enhancePick);
+$("enhAnother").addEventListener("click", () => (enh.fromCamera ? enhExit() : enhancePick()));
 $("enhEdit").addEventListener("click", editEnhanced);
 
 // Hands the enhanced photo to the editor as its first step, so Undo there goes back to the original.
@@ -469,6 +477,72 @@ async function editEnhanced() {
   const full = enh.current === enh.ai && enh.full ? enh.full : enh.current;
   track("enhance_to_editor", {});
   await openPhoto(enh.src, enh.original, { name: enh.name, processed: { data: enh.current, full, label: "Enhance" } });
+}
+
+// ---------- AI Enhance in the camera ----------
+// The live looks are drawn on the phone, frame by frame; the AI Enhance is the same request as
+// the Enhance tab (1 AI credit) run on the photo just taken. With the camera's AI switch on it
+// runs after every shutter press; with it off, the review screen offers it for one photo.
+const camAIOn = () => store.get("glowCamAI") === "on";
+function renderCamAI() {
+  const on = camAIOn(), b = $("camAI");
+  b.setAttribute("aria-pressed", String(on));
+  b.setAttribute("aria-label", on ? "AI Enhance on: each photo is enhanced, 1 AI credit per photo" : "AI Enhance off");
+}
+renderCamAI();
+$("camAI").addEventListener("click", async () => {
+  Platform.haptic();
+  if (!camAIOn() && !store.get("glowCamAISeen")) {
+    const c = await ask({ title: "AI Enhance every photo?", text: "Right after you take a photo, Glow runs the same AI Enhance as the Enhance tab: a sharper face and clearer details, with your look kept. Each photo uses 1 AI credit.",
+      actions: [{ label: "Turn on", value: "on" }, { label: "Not now", value: "", kind: "ghost" }] });
+    if (!c) return;
+    store.set("glowCamAISeen", "1");
+  }
+  store.set("glowCamAI", camAIOn() ? "off" : "on");
+  track("camera_ai", { on: camAIOn() });
+  renderCamAI();
+  say(camAIOn() ? "AI Enhance on · 1 credit per photo" : "AI Enhance off");
+});
+$("shotAIBtn").addEventListener("click", () => { if (cam.shot) camEnhance(cam.shot, false); });
+
+// auto: called by the shutter with AI Enhance on, so it starts at once. Otherwise the usual
+// sheet opens with the cost and the Enhance button.
+async function camEnhance(s, auto) {
+  if (enh.busy) return;
+  const autoSave = auto && autoSaveOn();
+  const plainSave = (note) => { if (autoSave && cam.shot === s) { $("alertLive").textContent = "Saving the photo without AI Enhance."; saveShot(s, true, note); return true; } };
+  if (auto && account && account.remaining < 1) {
+    if (!plainSave(" No AI credits left, so it wasn't enhanced.")) say("No AI credits left, so this photo wasn't enhanced.", true, { label: "Get credits", run: openPaywall });
+    return;
+  }
+  let work;
+  try { work = await shrinkData(s.processed || s.raw); } catch { say("Couldn't prepare the photo for Enhance. Try again.", true); plainSave(); return; }
+  if (cam.shot !== s) return;
+  openEnhSheet(work, { blob: s.rawBlob, w: s.w, h: s.h, name: "Camera photo", type: "image/jpeg" }, "Camera photo", false);
+  enh.fromCamera = { shot: s };
+  track("camera_enhance", { auto: !!auto });
+  if (!auto) return;
+  const ok = await runEnhance();
+  if (!ok) { plainSave(); return; }
+  if (autoSave) enhAutoSave();
+}
+// Auto-save for an enhanced camera photo: saved quietly at full size (with the Glow mark on
+// free saves), staying on the Result screen.
+async function enhAutoSave() {
+  let data = enh.current === enh.ai && enh.full ? enh.full : enh.current;
+  const marked = !isPro();
+  if (marked) { try { const m = await addMark(data, false); if (m) data = m.data; } catch {} }
+  const name = `glow-enhanced-${Date.now()}`;
+  try {
+    const where = await Platform.savePhotos([{ data, name }], { download: true });
+    track("save", { from: "camera_enhance", auto: true, marked, where: String(where || "") });
+    enh.saved = { data, where, name };
+    const note = marked && !store.get("glowBadgeSeen") ? " Free saves include a small Glow badge in the corner." : "";
+    if (marked) store.set("glowBadgeSeen", "1");
+    say(savedText(where, 1, note));
+  } catch (err) {
+    if (!(err && err.name === "AbortError")) say("Auto-save didn't finish. " + saveFailText(), true);
+  }
 }
 
 // ---------- Batch Enhance (Glow Pro) ----------
@@ -650,7 +724,7 @@ async function openBatchResult(it) {
   batch.opening = true;
   try {
     const full = await blobToData(it.full);
-    Object.assign(enh, { src: it.src, original: it.original, name: it.name, demo: false, full, ai: await shrinkData(full, 2048), base: null, faces: [], pending: null, saved: null, fromBatch: it });
+    Object.assign(enh, { src: it.src, original: it.original, name: it.name, demo: false, full, ai: await shrinkData(full, 2048), base: null, faces: [], pending: null, saved: null, fromBatch: it, fromCamera: null });
     enh.cache.clear();
     await prepareResult();
     showEnhResult();

@@ -135,7 +135,10 @@
       <button class="icon-btn" id="flashBtn" aria-label="Flash" aria-pressed="false" hidden></button>
       <span class="spacer" id="flashSpacer" aria-hidden="true"></span>
       <p class="wordmark" aria-hidden="true">Glow</p>
-      <button class="icon-btn" id="camSettingsBtn" aria-label="Settings"></button>
+      <div class="cam-right">
+        <button class="cam-ai" id="camAI" aria-pressed="false" aria-label="AI Enhance each photo, 1 credit per photo"><span data-icon="sparkle"></span>AI</button>
+        <button class="icon-btn" id="camSettingsBtn" aria-label="Settings"></button>
+      </div>
     </header>
     <div class="viewfinder" id="viewfinder">
       <canvas id="camCanvas" aria-label="Camera preview" role="img"></canvas>
@@ -193,6 +196,7 @@
           <button class="round-btn" id="camFlip" aria-label="Switch to the other camera"></button>
         </div>
       </div>
+      <button class="vf-ai" id="shotAIBtn" hidden><span data-icon="sparkle"></span>AI Enhance<span class="cost">1 credit</span></button>
       <div class="review-row" id="reviewControls" hidden>
         <button class="btn ghost" id="retakeBtn" aria-label="Retake"></button>
         <button class="btn quiet" id="editShotBtn">Edit photo</button>
