@@ -19,7 +19,7 @@
 // The build number sent with each check, so a switch can require a newer app (min build).
 // Bump it (YYYYMMDD, or YYYYMMDD + one more digit for a second release that day) whenever a
 // release changes how a switchable feature behaves.
-const APP_BUILD = 202610320;
+const APP_BUILD = 202610321;
 
 // Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
 // another tool, or (body reshaping) didn't fit Glow Studio. Their code stays so saved drafts still
@@ -73,7 +73,7 @@ const FEATURE_AREAS = [
     ["tool:filters", "Filters (all)", true],
     ["tool:headshot", "Headshot", true, "AI, uses credits."], ["tool:fashion", "Fashion shoot", true, "AI, uses credits."],
     ["tool:golden", "Golden hour", true, "AI, uses credits."],
-    ["tool:outfit", "Try on an outfit", true, "AI, uses credits."], ["tool:suit", "Business suit", true, "AI, uses credits. Inside Try on."],
+    ["tool:outfit", "Try on (your outfit photo, ideas or words)", true, "AI, uses credits."], ["tool:suit", "Business suit", true, "AI, uses credits. Inside Try on."],
     ["tool:sundress", "Summer dress", true, "AI, uses credits. Inside Try on."],
     ["tool:mylook", "My Look (camera looks)", true, "In Search."],
   ]],

@@ -1,9 +1,9 @@
 // Caches the app shell so Glow Studio opens instantly from the home screen.
-const CACHE = "glow-v48";
+const CACHE = "glow-v49";
 // The introduction's small photos are part of the shell. The full sample photo and its prepared
 // previews are cached as they are first fetched (below), so they work offline only after
 // someone has opened them once.
-const SHELL = ["/", "/styles.css", "/icons.js", "/features.js", "/platform.js", "/engine.js", "/livebeauty.js", "/faceworker.js", "/app.js", "/enhance.js", "/enhance.css", "/splash/halo.webp", "/splash/core.webp", "/splash/sparkle.webp", "/manifest.json", "/icon-192.png", "/icon-512.png",
+const SHELL = ["/", "/styles.css", "/icons.js", "/features.js", "/platform.js", "/engine.js", "/livebeauty.js", "/faceworker.js", "/app.js", "/tryon.js", "/enhance.js", "/enhance.css", "/splash/halo.webp", "/splash/core.webp", "/splash/sparkle.webp", "/manifest.json", "/icon-192.png", "/icon-512.png",
   "/samples/demo-v2/intro.jpg", "/samples/demo-v2/thumb.jpg"];
 
 self.addEventListener("install", (e) => {
