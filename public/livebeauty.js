@@ -310,3 +310,46 @@ function setShape(g, P, amt) {
   gl.uniform4fv(u.nose, new Float32Array(nv));
   gl.uniform2f(u.slimR, faceW * 0.36, noseW * 0.8);
 }
+
+// ---------- Native camera (phone app) ----------
+// In the Android app the camera picture is drawn natively (the GlowCamera plugin in
+// mobile/android/.../camera), with this same look, behind the see-through page; the camera
+// screen's buttons, looks and sliders stay the web ones. Elsewhere (browsers, iPhone for now)
+// the web camera above is used.
+const NativeCam = native && plugins.GlowCamera && window.Capacitor.getPlatform() === "android" ? plugins.GlowCamera : null;
+const NATIVE_GL = { live: true, native: true };
+const NATIVE_LOOK_KEYS = ["smooth", "bright", "warm", "eyes", "slim", "nose", "lips", "blush", "brows", "lipShade", "blushShade", "browShade"];
+
+// A photo filter's canvas filter chain as one color matrix (rows r, g, b: three weights and an
+// offset), plus its soft-light wash, so the native shader draws the same filter.
+function filterMatrix(flt) {
+  let M = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]];
+  const then = (N, off = [0, 0, 0]) => {
+    M = N.map((row, i) => [0, 1, 2, 3].map((j) => row.reduce((s, n, k) => s + n * M[k][j], 0) + (j === 3 ? off[i] : 0)));
+  };
+  const sat = (s, w = [0.213, 0.715, 0.072]) => [0, 1, 2].map((i) => [0, 1, 2].map((j) => w[j] + (i === j ? 1 - w[j] : -w[j]) * s));
+  for (const [, fn, raw] of String(flt.f || "none").matchAll(/([a-z-]+)\(([-\d.]+)/g)) {
+    const v = parseFloat(raw);
+    if (fn === "brightness") then([[v, 0, 0], [0, v, 0], [0, 0, v]]);
+    else if (fn === "contrast") then([[v, 0, 0], [0, v, 0], [0, 0, v]], [0.5 - 0.5 * v, 0.5 - 0.5 * v, 0.5 - 0.5 * v]);
+    else if (fn === "saturate") then(sat(v));
+    else if (fn === "grayscale") then(sat(1 - Math.min(1, v), [0.2126, 0.7152, 0.0722]));
+    else if (fn === "sepia") {
+      const a = 1 - Math.min(1, v);
+      then([[0.393 + 0.607 * a, 0.769 - 0.769 * a, 0.189 - 0.189 * a], [0.349 - 0.349 * a, 0.686 + 0.314 * a, 0.168 - 0.168 * a], [0.272 - 0.272 * a, 0.534 - 0.534 * a, 0.131 + 0.869 * a]]);
+    } else if (fn === "hue-rotate") {
+      const r = (v * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r);
+      then([[0.213 + c * 0.787 - s * 0.213, 0.715 - c * 0.715 - s * 0.715, 0.072 - c * 0.072 + s * 0.928],
+        [0.213 - c * 0.213 + s * 0.143, 0.715 + c * 0.285 + s * 0.14, 0.072 - c * 0.072 - s * 0.283],
+        [0.213 - c * 0.213 - s * 0.787, 0.715 - c * 0.715 + s * 0.715, 0.072 + c * 0.928 + s * 0.072]]);
+    }
+  }
+  const w = /rgba\(([^)]+)\)/.exec(flt.wash || "");
+  const wash = w ? w[1].split(",").map(Number).map((n, i) => (i < 3 ? n / 255 : n)) : [0, 0, 0, 0];
+  return { color: M.flat().map((n) => Math.round(n * 1e4) / 1e4), wash };
+}
+// What the native camera needs to draw look `l` (the camera's current look by default).
+function nativeCamState(extra = {}, l = camLook()) {
+  const flt = FILTERS.find((f) => f.id === l.filter) || FILTERS[0];
+  return { look: Object.fromEntries(NATIVE_LOOK_KEYS.map((k) => [k, l[k]])), ...filterMatrix(flt), ...extra };
+}

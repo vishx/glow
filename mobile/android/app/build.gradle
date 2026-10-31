@@ -14,6 +14,8 @@ android {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+            // The native camera's face model is read straight from the APK.
+            noCompress 'task', 'tflite'
         }
     }
     buildTypes {
@@ -36,6 +38,11 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // Native camera (com.vishx.glow.camera): CameraX for the camera, MediaPipe for the face.
+    implementation "androidx.camera:camera-core:$cameraxVersion"
+    implementation "androidx.camera:camera-camera2:$cameraxVersion"
+    implementation "androidx.camera:camera-lifecycle:$cameraxVersion"
+    implementation "com.google.mediapipe:tasks-vision:$mediapipeVersion"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

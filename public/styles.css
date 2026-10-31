@@ -920,3 +920,7 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
 .screen-flash { position: fixed; inset: 0; z-index: 95; background: #fff; pointer-events: none; }
 #flashBtn.sflash { position: relative; }
 #flashBtn .fa { position: absolute; right: 6px; bottom: 6px; font-size: 0.625rem; font-weight: 800; line-height: 1; }
+
+/* Phone app: the native camera (GlowCamera plugin) draws the picture behind the page. */
+html.native-cam, html.native-cam body, html.native-cam #app, html.native-cam #cameraScreen { background: transparent !important; }
+html.native-cam #camCanvas { visibility: hidden; }
