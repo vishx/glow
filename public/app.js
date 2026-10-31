@@ -2894,7 +2894,7 @@ $("viewfinder").addEventListener("pointerdown", (e) => {
 
 function camState(kind) {
   // live = camera working; denied/error = someone who wanted the camera and couldn't use it.
-  if (kind !== cam.state && ["live", "denied", "error", "unavailable"].includes(kind)) track("camera", { state: kind });
+  if (kind !== cam.state && ["live", "denied", "error", "unavailable"].includes(kind)) track("camera", { state: kind, engine: cam.nativeOn ? "native" : "web" });
   cam.state = kind;
   const S = {
     prompt: ["camera", "Take photos with Glow Studio", "Glow Studio needs your camera to show a live preview. Photos stay on your device until you save or edit them.", "Turn on camera"],
