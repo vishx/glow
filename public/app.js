@@ -2555,6 +2555,7 @@ function ensureSession(force) {
 
 // Server calls
 async function call(path, opts = {}, retried) {
+  path = path.replace(/^enhance(?=$|\?)/, "enhance-tryon");   // PREVIEW ONLY: the Try on preview server. Never release.
   const s = await ensureSession();
   const res = await fetch(`${CONFIG.supabaseUrl}/functions/v1/${path}`, {
     ...opts,
