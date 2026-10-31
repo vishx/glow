@@ -24,7 +24,7 @@ const PRO_PROMPT = "Edit this photo the way a professional photographer and phot
   "Keep every person exactly as they are: the same face, identity, facial features, face shape, expression, age, skin tone, hair, body, pose and clothes. " +
   "Keep the same framing, composition and place. Photorealistic. Do not add objects or text.";
 
-export type Mode = { model: string | string[]; input: Record<string, unknown>; needsMask?: boolean; needsExtra?: boolean; userPrompt?: string };
+export type Mode = { model: string | string[]; input: Record<string, unknown>; needsMask?: boolean; needsExtra?: boolean; userPrompt?: string; garment?: string; category?: string };
 export const MODES: Record<string, Mode> = {
   // Enhance (the app's one-tap flow and the Restore tool): Real-ESRGAN sharpens and doubles the
   // whole photo, and its GFPGAN pass restores the faces. CodeFormer was used before 2026-10-30 but
@@ -64,9 +64,14 @@ export const MODES: Record<string, Mode> = {
   hair_bun: hair("an elegant sleek high bun"),
   hair_braids: hair("long, neat box braids"),
   hair_butterfly: hair("a voluminous layered butterfly cut with a glam blowout"),
+  // Try on (2026-10-31 redesign): one tool, three sources. The phone sends the outfit photo
+  // (`extra`), or words (`prompt`: an idea from the app's list, or her own description), and
+  // which part to change (`part`). tryOnMode() below builds the instruction. Nano Banana 2 keeps
+  // the garment's print and cut most faithfully; then Nano Banana, then IDM-VTON (photo only).
+  // The phone puts her own face back if the model moved it.
   outfit: {
-    ...edit("Dress the person from the first image in the outfit shown in the second image, matching its colors, fabric and details. Keep the same body shape, pose, hair and background.",
-      ["google/nano-banana", "cuuupid/idm-vton"]),
+    model: ["google/nano-banana-2", "google/nano-banana", "cuuupid/idm-vton"],
+    input: { prompt: "", output_format: "jpg", resolution: "1K", aspect_ratio: "match_input_image" },
     needsExtra: true,
   },
   gown: outfit("an elegant floor-length evening gown"),
@@ -101,6 +106,31 @@ export const MODES: Record<string, Mode> = {
   // result to the full-size photo and adds the background.
   bgcut: { model: ["men1scus/birefnet", "851-labs/background-remover", "lucataco/remove-bg"], input: {} },
 };
+
+// Try on: what to change, as the phone names it.
+export const TRY_PARTS = ["auto", "top", "bottom", "full"] as const;
+const PART_RULE: Record<string, string> = {
+  auto: "Change only the clothing items shown in the outfit; any of the person's own clothes the outfit doesn't cover stay exactly as they are.",
+  top: "Change only the person's top layer (shirt, blouse, sweater or jacket). Keep their own trousers, skirt and shoes exactly as they are.",
+  bottom: "Change only the person's trousers, skirt or shorts. Keep their own top and shoes exactly as they are.",
+  full: "Change the person's whole outfit, from the neckline down, including shoes where they are visible.",
+};
+const VTON_CATEGORY: Record<string, string> = { top: "upper_body", bottom: "lower_body", full: "dresses" };
+const TRY_KEEP = " Keep the same body shape and size, the same pose, hands, hair and background, and the same framing. " +
+  "The clothes must fit the person's body and pose naturally, with realistic folds, shadows and the photo's own light." + SAME;
+// The try-on edit for one request: a photo of the outfit (`extra`) or words for it (`words`).
+export function tryOnMode(base: Mode, part: unknown, words: string, hasPhoto: boolean): Mode {
+  const p = TRY_PARTS.includes(part as any) ? part as string : "auto";
+  const prompt = hasPhoto
+    ? "The first image is a photo of a person. The second image shows an outfit (it may be a product photo, a screenshot or worn by someone else). " +
+      "Dress the person from the first image in that outfit. Copy the garments exactly: color, pattern, print, fabric, cut, length, neckline, sleeves and details. " +
+      "Ignore the second image's person, face, body, pose and background. " + (words ? `The outfit: ${words}. ` : "") + PART_RULE[p] + TRY_KEEP
+    : `Dress the person in ${words}. ` + PART_RULE[p === "auto" ? "full" : p] + TRY_KEEP;
+  const input: Record<string, unknown> = { ...base.input, prompt };
+  // Words alone need an image-edit model; the try-on model only works from an outfit photo.
+  const models = (Array.isArray(base.model) ? base.model : [base.model]).filter((m) => hasPhoto || m !== "cuuupid/idm-vton");
+  return { ...base, model: models, input, needsExtra: hasPhoto, garment: words || "outfit", category: VTON_CATEGORY[p] };
+}
 
 // Enhance's second pass for group photos and small faces (2026-10-31). The phone finds every face
 // on the full-size photo, cuts each one out at its real resolution and lays them out on one sheet;
@@ -240,7 +270,8 @@ async function runOn(info: ModelInfo, cfg: Mode, { image, mask, extra, prompt }:
   // Try-on models without an image list take the clothes as their own input.
   if (cfg.needsExtra && !info.imageList) {
     input[["garm_img", "garment_image", "cloth_image"].find((k) => k in info.props) ?? "garm_img"] = extra;
-    input.garment_des = "outfit";
+    input.garment_des = cfg.garment ?? "outfit";
+    if (cfg.category && "category" in info.props) input.category = cfg.category;
   }
   if (cfg.needsMask) input[info.maskKey] = mask;
   if (cfg.userPrompt && prompt) input.prompt = cfg.userPrompt.replace("{p}", prompt);

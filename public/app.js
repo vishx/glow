@@ -66,7 +66,7 @@ tool("hcolor", "Color", "Hair color", "hair", "hair");
 [["bwaist", "Waist", "Waist"], ["bhips", "Hips", "Hips"], ["barms", "Arms", "Arms"], ["bslimlegs", "Slim legs", "Slim legs"], ["blegs", "Longer legs", "Longer legs"]]
   .forEach(([id, label, title]) => tool(id, label, title, "body", "body", { reshape: true, hint: "Works best on a photo that shows your whole body." }));
 const SELFIE_HINT = "Works best on a clear, front-facing selfie.";
-tool("outfit", "Try on", "Try on an outfit", "ai", "styles", { hint: "Pick a photo or screenshot of the outfit you want to try on." });
+tool("outfit", "Try on", "Try on", "ai", "styles", { hint: "Pick an idea, your own outfit photo, or describe one." });
 [["gown", "Gown", "Evening gown"], ["suit", "Suit", "Business suit"], ["sundress", "Sundress", "Summer dress"], ["street", "Street", "Streetwear"],
   ["headshot", "Headshot", "Headshot"], ["fashion", "Fashion", "Fashion shoot"], ["anime", "Anime", "Anime"], ["watercolor", "Watercolor", "Watercolor"],
   ["toon3d", "3D Toon", "3D Toon"], ["clay", "Clay", "Clay"], ["older", "Older", "Make older"], ["younger", "Younger", "Make younger"]]
@@ -129,9 +129,9 @@ const CATS = {
     ["face", "Face", ["fundereye", "fauto", "ftone", "fskin", "fbigeyes", "fteeth", "retouch", "smile", "faces"]],
     ["makeup", "Makeup", ["fglam", "flips", "fblush", "flashes", "fliner", "fshadow", "fbrows", "feyecolor", "fcontour", "fhighlight", "fbronzer"]],
     ["hair", "Hair", ["hcolor"]]],
-  looks: [["filters", "Filters", FILTER_IDS],
-    ["styles", "Styles", ["headshot", "fashion"]],
-    ["outfits", "Outfits", ["outfit", "suit", "sundress"]]],
+  looks: [["outfits", "Try on", ["outfit"]],
+    ["filters", "Filters", FILTER_IDS],
+    ["styles", "Styles", ["headshot", "fashion"]]],
   edit: [["adjust", "Adjust", ["crop", "light", "contrast", "highlights", "shadows", "color", "vibrance", "warmth", "tint", "detail", "fade", "vignette", "grain"]],
     ["enhance", "Enhance", ["pro", "enhance", "golden", "colorize"]],
     ["bg", "Background", ["bgscene", "bgphoto", "bgblur", "bgremove", "bgcolor"]]],
@@ -367,7 +367,7 @@ $("sampleBtn").addEventListener("click", openSample);
 const DEMO_DIR = "/samples/demo-v2/";   // versioned: a new sample gets a new folder, so no stale cache
 const DEMO_FREE = ["fblemish", "fsmooth", "fauto", "light", "filter:glow", "bgblur"];
 let demo = null; // { manifest, ready: [toolId], entry: {toolId: entry}, cache: {toolId: dataURL}, failed: {toolId: true}, saved }
-const demoOffers = (id) => !ed.demo || TOOL[id].kind !== "ai" || (!!demo && demo.ready.includes(id));
+const demoOffers = (id) => !ed.demo || TOOL[id].kind !== "ai" || (!!demo && demo.ready.includes(id)) || (id === "outfit" && tryDemoReady().length > 0);
 
 async function openSample() {
   track("sample_open", { from: screen });
@@ -412,13 +412,13 @@ function demoReset(msg) {
   ed.hist = ed.hist.slice(0, 1); ed.idx = 0; ed.floor = 0; ed.savedIdx = 0; ed.pending = null;
   if (msg) say(msg);
 }
-async function showDemoPreview(id) {
-  const t = TOOL[id], mine = ++previewToken;
-  demoReset(); sel = id; delete demo.failed[id]; demo.loading = id;
+async function showDemoPreview(id, asTool) {
+  const t = TOOL[id], mine = ++previewToken, at = asTool || id;
+  demoReset(); sel = at; delete demo.failed[id]; demo.loading = id;
   renderEditor();
   try {
     const data = await demoAsset(id);
-    if (mine !== previewToken || sel !== id || !ed.demo) return;
+    if (mine !== previewToken || sel !== at || !ed.demo) return;
     ed.hist.push({ data, full: data, op: { tool: id, fixed: true, demo: true } }); ed.idx = 1;
     $("alertLive").textContent = `${t.title} prepared preview shown. Use Compare to see it next to the original.`;
   } catch {
@@ -998,7 +998,7 @@ function renderTabs() {
 const toolOn = (id) => featureOn(toolKey(id));
 const toolShown = (id) => toolOn(id) && (demoOffers(id) || (ed.demo && CATS.ai[0][2].includes(id)));
 function toolBadge(t) {
-  if (ed.demo && t.kind === "ai") return demo && demo.ready.includes(t.id) ? ["Preview", ", prepared preview, no credits"] : [null, ", needs your own photo"];   // the panel explains; a badge on every tile was noise
+  if (ed.demo && t.kind === "ai") return demo && (demo.ready.includes(t.id) || (t.id === "outfit" && tryDemoReady().length)) ? ["Preview", ", prepared preview, no credits"] : [null, ", needs your own photo"];   // the panel explains; a badge on every tile was noise
   if (!aiLive(t.id)) return ["Soon", ", not available yet"];
   const cost = costOf(t);
   return cost ? [`AI · ${cost}`, `, uses ${credits(cost)}`] : [null, ", free"];
@@ -1017,7 +1017,8 @@ function toolButton(t) {
   } else {
     // Every other tool shows the face it will change, with the tool's icon on a small badge;
     // the sample's AI tools show their prepared result.
-    const pic = ed.demo && demo && demo.ready.includes(t.id) ? `${DEMO_DIR}thumbs/${t.id}.jpg` : faceThumb;
+    const shown = t.id === "outfit" && ed.demo ? tryDemoReady()[0] : t.id;
+    const pic = ed.demo && demo && demo.ready.includes(shown) ? `${DEMO_DIR}thumbs/${shown}.jpg` : faceThumb;
     if (pic) {
       b.classList.add("photo"); well.style.backgroundImage = `url(${pic})`;
       const g = document.createElement("span"); g.className = "glyph"; g.setAttribute("aria-hidden", "true"); g.innerHTML = icon(t.id); well.append(g);
@@ -1134,7 +1135,7 @@ function selectTool(id, opts = {}) {
   if (cr) closeCrop();
   if (id !== sel) { panelCollapsed = false; filterAmt = 100; }   // a newly opened tool always shows its controls
   if (searching && id) { searching = false; $("searchInput").value = ""; $("editorScreen").classList.remove("tools-open"); const home = tabFor(id); if (home) cat = home[0]; }
-  sel = id; strokes = []; outfitData = null; toolsOpen = false; panelBuilt = null; reshapeNote = null; picking = null;
+  sel = id; strokes = []; toolsOpen = false; panelBuilt = null; reshapeNote = null; picking = null;
   dropper = false; $("stage").classList.remove("dropping");
   lookPick = editorLooks().some((l) => l.id === lookId) ? lookId : "natural";
   if (id in toolAmt) toolAmt[id] = 0; // adjustments start from the committed photo
@@ -1164,6 +1165,8 @@ $("cancelBtn").addEventListener("click", () => (reviewing() ? discardResult() : 
 async function discardResult() {
   if (!job || job.status !== "done") return;
   const t = TOOL[job.tool];
+  // A look from the Try on row was already paid for and stays in the row: just close it.
+  if (tryIsKept()) { job = null; saveJob(); renderEditor(); say("Back to your photo. The look stays in Your looks."); return; }
   const c = await ask({ title: `Discard this ${t.title} result?`, text: "The AI credit it used isn't returned. Your marks stay, so you can adjust them and try again.",
     actions: [{ label: "Discard", value: "yes" }, { label: "Keep reviewing", value: "", kind: "ghost" }] });
   if (!c || !job || job.status !== "done") return;
@@ -1490,14 +1493,7 @@ function buildPanel(t) {
     inp.addEventListener("input", () => { sceneText = inp.value; });
     l.append(Object.assign(document.createElement("span"), { className: "sr-only", textContent: "Describe a background (optional)" }), inp); body.append(l);
   } else if (t.id === "outfit") {
-    const row = document.createElement("div"); row.className = "outfit-pick";
-    if (outfitData) { const im = document.createElement("img"); im.src = outfitData; im.alt = "Outfit you picked"; row.append(im); }
-    const b = document.createElement("button"); b.className = "btn quiet small"; b.textContent = outfitData ? "Change outfit photo" : "Choose outfit photo";
-    b.addEventListener("click", async () => {
-      const f = await Platform.pickPhoto("outfitFile");
-      if (f) { try { outfitData = await loadAndShrink(f); } catch (err) { say(err.message, true); } renderPanel(true); }
-    });
-    row.append(b); body.append(row);
+    tryOnPanel(body);
   } else if (MASK_TOOLS.includes(t.id) && !ed.demo) {
     // Paint marks the area; Erase takes marks away. Reset (in the title row) clears them all.
     const modes = options([["Paint", "paint"], ["Erase marks", "erase"]], (v) => v === brushMode, (v) => { brushMode = v; renderPanel(true); });
@@ -1522,6 +1518,7 @@ function buildPanel(t) {
 }
 function panelState(t) {
   $("cancelBtn").textContent = reviewing() ? "Discard" : "Cancel";
+  if (ed.demo && t.id === "outfit") return tryDemoState();
   if (ed.demo && t.kind === "ai") return demoPanelState(t);
   const cost = costOf(t), chip = $("cost"), apply = $("applyBtn");
   const gen = MASK_TOOLS.includes(t.id) || t.id === "expand" || t.id === "bgscene";
@@ -1574,7 +1571,7 @@ function panelState(t) {
     }
     if (jobActive()) { apply.disabled = true; note = `Wait for ${job.title} to finish, or check its status above. Glow Studio runs one AI edit at a time so nothing is charged twice.`; }
     else if (resultReady()) { apply.disabled = true; note = `Apply or discard the ${job.title} result first (in the bar above).`; }
-    if (t.id === "outfit" && !outfitData && !short) apply.disabled = true;
+    if (t.id === "outfit") { if (!short) { apply.textContent = apply.textContent.replace(/^Apply/, "Try on"); if (!tryRequest()) apply.disabled = true; } const tn = tryOnNote(); if (tn) note = tn; }
     if (t.id === "custom" && !customText.trim()) apply.disabled = true;
     if (t.id === "glowup" && !short) { apply.textContent = apply.textContent.replace(/^(Apply|Run again)/, "Glow Up"); if (glow.ai === "custom" && !glow.words.trim()) apply.disabled = true; }
     if (t.id === "colorize" && photoColorful) { apply.disabled = true; note = "Colorize is for black-and-white photos. This photo already has color."; }
@@ -1671,6 +1668,7 @@ $("applyBtn").addEventListener("click", applyCurrent);
 async function applyCurrent() {
   const t = sel && TOOL[sel]; if (!t || busyNow) return;
   // Sample: prepared previews are already showing. Nothing is generated or charged.
+  if (ed.demo && t.id === "outfit") { tryDemoApply(); return; }
   if (ed.demo && t.kind === "ai") {
     if (!demo || !demo.ready.includes(t.id)) { pickAndOpen(); return; }
     if (demo.failed[t.id]) showDemoPreview(t.id); else { sel = null; renderEditor(); } return;
@@ -1965,9 +1963,14 @@ async function startAiEdit(t) {
       const up = await uploadable(base), mask = await sceneMask(up);
       body = { image: up, mode: "bgscene", mask, prompt: scenePrompt() };
       keep = { mask };
+    } else if (t.id === "outfit") {
+      // Try on: an outfit photo, or words for one, and which part to change. Her face stays hers.
+      const r = tryRequest(); if (!r) throw new Error("Pick an outfit first.");
+      body = { image: await uploadable(base, aiMaxSide(t.id), aiMaxPixels(t.id)), mode: "outfit", extra: r.extra, prompt: r.prompt, part: r.part };
+      keep = { keepFace: true, look: r.label };
     } else if (t.id === "expand") {
       const x = await expandInputs(base); body = { image: x.image, mode: "expand", mask: x.mask };
-    } else body = { image: await uploadable(base, aiMaxSide(t.id), aiMaxPixels(t.id)), mode: t.id, extra: t.id === "outfit" ? outfitData : undefined };
+    } else body = { image: await uploadable(base, aiMaxSide(t.id), aiMaxPixels(t.id)), mode: t.id };
   } catch (err) { setBusy(false); say(err.message, true); return; }
   job = { requestId: rid(), id: null, tool: t.id, title: t.title, session: ed.session, baseIdx: ed.idx, status: "starting", startedAt: Date.now(), before, ...keep };
   saveJob();
@@ -2081,7 +2084,7 @@ async function settleJob(res) {
   if (mineHere) {
     // Every AI result waits for Apply. It is kept with the job, so it survives leaving the tool,
     // the editor, or a reload, and nothing is charged again to look at it.
-    mine.status = "done"; mine.result = { data, full }; saveJob();
+    mine.status = "done"; mine.result = { data, full }; saveJob(); tryKeepLook(mine);
     renderEditor(); Platform.haptic();
     say(sel === mine.tool ? `${mine.title} is ready. Apply to keep it.` : `${mine.title} is ready to review.`);
   } else {

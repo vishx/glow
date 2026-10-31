@@ -19,14 +19,16 @@
 // The build number sent with each check, so a switch can require a newer app (min build).
 // Bump it (YYYYMMDD, or YYYYMMDD + one more digit for a second release that day) whenever a
 // release changes how a switchable feature behaves.
-const APP_BUILD = 202610315;
+const APP_BUILD = 202610319;
 
 // Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
 // another tool, or (body reshaping) didn't fit Glow Studio. Their code stays so saved drafts still
 // replay, and they can come back for testers from the admin page.
 const RETIRED_TOOLS = ["smile", "relight", "older", "younger", "expand", "upscale", "faces", "bgcut", "bgwhite", "bgblush", "bgsky",
   "anime", "watercolor", "toon3d", "clay", "gown", "street", "hair_waves", "hair_bob", "hair_pixie", "hair_bangs", "hair_curls",
-  "hair_bun", "hair_braids", "hair_butterfly", "bwaist", "bhips", "barms", "bslimlegs", "blegs"];
+  "hair_bun", "hair_braids", "hair_butterfly", "bwaist", "bhips", "barms", "bslimlegs", "blegs",
+  // Oct 31: the outfit presets are ideas inside Try on now.
+  "suit", "sundress"];
 
 const RETIRED_NAMES = { smile: "Add a smile", relight: "Relight", older: "Make older", younger: "Make younger", expand: "Expand",
   upscale: "Upscale 4x", faces: "Face repair", bgcut: "HD cutout", bgwhite: "White background", bgblush: "Blush background",
@@ -34,7 +36,7 @@ const RETIRED_NAMES = { smile: "Add a smile", relight: "Relight", older: "Make o
   street: "Streetwear", hair_waves: "Hair: long waves", hair_bob: "Hair: sleek bob", hair_pixie: "Hair: pixie cut",
   hair_bangs: "Hair: curtain bangs", hair_curls: "Hair: curls", hair_bun: "Hair: high bun", hair_braids: "Hair: braids",
   hair_butterfly: "Hair: butterfly cut", bwaist: "Body: waist", bhips: "Body: hips", barms: "Body: arms", bslimlegs: "Body: slim legs",
-  blegs: "Body: longer legs" };
+  blegs: "Body: longer legs", suit: "Business suit (now in Try on)", sundress: "Summer dress (now in Try on)" };
 
 // [area, [[key, label, default on, note], ...]]. Editor tool keys are "tool:" + the tool's id (all
 // filters share "tool:filters"). Core flows (Enhance itself, saving, the paywall, Settings) have
@@ -72,8 +74,7 @@ const FEATURE_AREAS = [
   ["Editor · Looks", [
     ["tool:filters", "Filters (all)", true],
     ["tool:headshot", "Headshot", true, "AI, uses credits."], ["tool:fashion", "Fashion shoot", true, "AI, uses credits."],
-    ["tool:outfit", "Try on an outfit", true, "AI, uses credits."], ["tool:suit", "Business suit", true, "AI, uses credits."],
-    ["tool:sundress", "Summer dress", true, "AI, uses credits."],
+    ["tool:outfit", "Try on (your outfit photo, ideas or words)", true, "AI, uses credits."],
     ["tool:mylook", "My Look (camera looks)", true, "In Search."],
   ]],
   ["Editor · Edit", [
