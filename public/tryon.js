@@ -81,7 +81,7 @@ async function tryCheck() {
 }
 
 function trySeg(body) {
-  const seg = options([["Ideas", "ideas"], ["Your photo", "photo"], ["Describe", "words"]], (v) => v === tryOn.src, (v) => { tryOn.src = v; renderPanel(true); });
+  const seg = options([["Ideas", "ideas"], ["Your photo", "photo"], ["Describe", "words"]], (v) => v === tryOn.src, (v) => { tryOn.src = v; tryChanged(); });
   seg.classList.add("try-seg"); seg.setAttribute("role", "group"); seg.setAttribute("aria-label", "Outfit from");
   body.append(seg);
 }
@@ -100,7 +100,7 @@ function tryIdeas(body) {
     b.append(well, name);
     b.addEventListener("click", () => {
       if (ed.demo) { tryOn.demoShown = id; showDemoPreview(TRY_DEMO[id], "outfit"); return; }
-      tryOn.idea = id; renderPanel(true);
+      tryOn.idea = id; tryChanged();
     });
     row.append(b);
   });
@@ -111,7 +111,7 @@ function tryIdeas(body) {
     const b = document.createElement("button"); b.className = "opt try-color"; b.setAttribute("aria-pressed", String(tryOn.color === v));
     b.setAttribute("aria-label", label); b.title = label;
     if (hex) { const dot = document.createElement("i"); dot.style.background = hex; b.append(dot); } else b.textContent = label;
-    b.addEventListener("click", () => { tryOn.color = v; renderPanel(true); });
+    b.addEventListener("click", () => { tryOn.color = v; tryChanged(); });
     colors.append(b);
   });
   body.append(colors);
@@ -123,7 +123,7 @@ function tryPhoto(body) {
   add.setAttribute("aria-label", "Add an outfit photo or screenshot");
   add.addEventListener("click", async () => {
     const f = await Platform.pickPhoto("outfitFile");
-    if (f) { try { await closetAdd(f); } catch (err) { say(err.message, true); } renderPanel(true); }
+    if (f) { try { await closetAdd(f); } catch (err) { say(err.message, true); } tryChanged(); }
   });
   row.append(add);
   // Paste a copied product photo (desktop, and phones that allow it).
@@ -134,7 +134,7 @@ function tryPhoto(body) {
       try {
         for (const it of await navigator.clipboard.read()) {
           const type = it.types.find((x) => x.startsWith("image/"));
-          if (type) { await closetAdd(new File([await it.getType(type)], "outfit.png", { type })); renderPanel(true); return; }
+          if (type) { await closetAdd(new File([await it.getType(type)], "outfit.png", { type })); tryChanged(); return; }
         }
         say("There's no picture to paste. Copy an outfit picture first.", true);
       } catch { say("Glow Studio couldn't read the clipboard. Save the picture and use Add instead.", true); }
@@ -144,7 +144,7 @@ function tryPhoto(body) {
   (tryOn.closet || []).forEach((data, i) => {
     const b = document.createElement("button"); b.className = "try-item"; b.setAttribute("aria-pressed", String(outfitData === data));
     b.setAttribute("aria-label", `Outfit photo ${i + 1}`); b.style.backgroundImage = `url(${data})`;
-    b.addEventListener("click", () => { outfitData = data; renderPanel(true); });
+    b.addEventListener("click", () => { outfitData = data; tryChanged(); });
     row.append(b);
     if (outfitData === data) {
       const x = document.createElement("button"); x.className = "try-remove"; x.innerHTML = icon("close"); x.setAttribute("aria-label", "Remove this outfit photo");
@@ -160,14 +160,21 @@ function tryWords(body) {
   const l = document.createElement("label"); l.className = "prompt";
   const inp = document.createElement("input"); inp.type = "text"; inp.id = "tryWords"; inp.maxLength = 160; inp.autocomplete = "off";
   inp.placeholder = "e.g. a red satin slip dress, a denim jacket"; inp.value = tryOn.words;
-  inp.addEventListener("input", () => { tryOn.words = inp.value; panelState(TOOL.outfit); });
+  inp.addEventListener("input", () => { tryOn.words = inp.value; if (tryIsKept()) { job = null; saveJob(); renderEditor(); } else panelState(TOOL.outfit); });
   l.append(Object.assign(document.createElement("span"), { className: "sr-only", textContent: "Describe the outfit" }), inp); body.append(l);
 }
 
 function tryParts(body) {
-  const row = options(TRY_PARTS, (v) => v === tryOn.part, (v) => { tryOn.part = v; renderPanel(true); });
+  const row = options(TRY_PARTS, (v) => v === tryOn.part, (v) => { tryOn.part = v; tryChanged(); });
   row.classList.add("try-parts"); row.setAttribute("role", "group"); row.setAttribute("aria-label", "What to change");
   body.append(row);
+}
+
+// A new pick while a look is showing means "make another": the look closes (it stays in Your
+// looks), so the button is Try on again instead of Apply for the look on screen.
+function tryChanged() {
+  if (tryIsKept()) { job = null; saveJob(); panelBuilt = null; renderEditor(); return; }
+  renderPanel(true);
 }
 
 // Every look made on this photo, to flip between for free. Tapping one shows it for review again.
