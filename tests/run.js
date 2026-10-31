@@ -615,8 +615,10 @@ test('enhance: pick, one AI request, before/after, toggles on the phone, save, s
   eq(await p.evaluate(() => [...$('enhLvRow').children].length), 0, 'no levels open at first');
   await level('colors', 2); await level('bg', 0);
   eq(await p.evaluate(() => [enh.lv.colors, enh.lv.bg, document.querySelector('.enh-t[data-k=colors]').getAttribute('aria-pressed')]), [2, 0, 'true'], 'levels kept');
+  const blur0 = await p.evaluate(() => enh.lv.blur);
+  eq(blur0, 2, 'a one-person portrait opens with Medium portrait blur');
   await level('blur', 3, false);
-  eq(await p.evaluate(() => enh.lv.blur), 0, 'back undoes the blur');
+  eq(await p.evaluate(() => enh.lv.blur), blur0, 'back undoes the change');
   await level('blur', 1);
   // Set as default: the next photo opens with Low blur.
   await p.click('.enh-t[data-k=blur]'); await p.click('#enhDefault'); await p.click('#enhLvDone');
@@ -683,7 +685,9 @@ test('settings: Enhance defaults, subscription details, share the app, and sugge
   await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
   eq(await p.$$eval('#enhPrefsList select', (s) => s.map((x) => x.dataset.k + '=' + x.value)), ['face=3', 'bg=3', 'retouch=0', 'colors=0', 'blur=2'], 'each tool shows its default');
   await p.selectOption('#enhPrefsList select[data-k=face]', '2'); await p.selectOption('#enhPrefsList select[data-k=blur]', '0');
-  eq(await p.evaluate(() => JSON.parse(store.get('glow.enhDefaults'))), { face: 2 }, 'changes saved; the standard level needs no entry');
+  eq(await p.evaluate(() => JSON.parse(store.get('glow.enhDefaults'))), { blur: 0, face: 2 }, 'changes saved (Blur off is kept, since its standard is auto)');
+  await p.selectOption('#enhPrefsList select[data-k=blur]', 'auto');
+  eq(await p.evaluate(() => JSON.parse(store.get('glow.enhDefaults'))), { face: 2 }, 'Blur back to auto');
   await p.click('#enhPrefsReset'); eq(await p.evaluate(() => store.get('glow.enhDefaults')), '{}', 'reset');
   await p.evaluate(() => { window.__shared = null; navigator.share = async (d) => { window.__shared = d; }; });
   await p.click('#shareApp'); eq(await p.evaluate(() => window.__shared && window.__shared.url), 'https://glow-photo-enhancer.vercel.app', 'share sheet gets the app link');

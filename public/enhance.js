@@ -454,10 +454,24 @@ async function enhResultData(done) {
 // sheet with the photo: the server restores every face on it in the same request (no extra credit),
 // and putFacesBack() puts each restored face back over the result through a soft oval.
 const SHEET = { cell: 320, max: 12, minPx: 16, bigPx: 240, room: 2.1 };
+// The faces in a photo, for the face sheet and the Result's face tools. On a phone the face model
+// can fail or come back empty after heavy work (a big photo, the AI download, a lost graphics
+// context), which used to turn Face Enhancer and Face Retouch off on a clear selfie. So a miss
+// is asked again with the model loaded fresh, then on a smaller copy, and each retry is reported.
 async function enhFaces(src, img) {
-  const o = img || await loadImg(src), c = newCanvas(o.naturalWidth, o.naturalHeight);
-  c.getContext("2d").drawImage(o, 0, 0);
-  return findFaces(src + "|enhance", c);
+  const o = img || await loadImg(src);
+  const at = (max) => { const k = Math.min(1, max / Math.max(o.naturalWidth, o.naturalHeight)), c = newCanvas(Math.round(o.naturalWidth * k), Math.round(o.naturalHeight * k));
+    c.getContext("2d").drawImage(o, 0, 0, c.width, c.height); return c; };
+  let err = null;
+  for (const [i, max] of [[0, 4096], [1, 4096], [2, 1024]]) {
+    try {
+      if (i === 1) faceFinderPromise = null;   // a fresh model for the second try
+      const f = await findFaces(src + "|enhance" + (i ? "|" + i : ""), at(max));
+      if (f.length) { if (i) reportError("Face finder needed a retry", `try ${i} found ${f.length}${err ? "; first: " + err : ""}`); return f; }
+    } catch (e) { err = err || (e && e.message) || String(e); }
+  }
+  if (err) reportError("Face finder failed", err);
+  return [];
 }
 // `src` is the working copy (faces are found on it); `from` is the untouched file, if any.
 // `all`: every face, big ones too, in bigger cells when there are few (Pro Edit: its model returns
@@ -526,6 +540,12 @@ async function prepareResult() {
   x.imageSmoothingQuality = "high"; x.drawImage(o, 0, 0, W, H);
   enh.base = c.toDataURL("image/jpeg", 0.94); enh.size = [W, H];
   try { enh.faces = await enhFaces(enh.src, o); } catch { enh.faces = []; }
+}
+// One clear person: a single face at least an eighth of the photo's width.
+function enhPortrait() {
+  if (enh.faces.length !== 1) return false;
+  const [, , w] = boxOf(enh.faces[0]);
+  return w >= 0.125;
 }
 function showEnhResult() {
   const saved = enhDefaults();
@@ -754,7 +774,7 @@ function openLevels(k) {
 function markLevel() {
   const k = lvState.k, saved = enhDefaults(), def = ENH_TOGGLES.find((t) => t[0] === k)[4];
   for (const b of $("enhLvRow").children) b.setAttribute("aria-checked", String(Number(b.dataset.i) === enh.lv[k]));
-  $("enhDefault").checked = (saved[k] ?? def) === enh.lv[k];   // this level is what new results start with
+  $("enhDefault").checked = k === "blur" ? saved[k] === enh.lv[k] : (saved[k] ?? def) === enh.lv[k];   // this level is what new results start with
 }
 function closeLevels(keep) {
   if (lvState.k && !keep && enh.lv[lvState.k] !== lvState.was) { enh.lv[lvState.k] = lvState.was; updateComposite(); }
@@ -769,7 +789,8 @@ $("enhLvRow").addEventListener("click", (e) => {
 });
 $("enhDefault").addEventListener("change", () => {
   const d = enhDefaults(), k = lvState.k, def = ENH_TOGGLES.find((t) => t[0] === k)[4];
-  if ($("enhDefault").checked && enh.lv[k] !== def) d[k] = enh.lv[k]; else delete d[k];   // the standard level needs no entry
+  // Blur's standard is "auto" (Medium on one-person portraits), so a chosen Blur level is always kept.
+  if ($("enhDefault").checked && (enh.lv[k] !== def || k === "blur")) d[k] = enh.lv[k]; else delete d[k];
   store.set("glow.enhDefaults", JSON.stringify(d));
   markLevel();
 });

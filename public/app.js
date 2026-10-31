@@ -3283,15 +3283,16 @@ function renderEnhPrefs() {
   $("enhPrefsList").replaceChildren(...ENH_TOGGLES.map(([k, label, , names, def]) => {
     const l = document.createElement("label"), sel = document.createElement("select");
     sel.dataset.k = k;
-    names.forEach((n, i) => sel.add(new Option(i === def ? `${n} (standard)` : n, String(i))));
-    sel.value = String(saved[k] ?? def);
+    if (k === "blur") sel.add(new Option("Auto (Medium on one-person portraits)", "auto"));
+    names.forEach((n, i) => sel.add(new Option(i === def && k !== "blur" ? `${n} (standard)` : n, String(i))));
+    sel.value = k in saved ? String(saved[k]) : k === "blur" ? "auto" : String(def);
     l.append(label, sel); return l;
   }));
 }
 $("enhPrefsList").addEventListener("change", (e) => {
   const sel = e.target.closest("select"); if (!sel) return;
   const d = enhDefaults(), k = sel.dataset.k, def = ENH_TOGGLES.find((t) => t[0] === k)[4], v = Number(sel.value);
-  if (v === def) delete d[k]; else d[k] = v;
+  if (sel.value === "auto" || (v === def && k !== "blur")) delete d[k]; else d[k] = v;
   store.set("glow.enhDefaults", JSON.stringify(d)); track("setting", { enhance_default: k, level: v });
 });
 $("enhPrefsReset").addEventListener("click", () => { store.set("glow.enhDefaults", "{}"); renderEnhPrefs(); say("Enhance tools are back to their standard levels."); });
