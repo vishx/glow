@@ -129,7 +129,7 @@ const FILTER_IDS = TOOLS.filter((t) => t.kind === "filter").map((t) => t.id);
 const CATS = {
   retouch: [["auto", "Auto", ["glowup", "fauto", "retouch"]],
     ["skin", "Skin", ["fsmooth", "fblemish", "fundereye", "ftone", "fskin"]],
-    ["face", "Face", ["feyes", "fteeth", "fbigeyes", "fslim", "fnose"]],
+    ["face", "Face", ["feyes", "fteeth", "fbigeyes", "fslim", "fnose", "smile", "faces"]],   // Smile, Face repair: retired, testers only
     ["makeup", "Makeup", ["fglam", "flips", "fblush", "flashes", "fliner", "fshadow", "fbrows", "feyecolor", "fcontour", "fhighlight", "fbronzer"]],
     ["hair", "Hair", ["hcolor"]]],
   // Try on is one tool with its own outfit choices inside (the separate Suit and Sundress tiles left the menu).
@@ -1067,11 +1067,12 @@ function renderTools() {
     const items = document.createElement("div"); items.className = "group-items"; items.append(b); g.append(items); box.append(g);
   }
 }
-// The group chips over a tab's row (only when it has more than one group): a chip scrolls the
-// row to its group, and the chip of the group in view is marked as the row scrolls.
+// The group chips over a tab's row: a chip scrolls the row to its group, and the chip of the
+// group in view is marked as the row scrolls. A tab with one group shows its one name, so the
+// photo keeps the same size on every tab.
 function renderChips(groups) {
   const row = $("subchips");
-  row.hidden = groups.length < 2;
+  row.hidden = !groups.length;
   row.replaceChildren(...(row.hidden ? [] : groups.map(([k, name]) => {
     const b = document.createElement("button"); b.type = "button"; b.className = "subchip"; b.dataset.chip = k; b.textContent = name;
     b.setAttribute("aria-pressed", "false"); return b;

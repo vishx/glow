@@ -333,7 +333,7 @@ test('ai: a result that finishes after the photo was replaced waits on Editor ho
 // ---------- Accessibility ----------
 test('a11y: 200% text has no horizontal scroll on Camera, Editor home, the editor with a tool open, and Settings', async ({ p }) => {
   await p.goto('https://app.test/'); await p.addStyleTag({ content: 'html { font-size: 200% !important; }' });
-  const over = () => p.evaluate(() => [document.documentElement.scrollWidth > innerWidth, [...document.querySelectorAll('#app *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && e.offsetParent && r.right > innerWidth + 1 && getComputedStyle(e).overflowX === 'visible' && !e.closest('.looks,.tools,.tabs,.chips,.opts'); }).map((e) => e.id || e.className).slice(0, 5)]);
+  const over = () => p.evaluate(() => [document.documentElement.scrollWidth > innerWidth, [...document.querySelectorAll('#app *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && e.offsetParent && r.right > innerWidth + 1 && getComputedStyle(e).overflowX === 'visible' && !e.closest('.looks,.tools,.tabs,.chips,.opts,.subchips'); }).map((e) => e.id || e.className).slice(0, 5)]);
   await camLive(p);
   let o = await over(); eq(o[0], false, 'camera page scroll'); eq(o[1], [], 'camera clipped elements');
   await p.click('#nav button[data-dest="editor"]'); o = await over(); eq(o[0], false, 'home scroll'); eq(o[1], [], 'home clipped');
@@ -419,8 +419,11 @@ test('demo: Try a sample opens the attached original with demo labels', async ({
     return { inRow: !!$('demoOwnBtn').closest('.viewbar'), bh: b.height, name: $('demoOwnBtn').getAttribute('aria-label'), header: !!$('demoOwnBtn').closest('.topbar') }; });
   eq([row.inRow, row.header, row.bh >= 44, row.name], [true, false, true, 'Use your photo'], 'small Use your photo action in the utility row');
   assert(await p.isVisible('#demoOwnBtn'), 'Try your own photo'); assert(await p.isHidden('#balanceBtn'), 'no credit balance in the demo');
-  await p.click('.tab[data-cat="ai"]');   // Pro edit and Enhance are filed under AI · Improve
-  eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].map((c) => c.textContent)), ['Preview', 'Preview'], 'AI tools offered = prepared ones');
+  await p.click('.tab[data-cat="ai"]');   // Pro edit is filed under AI · Improve
+  eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].map((c) => c.textContent)), ['Preview'], 'AI tools offered = prepared ones');
+  await p.click('.tab[data-cat="looks"]');   // Golden hour under Looks · Styles
+  eq(await p.evaluate(() => [...document.querySelectorAll('.tool[data-tool="golden"] .cost')].map((c) => c.textContent)), ['Preview'], 'Golden hour prepared');
+  await p.click('.tab[data-cat="ai"]');
   assert(/prepared preview, no credits/.test(await p.getAttribute('.tool[data-tool="pro"]', 'aria-label')), 'screen-reader label');
   await p.screenshot({ path: path.join(__dirname, 'out', 'demo-open.png') });
 }, { files: demoFiles() });
@@ -479,7 +482,7 @@ test('demo: with no prepared previews, no AI tools are offered and the note expl
   await p.click('.tab[data-cat="ai"]');
   eq(await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => [b.dataset.tool, b.querySelector('.cost') && b.querySelector('.cost').textContent])),
     [['erase', null], ['fill', null], ['custom', null]], 'Remove, Fill and Describe stay listed, with no badge (the panel explains)');
-  eq(await p.evaluate(() => $('subchips').hidden), true, 'one group left on the tab: no chips');
+  eq(await p.$$eval('#subchips .subchip', (x) => x.map((c) => c.textContent)), ['Change'], 'one group left on the tab: its one name');
   assert(await p.$$eval('#tools .tool[data-tool]', (x) => x.every((b) => /needs your own photo/.test(b.getAttribute('aria-label')))), 'spoken: needs your own photo');
   await p.click('.tab[data-cat="looks"]');
   assert(!(await p.$$eval('#tools .tool', (x) => x.some((b) => /uses \d credit/.test(b.getAttribute('aria-label'))))), 'no AI tool offered as chargeable on the sample');
@@ -502,9 +505,10 @@ test('demo: the shipped prepared previews are all there, match the manifest, and
   }
   const shipped = fs.readdirSync(dir).filter((f) => /\.(jpe?g|png|webp)$/i.test(f)).sort();
   eq(shipped, [...new Set(['intro.jpg', 'thumb.jpg', 'pw-before.jpg', 'pw-after.jpg', m.original.file, ...(m.intro ? [m.intro.file] : []), ...ready.map((e) => e.result)])].sort(), 'no stray or old result images');
-  await openDemo(p); const before = credit(state), retired = await p.evaluate(() => RETIRED);
+  await openDemo(p); const before = credit(state), retired = await p.evaluate(() => RETIRED), IN_TRY_ON_IDS = await p.evaluate(() => IN_TRY_ON);
   // Colorize is only offered for black-and-white photos, so the color sample doesn't show it; retired tools aren't offered.
-  for (const e of ready.filter((x) => x.tool !== 'colorize' && !retired.includes(x.tool))) {
+  // Suit and Sundress live inside Try on now (no tile of their own).
+  for (const e of ready.filter((x) => x.tool !== 'colorize' && !retired.includes(x.tool) && !IN_TRY_ON_IDS.includes(x.tool))) {
     await tool(p, 'foryou', null, e.tool); await p.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x && $('after').naturalWidth > 0, e.tool, { timeout: 15000 });
     eq(await p.evaluate(() => [ed.hist.length, $('after').naturalWidth, $('after').naturalHeight]), [2, e.width, e.height], `${e.tool}: shown alone, at its size`);
   }
@@ -938,7 +942,7 @@ test('layout: Search covers every tool in a taller catalog; the last tools scrol
   eq(await p.evaluate(() => document.activeElement.id), 'searchInput', 'focus in the search field');
   const tall = await p.evaluate(() => $('tools').getBoundingClientRect().height); assert(tall > 300, 'taller catalog ' + tall);
   eq(await p.evaluate(() => new Set([...document.querySelectorAll('#tools .tool')].map((b) => b.dataset.tool)).size), await p.evaluate(() => TOOLS.filter((t) => !RETIRED.includes(t.id) && !IN_TRY_ON.includes(t.id)).length), 'every tool still offered is in Search');
-  await p.fill('#searchInput', 'blur'); eq(await p.$$eval('#tools .tool', (x) => x.map((b) => b.dataset.tool)), ['bgblur'], 'search');
+  await p.fill('#searchInput', 'blur'); eq(await p.$$eval('#tools .tool', (x) => x.map((b) => b.dataset.tool)), ['bgblur', 'enhance'], 'search (Enhance by its everyday word "blurry")');
   await p.click('.tool[data-tool="bgblur"]'); await idle(p);
   eq(await p.evaluate(() => [sel, cat, searching]), ['bgblur', 'bg', false], 'a found tool opens in its own tab');
   await p.click('#cancelBtn'); await settle(150);
@@ -1290,10 +1294,11 @@ test('layout: on phones the idle editor reserves no panel space, and a closed to
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   const sizes = {}, box = async (n) => { await settle(400); sizes[n] = await stageBox(p); };
   const gaps = () => p.evaluate(() => { const g = (s) => document.querySelector(s).getBoundingClientRect(), st = g('#stage'), vb = g('#editorScreen .viewbar'), tl = g('#editorScreen .side > .tools'), tb = g('#editorScreen .tabs');
-    return { rowOnPhoto: vb.top >= st.top && vb.bottom <= st.bottom, photoToTools: Math.round(tl.top - st.bottom), toolsToTabs: Math.round(tb.top - tl.bottom), tabsToEnd: Math.round(innerHeight - tb.bottom),
+    const ch = g('#subchips');
+    return { rowOnPhoto: vb.top >= st.top && vb.bottom <= st.bottom, photoToTools: Math.round(tl.top - st.bottom - ch.height), chipsOnTools: Math.round(tl.top - ch.bottom), toolsToTabs: Math.round(tb.top - tl.bottom), tabsToEnd: Math.round(innerHeight - tb.bottom),
       toolsH: Math.round(tl.height), labels: [...document.querySelectorAll('#editorScreen .side > .tools .group-label')].filter((e) => e.offsetParent).length }; });
   const g = await gaps();
-  eq([g.rowOnPhoto, g.photoToTools, g.toolsToTabs, g.tabsToEnd, g.labels], [true, 0, 0, 0, 0], 'utility pill floats on the photo; tool row and tabs stacked under it with no empty space or group labels: ' + JSON.stringify(g));
+  eq([g.rowOnPhoto, g.photoToTools, g.chipsOnTools, g.toolsToTabs, g.tabsToEnd, g.labels], [true, 0, 0, 0, 0, 0], 'utility pill floats on the photo; group chips, tool row and tabs stacked under it with no empty space or group labels: ' + JSON.stringify(g));
   assert(g.toolsH <= 90, 'one compact tool row: ' + g.toolsH);
   await box('home');
   assert(sizes.home[1] >= 520, 'the photo takes the remaining height on a 390x844 phone: ' + sizes.home);
@@ -1493,7 +1498,7 @@ test('nav: group chips jump to their group, follow the row as it scrolls, and dr
   await p.click('.tab[data-cat="edit"]');
   eq(await p.$$eval('#subchips .subchip', (x) => x.map((c) => c.textContent)), ['Crop', 'Light', 'Color', 'Effects'], 'Adjust chips');
   await p.click('.tab[data-cat="bg"]');
-  eq(await p.evaluate(() => $('subchips').hidden), true, 'one group: no chips');
+  eq(await p.$$eval('#subchips .subchip', (x) => x.map((c) => [c.textContent, c.getAttribute('aria-pressed')])), [['Background', 'true']], 'one group: its name, so the photo keeps its size');
   // A group whose tools are all switched off (Hair color, from the admin page) loses its chip.
   await p.click('.tab[data-cat="retouch"]');
   eq(await p.$$eval('#subchips .subchip', (x) => x.map((c) => c.dataset.chip)), ['auto', 'skin', 'face', 'makeup'], 'Hair chip gone with hair color off');
@@ -1769,7 +1774,7 @@ test('ai: AI scene costs 2 credits, sends the background mask and the scene, and
 
 test('adjust: the full Adjust set changes the photo, and grain is the same every time', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
-  eq(await p.evaluate(() => CATS.edit[0][2]), ['crop', 'light', 'contrast', 'highlights', 'shadows', 'color', 'vibrance', 'warmth', 'tint', 'detail', 'fade', 'vignette', 'grain'], 'Adjust tools');
+  eq(await p.evaluate(() => CATS.edit.flatMap((g) => g[2])), ['crop', 'light', 'contrast', 'highlights', 'shadows', 'color', 'vibrance', 'warmth', 'tint', 'detail', 'fade', 'vignette', 'grain'], 'Adjust tools');
   const r = await p.evaluate(async () => {
     const base = committed(), out = {};
     for (const k of ['contrast', 'highlights', 'shadows', 'vibrance', 'tint', 'fade', 'vignette', 'grain']) out[k] = [(await adjust(base, k, 40)) !== base, (await adjust(base, k, -40)) !== base];

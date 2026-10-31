@@ -510,6 +510,8 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
   #editorScreen .side { display: flex; flex-direction: column; flex: none; max-height: 62dvh; overflow: hidden; padding-bottom: env(safe-area-inset-bottom); }
   #editorScreen .side > .tools { flex: none; height: auto; min-height: 0; padding-top: var(--s1); padding-bottom: var(--s1); border-top: 1px solid var(--line); }
   #editorScreen.has-chips:not(.tools-open) .side > .tools { border-top: 0; }
+  /* Photo tiles stand a little taller than icon tiles; every tab's row keeps the taller height. */
+  #editorScreen:not(.tools-open):not(.editing-tool) .side > .tools { min-height: calc(var(--tile-h) + 6px + var(--s1) * 2); }
   /* A thin line between groups, so where one ends and the next starts is visible without words. */
   #editorScreen:not(.tools-open) .side > .tools > .group[data-group] + .group { position: relative; margin-left: var(--s2); }
   #editorScreen:not(.tools-open) .side > .tools > .group[data-group] + .group::before { content: ""; position: absolute; left: -6.5px; top: 10px; height: 38px; width: 1px; background: var(--line); }
