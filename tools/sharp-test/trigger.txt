@@ -1,0 +1,2 @@
+smoke test on the app sample
+A_current
