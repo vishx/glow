@@ -75,45 +75,119 @@
   .ed-looks span:first-child { opacity: 1; }
 }
 
-/* ---------- Pick sheet: the photo, then one big Enhance button ---------- */
-dialog.enh-sheet { width: min(92vw, 440px); max-height: 92dvh; margin: auto; padding: 0; border: 0; border-radius: var(--r-sheet); overflow: hidden;
-  background: var(--surface); color: var(--text); box-shadow: 0 24px 64px rgb(0 0 0 / .45); }
+/* ---------- Pick sheet: the photo, the kind of edit, one big button ----------
+   2026-10-31 redesign (competitor research: Remini, Lensa, Facetune, PhotoRoom, Picsart, EPIK).
+   Phones get a full-screen page: the photo on a soft, blurred copy of itself (no grey bars), and a
+   porcelain panel at the bottom with the button in thumb reach. While the AI works the button
+   becomes a progress bar with the step it is on, and light moves over the photo and its faces.
+   Wider screens keep a centered card with the same parts. */
+dialog.enh-sheet { width: min(92vw, 460px); height: min(92dvh, 880px); max-height: none; margin: auto; padding: 0; border: 0; border-radius: var(--r-sheet);
+  overflow: hidden; display: none; flex-direction: column; background: #120e11; color: var(--text); box-shadow: 0 24px 64px rgb(0 0 0 / .45); }
+dialog.enh-sheet[open] { display: flex; animation: enh-pop 300ms cubic-bezier(.2, .9, .3, 1.15); }
 dialog.enh-sheet::backdrop { background: rgb(10 8 12 / .72); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
-dialog.enh-sheet[open] { animation: enh-pop 300ms cubic-bezier(.2, .9, .3, 1.15); }
 @keyframes enh-pop { from { opacity: 0; transform: scale(.92) translateY(12px); } }
-.enh-sheet .ph { position: relative; background: var(--viewer); display: grid; place-items: center; overflow: hidden; }
-.enh-sheet .ph img { display: block; max-width: 100%; max-height: min(62dvh, 560px); object-fit: contain; }
-.enh-sheet .x { position: absolute; top: var(--s3); left: var(--s3); width: 44px; height: 44px; border-radius: 50%; border: 0; display: grid; place-items: center;
-  background: rgb(18 16 20 / .55); color: #fff; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+@keyframes enh-rise { from { opacity: 0; transform: translateY(32px); } }
+@media (max-width: 599px) {
+  dialog.enh-sheet { width: 100vw; max-width: none; height: 100dvh; border-radius: 0; box-shadow: none; }
+  dialog.enh-sheet[open] { animation: enh-rise 280ms cubic-bezier(.2, .9, .3, 1); }
+  dialog.enh-sheet::backdrop { background: #120e11; backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+/* The photo: contained, never cropped, on a blurred and darkened copy of itself. */
+.enh-sheet .ph { position: relative; flex: 1 1 auto; min-height: 0; display: grid; place-items: center; overflow: hidden; isolation: isolate; container-type: size;
+  padding: calc(60px + env(safe-area-inset-top)) var(--s3) calc(var(--s4) + 20px); box-sizing: border-box; }
+.enh-sheet .ph-fill { position: absolute; inset: -40px; width: calc(100% + 80px); height: calc(100% + 80px); object-fit: cover; z-index: -1;
+  filter: blur(36px) saturate(1.15) brightness(.62); transform: scale(1.05); }
+.enh-sheet .ph::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(to bottom, rgb(18 14 17 / .5), rgb(18 14 17 / 0) 22%, rgb(18 14 17 / 0) 70%, rgb(18 14 17 / .35)); }
+.enh-sheet .ph-pic { position: relative; border-radius: var(--r-card); overflow: hidden; box-shadow: 0 18px 48px rgb(0 0 0 / .45), 0 0 0 1px rgb(255 255 255 / .08);
+  transition: transform 500ms cubic-bezier(.2, .9, .3, 1); }
+.enh-sheet .ph-pic img { display: block; max-width: 100cqw; max-height: 100cqh; object-fit: contain; }
+.enh-sheet.working .ph-pic { transform: scale(.985); }
+.enh-sheet .x { position: absolute; top: calc(var(--s3) + env(safe-area-inset-top)); left: var(--s3); width: 44px; height: 44px; border-radius: 50%; border: 0; display: grid; place-items: center;
+  background: rgb(18 16 20 / .45); color: #fff; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: opacity 200ms; }
 .enh-sheet .x:disabled { opacity: 0; pointer-events: none; }
-.enh-sheet .foot { display: grid; gap: var(--s2); padding: var(--s4); }
+.enh-sheet > .ph > .enh-pill.ai { top: calc(var(--s3) + 10px + env(safe-area-inset-top)); right: var(--s3); bottom: auto; }
+
+/* The panel: porcelain (dark surface in dark mode), lifted over the photo's blur. */
+.enh-sheet .foot { position: relative; z-index: 1; flex: none; display: grid; gap: var(--s3); margin-top: -20px; padding: var(--s5) var(--s4) calc(var(--s4) + env(safe-area-inset-bottom));
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0; background: var(--surface); box-shadow: 0 -10px 30px rgb(0 0 0 / .18); }
+@media (min-width: 600px) { .enh-sheet .foot { padding-bottom: var(--s4); } }
+
+/* Kind of edit: cards with a line on what each one does and what it costs (shown when there is a choice). */
+.enh-style { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: var(--s2); transition: opacity 200ms; }
+.enh-style[hidden] { display: none; }
+.enh-style button { position: relative; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: var(--s2); align-items: center; text-align: left;
+  min-height: 64px; padding: var(--s2) var(--s3); border: 0; border-radius: 18px; background: var(--surface-2); color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--t-select), background var(--t-select), transform var(--t-press-up); }
+.enh-style button:active { transform: scale(.98); }
+.enh-style .ic { grid-row: 1 / 3; width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: var(--surface); color: var(--rose); }
+.enh-style .ic svg { width: 20px; height: 20px; }
+.enh-style b { font-size: 0.9375rem; line-height: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.enh-style small { font-size: 0.75rem; line-height: 1rem; color: var(--muted); }
+.enh-style .pro-chip { font-size: 0.625rem; padding: 1px 6px; }
+.enh-style button[aria-checked="true"] { background: var(--blush); box-shadow: inset 0 0 0 2px var(--text); }
+.enh-style button[aria-checked="true"] .ic { background: var(--text); color: var(--bg); }
+.enh-sheet.working .enh-style { opacity: .45; pointer-events: none; }
+
+/* The button, and the progress bar that takes its place while the AI works. */
+.enh-act { position: relative; min-height: 60px; }
 .enh-go { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; gap: var(--s2); width: 100%; min-height: 60px;
-  border: 0; border-radius: 30px; background: var(--text); color: var(--bg); font-size: 1.1875rem; font-weight: 700; transition: transform var(--t-press-up); }
+  border: 0; border-radius: 30px; background: var(--text); color: var(--bg); font-size: 1.1875rem; font-weight: 700; transition: transform var(--t-press-up), opacity 200ms; }
 .enh-go:active { transform: scale(.98); }
-.enh-go svg { width: 22px; height: 22px; color: var(--accent); }
-.enh-go .go-arrow { position: absolute; right: 22px; }
+.enh-go svg { width: 22px; height: 22px; color: #f2a5bb; }
 .enh-go:disabled { cursor: default; }
 .enh-go.busy::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgb(242 165 187 / .35) 50%, transparent 70%);
   background-size: 250% 100%; animation: enh-shine 1.4s linear infinite; }
 @keyframes enh-shine { from { background-position: 150% 0; } to { background-position: -100% 0; } }
-.enh-sheet .cost { margin: 0; text-align: center; font-size: 0.8125rem; line-height: 1.125rem; color: var(--muted); }
+.enh-go .go-cost { position: absolute; right: 10px; display: inline-flex; align-items: center; gap: 3px; min-height: 30px; padding: 0 10px 0 12px; border-radius: 15px;
+  background: color-mix(in srgb, currentColor 14%, transparent); font-size: 0.875rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.enh-go .go-cost svg { width: 15px; height: 15px; }
+.enh-sheet .enh-go.busy { opacity: 0; pointer-events: none; }
+.enh-prog { position: absolute; inset: 0; display: grid; align-content: center; gap: 10px; padding: 0 var(--s1); opacity: 0; pointer-events: none; transition: opacity 220ms; }
+.enh-sheet.working .enh-prog { opacity: 1; }
+.enh-prog-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
+.enh-prog .lbl { font-size: 1.0625rem; line-height: 1.5rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.enh-prog .lbl.swap { animation: enh-lbl 360ms cubic-bezier(.2, .9, .3, 1); }
+@keyframes enh-lbl { from { opacity: 0; transform: translateY(8px); } }
+.enh-prog .pct { font-size: 0.875rem; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.enh-prog-bar { position: relative; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); }
+.enh-prog-bar i { position: absolute; inset: 0 auto 0 0; width: var(--p, 0%); border-radius: 4px; background: linear-gradient(90deg, #e9b3c3, var(--rose)); transition: width 300ms linear; }
+.enh-prog-bar i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgb(255 255 255 / .55), transparent); background-size: 60% 100%;
+  background-repeat: no-repeat; animation: enh-bar 1.3s ease-in-out infinite; }
+@keyframes enh-bar { from { background-position: -80% 0; } to { background-position: 180% 0; } }
+.enh-sheet .cost { margin: 0; min-height: 1.125rem; text-align: center; font-size: 0.8125rem; line-height: 1.125rem; color: var(--muted); }
 .enh-sheet .cost b { color: var(--text); }
 .enh-sheet .cost.err { color: var(--danger); font-weight: 600; }
 .enh-sheet .cost .link-btn { min-height: 32px; padding: 0 4px; font-size: 0.8125rem; }
-/* While the AI works: a soft scan of light moves over the photo. */
-.enh-scan { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 240ms; }
-.enh-sheet.working .enh-scan { opacity: 1; }
-.enh-scan::before { content: ""; position: absolute; left: 0; right: 0; height: 38%; top: -38%;
-  background: linear-gradient(to bottom, transparent, rgb(242 165 187 / .28) 70%, rgb(255 255 255 / .55) 98%, transparent);
-  animation: enh-scan 1.8s cubic-bezier(.45, 0, .55, 1) infinite; }
-.enh-scan::after { content: ""; position: absolute; inset: 0; background: rgb(14 11 16 / .18); }
+
+/* While the AI works: a soft band of light sweeps down the photo, faces get a glowing ring, sparkles twinkle. */
+.enh-scan { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 300ms; overflow: hidden; }
+.enh-sheet.working .enh-scan, .bt.working .enh-scan { opacity: 1; }
+.enh-scan::before { content: ""; position: absolute; left: -10%; right: -10%; height: 46%; top: -46%;
+  background: linear-gradient(to bottom, transparent, rgb(255 228 236 / .10) 35%, rgb(255 240 245 / .42) 50%, rgb(255 228 236 / .10) 65%, transparent);
+  mix-blend-mode: screen; animation: enh-scan 2.4s cubic-bezier(.45, 0, .55, 1) infinite; }
+.enh-scan::after { content: ""; position: absolute; inset: 0; background: rgb(14 11 16 / .14); }
 @keyframes enh-scan { to { top: 100%; } }
+.enh-rings { position: absolute; inset: 0; pointer-events: none; }
+.enh-rings i { position: absolute; border-radius: 50%; box-shadow: 0 0 0 1.5px rgb(255 255 255 / .9), 0 0 18px 2px rgb(242 165 187 / .65), inset 0 0 16px rgb(242 165 187 / .35);
+  opacity: 0; transform: scale(.7); transition: opacity 400ms, transform 600ms cubic-bezier(.2, .9, .3, 1.3); }
+.enh-sheet.faces .enh-rings i { opacity: 1; transform: scale(1); animation: enh-ring 1.6s ease-in-out 600ms infinite; }
+@keyframes enh-ring { 50% { transform: scale(1.06); box-shadow: 0 0 0 1.5px rgb(255 255 255 / .6), 0 0 26px 6px rgb(242 165 187 / .5), inset 0 0 20px rgb(242 165 187 / .25); } }
 .enh-sheet .sparkles { position: absolute; inset: 0; pointer-events: none; }
 .enh-sheet .sparkles i { position: absolute; width: 14px; height: 14px; background: #fff4f7; opacity: 0;
   clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }
-.enh-sheet.working .sparkles i { animation: enh-twinkle 1.6s ease-in-out infinite; }
-.enh-sheet .sparkles i:nth-child(2) { animation-delay: .5s !important; } .enh-sheet .sparkles i:nth-child(3) { animation-delay: 1s !important; }
+.enh-sheet.working .sparkles i { animation: enh-twinkle 1.8s ease-in-out infinite; }
+.enh-sheet .sparkles i:nth-child(2) { animation-delay: .45s !important; } .enh-sheet .sparkles i:nth-child(3) { animation-delay: .9s !important; }
+.enh-sheet .sparkles i:nth-child(4) { animation-delay: 1.35s !important; }
 @keyframes enh-twinkle { 0%, 100% { opacity: 0; transform: scale(.3) rotate(0); } 50% { opacity: 1; transform: scale(1) rotate(45deg); } }
+/* The finished photo fades in over the original for a moment before the Result opens. */
+.enh-sheet .ph-pic .done { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; max-width: none; max-height: none; clip-path: inset(0 0 100% 0);
+  transition: clip-path 650ms cubic-bezier(.6, 0, .2, 1); }
+.enh-sheet .ph-pic .done.in { clip-path: inset(0 0 0 0); }
+@media (prefers-reduced-motion: reduce) {
+  .enh-scan::before, .enh-sheet.faces .enh-rings i, .enh-prog-bar i::after { animation: none; }
+  .enh-sheet .ph-pic .done { transition: none; }
+}
 
 /* ---------- Result and Share (always dark) ---------- */
 #enhanceResult, #enhanceShare { max-width: none; background: #000; color: #faf5f7; }
