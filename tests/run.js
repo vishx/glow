@@ -1792,6 +1792,11 @@ test('try on: one tool with ideas, your photo or words; sends the part; keeps ev
   await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
   await p.waitForFunction(() => tryLooksNow().length === 1);
   eq(await p.evaluate(() => [job.look, tryLooksNow()[0].label]), ['Navy suit', 'Navy suit'], 'the look is named');
+  // Picking another idea while a look shows means "make another": the look closes, nothing is applied.
+  await p.click('.try-card[data-idea="gown"]'); await settle(200);
+  eq(await p.evaluate(() => [job, ed.idx, tryLooksNow().length, $('applyBtn').textContent]), [null, 0, 1, 'Try on · 1 credit'], 'a new pick closes the look and offers a new try-on');
+  await p.click('.try-look'); await settle(200);
+  eq(await p.evaluate(() => [job && job.look, reviewing()]), ['Navy suit', true], 'and the look is one tap away');
   // Discard keeps it in Your looks, without the "credit isn't returned" question.
   await p.click('#cancelBtn'); await settle(200);
   eq(await p.evaluate(() => [job, tryLooksNow().length]), [null, 1], 'discarded but kept');
@@ -1819,6 +1824,23 @@ test('try on: one tool with ideas, your photo or words; sends the part; keeps ev
   req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
   await p.click('#applyBtn'); body = JSON.parse((await req).postData());
   eq([body.prompt, body.part], ['a red satin slip dress', 'top'], 'words are sent as written, with the part picked before');
+});
+
+test('try on: a reframed AI result is lined up with the photo and her face goes on her new face (no double face)', async ({ p }) => {
+  await p.goto('https://app.test/');
+  const data = (f) => 'data:image/' + (f.endsWith('png') ? 'png' : 'jpeg') + ';base64,' + fs.readFileSync(f).toString('base64');
+  // The fixture is the portrait as an edit model answers it: 2:3 instead of 3:4, shifted, new top color.
+  const r = await p.evaluate(async ([a, b]) => {
+    const x = await restoreFace(a, b), im = await loadImg(x.data), o = await loadImg(a);
+    const fa = await faceBoxes(a), fr = await faceBoxes(x.data);
+    return { aligned: x.aligned, size: [im.naturalWidth, im.naturalHeight], osize: [o.naturalWidth, o.naturalHeight], fa: fa[0], fr: fr[0], n: fr.length };
+  }, [data(PORTRAIT), data(fx('reframed-ai.jpg'))]);
+  eq(r.size, r.osize, 'the result has the photo\'s size');
+  assert(r.aligned, 'lined up by the face');
+  eq(r.n, 1, 'one face, not two');
+  assert(Math.abs(r.fa.cx - r.fr.cx) < 0.02 && Math.abs(r.fa.cy - r.fr.cy) < 0.02 && Math.abs(r.fa.w - r.fr.w) < 0.03, 'her face stays where it was: ' + JSON.stringify([r.fa, r.fr]));
+  const top = await p.evaluate(async (a) => (await restoreFace(a, a)).data, data(PORTRAIT));
+  assert(nearPx(await pxAt(p, top, 0.5, 0.3), await pxAt(p, data(PORTRAIT), 0.5, 0.3), 10), 'an unchanged result keeps her face as it was');
 });
 
 test('adjust: the full Adjust set changes the photo, and grain is the same every time', async ({ p }) => {

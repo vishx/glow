@@ -1174,71 +1174,58 @@ async function autoLight(src, o = {}) {
 // face from before is put back, matched to the new light, with a soft edge. Returns the photo
 // and whether it did that.
 async function restoreFace(baseSrc, resultSrc) {
+  // The result is first lined up with the photo (an edit model answers in its own shape, so it
+  // comes back zoomed and shifted; drawn straight over the photo it would be stretched and her
+  // face would land in the wrong place). Then, if the model redrew her face, her own face is
+  // moved, turned and scaled onto the new one (eyes and outline matched) and blended in with a
+  // soft edge, carrying the new photo's light and color. It is never pasted where the face used
+  // to be, so there is no double face.
   const [a, b] = await Promise.all([loadImg(baseSrc), loadImg(resultSrc)]);
-  const W = a.naturalWidth, H = a.naturalHeight, ca = newCanvas(W, H), cb = newCanvas(W, H);
-  ca.getContext("2d").drawImage(a, 0, 0); const bx = cb.getContext("2d", { willReadFrequently: true }); bx.drawImage(b, 0, 0, W, H);
-  const k = Math.min(1, 1024 / Math.max(W, H)), small = (cv) => { const s = newCanvas(Math.round(W * k), Math.round(H * k)); s.getContext("2d").drawImage(cv, 0, 0, s.width, s.height); return s; };
-  const sa = small(ca), sb = small(cb);
-  const fa = await findFaces(baseSrc + "|restore", sa), fbs = await findFaces(resultSrc + "|restore", sb);
-  if (!fa.length) return { data: resultSrc, moved: false };
-  const big = (f) => f.reduce((m, P) => (dist(P[234], P[454]) > dist(m[234], m[454]) ? P : m));
-  const A = big(fa).map(([x, y]) => [x * W, y * H]), faceW = dist(A[234], A[454]);
-  let moved = !fbs.length;
-  if (!moved) {
-    const ca2 = mean(FACE.oval.map((i) => A[i])), B = fbs.map((f) => f.map(([x, y]) => [x * W, y * H]))
-      .reduce((m, P) => (dist(mean(FACE.oval.map((i) => P[i])), ca2) < dist(mean(FACE.oval.map((i) => m[i])), ca2) ? P : m));
-    const shift = [...FACE.oval, ...FACE.eyeL, ...FACE.eyeR].reduce((s, i) => s + dist(A[i], B[i]), 0) / (FACE.oval.length + FACE.eyeL.length + FACE.eyeR.length);
-    moved = shift > faceW * 0.02;
+  const W = a.naturalWidth, H = a.naturalHeight, co = newCanvas(W, H);
+  co.getContext("2d", { willReadFrequently: true }).drawImage(a, 0, 0);
+  const al = await alignAi(a, b, co, baseSrc, resultSrc, "|restore");
+  const cb = al.ca, bx = al.ax;
+  const plain = () => ({ data: cb.toDataURL("image/jpeg", 0.93), moved: false, aligned: !!al.matched });
+  if (!al.faces.length) return plain();
+  const toPx = (f) => f.map(([x, y]) => [x * W, y * H]);
+  const A = toPx(al.faces.reduce((m, P) => (dist(P[234], P[454]) > dist(m[234], m[454]) ? P : m)));
+  const faceW = dist(A[234], A[454]), cA = mean(FACE.oval.map((i) => A[i]));
+  const B = al.aiFaces.map(toPx).find((g) => dist(mean(FACE.oval.map((i) => g[i])), cA) < faceW * 0.6);
+  if (!B || faceW < 12) return plain();   // no face to match: keep the model's
+  const pts = [...FACE.oval, ...FACE.eyeL, ...FACE.eyeR, ...FACE.lipsOut];
+  const shift = pts.reduce((t, i) => t + dist(A[i], B[i]), 0) / pts.length;
+  // Her face onto the new one: z' = k z + t (k a complex number: scale and turn), least squares.
+  const mp = mean(pts.map((i) => A[i])), mq = mean(pts.map((i) => B[i]));
+  let kr = 0, ki = 0, den = 0;
+  for (const i of pts) {
+    const px = A[i][0] - mp[0], py = A[i][1] - mp[1], qx = B[i][0] - mq[0], qy = B[i][1] - mq[1];
+    kr += qx * px + qy * py; ki += qy * px - qx * py; den += px * px + py * py;
   }
-  if (!moved) return { data: resultSrc, moved: false };
-  // Her face from before, nudged to the new photo's light and color, with a soft edge.
-  const mask = softMask(W, H, faceW / 14, (m) => { tracePoly(m, FACE.oval.map((i) => A[i])); m.fill(); });
-  const md = mask.getContext("2d").getImageData(0, 0, W, H).data, ad = ca.getContext("2d").getImageData(0, 0, W, H).data, bdat = bx.getImageData(0, 0, W, H), bd = bdat.data;
-  const rgbMean = (d) => { const t = [0, 0, 0]; let n = 0; for (let i = 0; i < d.length; i += 16) { const w = md[i + 3] / 255; if (w > 0.5) { t[0] += d[i]; t[1] += d[i + 1]; t[2] += d[i + 2]; n++; } } return t.map((v) => v / Math.max(1, n)); };
-  const ma = rgbMean(ad), mb = rgbMean(bd), shiftC = [0, 1, 2].map((k) => (mb[k] - ma[k]) * 0.7);
+  kr /= den || 1; ki /= den || 1;
+  const sc = Math.hypot(kr, ki);
+  if (!(sc > 0.6 && sc < 1.6)) return plain();
+  const tx = mq[0] - (kr * mp[0] - ki * mp[1]), ty = mq[1] - (ki * mp[0] + kr * mp[1]);
+  const warped = newCanvas(W, H), wx = warped.getContext("2d", { willReadFrequently: true });
+  wx.imageSmoothingQuality = "high"; wx.setTransform(kr, ki, -ki, kr, tx, ty); wx.drawImage(a, 0, 0); wx.setTransform(1, 0, 0, 1, 0, 0);
+  // The blend covers the new face's outline, a little inside it, so the jaw and hairline are the model's.
+  const cB = mean(FACE.oval.map((i) => B[i])), fB = faceW * sc;
+  const mask = softMask(W, H, fB / 12, (m) => { tracePoly(m, FACE.oval.map((i) => [(B[i][0] - cB[0]) * 0.94 + cB[0], (B[i][1] - cB[1]) * 0.94 + cB[1]])); m.fill(); });
+  const md = mask.getContext("2d").getImageData(0, 0, W, H).data, wd = wx.getImageData(0, 0, W, H).data, bdat = bx.getImageData(0, 0, W, H), bd = bdat.data;
+  const rgbMean = (d) => { const t = [0, 0, 0]; let n = 0; for (let i = 0; i < d.length; i += 16) { if (md[i + 3] > 128) { t[0] += d[i]; t[1] += d[i + 1]; t[2] += d[i + 2]; n++; } } return t.map((v) => v / Math.max(1, n)); };
+  const mw = rgbMean(wd), mb = rgbMean(bd), shiftC = [0, 1, 2].map((k) => (mb[k] - mw[k]) * 0.7);
   for (let i = 0; i < bd.length; i += 4) {
     const w = md[i + 3] / 255; if (!w) continue;
-    for (let k = 0; k < 3; k++) bd[i + k] += (ad[i + k] + shiftC[k] - bd[i + k]) * w;
+    for (let k = 0; k < 3; k++) bd[i + k] += (wd[i + k] + shiftC[k] - bd[i + k]) * w;
   }
   bx.putImageData(bdat, 0, 0);
-  return { data: cb.toDataURL("image/jpeg", 0.93), moved: true };
+  return { data: cb.toDataURL("image/jpeg", 0.93), moved: shift > faceW * 0.02, aligned: !!al.matched };
 }
 
-// ---------- Pro Edit's finish: the AI's light and color, the person's own face ----------
-// An image-edit model gives a photographer's white balance, exposure, grade and cleanup, but it
-// redraws every pixel at about 1 MP, so faces can drift and fine detail goes soft. This keeps the
-// model's light and color and puts the photo's own detail back:
-// - inside every face, all detail finer than about a 28th of the face, so eyes, nose, mouth and
-//   skin texture are the person's own (if the model moved a face, the original face goes back
-//   whole, carrying only the model's light and color);
-// - everywhere else, the detail finer than the model's own resolution, wherever the model kept
-//   what was there. Where it removed or redrew something (clutter, a stain), its version stays.
-// `src` is the photo the model was given (any size); the result is at that size.
-const PRO_FINISH = { faceDetail: 28, moved: 0.035, keep: 0.6, edge: 0.3 };
-// Where did the model keep what was there? Compares the mid-sized detail of both pictures at the
-// model's own size (at most 640px): a stronger or softer grade only scales it, a removed or
-// redrawn thing replaces it. Returns a W x H RGBA mask (red 255 = kept, 0 = changed).
-function changeMask(o, a, W, H, aw, ah) {
-  const k = Math.min(1, 640 / Math.max(aw, ah)), w = Math.max(8, Math.round(aw * k)), h = Math.max(8, Math.round(ah * k)), n = w * h;
-  const px = (img) => { const c = newCanvas(w, h), x = c.getContext("2d", { willReadFrequently: true }); x.imageSmoothingQuality = "high"; x.drawImage(img, 0, 0, w, h); return x.getImageData(0, 0, w, h).data; };
-  const L = (d) => { const g = new Uint8ClampedArray(n * 4); for (let i = 0; i < n * 4; i += 4) { g[i] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; g[i + 3] = 255; } return g; };
-  const band = (g) => { const b1 = new Uint8ClampedArray(g), b2 = new Uint8ClampedArray(g); boxBlurRGBA(b1, w, h, 1.2); boxBlurRGBA(b2, w, h, 4); const f = new Float32Array(n); for (let p = 0; p < n; p++) f[p] = b1[p * 4] - b2[p * 4]; return f; };
-  const bo = band(L(px(o))), ba = band(L(px(a)));
-  const diff = new Uint8ClampedArray(n * 4), size = new Uint8ClampedArray(n * 4);
-  for (let p = 0; p < n; p++) { diff[p * 4] = Math.min(255, Math.abs(bo[p] - ba[p]) * 2); size[p * 4] = Math.min(255, Math.abs(bo[p]) + Math.abs(ba[p]) + 4); diff[p * 4 + 3] = size[p * 4 + 3] = 255; }
-  boxBlurRGBA(diff, w, h, 4); boxBlurRGBA(size, w, h, 4);
-  const m = newCanvas(w, h), mx = m.getContext("2d"), md = mx.createImageData(w, h);
-  for (let p = 0; p < n; p++) { const v = 255 * clamp01((PRO_FINISH.keep - diff[p * 4] / 2 / size[p * 4]) / PRO_FINISH.edge); md.data[p * 4] = md.data[p * 4 + 1] = md.data[p * 4 + 2] = v; md.data[p * 4 + 3] = 255; }
-  mx.putImageData(md, 0, 0);
-  const big = newCanvas(W, H), bx = big.getContext("2d", { willReadFrequently: true });
-  bx.imageSmoothingQuality = "high"; bx.drawImage(m, 0, 0, W, H);
-  return bx.getImageData(0, 0, W, H).data;
-}
-async function proFinish(src, aiSrc) {
-  const [o, a] = await Promise.all([loadImg(src), loadImg(aiSrc)]);
-  const W = o.naturalWidth, H = o.naturalHeight, n = W * H;
-  const co = newCanvas(W, H), ox = co.getContext("2d", { willReadFrequently: true });
-  ox.drawImage(o, 0, 0);
+// An image-edit model answers in one of its own shapes (2:3, 9:16, ...), so a photo of another
+// shape comes back reframed. This lines the result up with the photo (`co`, W x H, already drawn)
+// and returns it as a W x H canvas, plus both pictures' face landmarks (0-1, photo frame).
+async function alignAi(o, a, co, src, aiSrc, tag) {
+  const W = co.width, H = co.height, n = W * H, ox = co.getContext("2d", { willReadFrequently: true });
   // The model answers in one of its own shapes (2:3, 9:16, ...), so a photo of another shape comes
   // back reframed: zoomed, shifted, sometimes with more or less around the edges. Its result is kept
   // in its own shape, at about the photo's scale, and lined up with the photo from the faces both
@@ -1250,7 +1237,7 @@ async function proFinish(src, aiSrc) {
   crx.imageSmoothingQuality = "high"; crx.drawImage(a, 0, 0, cw, ch);
   const pts = [...FACE.oval, ...FACE.eyeL, ...FACE.eyeR];
   let faces = [], aiFaces = [];
-  try { faces = await findFaces(src + "|pro", co); aiFaces = faces.length ? (await findFaces(aiSrc + "|pro", cr)).map((g) => g.map(([x, y]) => [x * cw, y * ch])) : []; } catch {}
+  try { faces = await findFaces(src + tag, co); aiFaces = faces.length ? (await findFaces(aiSrc + tag, cr)).map((g) => g.map(([x, y]) => [x * cw, y * ch])) : []; } catch {}
   const s0 = Math.max(cw / W, ch / H);
   let fit = { s: s0, tx: (cw - W * s0) / 2, ty: (ch - H * s0) / 2 }, matched = 0;
   const pairs = [];
@@ -1298,6 +1285,46 @@ async function proFinish(src, aiSrc) {
     }
     const img = ax.createImageData(W, H); img.data.set(A0); ax.putImageData(img, 0, 0);
   }
+  return { ca, ax, fit, k0, aw, ah, faces, aiFaces, pts, matched, gap };
+}
+
+// ---------- Pro Edit's finish: the AI's light and color, the person's own face ----------
+// An image-edit model gives a photographer's white balance, exposure, grade and cleanup, but it
+// redraws every pixel at about 1 MP, so faces can drift and fine detail goes soft. This keeps the
+// model's light and color and puts the photo's own detail back:
+// - inside every face, all detail finer than about a 28th of the face, so eyes, nose, mouth and
+//   skin texture are the person's own (if the model moved a face, the original face goes back
+//   whole, carrying only the model's light and color);
+// - everywhere else, the detail finer than the model's own resolution, wherever the model kept
+//   what was there. Where it removed or redrew something (clutter, a stain), its version stays.
+// `src` is the photo the model was given (any size); the result is at that size.
+const PRO_FINISH = { faceDetail: 28, moved: 0.035, keep: 0.6, edge: 0.3 };
+// Where did the model keep what was there? Compares the mid-sized detail of both pictures at the
+// model's own size (at most 640px): a stronger or softer grade only scales it, a removed or
+// redrawn thing replaces it. Returns a W x H RGBA mask (red 255 = kept, 0 = changed).
+function changeMask(o, a, W, H, aw, ah) {
+  const k = Math.min(1, 640 / Math.max(aw, ah)), w = Math.max(8, Math.round(aw * k)), h = Math.max(8, Math.round(ah * k)), n = w * h;
+  const px = (img) => { const c = newCanvas(w, h), x = c.getContext("2d", { willReadFrequently: true }); x.imageSmoothingQuality = "high"; x.drawImage(img, 0, 0, w, h); return x.getImageData(0, 0, w, h).data; };
+  const L = (d) => { const g = new Uint8ClampedArray(n * 4); for (let i = 0; i < n * 4; i += 4) { g[i] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; g[i + 3] = 255; } return g; };
+  const band = (g) => { const b1 = new Uint8ClampedArray(g), b2 = new Uint8ClampedArray(g); boxBlurRGBA(b1, w, h, 1.2); boxBlurRGBA(b2, w, h, 4); const f = new Float32Array(n); for (let p = 0; p < n; p++) f[p] = b1[p * 4] - b2[p * 4]; return f; };
+  const bo = band(L(px(o))), ba = band(L(px(a)));
+  const diff = new Uint8ClampedArray(n * 4), size = new Uint8ClampedArray(n * 4);
+  for (let p = 0; p < n; p++) { diff[p * 4] = Math.min(255, Math.abs(bo[p] - ba[p]) * 2); size[p * 4] = Math.min(255, Math.abs(bo[p]) + Math.abs(ba[p]) + 4); diff[p * 4 + 3] = size[p * 4 + 3] = 255; }
+  boxBlurRGBA(diff, w, h, 4); boxBlurRGBA(size, w, h, 4);
+  const m = newCanvas(w, h), mx = m.getContext("2d"), md = mx.createImageData(w, h);
+  for (let p = 0; p < n; p++) { const v = 255 * clamp01((PRO_FINISH.keep - diff[p * 4] / 2 / size[p * 4]) / PRO_FINISH.edge); md.data[p * 4] = md.data[p * 4 + 1] = md.data[p * 4 + 2] = v; md.data[p * 4 + 3] = 255; }
+  mx.putImageData(md, 0, 0);
+  const big = newCanvas(W, H), bx = big.getContext("2d", { willReadFrequently: true });
+  bx.imageSmoothingQuality = "high"; bx.drawImage(m, 0, 0, W, H);
+  return bx.getImageData(0, 0, W, H).data;
+}
+async function proFinish(src, aiSrc) {
+  const [o, a] = await Promise.all([loadImg(src), loadImg(aiSrc)]);
+  const W = o.naturalWidth, H = o.naturalHeight, n = W * H;
+  const co = newCanvas(W, H), ox = co.getContext("2d", { willReadFrequently: true });
+  ox.drawImage(o, 0, 0);
+  const al = await alignAi(o, a, co, src, aiSrc, "|pro");
+  const { ca, ax, fit, k0, aw, ah, faces, aiFaces, pts, matched, gap } = al;
   const O = ox.getImageData(0, 0, W, H).data, A = ax.getImageData(0, 0, W, H).data;
   const blurred = (d, s) => { const c = new Uint8ClampedArray(d); boxBlurRGBA(c, W, H, s); return c; };
   const out = new Float32Array(n * 3);
