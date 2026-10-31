@@ -547,6 +547,9 @@ function showEnhResult() {
   if (!enh.faces.length) { enh.lv.face = 3; enh.lv.retouch = 0; }
   enh.strength = 100;   // Pro Edit opens at full strength (renderProPanel sets the slider)
   enh.cache.clear(); enh.cache.set(enhAIKey(), enh.ai); enh.current = enh.ai; enh.saved = null;
+  enh.thumb = null;   // a small copy for the level pictures (ten full-size copies would weigh on a phone)
+  loadImg(enh.ai).then((im) => { const k = 200 / Math.max(im.naturalWidth, im.naturalHeight), c = newCanvas(Math.round(im.naturalWidth * k), Math.round(im.naturalHeight * k));
+    c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); enh.thumb = c.toDataURL("image/jpeg", 0.8); }).catch(() => {});
   closeLevels(true);
   $("enhBefore").src = enh.src; $("enhAfter").src = enh.ai;
   if (enhKey() !== enhAIKey()) updateComposite();   // the user's own default levels
@@ -753,7 +756,7 @@ function openLevels(k) {
   const [, label, , names] = ENH_TOGGLES.find((t) => t[0] === k);
   lvState.k = k; lvState.was = enh.lv[k];
   $("enhLvTitle").textContent = label;
-  const thumb = enh.current;
+  const thumb = enh.thumb || enh.ai;
   $("enhLvRow").replaceChildren(...names.map((name, i) => {
     const b = document.createElement("button");
     b.className = "enh-lv" + (i === 0 ? " off" : ""); b.dataset.i = i; b.setAttribute("role", "radio");
@@ -763,6 +766,7 @@ function openLevels(k) {
   }));
   markLevel();
   $("enhToggles").hidden = true; $("enhLevels").hidden = false;
+  requestAnimationFrame(fitEnhFrame);   // the levels take more room than the tool row: the photo shrinks to fit
   $("enhLvRow").querySelector('[aria-checked="true"]')?.scrollIntoView({ inline: "center", block: "nearest" });
 }
 function markLevel() {
@@ -774,6 +778,7 @@ function closeLevels(keep) {
   if (lvState.k && !keep && enh.lv[lvState.k] !== lvState.was) { enh.lv[lvState.k] = lvState.was; updateComposite(); }
   lvState.k = null;
   $("enhLevels").hidden = true; $("enhToggles").hidden = false;
+  requestAnimationFrame(fitEnhFrame);
   if (screen === "enhanceResult") renderToggles();
 }
 $("enhLvRow").addEventListener("click", (e) => {
@@ -844,8 +849,9 @@ async function composeEnhanced(lv) {
     try { out = await faceEdit(out, "fauto", rt[0]); out = await faceEdit(out, "fsmooth", rt[1]); } catch (e) { if (!/face/i.test(e.message)) throw e; }
   }
   if (lv.colors) {
-    out = await autoLight(out);
-    if (lv.colors > 1) out = await applyFilter(out, FILTERS.find((f) => f.id === ENH_COLORS[lv.colors - 2]), 0.7);
+    // Auto evens out the light and takes out most of a color cast; each look then goes on gently.
+    out = await autoLight(out, { balance: true });
+    if (lv.colors > 1) out = await applyFilter(out, FILTERS.find((f) => f.id === ENH_COLORS[lv.colors - 2]), ENH_COLORS[lv.colors - 2] === "mono" ? 1 : 0.45);
   }
   if (lv.blur) out = await portraitBlur(out, lv.blur);
   return out;

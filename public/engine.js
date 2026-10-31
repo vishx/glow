@@ -1136,10 +1136,27 @@ async function glowUp(src, g, pick) {
   return out;
 }
 // Auto light and color: stretches the tones gently (never clipping her skin), then a touch of vibrance.
-async function autoLight(src) {
+// `o.balance`: also take out most of a color cast (indoor yellow, shade blue) first, by moving the
+// mid-tones' average toward neutral gray, and skip the extra color pop that would deepen a cast.
+async function autoLight(src, o = {}) {
   const img = await loadImg(src), c = canvasFor(img), x = c.getContext("2d", { willReadFrequently: true });
   x.drawImage(img, 0, 0, c.width, c.height);
   const a = x.getImageData(0, 0, c.width, c.height), d = a.data, hist = new Uint32Array(256);
+  if (o.balance) {
+    // The cast is read from the light, nearly neutral areas (walls, white shirts, sky), which a
+    // camera expects to be gray; a deep-colored area doesn't count. Only part of it is removed, so
+    // warm light still looks warm, just not yellow.
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < d.length; i += 16) {
+      const l = lum(d[i], d[i + 1], d[i + 2]), sat = (Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2])) / Math.max(1, Math.max(d[i], d[i + 1], d[i + 2]));
+      if (l > 120 && l < 245 && sat < 0.35) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+    }
+    if (n > d.length / 16 * 0.02) {
+      const m = (r + g + b) / (3 * n), k = (v) => Math.max(0.9, Math.min(1.12, 1 + (m / Math.max(1, v / n) - 1) * 0.45));
+      const kr = k(r), kg = k(g), kb = k(b);
+      for (let i = 0; i < d.length; i += 4) { d[i] = d[i] * kr; d[i + 1] = d[i + 1] * kg; d[i + 2] = d[i + 2] * kb; }
+    }
+  }
   for (let i = 0; i < d.length; i += 16) hist[Math.round(lum(d[i], d[i + 1], d[i + 2]))]++;
   const total = hist.reduce((s, v) => s + v, 0), at = (q) => { let s = 0; for (let v = 0; v < 256; v++) { s += hist[v]; if (s >= total * q) return v; } return 255; };
   const lo = Math.min(40, at(0.005)) * 0.6, hi = 255 - (255 - Math.max(200, at(0.995))) * 0.6, mid = at(0.5);
@@ -1147,7 +1164,7 @@ async function autoLight(src) {
   const lut = new Uint8ClampedArray(256);
   for (let v = 0; v < 256; v++) lut[v] = 255 * Math.pow(Math.max(0, Math.min(1, (v - lo) / (hi - lo))), 1 / (1 + (1 / gamma - 1) * 0.6));
   for (let i = 0; i < d.length; i += 4) {
-    const r = lut[d[i]], g = lut[d[i + 1]], b = lut[d[i + 2]], m = (r + g + b) / 3, s = (Math.max(r, g, b) - Math.min(r, g, b)) / 255, k = 0.18 * (1 - s) * (1 - s);
+    const r = lut[d[i]], g = lut[d[i + 1]], b = lut[d[i + 2]], m = (r + g + b) / 3, s = (Math.max(r, g, b) - Math.min(r, g, b)) / 255, k = (o.balance ? 0.06 : 0.18) * (1 - s) * (1 - s);
     d[i] = m + (r - m) * (1 + k); d[i + 1] = m + (g - m) * (1 + k); d[i + 2] = m + (b - m) * (1 + k);
   }
   x.putImageData(a, 0, 0);
