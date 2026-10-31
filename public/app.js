@@ -223,6 +223,7 @@ function showScreen(id) {
   if (id === "cameraScreen") enterCamera();
   if (id === "editorHome") renderHome();
   if (id === "enhanceHome" && typeof renderEnhanceHome === "function") renderEnhanceHome();
+  setTimeout(syncBackGuard);
 }
 function go(dest) { try { track("tab", { dest }); } catch {} showScreen(dest === "camera" ? "cameraScreen" : dest === "enhance" ? "enhanceHome" : "editorHome"); }
 $("nav").addEventListener("click", (e) => { const b = e.target.closest("button[data-dest]"); if (b) { Platform.haptic(); go(b.dataset.dest); } });
@@ -312,7 +313,7 @@ async function openPhoto(work, original, opts = {}) {
   ed.name = opts.name || "Photo"; ed.shotStamp = opts.shotStamp || 0; lastCommitTool = null; cutoutCache = {}; matteCache.clear(); strokes = [];
   if (opts.processed) { ed.hist.push({ data: opts.processed.data, full: opts.processed.full, op: { tool: "camlook", fixed: true, label: opts.processed.label } }); ed.idx = 1; }
   if (opts.savedAlready) ed.savedIdx = ed.idx;
-  sel = null; ed.view = "edited"; ed.split = 50; toolsOpen = false;
+  sel = null; ed.view = "edited"; ed.split = 50; toolsOpen = false; setEditorReturn(null);
   photoColorful = false; checkColorful(work);
   showScreen("editorScreen");
   renderEditor(); saveDraft();
@@ -467,7 +468,7 @@ $("moreBtn").addEventListener("click", (e) => { e.stopPropagation(); setMore($("
 $("moreMenu").addEventListener("click", () => setMore(false));
 $("moreMenu").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); setMore(false); $("moreBtn").focus(); } });
 document.addEventListener("click", (e) => { if (!$("moreMenu").hidden && !e.target.closest(".more")) setMore(false); });
-$("otherPhotoBtn").addEventListener("click", () => $("backBtn").click());
+$("otherPhotoBtn").addEventListener("click", () => { setEditorReturn(null); $("backBtn").click(); });
 
 // ---------- Draft: keeps the session (and any AI job) through a refresh or the app closing ----------
 let draftWarn = false;
@@ -505,7 +506,7 @@ async function discardSession() {
   await Drafts.clear(); renderHome(); say("Edit discarded.");
 }
 $("discardBtn").addEventListener("click", discardSession);
-$("resumeBtn").addEventListener("click", () => { showScreen("editorScreen"); renderEditor(); });
+$("resumeBtn").addEventListener("click", () => { setEditorReturn(null); showScreen("editorScreen"); renderEditor(); });
 // A result that finished after its photo was replaced opens as a new photo of its own.
 $("recoveredOpen").addEventListener("click", async () => {
   const r = recovered; if (!r) return;
@@ -897,18 +898,16 @@ new ResizeObserver(() => { applyView(); if (maskOn()) drawStrokes(); if (cr) ren
 // else changes (the preview, zoom, position, comparison and unapplied settings all stay).
 // Close, Escape or the browser/phone Back button bring the editing layout back.
 let expanded = false;
-function setExpanded(on, fromHistory) {
+function setExpanded(on) {
   if (on === expanded) return;
   expanded = on;
   $("editorScreen").classList.toggle("viewer-expanded", on);
   const b = $("expandView");
   b.setAttribute("aria-pressed", String(on)); b.setAttribute("aria-label", on ? "Close full view" : "Expand photo"); setIcon(b, on ? "shrink" : "expand");
-  if (on) { try { history.pushState({ glowView: 1 }, ""); } catch {} }
-  else if (!fromHistory && history.state && history.state.glowView) history.back();
+  setTimeout(syncBackGuard);
   $("alertLive").textContent = on ? "Full view. Close, Escape or Back returns to editing." : "Editing controls are back.";
 }
 $("expandView").addEventListener("click", () => setExpanded(!expanded));
-addEventListener("popstate", () => { if (expanded) setExpanded(false, true); });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && expanded && !document.querySelector("dialog[open]")) { e.preventDefault(); setExpanded(false); }
 });
@@ -2397,7 +2396,21 @@ async function openShareCard(photo) {
   catch (err) { if (!(err && err.name === "AbortError")) say(saveFailText(), true); }
 }
 // Back keeps the session; it's waiting on the Editor landing under "Continue editing".
-$("backBtn").addEventListener("click", () => { setExpanded(false); discardPending(); sel = null; go("editor"); });
+// The editor's Back goes to where the photo came from: the Enhance result (or its Share screen) or
+// the camera; otherwise Editor home. The edit itself stays as the draft either way (Resume).
+let editorReturn = null;   // null, "enhanceResult", "enhanceShare" or "camera"
+const RETURN_LABEL = { enhanceResult: "Back to Enhance", enhanceShare: "Back to Enhance", camera: "Back to Camera" };
+function setEditorReturn(where) {
+  editorReturn = where || null;
+  $("backBtn").setAttribute("aria-label", RETURN_LABEL[editorReturn] || "Back to Editor home");
+}
+$("backBtn").addEventListener("click", () => {
+  setExpanded(false); discardPending(); sel = null;
+  const where = editorReturn; setEditorReturn(null);
+  if ((where === "enhanceResult" || where === "enhanceShare") && typeof enhanceReturn === "function" && enhanceReturn(where)) return;
+  if (where === "camera") { go("camera"); return; }
+  go("editor");
+});
 
 // ---------- Credits ----------
 let account = null;
@@ -3079,6 +3092,7 @@ $("editShotBtn").addEventListener("click", async () => {
   cam.shot = null; renderReview();
   // Still saving in the background: the editor learns the result when it lands.
   await openPhoto(work, original, { name: "Camera photo", processed, savedAlready: s.saved, originalSaved: s.originalSaved, shotStamp: s.saving ? s.stamp : 0 });
+  setEditorReturn("camera");
   if (processed) say(`${s.look} look applied. Undo removes it.`);
 });
 async function galleryToEditor() {
@@ -3382,15 +3396,38 @@ $("adBtn").addEventListener("click", async () => {
   finally { $("adBtn").disabled = false; }
 });
 
-// Android back button: close a sheet, leave the photo review or the editor, then exit.
-if (native && plugins.App) plugins.App.addListener("backButton", () => {
+// ---------- Back ----------
+// One Back for every way of going back: Android's back button in the phone app, and the
+// browser's or phone's Back gesture on the web app. Close a sheet, close the full view, step
+// back through Enhance, leave the editor (to where the photo came from) or the photo review.
+// Returns false on the main tabs, where Back leaves the app.
+function goBack() {
   const open = document.querySelector("dialog[open]");
-  if (open) { if (!(open.id === "enhSheet" && enh.busy)) open.close(); }
-  else if (typeof enhanceBack === "function" && enhanceBack()) {}
-  else if (screen === "editorScreen") $("backBtn").click();
-  else if (screen === "cameraScreen" && cam.shot) $("retakeBtn").click();
-  else plugins.App.exitApp();
+  if (open) { if (!(open.id === "enhSheet" && enh.busy)) open.close(); return true; }
+  if (expanded) { setExpanded(false); return true; }
+  if (typeof enhanceBack === "function" && enhanceBack()) return true;
+  if (screen === "editorScreen") { if (!$("backBtn").disabled) $("backBtn").click(); return true; }
+  if (screen === "cameraScreen" && cam.shot) { $("retakeBtn").click(); return true; }
+  return false;
+}
+if (native && plugins.App) plugins.App.addListener("backButton", () => { if (!goBack()) plugins.App.exitApp(); });
+// On the web, a screen with somewhere to go back to keeps one extra history entry on top, so the
+// browser's Back (or the phone's back gesture) lands here instead of leaving Glow Studio.
+const ROOT_SCREENS = ["", "onboarding", "enhanceHome", "editorHome", "cameraScreen"];
+function canGoBack() {
+  return !!document.querySelector("dialog[open]") || expanded || !ROOT_SCREENS.includes(screen) || (screen === "cameraScreen" && !!cam.shot);
+}
+function syncBackGuard() {
+  if (native) return;
+  try { if (canGoBack() && !(history.state && history.state.glowBack)) history.pushState({ glowBack: 1 }, ""); } catch {}
+}
+addEventListener("popstate", () => {
+  if (native) return;
+  if (goBack()) { setTimeout(syncBackGuard); return; }
+  // Already on a main tab (the entry was left over from an in-app Back): carry on leaving.
+  if (!(history.state && history.state.glowBack)) history.back();
 });
+new MutationObserver(() => setTimeout(syncBackGuard)).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["open"] });
 // Keyboard: Escape closes the tool panel; Ctrl/Cmd+Z undoes.
 document.addEventListener("keydown", (e) => {
   if (screen !== "editorScreen" || document.querySelector("dialog[open]") || e.target.matches("input[type=search], input[type=text]")) return;

@@ -618,11 +618,29 @@ $("enhEdit").addEventListener("click", editEnhanced);
 // Hands the enhanced photo to the editor as its first step, so Undo there goes back to the original.
 async function editEnhanced() {
   if (!enh.current) return;
-  if (enh.demo) { openSample(); return; }   // the sample has its own editor demo (prepared AI previews)
+  const from = screen === "enhanceShare" ? "enhanceShare" : "enhanceResult";
+  // Back in the editor with the same photo: carry on with that edit, no "Start a new edit?" question.
+  if (!enh.demo && enh.edited === enh.current && !ed.demo && ed.hist[1] && ed.hist[1].op && ed.hist[1].op.label === "Enhance" && ed.hist[1].data === enh.current) {
+    showScreen("editorScreen"); renderEditor(); setEditorReturn(from); return;
+  }
+  if (enh.demo) {   // the sample has its own editor demo (prepared AI previews)
+    await openSample();
+    if (screen === "editorScreen" && ed.demo) setEditorReturn(from);
+    return;
+  }
   if (!(await confirmReplace())) return;
   const full = enh.current === enh.ai && enh.full ? enh.full : enh.current;
   track("enhance_to_editor", {});
   await openPhoto(enh.src, enh.original, { name: enh.name, processed: { data: enh.current, full, label: "Enhance" } });
+  enh.edited = enh.current;
+  setEditorReturn(from);
+}
+// The editor's Back: show the Enhance result (or its Share screen) just as it was left.
+function enhanceReturn(where) {
+  if (!enh.current) return false;
+  if (where === "enhanceShare" && enh.saved) { showScreen("enhanceShare"); fitEnhFrame(); return true; }
+  showScreen("enhanceResult"); fitEnhFrame();
+  return true;
 }
 
 // ---------- AI Enhance in the camera ----------
@@ -924,7 +942,7 @@ async function closeBatch() {
   showScreen("enhanceHome");
 }
 
-// Android back: Share goes back to Result, Result asks before leaving.
+// Back: Share goes back to Result, Result asks before leaving.
 function enhanceBack() {
   if (screen === "enhanceBatch") { closeBatch(); return true; }
   if (screen === "enhanceShare") { showScreen("enhanceResult"); fitEnhFrame(); return true; }

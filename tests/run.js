@@ -590,6 +590,54 @@ test('enhance: pick, one AI request, before/after, toggles on the phone, save, s
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false });
 
+// 2026-10-31: More tools / Edit more opened the editor with no way back to the Enhance result
+// (its Back went to Editor home, and the browser's Back left the app).
+test('enhance: the editor opened from the result goes Back to the result (button, browser Back), and More tools again carries on the same edit', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  const result = await p.evaluate(() => enh.current);
+  const back = () => p.evaluate(() => history.back());
+  // More tools -> editor -> Back button -> the same result.
+  await p.click('#enhMore'); await p.waitForFunction(() => screen === 'editorScreen' && ed.idx === 1);
+  eq(await p.getAttribute('#backBtn', 'aria-label'), 'Back to Enhance', 'Back says where it goes');
+  await p.click('#backBtn'); await p.waitForFunction(() => screen === 'enhanceResult');
+  eq(await p.evaluate(() => [enh.current, $('enhAfter').naturalWidth > 0, $('nav').hidden]), [result, true, true], 'the same result, still showing');
+  // More tools again: the same edit, no "Start a new edit?" question.
+  await p.click('#enhMore'); await p.waitForFunction(() => screen === 'editorScreen');
+  await p.waitForTimeout(300);
+  eq(await p.evaluate(() => [!!document.querySelector('dialog[open]'), ed.hist.length, ed.idx]), [false, 2, 1], 'carried on, nothing asked');
+  // The browser's (or phone's) Back from the editor: the result again, not out of the app.
+  await back(); await p.waitForFunction(() => screen === 'enhanceResult');
+  eq(await p.evaluate(() => enh.current), result, 'result kept after browser Back');
+  // Browser Back on the unsaved result asks first, and the app is still here.
+  await back(); await p.waitForSelector('#ask[open]');
+  eq(await p.evaluate(() => [screen, location.href]), ['enhanceResult', 'https://app.test/'], 'still in the app, asking');
+  await back(); await p.waitForFunction(() => !$('ask').open);   // Back closes the question
+  eq(await p.evaluate(() => screen), 'enhanceResult', 'Keep looking');
+  // Save -> Share -> Edit more -> Back -> Share.
+  await p.click('#enhDownload'); await downloads(state, 1); await p.waitForFunction(() => screen === 'enhanceShare');
+  await p.click('#enhEdit'); await p.waitForFunction(() => screen === 'editorScreen');
+  await p.click('#backBtn'); await p.waitForFunction(() => screen === 'enhanceShare');
+  await back(); await p.waitForFunction(() => screen === 'enhanceResult');
+  // Edit another photo from the editor's menu still goes to Editor home.
+  await p.click('#enhMore'); await p.waitForFunction(() => screen === 'editorScreen');
+  await p.click('#moreBtn'); await p.click('#otherPhotoBtn'); await p.waitForFunction(() => screen === 'editorHome');
+  await p.click('#resumeBtn'); await p.waitForFunction(() => screen === 'editorScreen');
+  eq(await p.getAttribute('#backBtn', 'aria-label'), 'Back to Editor home', 'Resume goes back to Editor home');
+  eq(state.posts.length, 1, 'one AI request in all');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, viewport: { width: 390, height: 740 } });
+
+test('enhance: the sample result opens the editor demo and Back returns to the sample result', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]');
+  await p.click('#enhGo'); await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  await p.click('#enhMore'); await p.waitForFunction(() => screen === 'editorScreen' && ed.demo, null, { timeout: 15000 });
+  await p.click('#backBtn'); await p.waitForFunction(() => screen === 'enhanceResult' && enh.demo);
+}, { start: 'enhance', camera: false, files: demoFiles() });
+
 // 2026-10-31: a 1200x1600 photo ran Real-ESRGAN out of GPU memory; the credit came back but the
 // error toast sat behind the sheet and said "lost the connection", so nothing seemed to happen.
 const OOM = 'CUDA out of memory. Tried to allocate 3.66 GiB. GPU 0 has a total capacity of 14.56 GiB of which 3.28 GiB is free.';
