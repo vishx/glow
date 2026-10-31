@@ -1111,7 +1111,10 @@ async function faceEdit(src, toolId, amt, pick) {
   const img = await loadImg(src);
   const c = canvasFor(img), ctx = c.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(img, 0, 0, c.width, c.height);
-  const found = await findFaces(src, c), chosen = pick && found.length > 1 ? nearestFace(found, pick) : null;
+  // `pick.faces`: outlines already found on this photo (or one of the same framing), so a look that
+  // the face finder can't re-read (strong colors, AI output) still gets its face steps.
+  const known = pick && Array.isArray(pick.faces) && pick.faces.length ? pick.faces : null; if (known) pick = null;
+  const found = known || await findFaces(src, c), chosen = pick && found.length > 1 ? nearestFace(found, pick) : null;
   const faces = (chosen ? [chosen] : found).map((f) => f.map(([x, y]) => [x * c.width, y * c.height]));
   if (!faces.length) throw reshape ? unavailable("Couldn't find a face clearly enough to reshape. Try a clear, front-facing photo.") : new Error("Couldn't find a face. Try a clear, front-facing photo.");
   const use = reshape ? faces.filter((P) => !reshapeProblem(P, c.width, c.height)) : faces;

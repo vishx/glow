@@ -867,7 +867,7 @@ async function composeEnhanced(lv) {
     out = c.toDataURL("image/jpeg", 0.94);
   }
   const rt = ENH_RETOUCH[lv.retouch];
-  if (rt && faces) out = await glowUp(out, { face: rt });
+  if (rt && faces) out = await glowUp(out, { face: rt }, { faces: enh.faces });   // the faces found on the photo: same framing as the result
   if (lv.colors) out = await enhColors(out, lv.colors);
   if (lv.blur) out = await portraitBlur(out, lv.blur);
   return out;
