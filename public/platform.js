@@ -76,10 +76,14 @@ const Platform = {
     async permission() {
       try { return (await navigator.permissions.query({ name: "camera" })).state; } catch { return "unknown"; }
     },
+    // The chosen side is asked for exactly: as a mere preference, some Android phones picked the
+    // back camera for a selfie because it suited the size better. Phones with one camera get it.
     async open(facing) {
-      return navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false,
+      const ask = (facingMode) => navigator.mediaDevices.getUserMedia({
+        video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false,
       });
+      try { return await ask({ exact: facing }); }
+      catch (e) { if (e && (e.name === "OverconstrainedError" || e.name === "NotFoundError")) return ask(facing); throw e; }
     },
     async count() {
       try { return (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput").length; } catch { return 1; }

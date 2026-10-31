@@ -798,6 +798,10 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
 }
 #editorScreen.tools-open .zoom-hint { display: none; }
 /* ---------- Live beauty camera: Adjust tabs, shade swatches, hold to compare ---------- */
+#cameraScreen.adjusting .viewfinder canvas { object-fit: cover; }
+#cameraScreen .adjust-panel { padding: var(--s2) var(--s3); margin-bottom: var(--s2); gap: 0; }
+#cameraScreen .adjust-panel .slider { min-height: 36px; }
+#cameraScreen .adjust-panel input[type="range"] { height: 36px; }
 .adj-tabs { display: flex; gap: var(--s1); margin: 0 0 var(--s1); }
 .adj-tabs button { flex: 1; min-height: 40px; border: 0; border-radius: 20px; background: transparent; color: #ffffffb3; font-size: 0.875rem; font-weight: 600; }
 .adj-tabs button[aria-selected="true"] { background: #ffffff1f; color: #fff; }
@@ -805,7 +809,10 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
 .swatches { display: flex; gap: var(--s2); padding: 0 0 var(--s1) calc(6.5rem + var(--s2)); }
 .cam-swatch { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #000; box-shadow: 0 0 0 1px #ffffff55; padding: 0; }
 .cam-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--rose); }
-.adj-note { margin: 0; color: #ffffffb3; font-size: 0.8125rem; text-align: center; }
+/* The note floats over the preview, so it coming and going never resizes the preview. */
+.adjust-panel { position: relative; }
+.adj-note { position: absolute; left: 50%; bottom: calc(100% + var(--s2)); transform: translateX(-50%); width: max-content; max-width: calc(100% - 2 * var(--s3));
+  margin: 0; padding: 4px var(--s3); border-radius: 14px; background: var(--scrim); color: #fff; font-size: 0.8125rem; text-align: center; pointer-events: none; }
 .vf-pill { position: absolute; top: var(--s3); left: 50%; transform: translateX(-50%); margin: 0; padding: 4px var(--s3); border-radius: 14px;
   background: var(--scrim); color: #fff; font-size: 0.8125rem; font-weight: 600; pointer-events: none; }
 .adj-parts { display: flex; gap: var(--s2); }

@@ -1577,6 +1577,59 @@ if (faceVideo) test('camera live: Adjust tabs, one makeup part at a time, and lo
   eq(await p.evaluate(() => $('adjNote').hidden), true, 'no note while a face is in view');
 }, liveOpts());
 
+// A phone GPU that returns NaN face points (seen on Android Chrome): the worker moves to the CPU,
+// finds the face, and says so in the error log.
+if (faceVideo) test('camera live: a phone GPU that gives NaN face points switches to the CPU and finds the face', async ({ p, state }) => {
+  const src = fs.readFileSync(path.join(__dirname, '../public/faceworker.js'), 'utf8')
+    .replace('finder = await make("GPU"); gpu = true;', 'finder = await make("CPU"); gpu = true;')
+    .replace('  return pts;\n}', '  if (gpu) pts.fill(NaN);\n  return pts;\n}');
+  assert(/pts\.fill\(NaN\)/.test(src) && /make\("CPU"\); gpu = true/.test(src), 'worker patched for the test');
+  await p.route('**/faceworker.js', (r) => r.fulfill({ contentType: 'text/javascript', body: src }));
+  await faceLive(p);
+  eq(await p.evaluate(() => [liveFace.failed, liveFace.pts.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y))]), [false, true], 'face found on the CPU');
+  await settle(500);
+  assert(state.appErrors.some((e) => /moved to the CPU: GPU gave NaN/.test(e.message)), 'reported: ' + state.appErrors.map((e) => e.message));
+}, liveOpts());
+
+if (faceVideo) test('camera live: no flicker: a missed frame fades, never cuts, the look; Adjust keeps the face large', async ({ p }) => {
+  await faceLive(p);
+  await p.evaluate(() => useLook(PRESET_LOOKS[3]));
+  await p.waitForFunction(() => liveFace.shown === 1);
+  // One missed answer from the face finder: the look stays on (it would have to be missed again and again to fade).
+  eq(await p.evaluate(() => { takeFace(null); return new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(() => ok([liveFace.shown > 0.6, !!liveFace.pts])))); }), [true, true], 'one miss: look still on');
+  // Before the face model is ready, smoothing isn't spread over the whole picture (it would jump when the face is found).
+  eq(await p.evaluate(() => { const r = liveFace.ready; liveFace.ready = false; const g = cam.gl, b = { ...beauty, smooth: 100 }; let on;
+    const real = g.gl.uniform1f.bind(g.gl); g.gl.uniform1f = (loc, v) => { if (loc === g.u.faceOn) on = v; return real(loc, v); };
+    drawLive(g, $('camVideo'), $('camVideo').videoWidth, $('camVideo').videoHeight, true, b, false); g.gl.uniform1f = real; liveFace.ready = r; return on; }), 1, 'smoothing waits for the face');
+  // Adjust open: the preview fills the space above the panel (cropped, not shrunk), with the face in it.
+  const before = await p.evaluate(() => { const c = $('camCanvas'), k = Math.min(c.clientWidth / c.width, c.clientHeight / c.height); return c.height * k; });
+  await p.click('.look.adjust'); await p.click('[data-adj="face"]'); await settle(1500);
+  const r = await p.evaluate(() => {
+    const c = $('camCanvas'), cs = getComputedStyle(c), k = Math.max(c.clientWidth / c.width, c.clientHeight / c.height), hs = c.height * k;
+    const p = parseFloat(cs.objectPosition.split(' ')[1]) / 100, top = (c.clientHeight - hs) * p;
+    const P = liveFace.pts, y = (i) => top + P[i][1] * k;
+    return { fit: cs.objectFit, shown: c.clientWidth >= c.width * Math.min(c.clientWidth / c.width, c.clientHeight / c.height) - 1, brow: y(LIVE_PTS.brow), chin: y(LIVE_PTS.chin), h: c.clientHeight, scale: hs };
+  });
+  eq(r.fit, 'cover', 'preview fills the space');
+  assert(r.brow >= -2 && r.chin <= r.h + 2, `face in view: brow ${r.brow}, chin ${r.chin}, of ${r.h}`);
+  assert(r.scale >= before - 1, `picture not smaller than before Adjust: ${r.scale} vs ${before}`);
+  await p.click('.look.adjust');
+  eq(await p.evaluate(() => [getComputedStyle($('camCanvas')).objectFit, $('camCanvas').style.objectPosition]), ['contain', ''], 'closing Adjust shows the whole frame again');
+}, liveOpts());
+
+// A selfie stays a selfie: the chosen side is asked for exactly, then any camera if the phone has one.
+test('camera: the last used side is asked for exactly, with a fallback for one-camera phones', async ({ p }) => {
+  await p.goto('https://app.test/');
+  const asks = await p.evaluate(async () => {
+    const seen = [], real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async (c) => { seen.push(JSON.stringify(c.video.facingMode)); if (typeof c.video.facingMode === 'object') { const e = new Error('no'); e.name = 'OverconstrainedError'; throw e; } return real(c); };
+    const s = await Platform.camera.open('user'); s.getTracks().forEach((t) => t.stop()); navigator.mediaDevices.getUserMedia = real; return seen;
+  });
+  eq(asks, ['{"exact":"user"}', '"user"'], 'exact first, then a preference');
+  await p.evaluate(() => { localStorage.setItem('glowFacing', 'environment'); });
+  await p.reload(); eq(await p.evaluate(() => cam.facing), 'environment', 'remembered after reopening');
+}, { start: 'camera' });
+
 // ---------- Operations: support, diagnostics ----------
 test('ops: Contact support sends the message with the account ID and app details', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);

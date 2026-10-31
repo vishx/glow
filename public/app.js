@@ -2587,6 +2587,7 @@ function renderLooks() {
   };
   const adjustBtn = chip("Adjust", null, "adjust", () => {
     const open = $("adjustPanel").hidden; $("adjustPanel").hidden = !open; adjustBtn.setAttribute("aria-expanded", String(open));
+    $("cameraScreen").classList.toggle("adjusting", open); cam.focusY = null; $("camCanvas").style.objectPosition = "";
   });
   adjustBtn.insertAdjacentHTML("afterbegin", icon("sliders"));
   adjustBtn.setAttribute("aria-expanded", String(!$("adjustPanel").hidden)); adjustBtn.setAttribute("aria-controls", "adjustPanel");
@@ -2766,6 +2767,7 @@ function drawCamFrame(v, c) {
       if (beauty.smooth || LIVE_KEYS.some((k) => beauty[k])) trackFace(v); else resetFace();
       drawLive(cam.gl, v, v.videoWidth, v.videoHeight, cam.facing === "user", beauty, cam.compare);
       if (seen !== liveFace.seen > 0) renderAdjNote();
+      if (!$("adjustPanel").hidden) followFace(c);
     } else if (cam.gl) {
       const { gl } = cam.gl;
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, v);
@@ -2776,6 +2778,18 @@ function drawCamFrame(v, c) {
       x.drawImage(v, 0, 0); x.restore();
     }
   }
+}
+// While Adjust is open the preview fills the space left above it (cropped, not shrunk) and keeps
+// the face in the middle of it, so the changes stay big enough to see.
+function followFace(c) {
+  const P = liveFace.pts, H = c.height;
+  const fy = P ? (P[LIVE_PTS.brow][1] + P[LIVE_PTS.chin][1]) / 2 / liveFace.size[1] : 0.45;
+  cam.focusY = cam.focusY == null ? fy : cam.focusY + (fy - cam.focusY) * 0.15;
+  const bw = c.clientWidth, bh = c.clientHeight, k = Math.max(bw / c.width, bh / H), hs = H * k;
+  if (!bw || hs - bh < 1) return;
+  const p = Math.min(1, Math.max(0, (cam.focusY * hs - bh / 2) / (hs - bh)));
+  const pos = `50% ${(p * 100).toFixed(1)}%`;
+  if (c.style.objectPosition !== pos) c.style.objectPosition = pos;
 }
 // The camera light goes off whenever Glow is in the background, and comes back once on return.
 document.addEventListener("visibilitychange", () => {
