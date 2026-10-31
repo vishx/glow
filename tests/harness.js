@@ -63,7 +63,7 @@ exports.launch = async (opts = {}) => {
   if (opts.onboarded !== false) await ctx.addInitScript((start) => { localStorage.setItem('glowOnboarded', '1'); localStorage.setItem('glowStart', start); if (!localStorage.getItem('glowLastDest')) localStorage.setItem('glowLastDest', start); }, opts.start || 'camera');
   const p = await ctx.newPage();
   const state = { used: 0, plan: opts.plan || 'free', quota: opts.quota || 3, posts: [], polls: 0, lookups: 0, refunds: 0, errs: [], downloads: [],
-    ai: { ...defaultAi(), ...(opts.ai || {}) }, jobs: {}, flaked: {}, authFail: !!opts.authFail, events: [], appErrors: [], support: [], sheets: [] };
+    ai: { ...defaultAi(), ...(opts.ai || {}) }, features: opts.features === undefined ? null : opts.features, tester: !!opts.tester, featureChecks: [], aiBodies: [], jobs: {}, flaked: {}, authFail: !!opts.authFail, events: [], appErrors: [], support: [], sheets: [] };
   p.on('pageerror', (e) => state.errs.push('pageerror: ' + e.message));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|^INFO:|^W\d{4}|XNNPACK/.test(m.text())) state.errs.push('console: ' + m.text()); });
   p.on('download', async (d) => {
@@ -85,6 +85,12 @@ exports.launch = async (opts = {}) => {
         const rows = JSON.parse(r.request().postData() || '[]');
         (u.pathname.endsWith('events') ? state.events : state.appErrors).push(...rows);
         return r.fulfill({ status: 201, headers: cors, body: '' });
+      }
+      // Feature switches (migration 013): opts.features is the server's answer, 404 = before 013.
+      if (u.pathname === '/rest/v1/rpc/my_features') {
+        state.featureChecks.push(JSON.parse(r.request().postData() || '{}'));
+        if (state.features === 404) return r.fulfill({ status: 404, headers: cors, json: { message: 'not found' } });
+        return r.fulfill({ headers: cors, json: { flags: state.features || {}, tester: !!state.tester, at: new Date().toISOString() } });
       }
       if (u.pathname === '/functions/v1/account' && method === 'POST') {
         state.support.push(JSON.parse(r.request().postData()).support);
@@ -124,6 +130,11 @@ exports.launch = async (opts = {}) => {
         }
         const body = JSON.parse(r.request().postData());
         state.posts.push(body.mode);
+        state.aiBodies.push({ mode: body.mode, from: body.from, tool: body.tool, platform: body.platform, build: body.build });
+        // The server refuses a switched-off tool before charging (the Enhance tab has no switch).
+        const offKey = [!(body.from === 'enhance' && body.mode === 'enhance') && 'tool:' + body.mode, body.tool && 'tool:' + body.tool]
+          .find((k) => k && state.features && state.features !== 404 && state.features[k] === false);
+        if (offKey) return r.fulfill({ status: 403, headers: cors, json: { error: 'This tool is taking a short break. Nothing was charged. Please try again later.', feature_off: offKey } });
         if (ai.server === 'patched' && body.request_id && state.jobs[body.request_id]) return answer(state.jobs[body.request_id]);
         const cost = ['headshot', 'anime', 'watercolor', 'fashion'].includes(body.mode) ? 2 : 1;
         if (state.used + cost > state.quota) return r.fulfill({ status: 429, headers: cors, json: { error: "You've used today's 3 free AI credits.", limit: true, usage: usage() } });

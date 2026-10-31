@@ -59,6 +59,28 @@
   dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
   dt { color: var(--muted); }
   dd { margin: 0; }
+  table.feat { table-layout: fixed; }
+  .feat td { vertical-align: middle; }
+  .feat td:nth-child(1) { width: 30%; } .feat td:nth-child(2) { width: 38%; } .feat td:nth-child(4) { width: 90px; text-align: right; }
+  button.btn:disabled { opacity: 0.3; cursor: default; }
+  @media (max-width: 800px) {
+    table.feat, .feat tbody, .feat tr, .feat td { display: block; width: auto !important; text-align: left !important; }
+    .feat tr { padding: 8px 0; border-bottom: 1px solid var(--line); } .feat td { border: 0; padding: 3px 0; }
+  }
+  .feat td:first-child { white-space: normal; min-width: 180px; }
+  .feat .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  .feat .seg button { border: 0; background: none; font: inherit; font-size: 13px; padding: 5px 10px; cursor: pointer; color: var(--muted); }
+  .feat .seg button + button { border-left: 1px solid var(--line); }
+  .feat .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  .feat .seg button[data-s="off"][aria-pressed="true"] { background: var(--bad); }
+  .feat .seg button[data-s="on"][aria-pressed="true"] { background: var(--good); }
+  .feat .seg button[data-s="testers"][aria-pressed="true"], .feat .seg button[data-s="rollout"][aria-pressed="true"] { background: var(--warn); }
+  .feat input[type=number] { width: 70px; padding: 4px 6px; }
+  .feat .lim { font-size: 13px; }
+  .feat .lim label { margin-right: 8px; white-space: nowrap; }
+  .feat tr.dirty { background: #fff6e6; }
+  .steps { margin: 0; padding-left: 20px; }
+  .steps li { margin-bottom: 4px; }
 </style>
 </head>
 <body>
@@ -77,6 +99,7 @@
     <h1>Glow Studio admin</h1>
     <nav id="tabs">
       <button data-tab="overview" aria-current="page">Overview</button>
+      <button data-tab="features">Features</button>
       <button data-tab="users">Users</button>
       <button data-tab="subs">Subscriptions</button>
       <button data-tab="support">Support</button>
@@ -92,6 +115,7 @@
 </div>
 <div id="toast" role="status"></div>
 
+<script src="/features.js"></script>
 <script>
 const API = "https://vahtdouihsnpnaskrtka.supabase.co/functions/v1/admin";
 const APIKEY = "sb_publishable_UH4edWInYXUknGg_Piqkeg_8fvxPL0b";
@@ -205,6 +229,85 @@ const subRow = (r) => [
 ];
 
 const VIEWS = {
+  // Feature switches (migration 013). The list itself comes from features.js, the same file the app
+  // uses, so every switch the app knows about is here, with its built-in default.
+  async features() {
+    const d = await api("features");
+    const rows = Object.fromEntries(d.flags.map((r) => [r.key, r]));
+    const health = Object.fromEntries((d.quality || []).map((q) => ["tool:" + q.mode, q]));
+    const testers = d.testers || [];
+    const STATES = [["default", "Default"], ["off", "Off"], ["testers", "Testers"], ["rollout", "Rollout"], ["on", "On"]];
+    const describe = (r, def) => !r ? `Built-in default: ${def ? "on" : "off"}` : r.status === "rollout" ? `Testers + ${r.percent}% of everyone` : r.status === "testers" ? "Testers only" : r.status === "on" ? "Everyone" : "Nobody";
+    const search = h("input", { type: "search", placeholder: "Find a feature", "aria-label": "Find a feature", style: "min-width:220px",
+      oninput: () => { const q = search.value.trim().toLowerCase(); document.querySelectorAll(".feat tbody tr").forEach((tr) => { tr.hidden = !!q && !tr.dataset.find.includes(q); }); } });
+
+    function row(key, label, def, note) {
+      const r = rows[key];
+      const st = { status: r ? r.status : "default", percent: r && r.status === "rollout" ? r.percent : 10,
+        platforms: r && r.platforms ? [...r.platforms] : [], min_build: r && r.min_build ? r.min_build : "", note: r && r.note ? r.note : "" };
+      const tr = h("tr", { "data-find": `${key} ${label}`.toLowerCase() });
+      const seg = h("span", { class: "seg", role: "group", "aria-label": `${label} switch` });
+      const pct = h("input", { type: "number", min: "1", max: "99", value: String(st.percent), "aria-label": `${label} rollout percent`, oninput: () => { st.percent = Number(pct.value); dirty(); } });
+      const pctWrap = h("span", { class: "lim" }, " ", pct, "%");
+      const plats = ["web", "ios", "android"].map((p) => { const c = h("input", { type: "checkbox", checked: st.platforms.includes(p) || null, onchange: () => { st.platforms = plats.filter((x) => x.c.checked).map((x) => x.p); dirty(); } }); return { p, c }; });
+      const build = h("input", { type: "number", min: "1", placeholder: "any", value: String(st.min_build), "aria-label": `${label} minimum build`, style: "width:110px", oninput: () => { st.min_build = build.value; dirty(); } });
+      const lim = h("div", { class: "lim muted" }, "Only on: ", plats.map(({ p, c }) => h("label", {}, c, " ", p)), " (none ticked = all) · min build ", build);
+      const save = h("button", { class: "btn", disabled: true, onclick: () => commit() }, "Save");
+      const status = h("div", { class: "muted lim" }, describe(r, def), r ? ` · ${when(r.updated_at)}` : "");
+      function paint() {
+        for (const b of seg.children) b.setAttribute("aria-pressed", String(b.dataset.s === st.status));
+        pctWrap.hidden = st.status !== "rollout"; lim.hidden = st.status === "default" || st.status === "off";
+      }
+      function dirty() { tr.classList.add("dirty"); save.disabled = false; }
+      STATES.forEach(([s, name]) => seg.append(h("button", { "data-s": s, onclick: () => { st.status = s; paint(); dirty(); } }, name)));
+      async function commit() {
+        if (key.startsWith("screen:") && st.status === "off" && !confirm(`Hide the whole ${label} for everyone?`)) return;
+        save.disabled = true;
+        try {
+          if (st.status === "default") await api("setFeature", { key, reset: true });
+          else await api("setFeature", { key, status: st.status, percent: st.percent, platforms: st.platforms, min_build: st.min_build || null, note: st.note });
+          toast(`${label}: saved. Phones pick it up within a few minutes; AI tools are refused at once.`);
+          show("features");
+        } catch (e) { save.disabled = false; toast(e.message, true); }
+      }
+      paint();
+      const q = health[key];
+      const hl = q ? h("span", { class: "lim", title: q.top_error || "" }, `${q.runs} AI runs · `, h("span", { class: q.runs && q.failed / q.runs > 0.1 ? "pill bad" : "pill good" }, `${q.runs ? Math.round((q.failed / q.runs) * 100) : 0}% failed`)) : "";
+      tr.append(h("td", {}, h("b", {}, label), h("div", { class: "muted mono", style: "font-size:11.5px" }, key), note ? h("div", { class: "muted lim" }, note) : ""),
+        h("td", {}, seg, pctWrap, lim), h("td", {}, status, hl), h("td", {}, save));
+      return tr;
+    }
+
+    const known = new Set(Object.keys(FEATURE_DEFAULTS));
+    const orphans = d.flags.filter((r) => !known.has(r.key));
+    const tUser = h("input", { placeholder: "Account ID", "aria-label": "Tester account ID", style: "min-width:300px" });
+    const tLabel = h("input", { placeholder: "Name, e.g. My iPhone", "aria-label": "Tester name" });
+    return [
+      h("section", { class: "card" }, h("h2", {}, "Feature switches"),
+        h("p", { class: "muted", style: "margin-top:0" }, "Turn any tool or feature on or off with no app release. Default follows what the app was built with; Off hides it for everyone at once (a kill switch); Testers shows it only to the accounts below; Rollout adds a percentage of everyone (the same people each time, so raising 10% to 50% keeps the first 10%); On is everyone. Phones check when the app opens or comes back to the front, and every 15 minutes; a switched-off AI tool is refused by the server straight away, before any credit is used."),
+        h("p", { style: "margin:8px 0 4px" }, h("b", {}, "Releasing a new tool safely")),
+        h("ol", { class: "steps muted" },
+          h("li", {}, "Ship it switched off (default off), or set it to Off before the release."),
+          h("li", {}, "Set it to Testers and try it on your own phone (Settings: tap the build line to copy your account ID, then add it below)."),
+          h("li", {}, "Rollout 10%, then watch its AI runs and failures here and in App errors for a day or two. Then 50%."),
+          h("li", {}, "On for everyone. If anything goes wrong at any step, set Off: nobody sees it within minutes, and nobody is charged for it.")),
+        h("div", { class: "row", style: "margin-top:10px" }, search)),
+      h("section", { class: "card" }, h("h2", {}, `Testers (${testers.length})`),
+        h("p", { class: "muted", style: "margin-top:0" }, "These accounts see every feature set to Testers or Rollout. An account ID is on the person's Users page, or in the app: Settings, tap the build line."),
+        h("div", { class: "row" }, tUser, tLabel, h("button", { class: "btn", onclick: async () => {
+          try { await api("addTester", { user: tUser.value.trim(), label: tLabel.value }); toast("Tester added."); show("features"); } catch (e) { toast(e.message, true); } } }, "Add tester")),
+        table([
+          { t: "Name", f: (r) => r.label || "" }, { t: "Account", f: (r) => userLink(r.user_id) }, { t: "Added", f: (r) => when(r.created_at) },
+          { t: "", f: (r) => h("button", { class: "btn ghost", onclick: async () => { await api("removeTester", { user: r.user_id }).then(() => toast("Removed."), (e) => toast(e.message, true)); show("features"); } }, "Remove") },
+        ], testers, "No testers yet.")),
+      ...FEATURE_AREAS.map(([area, list]) => h("section", { class: "card" }, h("h2", {}, area),
+        h("table", { class: "feat" }, h("tbody", {}, list.map(([k, label, def, note]) => row(k, label, def, note)))))),
+      orphans.length ? h("section", { class: "card" }, h("h2", {}, "Switches this app version doesn't know"),
+        h("p", { class: "muted", style: "margin-top:0" }, "Set earlier for a tool that has since been renamed or removed. Safe to reset."),
+        h("table", { class: "feat" }, h("tbody", {}, orphans.map((r) => row(r.key, r.key, true))))) : null,
+    ].filter(Boolean);
+  },
+
   async overview() {
     const o = await api("overview", { days: 14 });
     const today = o.daily[0] || {}, week = o.daily.slice(0, 7);
@@ -406,6 +509,7 @@ async function userDetail(id) {
         h("div", { class: "row" }, credits, h("button", { class: "btn", onclick: () => { const r = reason(); if (r !== null) act("grant", { credits: Number(credits.value), reason: r }, (x) => `Bonus credits now ${x.bonus_credits}.`); } }, "Give bonus credits")),
         h("div", { class: "row" }, days, h("button", { class: "btn", onclick: () => { const r = reason(); if (r !== null) act("setPro", { days: Number(days.value), reason: r }, (x) => `Pro until ${when(x.until)}.`); } }, "Give free Pro (days)"),
           a.plan === "pro" ? h("button", { class: "btn ghost", onclick: () => { if (confirm("Remove Pro from this account now? A real store subscription will set it back on its next renewal.")) act("setPro", { days: 0, reason: reason() || "" }, () => "Pro removed."); } }, "Remove Pro") : null),
+        h("div", { class: "row" }, h("button", { class: "btn ghost", onclick: () => { const l = prompt("Make this account a tester (sees features set to Testers or Rollout). Name:", ""); if (l !== null) act("addTester", { label: l }, () => "Added as a tester."); } }, "Make tester")),
         h("div", { class: "row" }, p.blocked_at
           ? h("button", { class: "btn ghost", onclick: () => act("block", { blocked: false }, () => "Unblocked.") }, "Unblock AI tools")
           : h("button", { class: "btn danger", onclick: () => { const r = reason(); if (r !== null) act("block", { blocked: true, reason: r }, () => "Blocked from AI tools."); } }, "Block AI tools")),

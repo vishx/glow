@@ -140,9 +140,7 @@ const CATS = {
 const ADVANCED = [["camlooks", "Camera looks", ["mylook"]]];
 // Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
 // another tool, or (body reshaping) didn't fit Glow Studio. Their code stays so saved drafts still replay.
-const RETIRED = ["smile", "relight", "older", "younger", "expand", "upscale", "faces", "bgcut", "bgwhite", "bgblush", "bgsky",
-  "anime", "watercolor", "toon3d", "clay", "gown", "street", "hair_waves", "hair_bob", "hair_pixie", "hair_bangs", "hair_curls",
-  "hair_bun", "hair_braids", "hair_butterfly", "bwaist", "bhips", "barms", "bslimlegs", "blegs"];
+const RETIRED = RETIRED_TOOLS;   // features.js: retired tools are switches that default to off
 const TAB_NAMES = { retouch: "Retouch", looks: "Looks", edit: "Edit", ai: "AI" };
 // Where a tool lives: its tab, or null for tools reached through Search only.
 function tabFor(id) {
@@ -211,7 +209,10 @@ applyTheme();
 
 // ---------- Screens and navigation ----------
 let screen = "";
+// A main screen switched off from the admin page (features.js) is never shown; Enhance has no switch.
+const screenOff = (id) => (id === "cameraScreen" && !featureOn("screen:camera")) || ((id === "editorHome" || id === "editorScreen") && !featureOn("screen:editor"));
 function showScreen(id) {
+  if (screenOff(id)) id = "enhanceHome";
   if (screen === "cameraScreen" && id !== "cameraScreen") stopCamera();
   screen = id;
   ["onboarding", "enhanceHome", "enhanceResult", "enhanceBatch", "enhanceShare", "cameraScreen", "editorHome", "editorScreen"].forEach((s) => { $(s).hidden = s !== id; });
@@ -235,8 +236,9 @@ $("nav").addEventListener("click", (e) => { const b = e.target.closest("button[d
 // Explicit choices here (and the sample or a picked photo) override the startup preference.
 function finishOnboarding(dest) {
   store.set("glowOnboarded", "1");
-  if (dest === "pick") { go("editor"); pickAndOpen(); }
-  else if (dest === "sample") { go("editor"); openSample(); }
+  const editor = featureOn("screen:editor");   // without the Editor, the welcome's choices go to Enhance
+  if (dest === "pick") { go(editor ? "editor" : "enhance"); if (editor) pickAndOpen(); else enhancePick(); }
+  else if (dest === "sample") { go(editor ? "editor" : "enhance"); if (editor) openSample(); else enhanceSample(); }
   else if (dest === "camera") go("camera");
   else go(store.get("glowLastDest") || "enhance");   // where you left off
 }
@@ -974,8 +976,14 @@ function groupsFor(c) {
   }
   return CATS[c];
 }
+// A tab whose tools are all switched off is hidden; if it was the open one, the first tab with
+// tools opens instead (Search still lists every tool that is on).
+const tabHasTools = (c) => CATS[c].some(([, , ids]) => ids.some((id) => TOOL[id] && toolShown(id)));
+function ensureCat() { if (!tabHasTools(cat)) cat = Object.keys(CATS).find(tabHasTools) || cat; }
 function renderTabs() {
+  ensureCat();
   document.querySelectorAll("#tabs .tab").forEach((t) => {
+    t.hidden = !tabHasTools(t.dataset.cat);
     const on = t.dataset.cat === cat;
     t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1;
   });
@@ -983,7 +991,9 @@ function renderTabs() {
 }
 // Remove, Fill and Expand are always listed under AI, even where they can't run (the sample, or
 // Fill before the server has it), with a badge saying why, instead of silently disappearing.
-const toolShown = (id) => !RETIRED.includes(id) && (demoOffers(id) || (ed.demo && CATS.ai[0][2].includes(id)));
+// A tool switched off from the admin page (features.js) is hidden everywhere, Search included.
+const toolOn = (id) => featureOn(toolKey(id));
+const toolShown = (id) => toolOn(id) && (demoOffers(id) || (ed.demo && CATS.ai[0][2].includes(id)));
 function toolBadge(t) {
   if (ed.demo && t.kind === "ai") return demo && demo.ready.includes(t.id) ? ["Preview", ", prepared preview, no credits"] : [null, ", needs your own photo"];   // the panel explains; a badge on every tile was noise
   if (!aiLive(t.id)) return ["Soon", ", not available yet"];
@@ -1016,6 +1026,7 @@ function toolButton(t) {
   return b;
 }
 function renderTools() {
+  ensureCat();
   const groups = groupsFor(cat).map((g) => [g[0], g[1], g[2].filter((id) => TOOL[id] && toolShown(id))]).filter((g) => g[2].length), box = $("tools");
   if (!groups.length && searching) { box.innerHTML = `<p class="empty-note">No tools match that search.</p>`; return; }
   renderToolGroups(box, groups, true);   // group names show in Search and on wide screens; a phone tab is one plain row
@@ -1103,6 +1114,10 @@ function discardPending() { if (ed.pending) { ed.pending = null; previewToken++;
 // Leaving a free tool keeps its change: switching tools or tabs commits the preview as one
 // Undo step (one per tool visit, never one per slider move). Cancel and Escape discard it.
 function selectTool(id, opts = {}) {
+  // A switched-off tool can't be opened (from Recent, a saved routine or an old button); a
+  // finished AI result can still be reviewed and applied, since it was already paid for.
+  if (id && TOOL[id] && !toolOn(id) && !(job && job.tool === id)) { say(`${TOOL[id].title} isn't available right now.`); return; }
+  if (id === "glowup" && glow.ai && !toolOn(glow.ai)) glow.ai = null;
   if (cr && !opts.discard && cropChanged() && !busyNow) { applyCrop().then(() => { if (id) selectTool(id); }); return; }
   // Trying one filter (or background) after another swaps it: they never pile up on each other.
   const swap = (k) => k === "filter" || k === "look" ? "filter" : k === "bg" ? "bg" : null;
@@ -1313,7 +1328,7 @@ function glowPanel(body) {
   if (!ed.demo) {
     const ag = document.createElement("div"); ag.className = "glow-group";
     const al = document.createElement("span"); al.className = "glow-label"; al.textContent = "AI step (optional, runs first)";
-    const arow = options(GLOW_AI.map(([label, id]) => [id ? `${label} · ${costOf(TOOL[id])}` : label, id]), (v) => v === glow.ai, (v) => { glow.ai = v; renderPanel(true); });
+    const arow = options(GLOW_AI.filter(([, id]) => !id || toolOn(id)).map(([label, id]) => [id ? `${label} · ${costOf(TOOL[id])}` : label, id]), (v) => v === glow.ai, (v) => { glow.ai = v; renderPanel(true); });
     arow.setAttribute("role", "group"); arow.setAttribute("aria-label", "AI step"); ag.append(al, arow); body.append(ag);
     if (glow.ai === "bgscene") {
       const row = options(SCENES.map(([label, id]) => [label, id]), (v) => v === scenePick, (v) => { scenePick = v; sceneText = ""; renderPanel(true); });
@@ -1956,13 +1971,15 @@ async function startAiEdit(t) {
   let res;
   try {
     track("ai_start", { mode: t.id });
-    res = await call("enhance", { method: "POST", body: JSON.stringify({ ...body, request_id: job.requestId }) });
+    res = await call("enhance", { method: "POST", body: JSON.stringify({ ...body, tool: t.id, platform: PLATFORM, build: APP_BUILD, request_id: job.requestId }) });
   } catch (err) {
     setBusy(false);
     track("ai_fail", { mode: t.id, status: err.status || 0, limit: !!err.limit });
     if (err.status) {
       // The server answered, so the edit didn't start. It returns the credit itself if it had taken one.
       job = null; saveJob();
+      // Switched off from the admin page since this tool was opened: nothing was charged.
+      if (err.featureOff) { say(err.message, true); refreshFeatures(true); return; }
       // A premium tool on the free plan draws on the one-time trial, which never resets, so say that
       // rather than the server's "come back tomorrow".
       if (err.limit && trialTool(t)) err.message = "You've used your free premium credits. Go Pro or buy a credit pack to keep using premium AI tools, or use the everyday AI tools with your daily credits.";
@@ -2266,7 +2283,7 @@ async function saveEdit(opts) {
     ed.lastExport = { w: out.w, h: out.h, original: ed.original ? [ed.original.w, ed.original.h] : null };
     saveDraft(); renderEditor();
     // One quiet offer per session to make a Share Glow Studio card; nothing happens unless it's tapped.
-    const offer = CONFIG.publicUrl && !shareOffered ? { label: "Share Glow Studio", run: () => openShareCard(out.data) } : null;
+    const offer = CONFIG.publicUrl && !shareOffered && featureOn("share:app") ? { label: "Share Glow Studio", run: () => openShareCard(out.data) } : null;
     if (offer) shareOffered = true;
     say(savedText(where, items.length, exportNote(out)), false, offer);
     return true;
@@ -2534,7 +2551,7 @@ async function call(path, opts = {}, retried) {
   const body = await res.json().catch(() => ({}));
   if (body.usage) showUsage(body.usage);
   if (!res.ok) {
-    const e = new Error(body.error || "Something went wrong."); e.status = res.status; e.limit = body.limit; e.blocked = !!body.blocked; throw e;
+    const e = new Error(body.error || "Something went wrong."); e.status = res.status; e.limit = body.limit; e.blocked = !!body.blocked; e.featureOff = body.feature_off || null; throw e;
   }
   return body;
 }
@@ -2622,7 +2639,18 @@ function saveBeauty() { store.set("glowBeauty", JSON.stringify(beauty)); store.s
 function useLook(l) { track("look", { id: String(l.id).startsWith("my") ? "my_look" : l.id }); lookId = l.id; Object.assign(beauty, LIVE_DEFAULTS, Object.fromEntries(LOOK_KEYS.filter((k) => k in l).map((k) => [k, l[k]]))); saveBeauty(); renderLooks(); }
 
 const cam = { stream: null, facing: store.get("glowFacing") || "user", gl: null, raf: 0, state: "", torch: false, shot: null, thumb: "", gen: 0, opened: 0 };
-const isOriginalLook = () => !beauty.smooth && !beauty.bright && !beauty.warm && beauty.filter === "none" && LIVE_KEYS.every((k) => !beauty[k]);
+const isOriginalLook = () => { const l = camLook(); return !l.smooth && !l.bright && !l.warm && l.filter === "none" && LIVE_KEYS.every((k) => !l[k]); };
+// The look the camera actually draws: settings whose feature is switched off from the admin page
+// (features.js) count as zero, even inside a saved look, and come back when it's on again.
+const CAM_SWITCHES = [["camera:face", ["eyes", "slim", "nose"]], ["camera:makeup", ["lips", "blush", "brows"]]];
+function camLook() {
+  const off = CAM_SWITCHES.filter(([k]) => !featureOn(k)), noFilter = !featureOn("camera:filters");
+  if (!off.length && !noFilter) return beauty;
+  const l = { ...beauty };
+  off.forEach(([, keys]) => keys.forEach((k) => { l[k] = 0; }));
+  if (noFilter) l.filter = "none";
+  return l;
+}
 const SLIDERS = [["sSmooth", "smooth"], ["sBright", "bright"], ["sWarm", "warm"], ["sEyes", "eyes"], ["sSlim", "slim"], ["sNose", "nose"]];
 // Makeup shows one part at a time (one slider and its shades), so the preview stays large.
 const MAKEUP_PARTS = { lips: ["Lips", "lipShade"], blush: ["Blush", "blushShade"], brows: ["Brows", "browShade"] };
@@ -2645,7 +2673,7 @@ function renderLooks() {
     return b;
   }));
   renderAdjNote();
-  const flt = FILTERS.find((f) => f.id === beauty.filter) || FILTERS[0];
+  const flt = FILTERS.find((f) => f.id === camLook().filter) || FILTERS[0];
   $("camCanvas").style.filter = flt.f === "none" ? "" : flt.f;
   const chip = (text, on, cls, fn) => {
     const b = document.createElement("button"); b.className = "look" + (cls ? " " + cls : ""); b.textContent = text;
@@ -2848,7 +2876,7 @@ async function startCamera() {
   camState("live");
   const torch = Platform.camera.torchSupported(cam.stream);
   // The selfie camera has no flash light, so the screen lights the face instead (Off, On, Auto).
-  cam.screenFlash = !torch && cam.facing === "user";
+  cam.screenFlash = !torch && cam.facing === "user" && featureOn("camera:flash");
   $("flashBtn").hidden = !torch && !cam.screenFlash; $("flashSpacer").hidden = !$("flashBtn").hidden;
   if (torch && cam.torch) Platform.camera.setTorch(cam.stream, true).catch(() => {});
   renderFlashBtn();
@@ -2880,14 +2908,15 @@ function drawCamFrame(v, c) {
     if (cam.gl && cam.gl.live) {
       const seen = liveFace.seen > 0;
       // The Original look (no smoothing, reshape or makeup) needs no face tracking.
-      if (beauty.smooth || LIVE_KEYS.some((k) => beauty[k])) trackFace(v); else resetFace();
-      drawLive(cam.gl, v, v.videoWidth, v.videoHeight, cam.facing === "user", beauty, cam.compare);
+      const look = camLook();
+      if (look.smooth || LIVE_KEYS.some((k) => look[k])) trackFace(v); else resetFace();
+      drawLive(cam.gl, v, v.videoWidth, v.videoHeight, cam.facing === "user", look, cam.compare);
       if (seen !== liveFace.seen > 0) renderAdjNote();
       if (!$("adjustPanel").hidden) followFace(c);
     } else if (cam.gl) {
       const { gl } = cam.gl;
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, v);
-      drawBeauty(cam.gl, c.width, c.height, cam.facing === "user", beauty);
+      drawBeauty(cam.gl, c.width, c.height, cam.facing === "user", camLook());
     } else {
       const x = c.getContext("2d"); x.save();
       if (cam.facing === "user") { x.translate(c.width, 0); x.scale(-1, 1); }
@@ -2947,7 +2976,7 @@ function sceneLight(v) {
 // Lights the whole screen a soft warm white and gives the camera a moment to adjust to it.
 async function screenFlashOn(v) {
   const m = screenFlashMode();
-  if (!cam.screenFlash || m === "off" || (m === "auto" && sceneLight(v) > 70)) return null;
+  if (!cam.screenFlash || !featureOn("camera:flash") || m === "off" || (m === "auto" && sceneLight(v) > 70)) return null;
   const el = document.createElement("div"); el.className = "screen-flash"; document.body.append(el);
   // In the phone app the screen also goes to full brightness for the shot (a web page can't).
   const sb = window.Capacitor?.Plugins?.ScreenBrightness;
@@ -2986,11 +3015,11 @@ $("shutter").addEventListener("click", async () => {
     if (looked && cam.gl.live) {
       // One frame at the camera's full size for the photo; the next preview frame shrinks it back.
       const c = $("camCanvas"); c.width = v.videoWidth; c.height = v.videoHeight;
-      drawLive(cam.gl, v, v.videoWidth, v.videoHeight, cam.facing === "user", beauty, false);
+      drawLive(cam.gl, v, v.videoWidth, v.videoHeight, cam.facing === "user", camLook(), false);
     }
     // The photo is what the screen showed: the full-screen preview's crop of the frame.
     const r = visibleRect(o.width, o.height), raw = cropTo(o, r);
-    const processed = looked ? cropTo(withFilterCanvas($("camCanvas"), beauty.filter, o.width, o.height), r).toDataURL("image/jpeg", 0.92) : null;
+    const processed = looked ? cropTo(withFilterCanvas($("camCanvas"), camLook().filter, o.width, o.height), r).toDataURL("image/jpeg", 0.92) : null;
     const stamp = Date.now();
     shot = { raw: raw.toDataURL("image/jpeg", 0.92), rawBlob: await canvasBlob(raw), processed, w: raw.width, h: raw.height,
       look: looked ? lookName() : null, stamp, saved: false, originalSaved: false, saving: null };
@@ -3023,7 +3052,7 @@ function renderReview() {
   const s = cam.shot;
   $("reviewImg").hidden = !s; $("camCanvas").hidden = !!s;
   $("liveControls").hidden = !!s; $("reviewControls").hidden = !s;
-  $("camAI").hidden = !!s; $("shotAIBtn").hidden = !s;
+  $("camAI").hidden = !!s || !featureOn("camera:ai"); $("shotAIBtn").hidden = !s || !featureOn("camera:ai");
   $("nav").hidden = screen !== "cameraScreen" ? $("nav").hidden : !!s;
   if (s) {
     $("reviewImg").src = s.processed || s.raw; $("camState").hidden = true; $("camNote").hidden = true;
@@ -3104,7 +3133,59 @@ async function galleryToEditor() {
 }
 $("camGallery").addEventListener("click", galleryToEditor);
 
+// ---------- Feature switches ----------
+// What features.js decides, applied to the screens. Runs at launch (from the device's last answer
+// or the built-in defaults) and again whenever the server's answer changes. A feature switched off
+// disappears; nothing half-works, and anything already paid for can still be finished.
+const ADJ_SWITCH = { face: "camera:face", makeup: "camera:makeup", filter: "camera:filters" };
+function refreshFeatures(force) {
+  return (session ? Promise.resolve(session) : ensureSession().catch(() => null))
+    .then((s) => Features.refresh({ force, session: s, url: CONFIG.supabaseUrl, apikey: CONFIG.supabaseKey, platform: PLATFORM }))
+    .catch(() => false);
+}
+function applyFeatures() {
+  const camOn = featureOn("screen:camera"), editorOn = featureOn("screen:editor");
+  document.querySelectorAll("#nav button[data-dest]").forEach((b) => { b.hidden = b.dataset.dest === "camera" ? !camOn : b.dataset.dest === "editor" ? !editorOn : false; });
+  // Every way into the Editor, and into the Camera.
+  ["enhEdit", "editShotBtn", "camStateAlt"].forEach((id) => { $(id).hidden = !editorOn; });
+  $("camGallery").style.visibility = editorOn ? "" : "hidden";   // keeps the shutter centred
+  $("obCamera").hidden = !camOn;
+  if (screenOff(screen)) { go("enhance"); say("That part of Glow Studio is taking a short break. Your edits are saved."); }
+  // Camera
+  $("camAI").hidden = !!cam.shot || !featureOn("camera:ai");
+  $("shotAIBtn").hidden = !cam.shot || !featureOn("camera:ai");
+  if (!featureOn("camera:flash")) { cam.screenFlash = false; if (screen === "cameraScreen" && cam.stream && !Platform.camera.torchSupported(cam.stream)) { $("flashBtn").hidden = true; $("flashSpacer").hidden = false; } }
+  document.querySelectorAll("#adjChips [data-set]").forEach((c) => { const g = ADJ_SETTINGS.find((a) => a[0] === c.dataset.set)[2]; c.hidden = !!ADJ_SWITCH[g] && !featureOn(ADJ_SWITCH[g]); });
+  document.querySelectorAll("#adjustPanel [role=tab]").forEach((t) => { t.hidden = !!ADJ_SWITCH[t.dataset.adj] && !featureOn(ADJ_SWITCH[t.dataset.adj]); });
+  const g = ADJ_SETTINGS.find((a) => a[0] === adjSel)[2];
+  if (ADJ_SWITCH[g] && !featureOn(ADJ_SWITCH[g])) selectAdj("smooth"); else renderLooks();
+  // Money
+  $("creditsPacks").hidden = !featureOn("money:packs"); $("pwPacks").hidden = !featureOn("money:packs");
+  if (!featureOn("money:ads")) $("adBtn").hidden = true;
+  // Enhance
+  if (typeof renderBatchLink === "function") renderBatchLink();
+  if (screen === "enhanceResult" && typeof enh !== "undefined" && enh.ai) {
+    let changed = false;
+    for (const k of Object.keys(enh.on)) if (enh.on[k] && !enhToggleOn(k)) { enh.on[k] = false; changed = true; }
+    renderToggles(); if (changed) updateComposite();
+  }
+  // Editor: a tool switched off while open closes (keeping nothing it hadn't applied).
+  if (glow.ai && !toolOn(glow.ai)) glow.ai = null;
+  if (sel && TOOL[sel] && !toolOn(sel) && !(job && job.tool === sel)) { const t = TOOL[sel]; selectTool(null, { discard: true }); say(`${t.title} isn't available right now.`); }
+  if (screen === "editorScreen") { renderTabs(); renderTools(); renderPanel(); }
+}
+Features.onChange(applyFeatures);
+// Checked again when the app comes back to the front (at most once a minute) and every 15 minutes
+// while it's open, so a switch flipped on the admin page reaches everyone within minutes.
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshFeatures(); });
+setInterval(() => { if (document.visibilityState === "visible") refreshFeatures(true); }, 15 * 60000);
+
 // ---------- Settings ----------
+// Tapping the build line copies the full account ID (to add a phone as a tester on the admin page).
+$("buildId").addEventListener("click", async () => {
+  const id = session && session.user_id; if (!id) return;
+  try { await navigator.clipboard.writeText(id); say("Account ID copied"); } catch { say(`Account ID: ${id}`); }
+});
 function openSettings() {
   refreshAccount();
   $("saveOrigToggle").checked = store.get("glowSaveOrig") === "on";
@@ -3125,7 +3206,8 @@ async function showBuild() {
     fp = [...new Uint8Array(d)].slice(0, 4).map((b) => b.toString(16).padStart(2, "0")).join("");
   } catch {}
   buildFp = fp || buildFp;
-  $("buildId").textContent = `Build ${fp || "unknown"} · ${FEATURES} · ${location.host || "app"}`;
+  const id = session && session.user_id;
+  $("buildId").textContent = `Build ${fp || "unknown"} · ${FEATURES} · ${location.host || "app"}${id ? ` · ID ${id.slice(0, 8)}` : ""}${Features.tester ? " · Tester" : ""}`;
 }
 $("camSettingsBtn").addEventListener("click", openSettings);
 $("homeSettingsBtn").addEventListener("click", openSettings);
@@ -3230,7 +3312,7 @@ function renderPlanNote() {
 function openPaywall() {
   if (account && account.plan === "pro") { openCredits(); return; }
   $("buyBtn").disabled = !native; $("buyBtn").textContent = buyLabel();
-  $("adBtn").hidden = !(native && plugins.AdMob && account && account.plan !== "pro" && account.remaining < 2 && account.adsLeft > 0);
+  $("adBtn").hidden = !(featureOn("money:ads") && native && plugins.AdMob && account && account.plan !== "pro" && account.remaining < 2 && account.adsLeft > 0);
   renderPlanNote();
   setupPurchases();
   track("paywall_view", { plan: account ? account.plan : "", screen });
@@ -3307,6 +3389,7 @@ function renderPacks() {
   $("packsPro").hidden = !!(account && account.plan === "pro");
 }
 function openPacks(why) {
+  if (!featureOn("money:packs")) { if (why === "out") say("You've used your AI credits for now. They refresh over the next few days.", true); return; }
   setupPurchases(); renderPacks();
   $("packsTitle").textContent = why === "out" ? "Out of AI credits for this week" : "AI credit packs";
   track("packs_view", { plan: account ? account.plan : "", from: why || screen });
@@ -3360,6 +3443,7 @@ function setupAds() {
   return adsReady;
 }
 async function watchAdForEdit() {
+  if (!featureOn("money:ads")) return false;
   const ad = plugins.AdMob, s = await ensureSession();
   if (!(await setupAds())) throw new Error("Ads aren't available right now.");
   const ios = window.Capacitor.getPlatform() === "ios";
@@ -3445,7 +3529,9 @@ restoreDraft();
 // the welcome screen.
 function startApp() {
   store.set("glowOnboarded", "1");
+  applyFeatures();
   go(store.get("glowLastDest") || "enhance");
+  refreshFeatures(true);
 }
 startApp();
 track("app_open", { dest: store.get("glowLastDest") || "enhance" });

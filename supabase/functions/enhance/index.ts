@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
     }
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-    const { image, mode, mask, extra, prompt, request_id, faces, hd, tiles } = await req.json().catch(() => ({}));
+    const { image, mode, mask, extra, prompt, request_id, faces, hd, tiles, from, tool, platform, build } = await req.json().catch(() => ({}));
     const requestId = typeof request_id === "string" && UUID.test(request_id) ? request_id : null;
     // A resent request is the same edit: answer with it instead of charging again.
     if (requestId) {
@@ -142,6 +142,19 @@ Deno.serve(async (req) => {
     if (!okImage) return json({ error: "Send the photo as a data URL" }, 400);
     if (cfg.needsMask && (typeof mask !== "string" || !mask.startsWith("data:image/"))) return json({ error: "Mark the area first" }, 400);
     if (cfg.needsExtra && (typeof extra !== "string" || !extra.startsWith("data:image/"))) return json({ error: "Pick the outfit photo first" }, 400);
+
+    // Feature switches (migration 013): a tool switched off on the admin page is refused here, before
+    // anything is charged. The Enhance tab (and the camera's AI Enhance) has no switch; an editor tool
+    // is checked under its own id and the mode it runs (Glow Up runs Pro edit, for example). Before
+    // 013, or if the check itself fails, nothing is blocked.
+    const keys = new Set<string>();
+    if (!(from === "enhance" && mode === "enhance")) keys.add(`tool:${mode}`);
+    if (typeof tool === "string" && /^[a-z0-9_]{1,32}$/.test(tool)) keys.add(`tool:${tool}`);
+    const where = { p_user: user.id, p_platform: ["web", "ios", "android"].includes(platform) ? platform : null,
+      p_build: Number.isInteger(build) && build > 0 && build < 2147483647 ? build : null };
+    const checks = await Promise.all([...keys].map((k) => admin.rpc("feature_on", { p_key: k, ...where }).then((r) => [k, r] as const)));
+    const off = checks.find(([, r]) => !r.error && r.data === false);
+    if (off) return json({ error: "This tool is taking a short break. Nothing was charged. Please try again later.", feature_off: off[0] }, 403);
 
     // Every AI edit uses credits (most tools 1, portrait styles 2), so no plan can cost more than it earns.
     const { data: quota, error: qErr } = await admin.rpc("consume_ai_edit", { p_user: user.id, p_mode: mode, p_ip: clientIp(req) }).single();

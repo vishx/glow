@@ -2163,6 +2163,147 @@ test('packs: in the phone app a pack is bought through the store and its credits
 } });
 
 
+// ---------- Feature switches (features.js, migration 013) ----------
+const shownTools = (p) => p.evaluate(() => [...document.querySelectorAll('#tools .tool[data-tool]')].map((b) => b.dataset.tool));
+async function searchAll(p) {
+  if (!(await p.isVisible('#tabs .tab'))) await p.click('#cancelBtn');
+  await p.click('#searchBtn'); await p.waitForTimeout(150); return shownTools(p);
+}
+
+test('features: with no server answer every released tool shows and retired tools stay hidden; the check sends platform and build', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await p.waitForFunction(() => Features.checkedAt > 0, null, { timeout: 10000 });
+  const all = await searchAll(p);
+  const expect = await p.evaluate(() => TOOLS.filter((t) => !RETIRED.includes(t.id) && t.kind !== 'filter').map((t) => t.id));
+  for (const id of expect) assert(all.includes(id), id + ' offered');
+  for (const id of await p.evaluate(() => RETIRED)) assert(!all.includes(id), id + ' (retired) hidden');
+  const c = state.featureChecks[0]; eq([c.p_platform, typeof c.p_build], ['web', 'number'], 'platform and build sent');
+  eq(await p.evaluate(() => $$tabs()), ['retouch', 'looks', 'edit', 'ai'], 'all four tabs');
+  eq(state.errs, [], 'no page errors');
+}, { features: 404, init: () => { window.$$tabs = () => [...document.querySelectorAll('#tabs .tab')].filter((t) => !t.hidden).map((t) => t.dataset.cat); } });
+
+test('features: every tool in the app has a switch in the catalog, and every switch names a real tool or feature', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
+  const r = await p.evaluate(() => {
+    const keys = Object.keys(FEATURE_DEFAULTS);
+    const tools = [...new Set(TOOLS.map((t) => toolKey(t.id)))];
+    return { missing: tools.filter((k) => !keys.includes(k)), unknown: keys.filter((k) => k.startsWith('tool:') && !tools.includes(k)),
+      retiredOn: RETIRED.filter((id) => FEATURE_DEFAULTS['tool:' + id] !== false), releasedOff: keys.filter((k) => !k.startsWith('tool:') && FEATURE_DEFAULTS[k] !== true) };
+  });
+  eq(r, { missing: [], unknown: [], retiredOn: [], releasedOff: [] }, 'catalog matches the app');
+});
+
+test('features: switched-off tools leave the tabs and Search, an empty tab disappears, and a retired tool can come back for testers', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await p.waitForFunction(() => Features.checkedAt > 0, null, { timeout: 10000 });
+  const all = await searchAll(p);
+  for (const id of ['erase', 'fill', 'custom', 'fsmooth']) assert(!all.includes(id), id + ' hidden');
+  assert(all.includes('smile'), 'retired Smile switched on for testers shows');
+  await p.evaluate(() => setSearching(false));
+  eq(await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')].filter((t) => !t.hidden).map((t) => t.dataset.cat)), ['retouch', 'looks', 'edit'], 'AI tab gone (all its tools off)');
+  // Opening a hidden tool any other way (Recent, an old link) is refused.
+  await p.evaluate(() => selectTool('fsmooth')); await settle(200);
+  eq(await p.evaluate(() => sel), null, 'not opened'); assert(/isn't available/.test(await toast(p)), 'says so');
+  eq(state.errs, [], 'no page errors');
+}, { features: { 'tool:erase': false, 'tool:fill': false, 'tool:custom': false, 'tool:fsmooth': false, 'tool:smile': true } });
+
+test('features: the last answer applies at launch before the server is asked (no flicker) and a failed check keeps it', async ({ p, state }) => {
+  await p.goto('https://app.test/');
+  eq(await p.evaluate(() => [featureOn('tool:pro'), featureOn('screen:camera')]), [false, true], 'cached answer from the first line of the app');
+  await p.waitForFunction(() => Features.checkedAt > 0, null, { timeout: 10000 }); await settle(300);
+  eq(await p.evaluate(() => featureOn('tool:pro')), false, 'server down (404): still off, not reset to on');
+  eq(state.errs, [], 'no page errors');
+}, { features: 404, init: () => { localStorage.setItem('glowFeatures', JSON.stringify({ flags: { 'tool:pro': false }, tester: false, at: 1 })); } });
+
+test('features: a tool switched off while open closes; the server refuses it before charging and the app says nothing was charged', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT); await tool(p, 'edit', null, 'pro');
+  // Owner flips the switch; this phone hasn't heard yet. Apply goes to the server, which refuses.
+  state.features = { 'tool:pro': false };
+  await p.click('#applyBtn');
+  await p.waitForFunction(() => /Nothing was charged/.test($('toast').textContent), null, { timeout: 15000 });
+  eq([state.used, state.posts.length], [0, 1], 'refused before any charge');
+  eq(state.aiBodies[0].tool, 'pro', 'the editor says which tool sent it');
+  await p.waitForFunction(() => sel === null && !featureOn('tool:pro'), null, { timeout: 10000 });
+  assert(!(await searchAll(p)).includes('pro'), 'and it is hidden now');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'editor', features: {} });
+
+test('features: Glow Up never offers a switched-off AI step, and a saved routine with one runs without it', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT); await p.waitForFunction(() => Features.checkedAt > 0, null, { timeout: 10000 });
+  await tool(p, 'retouch', null, 'glowup');
+  const opts = await p.evaluate(() => [...document.querySelectorAll('[aria-label="AI step"] button')].map((b) => b.textContent));
+  assert(!opts.some((t) => /Pro edit/.test(t)), 'Pro edit not offered: ' + opts);
+  assert(opts.some((t) => /New background/.test(t)), 'other AI steps still offered');
+  eq(await p.evaluate(() => glow.ai), null, 'the saved routine\'s Pro edit step was dropped');
+  eq(state.errs, [], 'no page errors');
+}, { features: { 'tool:pro': false }, init: () => { localStorage.setItem('glowRoutine', JSON.stringify({ ai: 'pro', on: {}, look: null, slim: false, light: true, words: '', strength: 60 })); } });
+
+test('features: Camera and Editor tabs off open Enhance, hide every way in, and Enhance still runs', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.waitForFunction(() => Features.checkedAt > 0, null, { timeout: 10000 }); await settle(200);
+  eq(await p.evaluate(() => [...document.querySelectorAll('#nav button')].filter((b) => !b.hidden).map((b) => b.dataset.dest)), ['enhance'], 'only Enhance in the bar');
+  await p.evaluate(() => go('editor')); eq(await p.evaluate(() => screen), 'enhanceHome', 'Editor never shows');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  eq(state.aiBodies[0], { mode: 'enhance', from: 'enhance', tool: undefined, platform: undefined, build: undefined }, 'Enhance tab request (the editor Enhance switch does not apply)');
+  eq(state.used, 1, 'charged once, as usual');
+  eq(await p.evaluate(() => $('enhMore').hidden), true, 'no More tools (Editor) on the result');
+  const keys = await p.evaluate(() => [...document.querySelectorAll('.enh-t[data-k]')].map((b) => b.dataset.k));
+  eq(keys, ['face', 'bg', 'retouch'], 'Colors and Background Blur switches hidden');
+  await p.click('#enhDownload'); await downloads(state, 1); await p.waitForFunction(() => screen === 'enhanceShare');
+  eq(await p.evaluate(() => $('enhEdit').hidden), true, 'no Edit more in the editor');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'camera', camera: false, features: { 'screen:camera': false, 'screen:editor': false, 'tool:enhance': false, 'enhance:colors': false, 'enhance:blur': false } });
+
+test('features: switching the Editor off while someone is in it takes them to Enhance and keeps their edits', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT); await tool(p, 'edit', null, 'light');
+  await p.waitForFunction(() => Features.checkedAt > 0, null, { timeout: 10000 });
+  state.features = { 'screen:editor': false };
+  await p.evaluate(() => refreshFeatures(true));
+  await p.waitForFunction(() => screen === 'enhanceHome', null, { timeout: 5000 });
+  assert(/short break/.test(await toast(p)), 'says why');
+  state.features = {}; await p.evaluate(() => refreshFeatures(true)); await settle(200);
+  await p.evaluate(() => go('editor')); await p.waitForFunction(() => screen === 'editorHome');
+  assert(await p.isVisible('#resumeBtn'), 'the photo is still there to resume');
+  eq(state.errs, [], 'no page errors');
+}, { features: {} });
+
+test('features: camera face shape, makeup and filters off hide their Adjust settings and are never drawn, even from a saved look', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  await p.waitForFunction(() => Features.checkedAt > 0, null, { timeout: 10000 }); await settle(200);
+  const r = await p.evaluate(() => {
+    useLook(PRESET_LOOKS.find((l) => l.id === 'glam'));
+    const l = camLook();
+    return { chips: [...document.querySelectorAll('#adjChips [data-set]')].filter((c) => !c.hidden).map((c) => c.dataset.set),
+      drawn: [l.slim, l.eyes, l.nose, l.lips, l.blush, l.brows, l.filter], kept: beauty.slim > 0 && beauty.lips > 0, smooth: l.smooth > 0,
+      ai: $('camAI').hidden, flash: cam.screenFlash };
+  });
+  eq(r.chips, ['smooth', 'bright', 'warm'], 'only Skin settings');
+  eq(r.drawn, [0, 0, 0, 0, 0, 0, 'none'], 'switched-off settings drawn as zero');
+  eq([r.kept, r.smooth], [true, true], 'the look itself is kept, skin still works');
+  eq([r.ai, r.flash], [true, false], 'AI switch and screen flash hidden');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'camera', features: { 'camera:face': false, 'camera:makeup': false, 'camera:filters': false, 'camera:ai': false, 'camera:flash': false } });
+
+test('features: credit packs, ads and the share card off hide their buttons; a Pro user out of credits gets a message, not packs', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!account && Features.checkedAt > 0, null, { timeout: 10000 }); await settle(200);
+  eq(await p.evaluate(() => [$('creditsPacks').hidden, $('pwPacks').hidden]), [true, true], 'pack buttons hidden');
+  await p.evaluate(() => openPacks('out')); await settle(200);
+  eq(await p.evaluate(() => $('packsSheet').open), false, 'no packs sheet');
+  assert(/used your AI credits/.test(await toast(p)), 'a plain message instead');
+  eq(state.errs, [], 'no page errors');
+}, { features: { 'money:packs': false, 'money:ads': false, 'share:app': false } });
+
+test('features: Enhance Batch off hides its link; switching it back on brings everything back without a reload', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && Features.checkedAt > 0, null, { timeout: 10000 }); await settle(200);
+  eq(await p.evaluate(() => $('enhBatchPick').hidden), true, 'batch link hidden');
+  state.features = {}; await p.evaluate(() => refreshFeatures(true)); await settle(200);
+  eq(await p.evaluate(() => $('enhBatchPick').hidden), false, 'back without a reload');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, features: { 'enhance:batch': false } });
+
+
 (async () => {
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
   const results = [];

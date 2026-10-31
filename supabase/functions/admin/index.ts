@@ -196,6 +196,59 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
   async audit() {
     return must(await admin.from("admin_audit").select("*").order("created_at", { ascending: false }).limit(100));
   },
+
+  // ---------- Feature switches (migration 013) ----------
+  // Every switch the owner has set (a switch with no row follows the app's built-in default), the
+  // tester accounts, and last week's AI runs per tool so a rollout can be checked before it grows.
+  async features() {
+    const [flags, testers, quality] = await Promise.all([
+      admin.from("feature_flags").select("*").order("key"),
+      admin.from("feature_testers").select("*").order("created_at"),
+      admin.rpc("admin_ai_quality", { p_days: 7 }),
+    ]);
+    return { flags: must(flags), testers: must(testers), quality: quality.error ? [] : quality.data };
+  },
+
+  // { key, status: off|testers|rollout|on, percent, platforms, min_build, note } sets a switch;
+  // { key, reset: true } removes it, so the app's built-in default applies again.
+  async setFeature(a) {
+    const key = text(a.key, 64);
+    if (!/^[a-z0-9:_.-]{1,64}$/.test(key)) throw new HttpError("That isn't a feature switch.");
+    const { data: before } = await admin.from("feature_flags").select("*").eq("key", key).maybeSingle();
+    if (a.reset === true) {
+      must(await admin.from("feature_flags").delete().eq("key", key));
+      await audit("feature_reset", key, { before });
+      return { key, reset: true };
+    }
+    const status = String(a.status);
+    if (!["off", "testers", "rollout", "on"].includes(status)) throw new HttpError("Pick Off, Testers, Rollout or On.");
+    const percent = status === "rollout" ? Math.trunc(Number(a.percent)) : status === "on" ? 100 : 0;
+    if (status === "rollout" && !(percent >= 1 && percent <= 99)) throw new HttpError("A rollout is between 1% and 99% of people (use On for everyone).");
+    const platforms = Array.isArray(a.platforms) && a.platforms.length ? [...new Set(a.platforms.map(String))] : null;
+    if (platforms && !platforms.every((p) => ["web", "ios", "android"].includes(p))) throw new HttpError("Platforms are web, ios and android.");
+    if (platforms && platforms.length === 3) platforms.length = 0;
+    const minBuild = a.min_build == null || a.min_build === "" ? null : Math.trunc(Number(a.min_build));
+    if (minBuild !== null && !(minBuild > 0 && minBuild < 2147483647)) throw new HttpError("The minimum build is a whole number, such as 202610311.");
+    const row = { key, status, percent, platforms: platforms && platforms.length ? platforms : null, min_build: minBuild,
+      note: text(a.note, 500) || null, updated_at: new Date().toISOString() };
+    must(await admin.from("feature_flags").upsert(row));
+    await audit("feature", key, { ...row, before });
+    return row;
+  },
+
+  async addTester(a) {
+    const id = userId(a.user), label = text(a.label, 80) || null;
+    must(await admin.from("feature_testers").upsert({ user_id: id, label }));
+    await audit("tester_add", id, { label });
+    return { user_id: id, label };
+  },
+
+  async removeTester(a) {
+    const id = userId(a.user);
+    must(await admin.from("feature_testers").delete().eq("user_id", id));
+    await audit("tester_remove", id, {});
+    return { removed: true };
+  },
 };
 
 Deno.serve(async (req) => {
@@ -216,6 +269,7 @@ Deno.serve(async (req) => {
     console.error("admin", body.action, msg);
     // Before migrations 009 and 010 the report functions and tables don't exist yet.
     if (/function .* does not exist|relation .* does not exist|column .* does not exist|schema cache/i.test(msg)) {
+      if (/feature/i.test(body.action) || /tester/i.test(body.action)) return json({ error: "Run migration 013 (feature switches) in the Supabase SQL editor first.", detail: msg }, 409);
       return json({ error: "Run migration 010 (and 009 before it) in the Supabase SQL editor first.", detail: msg }, 409);
     }
     return json({ error: msg }, e instanceof HttpError ? 400 : 500);

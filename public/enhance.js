@@ -11,6 +11,9 @@ const ENH_SAMPLE = { original: DEMO_DIR + "original.png", result: DEMO_DIR + "en
 // AI result and the original; the rest are free on-device steps on top.
 const ENH_TOGGLES = [["face", "Face Enhancer", "face", true], ["bg", "Background Enhancer", "upscale", true],
   ["retouch", "Face Retouch", "fsmooth", false], ["colors", "Colors", "palette", false], ["blur", "Background Blur", "bgblur", false]];
+// Face and Background Enhancer are Enhance itself; the others can be switched off from the admin
+// page (features.js), which hides them and leaves them out of the picture.
+const enhToggleOn = (k) => k === "face" || k === "bg" || featureOn("enhance:" + k);
 const enh = {
   src: null, original: null, name: "", demo: false,   // the picked photo (working size) and its untouched file
   ai: null, base: null, faces: [],                    // the AI result, the photo at the result's size, face outlines (0–1)
@@ -157,7 +160,7 @@ async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from =
     h.pending = { requestId, id: null, layout: plus.layout || null };
     try {
       track("ai_start", { mode: ENH_MODE, from, hd: !!plus.hd, tiles: plus.tiles ? plus.tiles.length : 0 });
-      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: ENH_MODE, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined, hd: plus.hd, tiles: plus.tiles }) });
+      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: ENH_MODE, from: "enhance", request_id: requestId, faces: h.sheet ? h.sheet.data : undefined, hd: plus.hd, tiles: plus.tiles }) });
       h.pending.id = res.id || null;
       return await followEnhance(h, res, onLabel, from);
     } catch (err) {
@@ -342,7 +345,7 @@ async function prepareResult() {
   try { enh.faces = await enhFaces(enh.src, o); } catch { enh.faces = []; }
 }
 function showEnhResult() {
-  enh.on = Object.fromEntries(ENH_TOGGLES.map(([k, , , d]) => [k, d]));
+  enh.on = Object.fromEntries(ENH_TOGGLES.map(([k, , , d]) => [k, d && enhToggleOn(k)]));
   enh.cache.clear(); enh.cache.set(enhKey(), enh.ai); enh.current = enh.ai; enh.saved = null;
   if (!enh.faces.length) { enh.on.face = true; enh.on.retouch = false; }
   $("enhBefore").src = enh.src; $("enhAfter").src = enh.ai;
@@ -489,7 +492,7 @@ $("enhZoom").addEventListener("click", () => { czTo(1, czMid(), { animate: true 
 
 function renderToggles() {
   const row = $("enhToggles");
-  const btns = ENH_TOGGLES.map(([k, label, ic]) => {
+  const btns = ENH_TOGGLES.filter(([k]) => enhToggleOn(k)).map(([k, label, ic]) => {
     const b = document.createElement("button");
     b.className = "enh-t"; b.dataset.k = k; b.setAttribute("aria-pressed", String(!!enh.on[k]));
     b.disabled = (k === "face" || k === "retouch") && !enh.faces.length;
@@ -500,6 +503,7 @@ function renderToggles() {
   const more = document.createElement("button");
   more.className = "enh-t more"; more.id = "enhMore";
   more.innerHTML = `<span class="ic">${icon("sliders")}</span><span>More tools</span>`;
+  more.hidden = !featureOn("screen:editor");
   row.replaceChildren(...btns, more);
 }
 $("enhToggles").addEventListener("click", (e) => {
@@ -529,6 +533,7 @@ function showComposite(data) { enh.current = data; $("enhAfter").src = data; enh
 // original); Face Enhancer then puts the chosen face back in through a soft face outline.
 // Retouch, Colors and Blur are the same free on-device tools the editor uses.
 async function composeEnhanced(on) {
+  on = Object.fromEntries(Object.entries(on).map(([k, v]) => [k, v && enhToggleOn(k)]));
   let out;
   if (on.face === on.bg || !enh.faces.length) out = on.bg ? enh.ai : enh.base;
   else {
@@ -617,7 +622,7 @@ $("enhEdit").addEventListener("click", editEnhanced);
 
 // Hands the enhanced photo to the editor as its first step, so Undo there goes back to the original.
 async function editEnhanced() {
-  if (!enh.current) return;
+  if (!enh.current || !featureOn("screen:editor")) return;
   const from = screen === "enhanceShare" ? "enhanceShare" : "enhanceResult";
   // Back in the editor with the same photo: carry on with that edit, no "Start a new edit?" question.
   if (!enh.demo && enh.edited === enh.current && !ed.demo && ed.hist[1] && ed.hist[1].op && ed.hist[1].op.label === "Enhance" && ed.hist[1].data === enh.current) {
@@ -647,7 +652,7 @@ function enhanceReturn(where) {
 // The live looks are drawn on the phone, frame by frame; the AI Enhance is the same request as
 // the Enhance tab (1 AI credit) run on the photo just taken. With the camera's AI switch on it
 // runs after every shutter press; with it off, the review screen offers it for one photo.
-const camAIOn = () => store.get("glowCamAI") === "on";
+const camAIOn = () => store.get("glowCamAI") === "on" && featureOn("camera:ai");
 function renderCamAI() {
   const on = camAIOn(), b = $("camAI");
   b.setAttribute("aria-pressed", String(on));
@@ -723,12 +728,14 @@ setIcon($("batchClose"), "close"); setIcon($("batchAdd"), "plus");
 
 $("enhBatchPick").addEventListener("click", () => {
   if (batch.items.length) { showScreen("enhanceBatch"); renderBatch(); return; }   // back to the batch in progress
+  if (!featureOn("enhance:batch")) { renderBatchLink(); return; }
   if (!isPro()) { track("batch_locked", {}); openPaywall(); return; }
   batchPick();
 });
 $("batchAdd").addEventListener("click", batchPick);
 function renderBatchLink() {
   const n = batch.items.length, b = $("enhBatchPick");
+  b.hidden = !n && !featureOn("enhance:batch");   // a batch already started can still be finished
   b.innerHTML = icon("gallery") + (n ? `Back to your ${plural(n, "photo")}` : `Enhance up to ${BATCH_MAX} at once<span class="pro-chip">Pro</span>`);
 }
 
