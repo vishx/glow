@@ -2829,8 +2829,11 @@ async function startCamera() {
   try { await v.play(); } catch {}
   camState("live");
   const torch = Platform.camera.torchSupported(cam.stream);
-  $("flashBtn").hidden = !torch; $("flashSpacer").hidden = torch;
+  // The selfie camera has no flash light, so the screen lights the face instead (Off, On, Auto).
+  cam.screenFlash = !torch && cam.facing === "user";
+  $("flashBtn").hidden = !torch && !cam.screenFlash; $("flashSpacer").hidden = !$("flashBtn").hidden;
   if (torch && cam.torch) Platform.camera.setTorch(cam.stream, true).catch(() => {});
+  renderFlashBtn();
   $("camFlip").hidden = (await Platform.camera.count()) < 2;
   drawFrame();
 }
@@ -2908,7 +2911,35 @@ window.addEventListener("pagehide", stopCamera);
 $("camFlip").addEventListener("click", () => {
   cam.facing = cam.facing === "user" ? "environment" : "user"; store.set("glowFacing", cam.facing); Platform.haptic(); startCamera();
 });
+const SCREEN_FLASH = { auto: ["Auto", "Screen flash auto: lights up when it's dark"], on: ["On", "Screen flash on"], off: ["Off", "Screen flash off"] };
+const screenFlashMode = () => (SCREEN_FLASH[store.get("glowScreenFlash")] ? store.get("glowScreenFlash") : "auto");
+function renderFlashBtn() {
+  const b = $("flashBtn");
+  if (!cam.screenFlash) { b.classList.remove("sflash"); setIcon(b, cam.torch ? "flash" : "flashoff"); b.setAttribute("aria-pressed", String(cam.torch)); b.setAttribute("aria-label", cam.torch ? "Flash on" : "Flash off"); return; }
+  const m = screenFlashMode();
+  b.classList.add("sflash"); b.innerHTML = icon(m === "off" ? "flashoff" : "flash") + (m === "auto" ? '<span class="fa" aria-hidden="true">A</span>' : "");
+  b.setAttribute("aria-pressed", String(m !== "off")); b.setAttribute("aria-label", SCREEN_FLASH[m][1]);
+}
+// Average brightness of the camera picture (0–255), from a tiny copy.
+function sceneLight(v) {
+  try { const c = newCanvas(24, 24), x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(v, 0, 0, 24, 24);
+    const d = x.getImageData(0, 0, 24, 24).data; let t = 0; for (let i = 0; i < d.length; i += 4) t += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; return t / (d.length / 4); }
+  catch { return 255; }
+}
+// Lights the whole screen a soft warm white and gives the camera a moment to adjust to it.
+async function screenFlashOn(v) {
+  const m = screenFlashMode();
+  if (!cam.screenFlash || m === "off" || (m === "auto" && sceneLight(v) > 70)) return null;
+  const el = document.createElement("div"); el.className = "screen-flash"; document.body.append(el);
+  await sleep(550);
+  return el;
+}
 $("flashBtn").addEventListener("click", async () => {
+  if (cam.screenFlash) {
+    const next = { auto: "on", on: "off", off: "auto" }[screenFlashMode()];
+    store.set("glowScreenFlash", next); Platform.haptic(); renderFlashBtn(); say(`Screen flash: ${SCREEN_FLASH[next][0]}`);
+    track("setting", { screen_flash: next }); return;
+  }
   cam.torch = !cam.torch;
   try { await Platform.camera.setTorch(cam.stream, cam.torch); } catch { cam.torch = false; say("Flash isn't available right now.", true); }
   $("flashBtn").setAttribute("aria-pressed", String(cam.torch)); setIcon($("flashBtn"), cam.torch ? "flash" : "flashoff");
@@ -2919,10 +2950,12 @@ $("flashBtn").addEventListener("click", async () => {
 // as the original; the look is baked into a second copy at the same size.
 const canvasBlob = (c, type = "image/jpeg", q = 0.95) => new Promise((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error("Couldn't take the photo."))), type, q));
 $("shutter").addEventListener("click", async () => {
-  const v = $("camVideo"); if (!v.videoWidth || cam.state !== "live" || cam.shot) return;
+  const v = $("camVideo"); if (!v.videoWidth || cam.state !== "live" || cam.shot || cam.shooting) return;
   track("capture", { look: lookId });
   Platform.haptic("heavy");
-  const flash = document.createElement("div"); flash.className = "cam-flash"; document.body.append(flash); setTimeout(() => flash.remove(), 400);
+  cam.shooting = true;
+  const lit = await screenFlashOn(v).catch(() => null);
+  if (!lit) { const flash = document.createElement("div"); flash.className = "cam-flash"; document.body.append(flash); setTimeout(() => flash.remove(), 400); }
   let shot;
   try {
     const o = newCanvas(v.videoWidth, v.videoHeight), octx = o.getContext("2d");
@@ -2942,7 +2975,7 @@ $("shutter").addEventListener("click", async () => {
       look: looked ? lookName() : null, stamp, saved: false, originalSaved: false, saving: null };
   } catch {
     say("Couldn't take the photo. Try again.", true); return;
-  }
+  } finally { if (lit) lit.remove(); cam.shooting = false; }
   cam.shot = shot;
   stopCamera(); renderReview();
   makeThumb(shot.processed || shot.raw).then((t) => { cam.thumb = t; renderReview(); }).catch(() => {});

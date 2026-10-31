@@ -133,6 +133,18 @@ test('camera: AI switch enhances right after the shutter and auto-save keeps the
   eq(state.downloads.length, 2, 'the plain photo was saved instead');
 }, { start: 'camera', init: () => { localStorage.setItem('glowAutoSave', 'on'); } });
 
+test('camera: selfie screen flash defaults to Auto, cycles On/Off, and lights the screen for the shot', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  eq(await p.evaluate(() => [cam.facing, cam.screenFlash, $('flashBtn').hidden, screenFlashMode()]), ['user', true, false, 'auto'], 'selfie camera shows the screen flash on Auto');
+  await p.click('#flashBtn'); eq(await p.evaluate(() => screenFlashMode()), 'on', 'On');
+  await p.evaluate(() => { window.__lit = 0; new MutationObserver(() => { if (document.querySelector('.screen-flash')) window.__lit++; }).observe(document.body, { childList: true }); });
+  await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot);
+  eq(await p.evaluate(() => [window.__lit > 0, !!document.querySelector('.screen-flash')]), [true, false], 'screen lit for the shot, then cleared');
+  await p.click('#retakeBtn'); await camLive(p);
+  await p.click('#flashBtn'); eq(await p.evaluate(() => screenFlashMode()), 'off', 'Off');
+  await p.click('#flashBtn'); eq(await p.evaluate(() => screenFlashMode()), 'auto', 'back to Auto');
+}, { start: 'camera' });
+
 test('camera: streams stop on leaving, backgrounding and flipping, with no duplicates', async ({ p }) => {
   await p.goto('https://app.test/'); await camLive(p);
   eq(await p.evaluate(() => __liveTracks()), 1, 'one live track');

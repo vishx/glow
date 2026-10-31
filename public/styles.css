@@ -902,3 +902,14 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
 #cameraScreen .adjust-panel .slider output { color: #fff; }
 #cameraScreen .swatches { padding: 0 0 2px calc(4.5rem + var(--s2)); }
 #cameraScreen #adjFilter .looks { padding-top: 0 !important; }
+
+/* Setting name on one line: the chip already names it, so the slider row is just the slider. */
+#cameraScreen .adjust-panel .slider { grid-template-columns: 1fr 2rem; font-size: 0; }
+#cameraScreen .adjust-panel .slider output { font-size: 0.875rem; }
+#cameraScreen .swatches { padding-left: 0; }
+#cameraScreen .adj-chips button { white-space: nowrap; }
+
+/* Selfie screen flash: a soft warm white over everything, at full strength, for the shot. */
+.screen-flash { position: fixed; inset: 0; z-index: 95; background: #fff8ef; pointer-events: none; }
+#flashBtn.sflash { position: relative; }
+#flashBtn .fa { position: absolute; right: 6px; bottom: 6px; font-size: 0.625rem; font-weight: 800; line-height: 1; }
