@@ -140,10 +140,10 @@ async function runEnhance() {
 // Starts the AI request once, then follows it. A dropped connection never sends it again: it
 // remembers the request and "Check again" only asks for its status, which is free.
 // `h` holds the request (h.pending); the single flow passes `enh`, batch Enhance one per photo.
-async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from = "enhance", maxSide = aiMaxSide(ENH_MODE)) {
+async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from = "enhance", maxSide = aiMaxSide(ENH_MODE), maxPixels = aiMaxPixels(ENH_MODE)) {
   if (h.pending && h.pending.done) return h.pending.done;
   if (!h.pending) {
-    const image = await uploadable(src, maxSide), requestId = rid();
+    const image = await uploadable(src, maxSide, maxPixels), requestId = rid();
     h.pending = { requestId, id: null };
     try {
       track("ai_start", { mode: ENH_MODE, from });
@@ -154,7 +154,7 @@ async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from =
       // The server answered, so nothing started; it returns any credit it took.
       if (err.status) { h.pending = null; track("ai_fail", { mode: ENH_MODE, from, status: err.status, limit: !!err.limit }); throw err; }
       // The AI ran out of memory on a big photo and the credit came back: try once more, smaller.
-      if (err.oom && maxSide > 1024) { onLabel("Trying again…"); return enhanceRequest(h, src, onLabel, from, 1024); }
+      if (err.oom && maxPixels > AI_RETRY.pixels) { onLabel("Trying again…"); return enhanceRequest(h, src, onLabel, from, AI_RETRY.side, AI_RETRY.pixels); }
       // The AI answered "failed": that's the real reason, not a lost connection.
       if (err.failed || err.lost) throw err;
       throw lostConnection();

@@ -84,11 +84,15 @@ async function expandInputs(src) {
 }
 
 // Replicate URLs can be passed straight through; big client-made images get shrunk first.
-// Enhance (Real-ESRGAN with face repair) works at 4x inside its GPU before resizing, so a
-// 1600px photo can run it out of memory (2026-10-31: "CUDA out of memory" on a 1200x1600
-// shot). It gets 1280px, which still comes back 2560px; a retry after a memory error uses 1024.
+// Enhance (Real-ESRGAN with face repair) works at 4x inside its GPU before resizing, so memory
+// follows the pixel count: a ~1.2 MP photo ran it out of memory on 2026-10-31. Enhance gets at
+// most 1280px on the long side and 0.9 MP (a 4:3 phone photo becomes 1095x821, a 3:4 one
+// 821x1095; the result comes back twice that), and a retry after a memory error 1024px / 0.6 MP.
 const AI_MAX_SIDE = { enhance: 1280, upscale: 1024 };
+const AI_MAX_PIXELS = { enhance: 900_000, upscale: 600_000 };
+const AI_RETRY = { side: 1024, pixels: 600_000 };
 const aiMaxSide = (mode) => AI_MAX_SIDE[mode] || 1600;
+const aiMaxPixels = (mode) => AI_MAX_PIXELS[mode] || Infinity;
 // A model's own error (a Python traceback, "CUDA out of memory") means nothing to her; say it plainly.
 const isOutOfMemory = (e) => /out of memory|CUDA|OOM/i.test(String(e || ""));
 function aiErrorText(e, fallback = "The AI couldn't finish this photo. Please try again.") {
@@ -96,11 +100,13 @@ function aiErrorText(e, fallback = "The AI couldn't finish this photo. Please tr
   if (!t || isOutOfMemory(t) || t.length > 140 || /Traceback|Error:|\.py\b|GiB|torch/i.test(t)) return fallback;
   return t;
 }
-async function uploadable(src, maxSide = 1600) {
+async function uploadable(src, maxSide = 1600, maxPixels = Infinity) {
   if (!src.startsWith("data:")) return src;
   const img = await loadImg(src);
-  if (Math.max(img.naturalWidth, img.naturalHeight) <= maxSide && src.length < 1_500_000) return src;
-  const c = canvasFor(img, maxSide);
+  const w = img.naturalWidth, h = img.naturalHeight;
+  if (Math.max(w, h) <= maxSide && w * h <= maxPixels && src.length < 1_500_000) return src;
+  const k = Math.min(1, maxSide / Math.max(w, h), Math.sqrt(maxPixels / (w * h)));
+  const c = document.createElement("canvas"); c.width = Math.max(1, Math.floor(w * k)); c.height = Math.max(1, Math.floor(h * k));
   c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
   return c.toDataURL("image/jpeg", 0.9);
 }

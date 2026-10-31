@@ -593,14 +593,17 @@ test('enhance: pick, one AI request, before/after, toggles on the phone, save, s
 // 2026-10-31: a 1200x1600 photo ran Real-ESRGAN out of GPU memory; the credit came back but the
 // error toast sat behind the sheet and said "lost the connection", so nothing seemed to happen.
 const OOM = 'CUDA out of memory. Tried to allocate 3.66 GiB. GPU 0 has a total capacity of 14.56 GiB of which 3.28 GiB is free.';
-const upSide = (p, d) => p.evaluate(async (d) => { const i = await loadImg(d); return Math.max(i.naturalWidth, i.naturalHeight); }, d);
-test('enhance: uploads at most 1280px, and a GPU out-of-memory failure retries once at 1024px and shows the result', async ({ p, state }) => {
+const upSize = (p, d) => p.evaluate(async (d) => { const i = await loadImg(d); return [i.naturalWidth, i.naturalHeight]; }, d);
+test('enhance: a 12 MP photo uploads at 0.9 MP at most, and a GPU out-of-memory failure retries once at 0.6 MP and shows the result', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(path.join(fixtures, 'phone-12mp-exif6.jpg'));
   await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
   await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
   eq(state.posts, ['enhance', 'enhance'], 'one retry after the memory error');
-  eq([await upSide(p, state.sizes[0]), await upSide(p, state.sizes[1])], [1280, 1024], 'upload sizes');
+  const [a, b] = [await upSize(p, state.sizes[0]), await upSize(p, state.sizes[1])];
+  assert(a[0] * a[1] <= 900_000 && a[0] * a[1] > 850_000 && Math.max(...a) <= 1280, 'first upload about 0.9 MP: ' + a);
+  assert(b[0] * b[1] <= 600_000 && b[0] * b[1] > 560_000, 'retry about 0.6 MP: ' + b);
+  eq(Math.abs(Math.max(...a) / Math.min(...a) - 4 / 3) < 0.01, true, 'shape kept: ' + a);
   eq([state.refunds, state.used], [1, 1], 'the failed try was refunded; one credit used in all');
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false, ai: { server: 'patched', failFirst: OOM, failCount: 1 } });
@@ -618,7 +621,7 @@ test('enhance: when the AI fails, the sheet says so plainly (no model jargon, no
   // Any other toast raised while a sheet is open (say()) now draws above the sheet.
   const above = await p.evaluate(() => { say('hello'); return $('toast').matches(':popover-open'); });
   eq(above, true, 'toasts join the top layer above an open sheet');
-  eq([state.posts.length, state.refunds, state.used], [2, 2, 0], 'retried once at 1024px, both refunded');
+  eq([state.posts.length, state.refunds, state.used], [2, 2, 0], 'retried once smaller, both refunded');
 }, { start: 'enhance', camera: false, ai: { server: 'patched', failFirst: OOM, failCount: 2 } });
 
 test('enhance: the sample is free and never calls the AI', async ({ p, state }) => {

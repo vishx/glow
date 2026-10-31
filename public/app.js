@@ -1950,7 +1950,7 @@ async function startAiEdit(t) {
       keep = { mask };
     } else if (t.id === "expand") {
       const x = await expandInputs(base); body = { image: x.image, mode: "expand", mask: x.mask };
-    } else body = { image: await uploadable(base, aiMaxSide(t.id)), mode: t.id, extra: t.id === "outfit" ? outfitData : undefined };
+    } else body = { image: await uploadable(base, aiMaxSide(t.id), aiMaxPixels(t.id)), mode: t.id, extra: t.id === "outfit" ? outfitData : undefined };
   } catch (err) { setBusy(false); say(err.message, true); return; }
   job = { requestId: rid(), id: null, tool: t.id, title: t.title, session: ed.session, baseIdx: ed.idx, status: "starting", startedAt: Date.now(), before, ...keep };
   saveJob();
