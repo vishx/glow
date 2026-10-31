@@ -263,7 +263,7 @@ test('ai: dropped connection on start → Check status finds and finishes the jo
   await p.waitForFunction(() => job && job.status === 'unknown');
   await p.click('#jobActions button:has-text("Check status")');
   await aiApply(p, 15000);
-  eq(state.posts.length, 1, 'one paid request'); eq(state.used, 1, 'one credit');
+  eq(state.posts.length, 1, 'one paid request'); eq(state.used, 2, 'charged once (Pro edit is 2 credits)');
 });
 
 test('ai: never-started edit is reported as free only when the server says so (patched server)', async ({ p, state }) => {
