@@ -1549,6 +1549,7 @@ function panelState(t) {
     apply.textContent = "Apply"; apply.disabled = false;
     note = job.unblended ? "This device couldn't blend the result into your full-size photo, so the whole picture is at the size the AI returned. Discard to keep your photo as it was."
       : MASK_TOOLS.includes(t.id) ? "Only the marked area changed. It is blended into your full-size photo; the marked area itself is at the AI's size and may look softer up close."
+      : t.id === "outfit" ? "Tap Compare to see the original. Apply keeps it; Discard closes it, and it stays in Your looks."
       : "Tap Compare to see the original. Apply keeps it; Discard drops it, and the credit isn't returned.";
   } else if (!aiLive(t.id)) {
     chip.textContent = "Not available yet"; chip.className = "chip";
