@@ -1,5 +1,6 @@
 // RevenueCat calls this whenever a subscription starts, renews, or ends, and we
-// mirror it onto the user's profile. The app logs users into RevenueCat with
+// mirror it onto the user's profile. It also adds the credits of a one-time credit pack
+// (migration 012) and takes them back if the pack is refunded. The app logs users into RevenueCat with
 // their Supabase user id, so app_user_id is the Supabase user id.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -11,6 +12,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // has access until then; a refund arrives as a cancellation that ends now.
 const ACTIVE = new Set(["INITIAL_PURCHASE", "RENEWAL", "UNCANCELLATION", "PRODUCT_CHANGE", "CANCELLATION",
   "BILLING_ISSUE", "SUBSCRIPTION_EXTENDED", "TEMPORARY_ENTITLEMENT_GRANT"]);
+// One-time credit packs (consumables): store product id -> AI credits. The server decides the
+// credits from the product, never from the app. Same ids in App Store Connect and Play Console.
+const PACKS: Record<string, number> = { glow_credits_10: 10, glow_credits_30: 30, glow_credits_80: 80 };
+const packCredits = (productId?: string) => PACKS[String(productId ?? "").split(":")[0]] ?? 0;
 const uuids = (list: unknown) => (Array.isArray(list) ? list : []).filter((id) => UUID.test(String(id ?? "")));
 
 function same(a: string, b: string) {
@@ -20,28 +25,78 @@ function same(a: string, b: string) {
   return d === 0;
 }
 
-async function setPlan(ids: string[], plan: "pro" | "free", expires: string | null) {
+// Which plan was bought: the yearly plan has an extra monthly credit cap (migration 007).
+const periodOf = (productId?: string) => (/year|annual/i.test(productId ?? "") ? "yearly" : productId ? "weekly" : null);
+async function setPlan(ids: string[], plan: "pro" | "free", expires: string | null, period: string | null = null) {
   for (const id of ids) {
-    const { error } = await admin.from("profiles").upsert({ id, plan, plan_expires_at: plan === "pro" ? expires : null });
+    const row: Record<string, unknown> = { id, plan, plan_expires_at: plan === "pro" ? expires : null };
+    if (period) row.plan_period = period;
+    const { error } = await admin.from("profiles").upsert(row);
     // A user deleted since purchase has no auth row to reference; skip it.
     if (error && !/foreign key/i.test(error.message)) throw error;
   }
+}
+
+// Keep every event for the admin page (revenue, trials, cancellations, refunds, billing issues).
+// A resent event has the same id and is stored once. Failing to log never fails the webhook.
+const num = (v: unknown) => (typeof v === "number" && isFinite(v) ? Math.round(v * 100) / 100 : null);
+async function logEvent(event: Record<string, any>) {
+  const user = [event.app_user_id, ...(event.transferred_to ?? [])].find((id) => UUID.test(String(id ?? ""))) ?? null;
+  const at = Number(event.event_timestamp_ms);
+  const { error } = await admin.from("subscription_events").upsert({
+    event_id: String(event.id ?? crypto.randomUUID()), user_id: user, type: String(event.type ?? "UNKNOWN"),
+    product_id: event.product_id ?? null, period_type: event.period_type ?? null,
+    store: event.store ?? null, environment: event.environment ?? null,
+    price_usd: num(event.price), currency: event.currency ?? null, price_local: num(event.price_in_purchased_currency),
+    cancel_reason: event.cancel_reason ?? event.expiration_reason ?? null,
+    expires_at: event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null,
+    created_at: at > 0 ? new Date(at).toISOString() : new Date().toISOString(),
+  }, { onConflict: "event_id", ignoreDuplicates: true });
+  if (error) console.error("revenuecat log", error.message);
+}
+
+async function creditPack(event: Record<string, any>) {
+  await logEvent(event);
+  const txn = String(event.transaction_id ?? event.original_transaction_id ?? event.id ?? "");
+  if (!txn) return new Response("ignored", { status: 200 });
+  if (event.type === "NON_RENEWING_PURCHASE") {
+    const user = uuids([event.app_user_id, ...(event.aliases ?? [])])[0];
+    if (!user) return new Response("ignored", { status: 200 });
+    const { data, error } = await admin.rpc("grant_credit_pack", {
+      p_user: user, p_txn: txn, p_product: event.product_id, p_credits: packCredits(event.product_id),
+      p_price: num(event.price), p_store: event.store ?? null, p_env: event.environment ?? null,
+    });
+    // A user deleted since buying has no auth row to reference; nothing to give.
+    if (error && !/foreign key/i.test(error.message)) throw error;
+    console.log("revenuecat credit pack", user, event.product_id, txn, data ?? 0);
+  } else if (event.type === "CANCELLATION") {
+    // For a one-time purchase, a cancellation is a refund.
+    const { data, error } = await admin.rpc("refund_credit_pack", { p_txn: txn });
+    if (error) throw error;
+    console.log("revenuecat credit pack refunded", event.product_id, txn, data ?? 0);
+  }
+  return new Response("ok", { status: 200 });
 }
 
 Deno.serve(async (req) => {
   if (!SECRET || !same(req.headers.get("Authorization") ?? "", `Bearer ${SECRET}`)) return new Response("unauthorized", { status: 401 });
   const { event } = await req.json().catch(() => ({}));
   if (!event) return new Response("bad request", { status: 400 });
-  if (Array.isArray(event.entitlement_ids) && !event.entitlement_ids.includes("pro")) return new Response("ignored", { status: 200 });
+  // Credit packs aren't part of the Pro entitlement, so they're handled before that check.
+  if (packCredits(event.product_id)) {
+    try { return await creditPack(event); } catch (e) { return new Response((e as Error).message, { status: 500 }); }
+  }
+  if (Array.isArray(event.entitlement_ids) && !event.entitlement_ids.some((e: string) => e === "pro" || e === "glow_pro")) return new Response("ignored", { status: 200 });
 
   try {
+    await logEvent(event);
     if (event.type === "TRANSFER") {
       // "Restore purchases" on a new install moves the subscription to the new account.
       const from = uuids(event.transferred_from), to = uuids(event.transferred_to);
-      const { data } = await admin.from("profiles").select("plan, plan_expires_at").in("id", from.length ? from : ["00000000-0000-0000-0000-000000000000"])
+      const { data } = await admin.from("profiles").select("plan, plan_expires_at, plan_period").in("id", from.length ? from : ["00000000-0000-0000-0000-000000000000"])
         .eq("plan", "pro").order("plan_expires_at", { ascending: false }).limit(1);
-      const expires = data?.[0]?.plan_expires_at ?? null;
-      if (expires && new Date(expires) > new Date()) { await setPlan(to, "pro", expires); await setPlan(from, "free", null); }
+      const expires = data?.[0]?.plan_expires_at ?? null, period = data?.[0]?.plan_period ?? null;
+      if (expires && new Date(expires) > new Date()) { await setPlan(to, "pro", expires, period); await setPlan(from, "free", null); }
       console.log("revenuecat TRANSFER", from.join(","), "->", to.join(","), expires);
       return new Response("ok", { status: 200 });
     }
@@ -50,7 +105,7 @@ Deno.serve(async (req) => {
     if (!ids.length) return new Response("ignored", { status: 200 });
     const expires = event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null;
     if (event.type === "EXPIRATION") await setPlan(ids, "free", null);
-    else if (ACTIVE.has(event.type) && expires) await setPlan(ids, "pro", expires);
+    else if (ACTIVE.has(event.type) && expires) await setPlan(ids, "pro", expires, periodOf(event.product_id));
     else return new Response("ignored", { status: 200 });
     console.log("revenuecat", event.type, ids.join(","), expires);
     return new Response("ok", { status: 200 });

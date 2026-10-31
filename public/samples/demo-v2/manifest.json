@@ -1,0 +1,437 @@
+{
+  "version": 2,
+  "note": "Prepared results for Try a sample, made once from this exact original with Glow Studio's own AI pipeline (same models, prompts and settings users get). Each was put in the original's frame with a uniform scale only (never stretched); where the model trimmed the sides, the thin strips named in 'fit' come from the original. Only results whose eyes moved 4 px or less are listed. The app offers an entry only when status is ready, aligned is true and its file loads. Never put credentials or signed URLs here.",
+  "original": {
+    "file": "original.png",
+    "width": 1086,
+    "height": 1448,
+    "label": "AI-generated sample",
+    "sha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+    "source": "AI-generated adult portrait approved by the Glow Studio owner on 2026-10-30 (the approved mockup's portrait) for use as the in-app sample. Not a photo of a real person.",
+    "license": "Owner-supplied for use in Glow Studio. The image generator and its terms were not stated; record them in SOURCE.md before release."
+  },
+  "previews": [
+    {
+      "tool": "pro",
+      "title": "Enhance",
+      "status": "ready",
+      "result": "pro.jpg",
+      "settings": {
+        "mode": "pro",
+        "server": "supabase/functions/enhance/pipeline.ts (MODES.pro)",
+        "input": "tools/demo/all/input.jpg: the original as the app uploads it (JPEG quality 90, 1086 x 1448)"
+      },
+      "provenance": {
+        "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+        "model": "google/nano-banana",
+        "version": null,
+        "predictionId": "knpb3pp29drmr0d1hntay5x26g",
+        "generatedAt": "2026-10-30T15:36:51.879Z",
+        "metrics": {
+          "image_output_count": 1,
+          "predict_time": 9.737981193,
+          "total_time": 9.789362869
+        },
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "run": "tools/demo/all/all-tools.ts, GitHub Actions run 41081284106"
+      },
+      "fit": "scaled x1.2230 to height, placed at x=12, strips 12px and 17px kept from the original",
+      "rawSize": [
+        864,
+        1184
+      ],
+      "faceShiftPx": [
+        0,
+        2
+      ],
+      "width": 1086,
+      "height": 1448,
+      "aligned": true,
+      "sha256": "0c812d5c7308ecede8f1cdb0202bc22c932dbef1c6516b931d0704b6e0b68066",
+      "assetVersion": 2
+    },
+    {
+      "tool": "enhance",
+      "title": "Restore",
+      "status": "ready",
+      "result": "enhance.jpg",
+      "settings": {
+        "mode": "enhance",
+        "server": "supabase/functions/enhance/pipeline.ts (MODES.enhance)",
+        "input": "tools/demo/all/input.jpg: the original as the app uploads it (JPEG quality 90, 1086 x 1448)"
+      },
+      "provenance": {
+        "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+        "model": "nightmareai/real-esrgan",
+        "version": null,
+        "predictionId": "q0ha1p8625rgc0d1hs4b92ymtc",
+        "generatedAt": "2026-10-30T19:27:42Z",
+        "metrics": {
+          "total_time": 16.3
+        },
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "run": "tools/demo/refresh/refresh.py through the live enhance function (v11), GitHub Actions"
+      },
+      "fit": "resized",
+      "rawSize": [
+        2172,
+        2896
+      ],
+      "faceShiftPx": [
+        0,
+        0
+      ],
+      "width": 1086,
+      "height": 1448,
+      "aligned": true,
+      "sha256": "212a6e7874b070fa5454febaf32ecd5608e889ddcff13bff87625cb94791b672",
+      "assetVersion": 2
+    },
+    {
+      "tool": "faces",
+      "title": "Face repair",
+      "status": "ready",
+      "result": "faces.jpg",
+      "settings": {
+        "mode": "faces",
+        "server": "supabase/functions/enhance/pipeline.ts (MODES.faces)",
+        "input": "tools/demo/all/input.jpg: the original as the app uploads it (JPEG quality 90, 1086 x 1448)"
+      },
+      "provenance": {
+        "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+        "model": "tencentarc/gfpgan",
+        "version": "0fbacf7afc6c144e5be9767cff80f25aff23e52b0708f17e20f9879b2f21516c",
+        "predictionId": "d80bt0yyxdrmy0d1hnqrp89y0g",
+        "generatedAt": "2026-10-30T15:31:26.013Z",
+        "metrics": {
+          "predict_time": 3.905079678,
+          "total_time": 3.9401374479999998
+        },
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "run": "tools/demo/all/all-tools.ts, GitHub Actions run 41081284106"
+      },
+      "fit": "resized",
+      "rawSize": [
+        2172,
+        2896
+      ],
+      "faceShiftPx": [
+        0,
+        0
+      ],
+      "width": 1086,
+      "height": 1448,
+      "aligned": true,
+      "sha256": "31bcb01efc9296370921006f76df1dcd69a644e0f0df3be00d9ba0f6d2cf0c6b",
+      "assetVersion": 2
+    },
+    {
+      "tool": "retouch",
+      "title": "AI retouch",
+      "status": "ready",
+      "result": "retouch.jpg",
+      "settings": {
+        "mode": "retouch",
+        "server": "supabase/functions/enhance/pipeline.ts (MODES.retouch)",
+        "input": "tools/demo/all/input.jpg: the original as the app uploads it (JPEG quality 90, 1086 x 1448)"
+      },
+      "provenance": {
+        "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+        "model": "tencentarc/gfpgan",
+        "version": null,
+        "predictionId": "cc5kvxqk0srmt0d1hsbs0x30v4",
+        "generatedAt": "2026-10-30T19:44:58Z",
+        "metrics": {
+          "total_time": 10.5
+        },
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "run": "tools/demo/refresh/refresh.py through the live enhance function (v11), GitHub Actions"
+      },
+      "fit": "resized",
+      "rawSize": [
+        2172,
+        2896
+      ],
+      "faceShiftPx": [
+        0,
+        0
+      ],
+      "width": 1086,
+      "height": 1448,
+      "aligned": true,
+      "sha256": "3ff5198cee2de7fd3e1f07520e4c44c6637bca4157797699406f252ec372a896",
+      "assetVersion": 2
+    },
+    {
+      "tool": "golden",
+      "title": "Golden hour",
+      "status": "ready",
+      "result": "golden.jpg",
+      "settings": {
+        "mode": "golden",
+        "server": "supabase/functions/enhance/pipeline.ts (MODES.golden)",
+        "input": "tools/demo/all/input.jpg: the original as the app uploads it (JPEG quality 90, 1086 x 1448)"
+      },
+      "provenance": {
+        "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+        "model": "google/nano-banana",
+        "version": null,
+        "predictionId": "mq7ta1587srmy0d1hntvrf8wk0",
+        "generatedAt": "2026-10-30T15:37:49.803Z",
+        "metrics": {
+          "image_output_count": 1,
+          "predict_time": 8.420371307,
+          "total_time": 8.44876613
+        },
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "run": "tools/demo/all/all-tools.ts, GitHub Actions run 41081284106"
+      },
+      "fit": "scaled x1.2230 to height, placed at x=16, strips 16px and 13px kept from the original",
+      "rawSize": [
+        864,
+        1184
+      ],
+      "faceShiftPx": [
+        -4,
+        2
+      ],
+      "width": 1086,
+      "height": 1448,
+      "aligned": true,
+      "sha256": "6a931b631554f99bd119dac38b9df14c955925aa5c470d989afbc6a7eb6c7d9a",
+      "assetVersion": 2
+    },
+    {
+      "tool": "colorize",
+      "title": "Colorize",
+      "status": "ready",
+      "result": "colorize.jpg",
+      "settings": {
+        "mode": "colorize",
+        "server": "supabase/functions/enhance/pipeline.ts (MODES.colorize)",
+        "input": "tools/demo/all/input.jpg: the original as the app uploads it (JPEG quality 90, 1086 x 1448)"
+      },
+      "provenance": {
+        "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+        "model": "piddnad/ddcolor",
+        "version": "ca494ba129e44e45f661d6ece83c4c98a9a7c774309beca01429b58fce8aa695",
+        "predictionId": "vtyck11masrmw0d1hnr8khwtag",
+        "generatedAt": "2026-10-30T15:31:44.193Z",
+        "metrics": {
+          "predict_time": 0.46187001,
+          "total_time": 0.495600716
+        },
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "run": "tools/demo/all/all-tools.ts, GitHub Actions run 41081284106"
+      },
+      "fit": "resized",
+      "rawSize": [
+        1086,
+        1448
+      ],
+      "faceShiftPx": [
+        0,
+        0
+      ],
+      "width": 1086,
+      "height": 1448,
+      "aligned": true,
+      "sha256": "69c7643796ad6a958a2dd45219c911a28957ce6bab0bea5351f6f94677f4064f",
+      "assetVersion": 2
+    },
+    {
+      "tool": "hair_pixie",
+      "title": "Pixie cut",
+      "status": "ready",
+      "result": "hair_pixie.jpg",
+      "settings": {
+        "mode": "hair_pixie",
+        "server": "supabase/functions/enhance/pipeline.ts (MODES.hair_pixie)",
+        "input": "tools/demo/all/input.jpg: the original as the app uploads it (JPEG quality 90, 1086 x 1448)"
+      },
+      "provenance": {
+        "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+        "model": "google/nano-banana",
+        "version": null,
+        "predictionId": "1jg0gwe4sxrmw0d1hnv95qhtnc",
+        "generatedAt": "2026-10-30T15:39:02.443Z",
+        "metrics": {
+          "image_output_count": 1,
+          "predict_time": 8.587856021,
+          "total_time": 8.631561372
+        },
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "run": "tools/demo/all/all-tools.ts, GitHub Actions run 41081284106"
+      },
+      "fit": "scaled x1.2230 to height, placed at x=16, strips 16px and 13px kept from the original",
+      "rawSize": [
+        864,
+        1184
+      ],
+      "faceShiftPx": [
+        -3,
+        2
+      ],
+      "width": 1086,
+      "height": 1448,
+      "aligned": true,
+      "sha256": "0cac229e389351106bc6fd64bf5545aaa62cad99a536b0c527b0dbc7d84b7157",
+      "assetVersion": 2
+    },
+    {
+      "tool": "suit",
+      "title": "Business suit",
+      "status": "ready",
+      "result": "suit.jpg",
+      "settings": {
+        "mode": "suit",
+        "server": "supabase/functions/enhance/pipeline.ts (MODES.suit)",
+        "input": "tools/demo/all/input.jpg: the original as the app uploads it (JPEG quality 90, 1086 x 1448)"
+      },
+      "provenance": {
+        "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+        "model": "google/nano-banana",
+        "version": null,
+        "predictionId": "a2cd2xv0e5rmw0d1hnwr8zawyc",
+        "generatedAt": "2026-10-30T15:41:53.434Z",
+        "metrics": {
+          "image_output_count": 1,
+          "predict_time": 8.68697611,
+          "total_time": 8.719527731
+        },
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "run": "tools/demo/all/all-tools.ts, GitHub Actions run 41081284106"
+      },
+      "fit": "scaled x1.2230 to height, placed at x=16, strips 16px and 13px kept from the original",
+      "rawSize": [
+        864,
+        1184
+      ],
+      "faceShiftPx": [
+        -2,
+        0
+      ],
+      "width": 1086,
+      "height": 1448,
+      "aligned": true,
+      "sha256": "8dc5775f1914e4649b080124f3667411ea698f7c37f523c9988ae1f915ec6fe4",
+      "assetVersion": 2
+    },
+    {
+      "tool": "sundress",
+      "title": "Summer dress",
+      "status": "ready",
+      "result": "sundress.jpg",
+      "settings": {
+        "mode": "sundress",
+        "server": "supabase/functions/enhance/pipeline.ts (MODES.sundress)",
+        "input": "tools/demo/all/input.jpg: the original as the app uploads it (JPEG quality 90, 1086 x 1448)"
+      },
+      "provenance": {
+        "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+        "model": "google/nano-banana",
+        "version": null,
+        "predictionId": "tmpnnne13nrmr0d1hnwtzx3wpr",
+        "generatedAt": "2026-10-30T15:42:17.720Z",
+        "metrics": {
+          "image_output_count": 1,
+          "predict_time": 8.197570373,
+          "total_time": 8.235689987
+        },
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "run": "tools/demo/all/all-tools.ts, GitHub Actions run 41081284106"
+      },
+      "fit": "scaled x1.2230 to height, placed at x=16, strips 16px and 13px kept from the original",
+      "rawSize": [
+        864,
+        1184
+      ],
+      "faceShiftPx": [
+        -2,
+        0
+      ],
+      "width": 1086,
+      "height": 1448,
+      "aligned": true,
+      "sha256": "b230fdd2686ccd5bed1e6c9fe88b99948fc2d360c31bb209faf830a64eb88e35",
+      "assetVersion": 2
+    },
+    {
+      "tool": "toon3d",
+      "title": "3D Toon",
+      "status": "ready",
+      "result": "toon3d.jpg",
+      "settings": {
+        "mode": "toon3d",
+        "server": "supabase/functions/enhance/pipeline.ts (MODES.toon3d)",
+        "input": "tools/demo/all/input.jpg: the original as the app uploads it (JPEG quality 90, 1086 x 1448)"
+      },
+      "provenance": {
+        "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+        "model": "fofr/face-to-many",
+        "version": "a07f252abbbd832009640b27f063ea52d87d7a23a185ca165bec23b5adc8deaf",
+        "predictionId": "trqt8ka5thrmr0d1hnssgx6fqr",
+        "generatedAt": "2026-10-30T15:35:14.097Z",
+        "metrics": {
+          "predict_time": 6.536812591,
+          "total_time": 8.879183927
+        },
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "run": "tools/demo/all/all-tools.ts, GitHub Actions run 41081284106"
+      },
+      "fit": "resized",
+      "rawSize": [
+        768,
+        1024
+      ],
+      "faceShiftPx": [
+        0,
+        2
+      ],
+      "width": 1086,
+      "height": 1448,
+      "aligned": true,
+      "sha256": "1bea9bf620901773f3e29f60cb816ee90c1e4df52774818270b0b756a0a7832e",
+      "assetVersion": 2
+    },
+    {
+      "tool": "clay",
+      "title": "Clay",
+      "status": "ready",
+      "result": "clay.jpg",
+      "settings": {
+        "mode": "clay",
+        "server": "supabase/functions/enhance/pipeline.ts (MODES.clay)",
+        "input": "tools/demo/all/input.jpg: the original as the app uploads it (JPEG quality 90, 1086 x 1448)"
+      },
+      "provenance": {
+        "originalSha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+        "model": "fofr/face-to-many",
+        "version": "a07f252abbbd832009640b27f063ea52d87d7a23a185ca165bec23b5adc8deaf",
+        "predictionId": "3zkdvvkee9rmr0d1hnstdperh8",
+        "generatedAt": "2026-10-30T15:35:30.055Z",
+        "metrics": {
+          "predict_time": 6.823011845,
+          "total_time": 14.770366756
+        },
+        "pipeline": "supabase/functions/enhance/pipeline.ts",
+        "run": "tools/demo/all/all-tools.ts, GitHub Actions run 41081284106"
+      },
+      "fit": "resized",
+      "rawSize": [
+        768,
+        1024
+      ],
+      "faceShiftPx": [
+        0,
+        0
+      ],
+      "width": 1086,
+      "height": 1448,
+      "aligned": true,
+      "sha256": "e26d6cc0c6d01ec2230318b90421a69a1f98cf84abadfbdbf46c24edfad32ced",
+      "assetVersion": 2
+    }
+  ],
+  "assetVersion": 2
+}

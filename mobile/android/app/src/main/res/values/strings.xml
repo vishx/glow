@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Glow</string>
-    <string name="title_activity_main">Glow</string>
+    <string name="app_name">Glow Studio</string>
+    <string name="title_activity_main">Glow Studio</string>
     <string name="package_name">com.vishx.glow</string>
     <string name="custom_url_scheme">com.vishx.glow</string>
     <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>

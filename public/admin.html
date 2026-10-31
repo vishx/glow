@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Glow Studio admin</title>
+<link rel="icon" href="/icon-192.png">
+<style>
+  :root { --bg: #fbf7f5; --card: #fffdfc; --text: #1d181b; --muted: #75686e; --line: #eadfdb; --rose: #b04468; --blush: #f6d9df;
+    --good: #2f7a52; --warn: #a8611a; --bad: #b3261e; --ink: #1d181b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 Figtree, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
+  header h1 { font: 600 22px/1 Fraunces, Georgia, serif; margin: 0; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button { border: 0; background: none; padding: 8px 12px; border-radius: 999px; cursor: pointer; font: inherit; color: var(--muted); font-weight: 600; }
+  nav button[aria-current="page"] { background: var(--blush); color: var(--rose); }
+  .spacer { flex: 1; }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .tile b { display: block; font-size: 26px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .tile span { color: var(--muted); font-size: 13px; }
+  .tile.alert { border-color: var(--bad); }
+  .tile.alert b { color: var(--bad); }
+  section.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 20px; overflow-x: auto; }
+  h2 { font-size: 17px; margin: 0 0 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  a { color: var(--rose); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  .muted { color: var(--muted); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--line); }
+  .pill.pro { background: var(--blush); color: var(--rose); }
+  .pill.bad { background: #f9dedc; color: var(--bad); }
+  .pill.good { background: #dcefe3; color: var(--good); }
+  button.btn, a.btn { display: inline-block; border: 0; border-radius: 999px; padding: 8px 14px; background: var(--ink); color: #fff; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; }
+  button.btn.ghost { background: none; color: var(--text); border: 1px solid var(--line); }
+  button.btn.danger { background: var(--bad); }
+  button.link { border: 0; background: none; color: var(--rose); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
+  input, select, textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--text); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  @media (max-width: 800px) { .grid2 { grid-template-columns: minmax(0, 1fr); } main { padding: 12px; } header { padding: 10px 12px; } }
+  td:first-child { white-space: nowrap; }
+  #login { max-width: 420px; margin: 12vh auto; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
+  #login input { width: 100%; margin: 12px 0; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 12px; display: none; z-index: 5; max-width: 90vw; }
+  #toast.bad { background: var(--bad); }
+  .msg { white-space: pre-wrap; word-break: break-word; max-width: 520px; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart text { font-size: 11px; fill: var(--muted); }
+  .legend { display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .links a { margin-right: 14px; color: var(--rose); }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; }
+</style>
+</head>
+<body>
+<div id="login" hidden>
+  <h1 style="font: 600 26px/1.2 Fraunces, Georgia, serif; margin: 0 0 6px">Glow Studio admin</h1>
+  <p class="muted" style="margin:0">Enter the admin key (the ADMIN_KEY secret in Supabase).</p>
+  <form id="loginForm">
+    <input id="keyInput" type="password" autocomplete="current-password" placeholder="Admin key" required>
+    <label class="muted" style="display:block;margin-bottom:12px"><input type="checkbox" id="remember"> Remember on this device</label>
+    <button class="btn" type="submit">Open</button>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <h1>Glow Studio admin</h1>
+    <nav id="tabs">
+      <button data-tab="overview" aria-current="page">Overview</button>
+      <button data-tab="users">Users</button>
+      <button data-tab="subs">Subscriptions</button>
+      <button data-tab="support">Support</button>
+      <button data-tab="errors">App errors</button>
+      <button data-tab="abuse">Blocking</button>
+      <button data-tab="log">Change log</button>
+    </nav>
+    <span class="spacer"></span>
+    <button class="btn ghost" id="refresh">Refresh</button>
+    <button class="btn ghost" id="logout">Sign out</button>
+  </header>
+  <main id="view"></main>
+</div>
+<div id="toast" role="status"></div>
+
+<script>
+const API = "https://vahtdouihsnpnaskrtka.supabase.co/functions/v1/admin";
+const APIKEY = "sb_publishable_UH4edWInYXUknGg_Piqkeg_8fvxPL0b";
+const $ = (id) => document.getElementById(id);
+let key = sessionStorage.getItem("glowAdminKey") || localStorage.getItem("glowAdminKey") || "";
+let tab = location.hash.slice(1) || "overview";
+
+// Builds elements without ever treating data as HTML (support messages come from the public).
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "class") el.className = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid instanceof Node ? kid : String(kid));
+  return el;
+}
+const money = (n) => (Number(n) < 0 ? "−$" : "$") + Math.abs(Number(n || 0)).toFixed(Math.abs(Number(n)) < 10 ? 2 : 0);
+const when = (t) => (t ? new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
+const short = (id) => (id ? String(id).slice(0, 8) : "");
+function toast(msg, bad) {
+  const t = $("toast"); t.textContent = msg; t.className = bad ? "bad" : ""; t.style.display = "block";
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = "none"), 3500);
+}
+
+async function api(action, args = {}) {
+  const res = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json", apikey: APIKEY, "x-admin-key": key },
+    body: JSON.stringify({ action, ...args }) });
+  const data = await res.json().catch(() => ({ error: `Error ${res.status}` }));
+  if (res.status === 401) { signOut(); throw new Error(data.error || "Wrong admin key."); }
+  if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+  return data;
+}
+
+function signOut() { key = ""; sessionStorage.removeItem("glowAdminKey"); localStorage.removeItem("glowAdminKey"); $("app").hidden = true; $("login").hidden = false; }
+$("logout").onclick = signOut;
+$("loginForm").onsubmit = async (e) => {
+  e.preventDefault();
+  key = $("keyInput").value.trim();
+  try {
+    await api("audit");
+    (($("remember").checked) ? localStorage : sessionStorage).setItem("glowAdminKey", key);
+    start();
+  } catch (err) { toast(err.message, true); }
+};
+$("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) show(b.dataset.tab); };
+$("refresh").onclick = () => show(tab);
+
+function start() { $("login").hidden = true; $("app").hidden = false; show(tab); }
+async function show(name) {
+  tab = name; history.replaceState(null, "", "#" + name);
+  for (const b of $("tabs").children) {
+    if (b.dataset.tab === name.split("/")[0]) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  }
+  const view = $("view"); view.replaceChildren(h("p", { class: "muted" }, "Loading…"));
+  try { view.replaceChildren(...[].concat(await VIEWS[name.split("/")[0]](name.split("/")[1]))); }
+  catch (err) { view.replaceChildren(h("section", { class: "card" }, h("h2", {}, "Couldn't load this"), h("p", {}, err.message))); }
+}
+
+function table(cols, rows, empty = "Nothing here yet.") {
+  if (!rows.length) return h("p", { class: "muted" }, empty);
+  return h("table", {}, h("thead", {}, h("tr", {}, cols.map((c) => h("th", { class: c.n ? "n" : null }, c.t)))),
+    h("tbody", {}, rows.map((r) => h("tr", {}, cols.map((c) => h("td", { class: (c.n ? "n " : "") + (c.cls || "") }, c.f(r)))))));
+}
+const userLink = (id) => h("button", { class: "link mono", onclick: () => show("users/" + id), title: id }, short(id));
+const planPill = (plan, period) => h("span", { class: "pill " + (plan === "pro" ? "pro" : "") }, plan === "pro" ? `Pro${period ? " " + period : ""}` : "Free");
+
+// Bars: AI cost per day (rose) and AI runs (grey) on their own scales.
+function chart(daily) {
+  const days = [...daily].reverse(), W = 760, H = 180, pad = 28, bw = (W - pad * 2) / days.length;
+  const maxC = Math.max(0.01, ...days.map((d) => Number(d.ai_cost))), maxR = Math.max(1, ...days.map((d) => d.ai_runs));
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H + 24}`);
+  let s = `<line x1="${pad}" y1="${H}" x2="${W - pad}" y2="${H}" stroke="#eadfdb"/>`;
+  days.forEach((d, i) => {
+    const x = pad + i * bw, hr = (d.ai_runs / maxR) * (H - 20), hc = (Number(d.ai_cost) / maxC) * (H - 20);
+    s += `<rect x="${x + bw * 0.12}" y="${H - hr}" width="${bw * 0.36}" height="${hr}" rx="2" fill="#d8ccc8"><title>${d.day}: ${d.ai_runs} AI runs</title></rect>`;
+    s += `<rect x="${x + bw * 0.52}" y="${H - hc}" width="${bw * 0.36}" height="${hc}" rx="2" fill="#b04468"><title>${d.day}: ${money(d.ai_cost)} est. AI cost</title></rect>`;
+    if (i % Math.ceil(days.length / 10) === 0 || i === days.length - 1) s += `<text x="${x + bw / 2}" y="${H + 16}" text-anchor="middle">${d.day.slice(5)}</text>`;
+  });
+  s += `<text x="${pad}" y="12">max ${maxR} runs · ${money(maxC)}</text>`;
+  svg.innerHTML = s;
+  return h("div", { class: "chart" }, svg, h("div", { class: "legend" }, h("span", {}, h("i", { style: "background:#d8ccc8" }), "AI runs"), h("span", {}, h("i", { style: "background:#b04468" }), "Estimated AI cost")));
+}
+
+// Plain names for the events the app reports (anything not listed shows its raw name).
+const EVENT_NAMES = {
+  app_open: "Opened Glow Studio", tab: "Switched tab", photo_open: "Opened a photo", sample_open: "Tried a sample photo",
+  edit: "Used an editor tool", ai_start: "Started an AI edit", ai_done: "AI edit finished", ai_fail: "AI edit failed",
+  enhance_to_editor: "Enhance → Editor", batch_open: "Picked photos for batch Enhance", batch_locked: "Tapped batch Enhance (free plan)",
+  batch_start: "Started a batch Enhance", batch_done: "Batch Enhance finished", batch_save: "Saved a batch", save: "Saved a photo", share: "Shared a photo", share_card: "Opened share card",
+  capture: "Took a camera photo", look: "Picked a camera look", camera: "Camera state", restore: "Restored last edit",
+  paywall_view: "Saw Glow Studio Pro", purchase_start: "Tapped buy", purchase: "Bought Glow Studio Pro", purchase_fail: "Purchase failed",
+  packs_view: "Saw credit packs", pack_start: "Tapped a credit pack", pack_purchase: "Bought a credit pack", pack_fail: "Credit pack purchase failed",
+  ad_watched: "Watched an ad", setting: "Changed a setting", support_sent: "Sent a support message", error_shown: "Saw an error message",
+};
+const SUB_NAMES = {
+  INITIAL_PURCHASE: "New subscription", RENEWAL: "Renewal", CANCELLATION: "Cancelled (or refunded)", UNCANCELLATION: "Turned renewal back on",
+  EXPIRATION: "Ended", BILLING_ISSUE: "Payment problem", PRODUCT_CHANGE: "Changed plan", TRANSFER: "Moved to another account",
+  SUBSCRIPTION_PAUSED: "Paused", SUBSCRIPTION_EXTENDED: "Extended", TEMPORARY_ENTITLEMENT_GRANT: "Temporary access", TEST: "Test event",
+  NON_RENEWING_PURCHASE: "Credit pack", REFUND_REVERSED: "Refund reversed",
+};
+// glow_pro_yearly → yearly, glow_credits_30 → 30 credits.
+const planName = (id) => (id || "").replace(/^glow_pro_/, "").replace(/^glow_credits_(\d+).*/, "$1 credits");
+const subRow = (r) => [
+  SUB_NAMES[r.type] || r.type,
+  r.period_type === "TRIAL" ? h("span", { class: "pill", style: "margin-left:6px" }, "trial") : "",
+  r.environment === "SANDBOX" ? h("span", { class: "pill", style: "margin-left:6px" }, "test") : "",
+];
+
+const VIEWS = {
+  async overview() {
+    const o = await api("overview", { days: 14 });
+    const today = o.daily[0] || {}, week = o.daily.slice(0, 7);
+    const sum = (k) => week.reduce((n, d) => n + Number(d[k] || 0), 0);
+    const failRate = today.ai_runs ? Math.round((today.ai_failed / today.ai_runs) * 100) : 0;
+    const tile = (v, label, alert) => h("div", { class: "tile" + (alert ? " alert" : "") }, h("b", {}, v), h("span", {}, label));
+    return [
+      h("div", { class: "tiles" },
+        tile(o.plans.accounts, "Accounts"),
+        tile(o.plans.pro_weekly + o.plans.pro_yearly + o.plans.pro_other, `Pro now (${o.plans.pro_weekly} weekly, ${o.plans.pro_yearly} yearly${o.plans.pro_other ? `, ${o.plans.pro_other} free` : ""})`),
+        tile(money(o.revenue.last30), "Revenue, 30 days (from RevenueCat)"),
+        tile(money(o.revenue.monthlyGross), "Est. monthly revenue (list price)"),
+        tile(money(today.ai_cost), "Est. AI cost today"),
+        tile(money(sum("ai_cost")), "Est. AI cost, 7 days"),
+        tile(today.ai_runs ?? 0, `AI runs today (${failRate}% failed)`, failRate >= 20 && today.ai_runs >= 5),
+        tile(o.openSupport, "Open support messages", o.openSupport > 0),
+        tile(o.errors24h, "App errors, 24 hours", o.errors24h >= 25),
+        tile(sum("deletions"), "Accounts deleted, 7 days"),
+      ),
+      h("section", { class: "card" }, h("h2", {}, "Last 14 days"), chart(o.daily)),
+      h("section", { class: "card" }, h("h2", {}, "Day by day"), table([
+          { t: "Day", f: (d) => d.day.slice(5) }, { t: "New", n: 1, f: (d) => d.new_users }, { t: "Active", n: 1, f: (d) => d.active_users },
+          { t: "AI runs", n: 1, f: (d) => d.ai_runs }, { t: "Failed", n: 1, f: (d) => d.ai_failed }, { t: "Credits", n: 1, f: (d) => d.credits },
+          { t: "AI cost", n: 1, f: (d) => money(d.ai_cost) }, { t: "Paywall", n: 1, f: (d) => d.paywall_views }, { t: "Buys", n: 1, f: (d) => d.purchases },
+          { t: "New Pro", n: 1, f: (d) => d.new_subs }, { t: "Revenue", n: 1, f: (d) => money(d.revenue) }, { t: "Deleted", n: 1, f: (d) => d.deletions },
+        ], o.daily)),
+      h("div", { class: "grid2" },
+        h("section", { class: "card" }, h("h2", {}, "Funnel, last 7 days"),
+          h("p", { class: "muted", style: "margin-top:0" }, "People who reached each step, out of everyone who used Glow Studio."),
+          table([
+            { t: "Step", f: (r) => String(r.label).replace(/\bGlow\b(?! Studio)/, "Glow Studio") }, { t: "People", n: 1, f: (r) => r.users },
+            { t: "", n: 1, cls: "muted", f: (r) => (o.funnel[0]?.users ? Math.round((r.users / o.funnel[0].users) * 100) + "%" : "") },
+          ], o.funnel)),
+        h("section", { class: "card" }, h("h2", {}, "AI quality, last 7 days"),
+          h("p", { class: "muted", style: "margin-top:0" }, "Failed runs are refunded automatically. Time is from tap to finished result."),
+          table([
+            { t: "Tool", f: (r) => r.mode }, { t: "Runs", n: 1, f: (r) => r.runs },
+            { t: "Worked", n: 1, f: (r) => (r.succeeded + r.failed ? Math.round((r.succeeded / (r.succeeded + r.failed)) * 100) + "%" : "") },
+            { t: "Failed", n: 1, f: (r) => r.failed }, { t: "Typical time", n: 1, f: (r) => (r.median_secs != null ? r.median_secs + "s" : "") },
+            { t: "Top error", cls: "muted", f: (r) => h("div", { class: "msg" }, r.top_error || "") },
+          ], o.aiQuality)),
+      ),
+      h("section", { class: "card" }, h("h2", {}, "What people use, last 7 days"),
+        h("p", { class: "muted", style: "margin-top:0" }, "Every action the app reports, with the most common detail (tool, look, screen…)."),
+        table([
+          { t: "Action", f: (r) => EVENT_NAMES[r.name] || r.name.replace(/_/g, " ") }, { t: "Times", n: 1, f: (r) => r.events },
+          { t: "People", n: 1, f: (r) => r.users }, { t: "Most common", cls: "muted", f: (r) => r.top_detail || "" },
+        ], o.features)),
+      h("div", { class: "grid2" },
+          h("section", { class: "card" }, h("h2", {}, "AI tools, last 7 days"), table([
+            { t: "Tool", f: (r) => r.mode }, { t: "Runs", n: 1, f: (r) => r.runs }, { t: "Failed", n: 1, f: (r) => r.failed },
+            { t: "Credits", n: 1, f: (r) => r.credits }, { t: "Est. cost", n: 1, f: (r) => money(r.ai_cost) },
+          ], o.tools)),
+          h("section", { class: "card" }, h("h2", {}, "Heaviest AI users, 24 hours"), table([
+            { t: "Account", f: (r) => userLink(r.user_id) }, { t: "Plan", f: (r) => planPill(r.plan) }, { t: "Runs", n: 1, f: (r) => r.runs },
+            { t: "Credits", n: 1, f: (r) => r.credits }, { t: "IP", cls: "mono", f: (r) => r.last_ip || "" }, { t: "", f: (r) => (r.blocked ? h("span", { class: "pill bad" }, "Blocked") : "") },
+          ], o.heavy)),
+      ),
+      h("section", { class: "card" }, h("h2", {}, "Credit packs, last 30 days"),
+        h("p", { class: "muted", style: "margin-top:0" }, "One-time packs bought in the app. Bought credits never expire and are used after a plan's own credits. Amounts are before store fees; test purchases are left out."),
+        table([
+          { t: "Pack", f: (r) => planName(r.product_id) }, { t: "Sold", n: 1, f: (r) => r.sold }, { t: "Buyers", n: 1, f: (r) => r.buyers },
+          { t: "Refunded", n: 1, f: (r) => r.refunded }, { t: "Revenue", n: 1, f: (r) => money(r.revenue) },
+        ], o.creditPacks || [], "No credit packs sold yet.")),
+      h("section", { class: "card links" }, h("h2", {}, "Other consoles"),
+        h("p", { class: "muted", style: "margin-top:0" }, "Payments, money refunds and subscriber history live in the stores and RevenueCat. AI cost figures here are estimates from ai_mode_costs; Replicate's billing page has the real bill."),
+        ...[["RevenueCat", "https://app.revenuecat.com/"], ["Replicate billing", "https://replicate.com/account/billing"], ["Supabase", "https://supabase.com/dashboard/project/vahtdouihsnpnaskrtka"],
+          ["Vercel", "https://vercel.com/dashboard"], ["App Store Connect", "https://appstoreconnect.apple.com/"], ["Google Play Console", "https://play.google.com/console/"], ["AdMob", "https://admob.google.com/"]]
+          .map(([t, u]) => h("a", { href: u, target: "_blank", rel: "noopener" }, t))),
+    ];
+  },
+
+  async users(id) {
+    if (id) return userDetail(id);
+    const out = h("div", {});
+    const q = h("input", { placeholder: "Account ID (or its first characters)", style: "min-width:300px", "aria-label": "Account ID" });
+    const list = h("div", {});
+    const load = async () => {
+      const rows = await api("users", { q: q.value });
+      list.replaceChildren(table([
+        { t: "Account", f: (r) => userLink(r.user_id) }, { t: "Joined", f: (r) => when(r.created_at) }, { t: "Last seen", f: (r) => when(r.last_seen) },
+        { t: "Plan", f: (r) => [planPill(r.plan, r.plan_period), r.blocked ? h("span", { class: "pill bad" }, " Blocked") : ""] },
+        { t: "Extra", n: 1, f: (r) => r.bonus_credits || "" }, { t: "AI 7d", n: 1, f: (r) => r.runs_7d }, { t: "Credits 7d", n: 1, f: (r) => r.credits_7d }, { t: "AI total", n: 1, f: (r) => r.runs_total },
+      ], rows, "No accounts match."));
+    };
+    q.addEventListener("keydown", (e) => { if (e.key === "Enter") load().catch((err) => toast(err.message, true)); });
+    out.append(h("section", { class: "card" }, h("h2", {}, "Find an account"),
+      h("p", { class: "muted", style: "margin-top:0" }, "Customers find their account ID in Glow Studio > Settings > Contact support. Support messages link here directly."),
+      h("div", { class: "row" }, q, h("button", { class: "btn", onclick: () => load().catch((err) => toast(err.message, true)) }, "Search")), list));
+    await load();
+    return out;
+  },
+
+  async support(status = "open") {
+    const rows = await api("support", { status });
+    const pick = h("select", { "aria-label": "Show", onchange: (e) => show("support/" + e.target.value) },
+      ...[["open", "Open"], ["closed", "Closed"], ["all", "All"]].map(([v, t]) => h("option", { value: v, selected: v === status }, t)));
+    return h("section", { class: "card" }, h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Support messages"), h("span", { class: "spacer" }), pick),
+      h("p", { class: "muted", style: "margin-top:0" }, "Reply by email when the customer left one. Close a message once it's handled."),
+      table([
+        { t: "When", f: (r) => when(r.created_at) }, { t: "Topic", f: (r) => r.topic },
+        { t: "Message", f: (r) => h("div", { class: "msg" }, r.message, r.note ? h("div", { class: "muted" }, "Note: " + r.note) : "") },
+        { t: "From", f: (r) => [r.email ? h("a", { href: "mailto:" + r.email + "?subject=" + encodeURIComponent("Your Glow Studio support message") }, r.email) : h("span", { class: "muted" }, "no email"), h("br"), r.user_id ? userLink(r.user_id) : ""] },
+        { t: "App", cls: "muted", f: (r) => Object.entries(r.context || {}).map(([k, v]) => `${k}: ${v}`).join(", ") },
+        { t: "", f: (r) => h("button", { class: "btn ghost", onclick: async () => {
+            const note = r.status === "open" ? prompt("Optional note (what you did):", r.note || "") : null;
+            if (note === null && r.status === "open") return;
+            await api("supportUpdate", { id: r.id, status: r.status === "open" ? "closed" : "open", note: note ?? undefined }).catch((e) => toast(e.message, true));
+            show("support/" + status);
+          } }, r.status === "open" ? "Close" : "Reopen") },
+      ], rows, status === "open" ? "No open messages." : "Nothing here."));
+  },
+
+  async subs(type = "") {
+    const rows = await api("subscriptions", { type });
+    const pick = h("select", { "aria-label": "Show", onchange: (e) => show("subs/" + e.target.value) },
+      h("option", { value: "" }, "All events"),
+      ...Object.entries(SUB_NAMES).map(([v, t]) => h("option", { value: v, selected: v === type }, t)));
+    return h("section", { class: "card" }, h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Subscription events"), h("span", { class: "spacer" }), pick),
+      h("p", { class: "muted", style: "margin-top:0" }, "Everything RevenueCat reports: new subscriptions, renewals, trials, credit packs, cancellations, refunds and payment problems. Amounts are in US dollars before store fees; refunds show as minus. Test purchases are marked and left out of revenue."),
+      table([
+        { t: "When", f: (r) => when(r.created_at) }, { t: "Event", f: subRow },
+        { t: "Plan", f: (r) => planName(r.product_id) }, { t: "Store", f: (r) => (r.store || "").replace(/_/g, " ").toLowerCase() },
+        { t: "Amount", n: 1, f: (r) => (r.price_usd != null ? money(r.price_usd) : "") },
+        { t: "Reason", cls: "muted", f: (r) => (r.cancel_reason || "").replace(/_/g, " ").toLowerCase() },
+        { t: "Account", f: (r) => (r.user_id ? userLink(r.user_id) : "") },
+      ], rows, "No subscription events yet. They appear here as soon as RevenueCat sends them."));
+  },
+
+  async errors() {
+    const rows = await api("errors");
+    const groups = Object.values(rows.reduce((g, r) => {
+      const k = r.message || "(no message)";
+      const x = (g[k] ||= { message: k, count: 0, users: new Set(), last: r.created_at, builds: new Set() });
+      x.count++; if (r.user_id) x.users.add(r.user_id); if (r.build) x.builds.add(r.build);
+      return g;
+    }, {})).sort((a, b) => b.count - a.count);
+    return [h("section", { class: "card" }, h("h2", {}, "Most common errors"),
+      table([
+        { t: "Error", f: (r) => h("div", { class: "msg" }, r.message) }, { t: "Times", n: 1, f: (r) => r.count },
+        { t: "People", n: 1, f: (r) => r.users.size }, { t: "Last seen", f: (r) => when(r.last) }, { t: "Builds", cls: "mono", f: (r) => [...r.builds].join(", ") },
+      ], groups, "No errors reported.")),
+      h("section", { class: "card" }, h("h2", {}, "App errors (newest 100)"),
+      h("p", { class: "muted", style: "margin-top:0" }, "Errors the app caught on people's phones and browsers. No photos or personal details are sent."),
+      table([
+        { t: "When", f: (r) => when(r.created_at) }, { t: "Error", f: (r) => h("div", { class: "msg" }, r.message, r.detail ? h("div", { class: "muted mono" }, r.detail.slice(0, 400)) : "") },
+        { t: "Build", cls: "mono", f: (r) => r.build || "" }, { t: "Platform", f: (r) => r.platform || "" }, { t: "Account", f: (r) => (r.user_id ? userLink(r.user_id) : "") },
+      ], rows, "No errors reported."))];
+  },
+
+  async abuse() {
+    const rows = await api("blockedIps");
+    const ip = h("input", { placeholder: "IP address", "aria-label": "IP address" }), why = h("input", { placeholder: "Reason (optional)", "aria-label": "Reason" });
+    return h("section", { class: "card" }, h("h2", {}, "Blocked internet addresses"),
+      h("p", { class: "muted", style: "margin-top:0" }, "A blocked address can't start AI runs, on any account. Block a single account from its page under Users. Find heavy users on the Overview."),
+      h("div", { class: "row" }, ip, why, h("button", { class: "btn danger", onclick: async () => {
+        try { await api("blockIp", { ip: ip.value, reason: why.value }); toast("Blocked."); show("abuse"); } catch (e) { toast(e.message, true); } } }, "Block")),
+      table([
+        { t: "Address", cls: "mono", f: (r) => r.ip }, { t: "Reason", f: (r) => r.reason || "" }, { t: "Since", f: (r) => when(r.created_at) },
+        { t: "", f: (r) => h("button", { class: "btn ghost", onclick: async () => { await api("blockIp", { ip: r.ip, blocked: false }).catch((e) => toast(e.message, true)); show("abuse"); } }, "Unblock") },
+      ], rows, "No blocked addresses."));
+  },
+
+  async log() {
+    const rows = await api("audit");
+    return h("section", { class: "card" }, h("h2", {}, "Change log"), h("p", { class: "muted", style: "margin-top:0" }, "Every change made from this page."),
+      table([
+        { t: "When", f: (r) => when(r.created_at) }, { t: "Change", f: (r) => r.action.replace(/_/g, " ") },
+        { t: "Target", f: (r) => (/^[0-9a-f-]{36}$/.test(r.target || "") ? userLink(r.target) : r.target || "") },
+        { t: "Details", cls: "muted", f: (r) => Object.entries(r.detail || {}).filter(([, v]) => v !== "" && v != null).map(([k, v]) => `${k}: ${v}`).join(", ") },
+      ], rows, "No changes yet."));
+  },
+};
+
+async function userDetail(id) {
+  const d = await api("user", { user: id });
+  const p = d.profile || {}, a = d.allowance || {};
+  const reason = () => prompt("Reason (kept in the change log):", "") ?? null;
+  const act = async (action, args, done) => {
+    try { const r = await api(action, { user: id, ...args }); toast(done(r)); show("users/" + id); } catch (e) { toast(e.message, true); }
+  };
+  const credits = h("input", { type: "number", value: "5", min: "-500", max: "500", style: "width:90px", "aria-label": "Credits" });
+  const days = h("input", { type: "number", value: "7", min: "1", max: "366", style: "width:90px", "aria-label": "Days of Pro" });
+  return [
+    h("p", {}, h("button", { class: "link", onclick: () => show("users") }, "← All accounts")),
+    h("div", { class: "grid2" },
+      h("section", { class: "card" }, h("h2", {}, "Account"),
+        h("dl", {},
+          h("dt", {}, "ID"), h("dd", { class: "mono" }, d.account.id, " ", h("button", { class: "link", onclick: () => navigator.clipboard.writeText(d.account.id).then(() => toast("Copied.")) }, "copy")),
+          h("dt", {}, "Joined"), h("dd", {}, when(d.account.created_at)),
+          h("dt", {}, "Last seen"), h("dd", {}, when(d.account.last_seen)),
+          h("dt", {}, "Plan"), h("dd", {}, planPill(a.plan, a.period), p.plan_expires_at && a.plan === "pro" ? ` until ${when(p.plan_expires_at)}` : ""),
+          h("dt", {}, "Credits left"), h("dd", {}, `${a.remaining ?? "?"} (${a.pool || ""}${a.bonus ? `, includes ${a.bonus} extra (bought or given)` : ""})`),
+          a.plan !== "pro" ? [h("dt", {}, "Premium trial left"), h("dd", {}, a.trial_left ?? "")] : null,
+          h("dt", {}, "Ads watched"), h("dd", {}, d.ads),
+          h("dt", {}, "Status"), h("dd", {}, p.blocked_at ? h("span", { class: "pill bad" }, `Blocked ${when(p.blocked_at)}${p.blocked_reason ? ": " + p.blocked_reason : ""}`) : h("span", { class: "pill good" }, "OK")),
+        )),
+      h("section", { class: "card" }, h("h2", {}, "Actions"),
+        h("div", { class: "row" }, credits, h("button", { class: "btn", onclick: () => { const r = reason(); if (r !== null) act("grant", { credits: Number(credits.value), reason: r }, (x) => `Bonus credits now ${x.bonus_credits}.`); } }, "Give bonus credits")),
+        h("div", { class: "row" }, days, h("button", { class: "btn", onclick: () => { const r = reason(); if (r !== null) act("setPro", { days: Number(days.value), reason: r }, (x) => `Pro until ${when(x.until)}.`); } }, "Give free Pro (days)"),
+          a.plan === "pro" ? h("button", { class: "btn ghost", onclick: () => { if (confirm("Remove Pro from this account now? A real store subscription will set it back on its next renewal.")) act("setPro", { days: 0, reason: reason() || "" }, () => "Pro removed."); } }, "Remove Pro") : null),
+        h("div", { class: "row" }, p.blocked_at
+          ? h("button", { class: "btn ghost", onclick: () => act("block", { blocked: false }, () => "Unblocked.") }, "Unblock AI tools")
+          : h("button", { class: "btn danger", onclick: () => { const r = reason(); if (r !== null) act("block", { blocked: true, reason: r }, () => "Blocked from AI tools."); } }, "Block AI tools")),
+        h("p", { class: "muted" }, "Money refunds: Apple decides iPhone refunds (customers ask at reportaproblem.apple.com). Google Play purchases can be refunded from the customer's page in RevenueCat."),
+      ),
+    ),
+    h("section", { class: "card" }, h("h2", {}, "AI runs (newest 50)"), table([
+      { t: "When", f: (r) => when(r.created_at) }, { t: "Tool", f: (r) => r.mode }, { t: "Credits", n: 1, f: (r) => r.cost + (r.from_bonus ? " bonus" : "") },
+      { t: "Status", f: (r) => [
+        r.status === "succeeded" ? h("span", { class: "pill good" }, "Worked") : r.status === "failed" || r.status === "canceled" ? h("span", { class: "pill bad" }, "Failed") : "",
+        r.refunded ? h("span", { class: "pill" }, " Refunded") : !r.status ? (r.prediction_id ? "Charged" : h("span", { class: "muted" }, "Not started")) : "",
+        r.status === "succeeded" && r.finished_at ? h("span", { class: "muted" }, ` ${Math.round((new Date(r.finished_at) - new Date(r.created_at)) / 1000)}s`) : "",
+        r.error ? h("div", { class: "muted msg" }, r.error) : "",
+      ] },
+      { t: "IP", cls: "mono", f: (r) => (r.ip ? h("span", {}, r.ip, " ", h("button", { class: "link", onclick: async () => { const why = prompt(`Block ${r.ip} from AI tools on every account? Reason:`, ""); if (why === null) return; await api("blockIp", { ip: r.ip, reason: why }).then(() => toast("Address blocked."), (e) => toast(e.message, true)); } }, "block")) : "") },
+      { t: "", f: (r) => (r.refunded ? "" : h("button", { class: "btn ghost", onclick: () => { const why = reason(); if (why !== null) act("refund", { usage: r.id, reason: why }, () => "Credits returned."); } }, "Refund credits")) },
+    ], d.usage, "No AI runs.")),
+    h("section", { class: "card" }, h("h2", {}, "Subscription history"), table([
+      { t: "When", f: (r) => when(r.created_at) }, { t: "Event", f: subRow },
+      { t: "Plan", f: (r) => planName(r.product_id) }, { t: "Amount", n: 1, f: (r) => (r.price_usd != null ? money(r.price_usd) : "") },
+      { t: "Reason", cls: "muted", f: (r) => (r.cancel_reason || "").replace(/_/g, " ").toLowerCase() },
+    ], d.subscriptions || [], "No purchases.")),
+    h("div", { class: "grid2" },
+      h("section", { class: "card" }, h("h2", {}, "Support messages"), table([
+        { t: "When", f: (r) => when(r.created_at) }, { t: "Topic", f: (r) => r.topic }, { t: "Message", f: (r) => h("div", { class: "msg" }, r.message) }, { t: "Status", f: (r) => r.status },
+      ], d.support, "None.")),
+      h("section", { class: "card" }, h("h2", {}, "Recent app activity"), table([
+        { t: "When", f: (r) => when(r.created_at) }, { t: "Event", f: (r) => EVENT_NAMES[r.name] || r.name }, { t: "Details", cls: "muted", f: (r) => Object.entries(r.props || {}).map(([k, v]) => `${k}: ${v}`).join(", ") },
+      ], [...d.errors.map((e) => ({ created_at: e.created_at, name: "error", props: { message: e.message } })), ...d.events].sort((x, y) => (x.created_at < y.created_at ? 1 : -1)).slice(0, 40), "None.")),
+    ),
+  ];
+}
+
+if (key) start(); else $("login").hidden = false;
+</script>
+</body>
+</html>

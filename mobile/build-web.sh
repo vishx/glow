@@ -6,6 +6,7 @@ cd "$(dirname "$0")"
 rm -rf www && mkdir -p www/vendor/mediapipe/wasm
 cp -R ../public/. www/
 cp node_modules/@mediapipe/tasks-vision/vision_bundle.mjs www/vendor/mediapipe/
+cp node_modules/@mediapipe/tasks-vision/vision_bundle.cjs www/vendor/mediapipe/   # for the live camera's face worker
 cp node_modules/@mediapipe/tasks-vision/wasm/* www/vendor/mediapipe/wasm/
 curl -fsSL -o www/vendor/selfie_segmenter.tflite \
   https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite
