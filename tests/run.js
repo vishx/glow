@@ -525,9 +525,9 @@ test('demo: Try your own photo exits the demo completely, then real AI is charge
   eq(s.amt, faceBefore, 'tool settings restored'); assert(s.costs.includes('AI · 1'), 'real pricing back: ' + s.costs);
   eq(state.posts.length, 0, 'the last demo tool did not run');
   await tool(p, 'foryou', null, 'pro');
-  assert(/Apply · 1 credit/.test(await p.textContent('#applyBtn')), 'shows the real cost first');
+  assert(/Apply · 2 credits/.test(await p.textContent('#applyBtn')), 'shows the real cost first');
   await p.click('#applyBtn'); await idle(p); await aiApply(p, 20000);
-  eq([state.posts.length, state.used], [1, 1], 'real edit went to the server, which charged one credit');
+  eq([state.posts.length, state.used], [1, 2], 'real edit went to the server, which charged its 2 credits');
   const draft = await p.evaluate(async () => (await Drafts.get()).hist.map((h) => h.op && h.op.demo));
   assert(!draft.includes(true), 'no sample result in the saved project');
 }, { files: demoFiles(), viewport: { width: 1280, height: 860 }, mobile: false, touch: false });
@@ -1631,7 +1631,7 @@ test('ai: free plan v2 — premium tools use the one-time trial, cheap tools the
   await p.waitForFunction(() => !!account);
   await p.evaluate(() => showUsage({ plan: 'free', used: 0, quota: 3, remaining: 3, trialLeft: 2, adsLeft: 1, v: 2 }));
   await tool(p, 'edit', null, 'pro');
-  eq(await p.evaluate(() => [$('applyBtn').textContent, /2 of 3 free premium credits left/.test($('panelNote').textContent)]), ['Apply · 1 credit', true], 'premium: trial balance shown');
+  eq(await p.evaluate(() => [$('applyBtn').textContent, /2 of 3 free premium credits left/.test($('panelNote').textContent)]), ['Apply · 2 credits', true], 'premium: trial balance shown');
   await p.evaluate(() => showUsage({ plan: 'free', pool: 'trial', used: 3, quota: 3, remaining: 0 }));
   eq(await p.evaluate(() => [account.remaining, account.trialLeft]), [3, 0], 'a trial charge only moves the trial balance');
   eq(await p.evaluate(() => [$('applyBtn').textContent, /used your 3 free premium credits/.test($('panelNote').textContent)]), ['Go Pro or buy credits', true], 'trial used up');
@@ -2134,7 +2134,7 @@ test('packs: bought credits pay for premium tools on the free plan once the free
   await p.waitForFunction(() => !!account);
   await p.evaluate(() => showUsage({ plan: 'free', used: 0, quota: 3, remaining: 13, trialLeft: 0, adsLeft: 1, bonus: 10, v: 2 }));
   await tool(p, 'edit', null, 'pro');
-  eq(await p.evaluate(() => [$('applyBtn').textContent, /0 free and 10 extra credits left/.test($('panelNote').textContent)]), ['Apply · 1 credit', true], 'premium tool runs on extra credits');
+  eq(await p.evaluate(() => [$('applyBtn').textContent, /0 free and 10 extra credits left/.test($('panelNote').textContent)]), ['Apply · 2 credits', true], 'premium tool runs on extra credits');
   await p.evaluate(() => showUsage({ plan: 'free', pool: 'trial', used: 1, quota: 3, remaining: 9 }));
   eq(await p.evaluate(() => account.trialLeft), 0, 'a run paid with extra credits leaves the free tries at 0');
   state.bonus = 9; await p.evaluate(() => openCredits()); await p.waitForFunction(() => account.bonus === 9);

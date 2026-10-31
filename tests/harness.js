@@ -136,7 +136,7 @@ exports.launch = async (opts = {}) => {
           .find((k) => k && state.features && state.features !== 404 && state.features[k] === false);
         if (offKey) return r.fulfill({ status: 403, headers: cors, json: { error: 'This tool is taking a short break. Nothing was charged. Please try again later.', feature_off: offKey } });
         if (ai.server === 'patched' && body.request_id && state.jobs[body.request_id]) return answer(state.jobs[body.request_id]);
-        const cost = ['headshot', 'anime', 'watercolor', 'fashion'].includes(body.mode) ? 2 : 1;
+        const cost = ['headshot', 'anime', 'watercolor', 'fashion', 'pro'].includes(body.mode) ? 2 : 1;
         if (state.used + cost > state.quota) return r.fulfill({ status: 429, headers: cors, json: { error: "You've used today's 3 free AI credits.", limit: true, usage: usage() } });
         if (ai.post === 'error') return r.fulfill({ status: 502, headers: cors, json: { error: "Glow's AI service is temporarily unavailable. Please try again later." } });
         state.used += cost;
