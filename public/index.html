@@ -377,6 +377,8 @@
   </div>
   <div class="setting">
     <div class="links">
+      <a href="#" id="contactSupport">Contact support</a>
+      <a href="/support" target="_blank" rel="noopener">Help</a>
       <a href="/privacy.html" target="_blank" rel="noopener">Privacy policy</a>
       <a href="/terms.html" target="_blank" rel="noopener">Terms of use</a>
       <a href="#" id="manageSubs">Manage subscription</a>
@@ -385,6 +387,29 @@
     <div class="links"><a href="#" id="deleteAccount" class="danger">Delete my account and data</a></div>
     <p class="fine build-id" id="buildId">Build: checking…</p>
   </div>
+</dialog>
+
+<dialog class="sheet" id="supportSheet" aria-labelledby="supportTitle">
+  <div class="sheet-head"><h2 class="t-section" id="supportTitle">Contact support</h2><button class="icon-btn" data-close aria-label="Close"></button></div>
+  <form id="supportForm" class="support-form">
+    <label>What's it about?
+      <select id="supportTopic">
+        <option value="billing">Subscription or payment</option>
+        <option value="ai">An AI tool or my credits</option>
+        <option value="bug">Something isn't working</option>
+        <option value="privacy">My data or privacy</option>
+        <option value="other" selected>Something else</option>
+      </select>
+    </label>
+    <label>Message
+      <textarea id="supportMessage" rows="5" maxlength="4000" required placeholder="Tell us what happened."></textarea>
+    </label>
+    <label>Your email, so we can reply (optional)
+      <input id="supportEmail" type="email" autocomplete="email" maxlength="200" placeholder="you@example.com">
+    </label>
+    <p class="fine" id="supportAccount"></p>
+    <div class="stack"><button class="btn" id="supportSend" type="submit">Send</button></div>
+  </form>
 </dialog>
 
 <dialog class="sheet" id="creditsSheet" aria-labelledby="creditsTitle">

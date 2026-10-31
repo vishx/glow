@@ -1577,6 +1577,43 @@ if (faceVideo) test('camera live: Adjust tabs, one makeup part at a time, and lo
   eq(await p.evaluate(() => $('adjNote').hidden), true, 'no note while a face is in view');
 }, liveOpts());
 
+// ---------- Operations: support, diagnostics ----------
+test('ops: Contact support sends the message with the account ID and app details', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
+  await p.evaluate(() => openSettings()); await p.click('#contactSupport');
+  assert(await p.isVisible('#supportSheet'), 'support sheet open');
+  assert(/u1/.test(await p.textContent('#supportAccount')), 'shows the account ID');
+  await p.selectOption('#supportTopic', 'billing');
+  await p.fill('#supportMessage', 'I paid but still see the free plan.');
+  await p.fill('#supportEmail', 'me@test.dev');
+  await p.click('#supportSend');
+  await p.waitForFunction(() => !$('supportSheet').open);
+  eq(state.support.length, 1, 'one message sent');
+  const m = state.support[0];
+  eq([m.topic, m.message, m.email], ['billing', 'I paid but still see the free plan.', 'me@test.dev'], 'message fields');
+  eq(m.context.plan, 'free', 'plan sent as context');
+  assert(/reply by email/.test(await toast(p)), 'confirmation: ' + await toast(p));
+  await settle(4500);
+  assert(state.events.some((e) => e.name === 'support_sent' && e.props.topic === 'billing'), 'support_sent event');
+});
+
+test('ops: usage events are batched and never carry photos; errors are reported once', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
+  await p.evaluate(() => openPaywall());
+  await settle(4500);
+  const names = state.events.map((e) => e.name);
+  assert(names.includes('app_open'), 'app_open sent: ' + names);
+  assert(names.includes('paywall_view'), 'paywall_view sent: ' + names);
+  assert(state.events.every((e) => JSON.stringify(e).length < 300), 'events are small (no images)');
+  assert(state.events.every((e) => e.platform === 'web'), 'platform recorded');
+  // The same error twice is reported once; expected server errors (with a status) are not reported.
+  await p.evaluate(() => { setTimeout(() => { throw new Error('test boom'); }); setTimeout(() => { throw new Error('test boom'); }); });
+  await p.evaluate(() => { const e = new Error('limit'); e.status = 429; Promise.reject(e); });
+  await settle(800);
+  eq(state.appErrors.map((e) => e.message), ['Uncaught Error: test boom'], 'one error report');
+  state.errs = state.errs.filter((e) => !/test boom|limit/.test(e));   // thrown on purpose
+});
+
 // ---------- Runner ----------
 (async () => {
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });

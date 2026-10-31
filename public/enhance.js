@@ -134,12 +134,13 @@ async function enhanceRequest() {
     const image = await uploadable(enh.src), requestId = rid();
     enh.pending = { requestId, id: null };
     try {
+      track("ai_start", { mode: ENH_MODE, from: "enhance" });
       const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: ENH_MODE, request_id: requestId }) });
       enh.pending.id = res.id || null;
       return await followEnhance(res);
     } catch (err) {
       // The server answered, so nothing started; it returns any credit it took.
-      if (err.status) { enh.pending = null; throw err; }
+      if (err.status) { enh.pending = null; track("ai_fail", { mode: ENH_MODE, from: "enhance", status: err.status, limit: !!err.limit }); throw err; }
       if (err.lost) throw err;
       throw lostConnection();
     }

@@ -1,4 +1,5 @@
 // GET: the signed-in user's plan and how many AI edits they have left.
+// POST { support }: a message from the app's Contact support form (needs migration 009).
 // DELETE: permanently deletes the user's account and data (required by the App Store).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -7,7 +8,7 @@ const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
@@ -24,14 +25,33 @@ Deno.serve(async (req) => {
     return json({ deleted: true });
   }
 
+  if (req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const s = body?.support;
+    const message = typeof s?.message === "string" ? s.message.trim().slice(0, 4000) : "";
+    if (!message) return json({ error: "Write a message first." }, 400);
+    const email = typeof s.email === "string" && /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(s.email.trim()) ? s.email.trim() : null;
+    const topic = ["billing", "ai", "bug", "privacy", "other"].includes(s.topic) ? s.topic : "other";
+    // A handful a day is plenty for a real person; more is someone flooding the inbox.
+    const { count } = await admin.from("support_requests").select("id", { count: "exact", head: true })
+      .eq("user_id", user.id).gte("created_at", new Date(Date.now() - 864e5).toISOString());
+    if ((count ?? 0) >= 5) return json({ error: "We've got your messages. We'll reply as soon as we can." }, 429);
+    const ctx = s.context && typeof s.context === "object" ? s.context : {};
+    const context = Object.fromEntries(Object.entries(ctx).slice(0, 12).map(([k, v]) => [String(k).slice(0, 40), String(v).slice(0, 200)]));
+    const { error } = await admin.from("support_requests").insert({ user_id: user.id, email, topic, message, context });
+    if (error) return json({ error: "Couldn't send your message. Please try again." }, 500);
+    return json({ sent: true });
+  }
+
   // Pricing v2 (migration 007): the database works out the balance, including the free plan's
   // one-time premium trial. Before 007 is applied this RPC doesn't exist and the old rules below apply.
   const v2 = await admin.rpc("ai_allowance", { p_user: user.id }).maybeSingle();
   if (!v2.error && v2.data) {
-    const a = v2.data as { plan: string; period: string | null; used: number; quota: number; remaining: number; trial_left: number; ads_left: number };
+    const a = v2.data as { plan: string; period: string | null; used: number; quota: number; remaining: number; trial_left: number; ads_left: number; bonus?: number; blocked?: boolean };
     const { data: pe } = await admin.from("profiles").select("plan_expires_at").eq("id", user.id).maybeSingle();
     return json({ plan: a.plan, period: a.period, expires: a.plan === "pro" ? pe?.plan_expires_at : null, used: a.used, quota: a.quota,
-      remaining: a.remaining, trialLeft: a.plan === "pro" ? undefined : a.trial_left, adsLeft: a.ads_left, v: 2 });
+      remaining: a.remaining, trialLeft: a.plan === "pro" ? undefined : a.trial_left, adsLeft: a.ads_left,
+      bonus: a.bonus ?? 0, blocked: a.blocked ?? false, v: 2 });
   }
   const { data: p } = await admin.from("profiles").select("plan, plan_expires_at").eq("id", user.id).maybeSingle();
   const pro = p?.plan === "pro" && !!p.plan_expires_at && new Date(p.plan_expires_at) > new Date();

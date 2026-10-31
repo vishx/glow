@@ -61,7 +61,7 @@ exports.launch = async (opts = {}) => {
   if (opts.onboarded !== false) await ctx.addInitScript((start) => { localStorage.setItem('glowOnboarded', '1'); localStorage.setItem('glowStart', start); if (!localStorage.getItem('glowLastDest')) localStorage.setItem('glowLastDest', start); }, opts.start || 'camera');
   const p = await ctx.newPage();
   const state = { used: 0, plan: opts.plan || 'free', quota: opts.quota || 3, posts: [], polls: 0, lookups: 0, refunds: 0, errs: [], downloads: [],
-    ai: { ...defaultAi(), ...(opts.ai || {}) }, jobs: {}, flaked: {}, authFail: !!opts.authFail };
+    ai: { ...defaultAi(), ...(opts.ai || {}) }, jobs: {}, flaked: {}, authFail: !!opts.authFail, events: [], appErrors: [], support: [] };
   p.on('pageerror', (e) => state.errs.push('pageerror: ' + e.message));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|^INFO:|^W\d{4}|XNNPACK/.test(m.text())) state.errs.push('console: ' + m.text()); });
   p.on('download', async (d) => {
@@ -78,6 +78,16 @@ exports.launch = async (opts = {}) => {
       if (method === 'OPTIONS') return r.fulfill({ status: 200, headers: cors });
       if (u.pathname.startsWith('/auth/v1/') && state.authFail) return r.fulfill({ status: 500, headers: cors, json: { error: 'down' } });
       if (u.pathname.startsWith('/auth/v1/')) return r.fulfill({ headers: cors, json: { access_token: 't', refresh_token: 'r', expires_at: Date.now() / 1000 + 3600, user: { id: 'u1' } } });
+      // Diagnostics (migration 009): app events and errors go straight to the database.
+      if (u.pathname === '/rest/v1/app_events' || u.pathname === '/rest/v1/app_errors') {
+        const rows = JSON.parse(r.request().postData() || '[]');
+        (u.pathname.endsWith('events') ? state.events : state.appErrors).push(...rows);
+        return r.fulfill({ status: 201, headers: cors, body: '' });
+      }
+      if (u.pathname === '/functions/v1/account' && method === 'POST') {
+        state.support.push(JSON.parse(r.request().postData()).support);
+        return r.fulfill({ headers: cors, json: { sent: true } });
+      }
       if (u.pathname === '/functions/v1/account') return r.fulfill({ headers: cors, json: usage() });
       if (u.pathname === '/functions/v1/enhance') {
         const answer = (job) => {

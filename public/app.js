@@ -1937,9 +1937,11 @@ async function startAiEdit(t) {
   saveJob();
   let res;
   try {
+    track("ai_start", { mode: t.id });
     res = await call("enhance", { method: "POST", body: JSON.stringify({ ...body, request_id: job.requestId }) });
   } catch (err) {
     setBusy(false);
+    track("ai_fail", { mode: t.id, status: err.status || 0, limit: !!err.limit });
     if (err.status) {
       // The server answered, so the edit didn't start. It returns the credit itself if it had taken one.
       job = null; saveJob();
@@ -2468,6 +2470,56 @@ async function call(path, opts = {}, retried) {
   return body;
 }
 
+// ---------- Diagnostics ----------
+// A few anonymous events (app opened, paywall seen, purchase, which AI tool ran) and app errors go to
+// Glow's own database (migration 009) so the owner can see what works and what breaks. Never
+// photos, prompts or personal details. Sent in small batches, and only once the app has its account.
+const PLATFORM = native ? (window.Capacitor.getPlatform && window.Capacitor.getPlatform()) || "app" : "web";
+const telemetry = { queue: [], timer: 0, errors: new Set(), off: false };
+function track(name, props) {
+  if (telemetry.off) return;
+  telemetry.queue.push({ name, props: props || {}, platform: PLATFORM });
+  if (telemetry.queue.length > 50) telemetry.queue.splice(0, telemetry.queue.length - 50);
+  clearTimeout(telemetry.timer);
+  telemetry.timer = setTimeout(flushTelemetry, 4000);
+}
+async function postRows(table, rows) {
+  if (!session || !rows.length) return false;
+  const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/${table}`, {
+    method: "POST", keepalive: true,
+    headers: { "Content-Type": "application/json", apikey: CONFIG.supabaseKey, Authorization: `Bearer ${session.access_token}`, Prefer: "return=minimal" },
+    body: JSON.stringify(rows),
+  });
+  // Before migration 009 the tables don't exist: stop trying for this launch.
+  if (res.status === 404) telemetry.off = true;
+  return res.ok;
+}
+async function flushTelemetry() {
+  if (!session) { clearTimeout(telemetry.timer); telemetry.timer = setTimeout(flushTelemetry, 15000); return; }
+  const rows = telemetry.queue.splice(0);
+  try { await postRows("app_events", rows); } catch {}
+}
+let buildFp = "";
+function reportError(message, detail) {
+  message = String(message || "Unknown error").slice(0, 500);
+  // Each distinct error once per launch, and at most 5 in all.
+  if (telemetry.off || telemetry.errors.has(message) || telemetry.errors.size >= 5) return;
+  telemetry.errors.add(message);
+  postRows("app_errors", [{ message, detail: detail ? String(detail).slice(0, 2000) : null, build: buildFp || FEATURES_SHORT, platform: PLATFORM }]).catch(() => {});
+}
+const FEATURES_SHORT = "web-" + location.host.split(".")[0].slice(0, 30);
+window.addEventListener("error", (e) => {
+  // Errors from other sites' scripts (fonts, ads) arrive without details; they aren't Glow's.
+  if (!e.message || e.message === "Script error.") return;
+  reportError(e.message, (e.error && e.error.stack) || `${e.filename}:${e.lineno}:${e.colno}`);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  const r = e.reason;
+  if (r && (r.status || r.offline || r.lost || r.userCancelled || r.name === "AbortError")) return;   // expected, already shown to the person
+  reportError((r && r.message) || String(r), r && r.stack);
+});
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushTelemetry(); });
+
 // ---------- Camera ----------
 // Looks: one-tap beauty settings, remembered between sessions.
 // Face reshape and makeup (livebeauty.js) only touch the face the camera is following.
@@ -2873,6 +2925,7 @@ async function showBuild() {
     const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texts.join("\n")));
     fp = [...new Uint8Array(d)].slice(0, 4).map((b) => b.toString(16).padStart(2, "0")).join("");
   } catch {}
+  buildFp = fp || buildFp;
   $("buildId").textContent = `Build ${fp || "unknown"} · ${FEATURES} · ${location.host || "app"}`;
 }
 $("camSettingsBtn").addEventListener("click", openSettings);
@@ -2895,6 +2948,30 @@ $("deleteAccount").addEventListener("click", async (e) => {
     $("settings").close(); say("Your account and data were deleted.");
     refreshAccount();
   } catch (err) { say(err.message, true); }
+});
+// Contact support: the message goes to the admin page's inbox with the account ID, so the owner
+// can look the account up, give credits back or check a purchase.
+$("contactSupport").addEventListener("click", (e) => {
+  e.preventDefault();
+  const id = session && session.user_id;
+  $("supportAccount").replaceChildren(id ? `Your account ID: ${id}. It's sent with your message so we can find your account.` : "");
+  $("settings").close(); $("supportSheet").showModal();
+});
+$("supportForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const message = $("supportMessage").value.trim();
+  if (!message) return;
+  $("supportSend").disabled = true; $("supportSend").textContent = "Sending…";
+  try {
+    const context = { plan: (account && account.plan) || "", credits: account ? account.remaining : "", platform: PLATFORM, build: buildFp, screen,
+      device: navigator.userAgent.replace(/\s*\([^)]*\)\s*/, " ").slice(0, 120) };
+    await call("account", { method: "POST", body: JSON.stringify({ support: { topic: $("supportTopic").value, message, email: $("supportEmail").value.trim(), context } }) });
+    track("support_sent", { topic: $("supportTopic").value });
+    $("supportMessage").value = "";
+    $("supportSheet").close();
+    say($("supportEmail").value.trim() ? "Sent. We'll reply by email." : "Sent. Thanks for telling us.");
+  } catch (err) { say(err.message, true); }
+  finally { $("supportSend").disabled = false; $("supportSend").textContent = "Send"; }
 });
 $("manageSubs").addEventListener("click", (e) => {
   e.preventDefault();
@@ -2943,6 +3020,7 @@ function openPaywall() {
   $("adBtn").hidden = !(native && plugins.AdMob && account && account.plan !== "pro" && account.remaining < 2 && account.adsLeft > 0);
   renderPlanNote();
   setupPurchases();
+  track("paywall_view", { plan: account ? account.plan : "", screen });
   $("paywall").showModal();
 }
 $("plans").addEventListener("click", (e) => {
@@ -2969,10 +3047,13 @@ $("buyBtn").addEventListener("click", async () => {
   try {
     if (!(await setupPurchases()) || !packages[plan]) throw new Error("The store isn't available right now. Try again in a moment.");
     $("buyBtn").disabled = true; $("buyBtn").textContent = "Opening store…";
+    track("purchase_start", { plan });
     await purchases().purchasePackage({ aPackage: packages[plan] });
+    track("purchase", { plan });
     $("paywall").close();
     say((await afterPurchase()) ? "Welcome to Glow Pro. Your 40 weekly AI credits are ready." : "Purchase complete. Pro will switch on within a minute.");
   } catch (err) {
+    track("purchase_fail", { plan, cancelled: !!(err && err.userCancelled) });
     if (!(err && err.userCancelled)) say((err && err.message) || "Purchase didn't go through.", true);
   } finally { $("buyBtn").disabled = !native; $("buyBtn").textContent = buyLabel(); }
 });
@@ -3068,4 +3149,5 @@ function startApp() {
   go(store.get("glowLastDest") || "enhance");
 }
 startApp();
+track("app_open", { dest: store.get("glowLastDest") || "enhance" });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
