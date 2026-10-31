@@ -4,13 +4,22 @@
 import base64, io, json, os, sys, time, urllib.request, urllib.error
 from PIL import Image, ImageOps
 
-BASE = os.environ["REPLICATE_API_BASE"]; OIDC = os.environ["GH_OIDC"]
+BASE = os.environ["REPLICATE_API_BASE"]
+# GitHub's OIDC tokens only live a few minutes, so a fresh one is fetched every 3 minutes.
+_tok = {"v": None, "t": 0}
+def oidc():
+    if time.time() - _tok["t"] > 180:
+        req = urllib.request.Request(os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=glow-sharp-test",
+                                     headers={"Authorization": "Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]})
+        with urllib.request.urlopen(req, timeout=30) as r: _tok["v"] = json.loads(r.read())["value"]
+        _tok["t"] = time.time()
+    return _tok["v"]
 HERE = os.path.dirname(os.path.abspath(__file__)); OUT = os.path.join(HERE, "out"); os.makedirs(OUT, exist_ok=True)
 
 def api(path, body=None, wait=False):
     req = urllib.request.Request(BASE + path, data=json.dumps(body).encode() if body is not None else None,
                                  method="POST" if body is not None else "GET",
-                                 headers={"x-gh-oidc": OIDC, "Content-Type": "application/json", **({"Prefer": "wait=55"} if wait else {})})
+                                 headers={"x-gh-oidc": oidc(), "Content-Type": "application/json", **({"Prefer": "wait=55"} if wait else {})})
     for i in range(8):
         try:
             with urllib.request.urlopen(req, timeout=120) as r: return json.loads(r.read())
@@ -81,7 +90,7 @@ def tiled(model, img, inputs, tile=900, overlap=64):
 src = Image.open(os.path.join(HERE, "input.jpg")); src = ImageOps.exif_transpose(src).convert("RGB")
 full = fit(src, max_px=12_500_000)
 print("input", src.size, "-> using", full.size, flush=True)
-results = {}
+results = json.load(open(os.path.join(OUT, "results.json"))) if os.path.exists(os.path.join(OUT, "results.json")) else {}
 def save(name, img, meta):
     f = f"{name}.jpg"; img.convert("RGB").save(os.path.join(OUT, f), "JPEG", quality=93)
     results[name] = {"file": f, **meta}; print("saved", name, img.size, flush=True)

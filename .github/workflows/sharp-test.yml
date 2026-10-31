@@ -20,8 +20,6 @@ jobs:
         env:
           REPLICATE_API_BASE: https://vahtdouihsnpnaskrtka.supabase.co/functions/v1/sharp-test
         run: |
-          GH_OIDC=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=glow-sharp-test" | jq -r .value)
-          export GH_OIDC
           python tools/sharp-test/run.py $(cat tools/sharp-test/trigger.txt | sed -n 2p)
       - name: Commit
         if: always()
