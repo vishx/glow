@@ -78,6 +78,7 @@
     <nav id="tabs">
       <button data-tab="overview" aria-current="page">Overview</button>
       <button data-tab="users">Users</button>
+      <button data-tab="subs">Subscriptions</button>
       <button data-tab="support">Support</button>
       <button data-tab="errors">App errors</button>
       <button data-tab="abuse">Blocking</button>
@@ -110,7 +111,7 @@ function h(tag, attrs, ...kids) {
   for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid instanceof Node ? kid : String(kid));
   return el;
 }
-const money = (n) => "$" + Number(n || 0).toFixed(Number(n) < 10 ? 2 : 0);
+const money = (n) => (Number(n) < 0 ? "−$" : "$") + Math.abs(Number(n || 0)).toFixed(Math.abs(Number(n)) < 10 ? 2 : 0);
 const when = (t) => (t ? new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
 const short = (id) => (id ? String(id).slice(0, 8) : "");
 function toast(msg, bad) {
@@ -178,6 +179,27 @@ function chart(daily) {
   return h("div", { class: "chart" }, svg, h("div", { class: "legend" }, h("span", {}, h("i", { style: "background:#d8ccc8" }), "AI runs"), h("span", {}, h("i", { style: "background:#b04468" }), "Estimated AI cost")));
 }
 
+// Plain names for the events the app reports (anything not listed shows its raw name).
+const EVENT_NAMES = {
+  app_open: "Opened Glow", tab: "Switched tab", photo_open: "Opened a photo", sample_open: "Tried a sample photo",
+  edit: "Used an editor tool", ai_start: "Started an AI edit", ai_done: "AI edit finished", ai_fail: "AI edit failed",
+  enhance_to_editor: "Enhance → Editor", save: "Saved a photo", share: "Shared a photo", share_card: "Opened share card",
+  capture: "Took a camera photo", look: "Picked a camera look", camera: "Camera state", restore: "Restored last edit",
+  paywall_view: "Saw Glow Pro", purchase_start: "Tapped buy", purchase: "Bought Glow Pro", purchase_fail: "Purchase failed",
+  ad_watched: "Watched an ad", setting: "Changed a setting", support_sent: "Sent a support message", error_shown: "Saw an error message",
+};
+const SUB_NAMES = {
+  INITIAL_PURCHASE: "New subscription", RENEWAL: "Renewal", CANCELLATION: "Cancelled (or refunded)", UNCANCELLATION: "Turned renewal back on",
+  EXPIRATION: "Ended", BILLING_ISSUE: "Payment problem", PRODUCT_CHANGE: "Changed plan", TRANSFER: "Moved to another account",
+  SUBSCRIPTION_PAUSED: "Paused", SUBSCRIPTION_EXTENDED: "Extended", TEMPORARY_ENTITLEMENT_GRANT: "Temporary access", TEST: "Test event",
+  NON_RENEWING_PURCHASE: "One-time purchase", REFUND_REVERSED: "Refund reversed",
+};
+const subRow = (r) => [
+  SUB_NAMES[r.type] || r.type,
+  r.period_type === "TRIAL" ? h("span", { class: "pill", style: "margin-left:6px" }, "trial") : "",
+  r.environment === "SANDBOX" ? h("span", { class: "pill", style: "margin-left:6px" }, "test") : "",
+];
+
 const VIEWS = {
   async overview() {
     const o = await api("overview", { days: 14 });
@@ -189,19 +211,44 @@ const VIEWS = {
       h("div", { class: "tiles" },
         tile(o.plans.accounts, "Accounts"),
         tile(o.plans.pro_weekly + o.plans.pro_yearly + o.plans.pro_other, `Pro now (${o.plans.pro_weekly} weekly, ${o.plans.pro_yearly} yearly${o.plans.pro_other ? `, ${o.plans.pro_other} free` : ""})`),
+        tile(money(o.revenue.last30), "Revenue, 30 days (from RevenueCat)"),
         tile(money(o.revenue.monthlyGross), "Est. monthly revenue (list price)"),
         tile(money(today.ai_cost), "Est. AI cost today"),
         tile(money(sum("ai_cost")), "Est. AI cost, 7 days"),
         tile(today.ai_runs ?? 0, `AI runs today (${failRate}% failed)`, failRate >= 20 && today.ai_runs >= 5),
         tile(o.openSupport, "Open support messages", o.openSupport > 0),
         tile(o.errors24h, "App errors, 24 hours", o.errors24h >= 25),
+        tile(sum("deletions"), "Accounts deleted, 7 days"),
       ),
       h("section", { class: "card" }, h("h2", {}, "Last 14 days"), chart(o.daily)),
       h("section", { class: "card" }, h("h2", {}, "Day by day"), table([
           { t: "Day", f: (d) => d.day.slice(5) }, { t: "New", n: 1, f: (d) => d.new_users }, { t: "Active", n: 1, f: (d) => d.active_users },
           { t: "AI runs", n: 1, f: (d) => d.ai_runs }, { t: "Failed", n: 1, f: (d) => d.ai_failed }, { t: "Credits", n: 1, f: (d) => d.credits },
           { t: "AI cost", n: 1, f: (d) => money(d.ai_cost) }, { t: "Paywall", n: 1, f: (d) => d.paywall_views }, { t: "Buys", n: 1, f: (d) => d.purchases },
+          { t: "New Pro", n: 1, f: (d) => d.new_subs }, { t: "Revenue", n: 1, f: (d) => money(d.revenue) }, { t: "Deleted", n: 1, f: (d) => d.deletions },
         ], o.daily)),
+      h("div", { class: "grid2" },
+        h("section", { class: "card" }, h("h2", {}, "Funnel, last 7 days"),
+          h("p", { class: "muted", style: "margin-top:0" }, "People who reached each step, out of everyone who used Glow."),
+          table([
+            { t: "Step", f: (r) => r.label }, { t: "People", n: 1, f: (r) => r.users },
+            { t: "", n: 1, cls: "muted", f: (r) => (o.funnel[0]?.users ? Math.round((r.users / o.funnel[0].users) * 100) + "%" : "") },
+          ], o.funnel)),
+        h("section", { class: "card" }, h("h2", {}, "AI quality, last 7 days"),
+          h("p", { class: "muted", style: "margin-top:0" }, "Failed runs are refunded automatically. Time is from tap to finished result."),
+          table([
+            { t: "Tool", f: (r) => r.mode }, { t: "Runs", n: 1, f: (r) => r.runs },
+            { t: "Worked", n: 1, f: (r) => (r.succeeded + r.failed ? Math.round((r.succeeded / (r.succeeded + r.failed)) * 100) + "%" : "") },
+            { t: "Failed", n: 1, f: (r) => r.failed }, { t: "Typical time", n: 1, f: (r) => (r.median_secs != null ? r.median_secs + "s" : "") },
+            { t: "Top error", cls: "muted", f: (r) => h("div", { class: "msg" }, r.top_error || "") },
+          ], o.aiQuality)),
+      ),
+      h("section", { class: "card" }, h("h2", {}, "What people use, last 7 days"),
+        h("p", { class: "muted", style: "margin-top:0" }, "Every action the app reports, with the most common detail (tool, look, screen…)."),
+        table([
+          { t: "Action", f: (r) => EVENT_NAMES[r.name] || r.name.replace(/_/g, " ") }, { t: "Times", n: 1, f: (r) => r.events },
+          { t: "People", n: 1, f: (r) => r.users }, { t: "Most common", cls: "muted", f: (r) => r.top_detail || "" },
+        ], o.features)),
       h("div", { class: "grid2" },
           h("section", { class: "card" }, h("h2", {}, "AI tools, last 7 days"), table([
             { t: "Tool", f: (r) => r.mode }, { t: "Runs", n: 1, f: (r) => r.runs }, { t: "Failed", n: 1, f: (r) => r.failed },
@@ -261,14 +308,41 @@ const VIEWS = {
       ], rows, status === "open" ? "No open messages." : "Nothing here."));
   },
 
+  async subs(type = "") {
+    const rows = await api("subscriptions", { type });
+    const pick = h("select", { "aria-label": "Show", onchange: (e) => show("subs/" + e.target.value) },
+      h("option", { value: "" }, "All events"),
+      ...Object.entries(SUB_NAMES).map(([v, t]) => h("option", { value: v, selected: v === type }, t)));
+    return h("section", { class: "card" }, h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Subscription events"), h("span", { class: "spacer" }), pick),
+      h("p", { class: "muted", style: "margin-top:0" }, "Everything RevenueCat reports: new subscriptions, renewals, trials, cancellations, refunds and payment problems. Amounts are in US dollars before store fees; refunds show as minus. Test purchases are marked and left out of revenue."),
+      table([
+        { t: "When", f: (r) => when(r.created_at) }, { t: "Event", f: subRow },
+        { t: "Plan", f: (r) => (r.product_id || "").replace(/^glow_pro_/, "") }, { t: "Store", f: (r) => (r.store || "").replace(/_/g, " ").toLowerCase() },
+        { t: "Amount", n: 1, f: (r) => (r.price_usd != null ? money(r.price_usd) : "") },
+        { t: "Reason", cls: "muted", f: (r) => (r.cancel_reason || "").replace(/_/g, " ").toLowerCase() },
+        { t: "Account", f: (r) => (r.user_id ? userLink(r.user_id) : "") },
+      ], rows, "No subscription events yet. They appear here as soon as RevenueCat sends them."));
+  },
+
   async errors() {
     const rows = await api("errors");
-    return h("section", { class: "card" }, h("h2", {}, "App errors (newest 100)"),
+    const groups = Object.values(rows.reduce((g, r) => {
+      const k = r.message || "(no message)";
+      const x = (g[k] ||= { message: k, count: 0, users: new Set(), last: r.created_at, builds: new Set() });
+      x.count++; if (r.user_id) x.users.add(r.user_id); if (r.build) x.builds.add(r.build);
+      return g;
+    }, {})).sort((a, b) => b.count - a.count);
+    return [h("section", { class: "card" }, h("h2", {}, "Most common errors"),
+      table([
+        { t: "Error", f: (r) => h("div", { class: "msg" }, r.message) }, { t: "Times", n: 1, f: (r) => r.count },
+        { t: "People", n: 1, f: (r) => r.users.size }, { t: "Last seen", f: (r) => when(r.last) }, { t: "Builds", cls: "mono", f: (r) => [...r.builds].join(", ") },
+      ], groups, "No errors reported.")),
+      h("section", { class: "card" }, h("h2", {}, "App errors (newest 100)"),
       h("p", { class: "muted", style: "margin-top:0" }, "Errors the app caught on people's phones and browsers. No photos or personal details are sent."),
       table([
         { t: "When", f: (r) => when(r.created_at) }, { t: "Error", f: (r) => h("div", { class: "msg" }, r.message, r.detail ? h("div", { class: "muted mono" }, r.detail.slice(0, 400)) : "") },
         { t: "Build", cls: "mono", f: (r) => r.build || "" }, { t: "Platform", f: (r) => r.platform || "" }, { t: "Account", f: (r) => (r.user_id ? userLink(r.user_id) : "") },
-      ], rows, "No errors reported."));
+      ], rows, "No errors reported."))];
   },
 
   async abuse() {
@@ -330,16 +404,26 @@ async function userDetail(id) {
     ),
     h("section", { class: "card" }, h("h2", {}, "AI runs (newest 50)"), table([
       { t: "When", f: (r) => when(r.created_at) }, { t: "Tool", f: (r) => r.mode }, { t: "Credits", n: 1, f: (r) => r.cost + (r.from_bonus ? " bonus" : "") },
-      { t: "Status", f: (r) => (r.refunded ? h("span", { class: "pill" }, "Refunded") : r.prediction_id ? "Charged" : h("span", { class: "muted" }, "Not started")) },
+      { t: "Status", f: (r) => [
+        r.status === "succeeded" ? h("span", { class: "pill good" }, "Worked") : r.status === "failed" || r.status === "canceled" ? h("span", { class: "pill bad" }, "Failed") : "",
+        r.refunded ? h("span", { class: "pill" }, " Refunded") : !r.status ? (r.prediction_id ? "Charged" : h("span", { class: "muted" }, "Not started")) : "",
+        r.status === "succeeded" && r.finished_at ? h("span", { class: "muted" }, ` ${Math.round((new Date(r.finished_at) - new Date(r.created_at)) / 1000)}s`) : "",
+        r.error ? h("div", { class: "muted msg" }, r.error) : "",
+      ] },
       { t: "IP", cls: "mono", f: (r) => (r.ip ? h("span", {}, r.ip, " ", h("button", { class: "link", onclick: async () => { const why = prompt(`Block ${r.ip} from AI tools on every account? Reason:`, ""); if (why === null) return; await api("blockIp", { ip: r.ip, reason: why }).then(() => toast("Address blocked."), (e) => toast(e.message, true)); } }, "block")) : "") },
       { t: "", f: (r) => (r.refunded ? "" : h("button", { class: "btn ghost", onclick: () => { const why = reason(); if (why !== null) act("refund", { usage: r.id, reason: why }, () => "Credits returned."); } }, "Refund credits")) },
     ], d.usage, "No AI runs.")),
+    h("section", { class: "card" }, h("h2", {}, "Subscription history"), table([
+      { t: "When", f: (r) => when(r.created_at) }, { t: "Event", f: subRow },
+      { t: "Plan", f: (r) => (r.product_id || "").replace(/^glow_pro_/, "") }, { t: "Amount", n: 1, f: (r) => (r.price_usd != null ? money(r.price_usd) : "") },
+      { t: "Reason", cls: "muted", f: (r) => (r.cancel_reason || "").replace(/_/g, " ").toLowerCase() },
+    ], d.subscriptions || [], "No purchases.")),
     h("div", { class: "grid2" },
       h("section", { class: "card" }, h("h2", {}, "Support messages"), table([
         { t: "When", f: (r) => when(r.created_at) }, { t: "Topic", f: (r) => r.topic }, { t: "Message", f: (r) => h("div", { class: "msg" }, r.message) }, { t: "Status", f: (r) => r.status },
       ], d.support, "None.")),
       h("section", { class: "card" }, h("h2", {}, "Recent app activity"), table([
-        { t: "When", f: (r) => when(r.created_at) }, { t: "Event", f: (r) => r.name }, { t: "Details", cls: "muted", f: (r) => Object.entries(r.props || {}).map(([k, v]) => `${k}: ${v}`).join(", ") },
+        { t: "When", f: (r) => when(r.created_at) }, { t: "Event", f: (r) => EVENT_NAMES[r.name] || r.name }, { t: "Details", cls: "muted", f: (r) => Object.entries(r.props || {}).map(([k, v]) => `${k}: ${v}`).join(", ") },
       ], [...d.errors.map((e) => ({ created_at: e.created_at, name: "error", props: { message: e.message } })), ...d.events].sort((x, y) => (x.created_at < y.created_at ? 1 : -1)).slice(0, 40), "None.")),
     ),
   ];

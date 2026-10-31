@@ -20,8 +20,22 @@ Deno.serve(async (req) => {
   if (!user) return json({ error: "Not signed in" }, 401);
 
   if (req.method === "DELETE") {
+    // Count the deletion for the admin page, keeping nothing that points back to the person.
+    const [{ data: p }, { count: runs }] = await Promise.all([
+      admin.from("profiles").select("plan, plan_expires_at").eq("id", user.id).maybeSingle(),
+      admin.from("ai_usage").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    ]);
+    // AI runs are kept for cost reports but lose the link to the person (migration 010).
+    await admin.from("ai_usage").update({ ip: null }).eq("user_id", user.id);
+    await admin.from("subscription_events").update({ user_id: null }).eq("user_id", user.id);
     const { error } = await admin.auth.admin.deleteUser(user.id);
     if (error) return json({ error: error.message }, 500);
+    const pro = p?.plan === "pro" && (!p.plan_expires_at || new Date(p.plan_expires_at) > new Date());
+    const { error: logError } = await admin.from("account_deletions").insert({
+      plan: pro ? "pro" : "free", ai_runs: runs ?? 0,
+      account_age_days: Math.floor((Date.now() - new Date(user.created_at).getTime()) / 864e5),
+    });
+    if (logError) console.error("deletion log", logError.message);
     return json({ deleted: true });
   }
 

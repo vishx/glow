@@ -32,6 +32,24 @@ async function setPlan(ids: string[], plan: "pro" | "free", expires: string | nu
   }
 }
 
+// Keep every event for the admin page (revenue, trials, cancellations, refunds, billing issues).
+// A resent event has the same id and is stored once. Failing to log never fails the webhook.
+const num = (v: unknown) => (typeof v === "number" && isFinite(v) ? Math.round(v * 100) / 100 : null);
+async function logEvent(event: Record<string, any>) {
+  const user = [event.app_user_id, ...(event.transferred_to ?? [])].find((id) => UUID.test(String(id ?? ""))) ?? null;
+  const at = Number(event.event_timestamp_ms);
+  const { error } = await admin.from("subscription_events").upsert({
+    event_id: String(event.id ?? crypto.randomUUID()), user_id: user, type: String(event.type ?? "UNKNOWN"),
+    product_id: event.product_id ?? null, period_type: event.period_type ?? null,
+    store: event.store ?? null, environment: event.environment ?? null,
+    price_usd: num(event.price), currency: event.currency ?? null, price_local: num(event.price_in_purchased_currency),
+    cancel_reason: event.cancel_reason ?? event.expiration_reason ?? null,
+    expires_at: event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null,
+    created_at: at > 0 ? new Date(at).toISOString() : new Date().toISOString(),
+  }, { onConflict: "event_id", ignoreDuplicates: true });
+  if (error) console.error("revenuecat log", error.message);
+}
+
 Deno.serve(async (req) => {
   if (!SECRET || !same(req.headers.get("Authorization") ?? "", `Bearer ${SECRET}`)) return new Response("unauthorized", { status: 401 });
   const { event } = await req.json().catch(() => ({}));
@@ -39,6 +57,7 @@ Deno.serve(async (req) => {
   if (Array.isArray(event.entitlement_ids) && !event.entitlement_ids.some((e: string) => e === "pro" || e === "glow_pro")) return new Response("ignored", { status: 200 });
 
   try {
+    await logEvent(event);
     if (event.type === "TRANSFER") {
       // "Restore purchases" on a new install moves the subscription to the new account.
       const from = uuids(event.transferred_from), to = uuids(event.transferred_to);
@@ -54,7 +73,7 @@ Deno.serve(async (req) => {
     if (!ids.length) return new Response("ignored", { status: 200 });
     const expires = event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null;
     if (event.type === "EXPIRATION") await setPlan(ids, "free", null);
-    else if (ACTIVE.has(event.type) && expires) await setPlan(ids, "pro", expires, periodOf(event.new_product_id ?? event.product_id));
+    else if (ACTIVE.has(event.type) && expires) await setPlan(ids, "pro", expires, periodOf(event.product_id));
     else return new Response("ignored", { status: 200 });
     console.log("revenuecat", event.type, ids.join(","), expires);
     return new Response("ok", { status: 200 });

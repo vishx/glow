@@ -148,6 +148,7 @@ const CROPS = [["Free", "free"], ["Original", 0], ["Square", 1], ["4:5", 4 / 5],
 let toastTimer = 0;
 // action: an optional { label, run } shown as a small button in the toast.
 function say(text, isErr, action) {
+  if (text && isErr) { try { track("error_shown", { msg: String(text).slice(0, 120), screen }); } catch {} }
   const t = $("toast");
   clearTimeout(toastTimer);
   if (!text) { t.classList.remove("on"); return; }
@@ -208,7 +209,7 @@ function showScreen(id) {
   if (id === "editorHome") renderHome();
   if (id === "enhanceHome" && typeof renderEnhanceHome === "function") renderEnhanceHome();
 }
-function go(dest) { showScreen(dest === "camera" ? "cameraScreen" : dest === "enhance" ? "enhanceHome" : "editorHome"); }
+function go(dest) { try { track("tab", { dest }); } catch {} showScreen(dest === "camera" ? "cameraScreen" : dest === "enhance" ? "enhanceHome" : "editorHome"); }
 $("nav").addEventListener("click", (e) => { const b = e.target.closest("button[data-dest]"); if (b) { Platform.haptic(); go(b.dataset.dest); } });
 
 // ---------- Onboarding ----------
@@ -287,6 +288,7 @@ async function readPhoto(blob, name) {
 }
 
 async function openPhoto(work, original, opts = {}) {
+  try { track("photo_open", { from: opts.processed ? "enhance" : opts.shotStamp ? "camera" : "library" }); } catch {}
   tileFace.box = null; tileFace.dims = "";
   if (!opts.demo && demo) exitDemo();
   ed.demo = !!opts.demo;
@@ -347,6 +349,7 @@ let demo = null; // { manifest, ready: [toolId], entry: {toolId: entry}, cache: 
 const demoOffers = (id) => !ed.demo || TOOL[id].kind !== "ai" || (!!demo && demo.ready.includes(id));
 
 async function openSample() {
+  track("sample_open", { from: screen });
   if (!(await confirmReplace())) return;
   let manifest = null;
   try { const r = await fetch(DEMO_DIR + "manifest.json", { cache: "no-cache" }); if (r.ok) manifest = await r.json(); } catch {}
@@ -920,6 +923,7 @@ $("handle").addEventListener("keydown", (e) => {
 // Every step's recipe is kept so Save can redo it at full size; only the working-size
 // pictures of steps older than MAX_UNDO are dropped (those steps can no longer be undone).
 function commit(data, t, op, full) {
+  if (t) track("edit", { tool: t.id, kind: t.kind || "", demo: !!ed.demo });
   ed.hist = ed.hist.slice(0, ed.idx + 1); ed.hist.push({ data, op: op || { tool: t.id }, full });
   ed.idx = ed.hist.length - 1; ed.pending = null;
   while (ed.idx - ed.floor > MAX_UNDO) { ed.floor++; if (ed.floor > 1) ed.hist[ed.floor - 1].data = null; }
@@ -2008,6 +2012,7 @@ async function checkJob() {
 
 async function settleJob(res) {
   const mine = job;
+  track(res.status === "succeeded" && res.output ? "ai_done" : "ai_fail", { mode: mine.tool, secs: Math.round((Date.now() - (mine.startedAt || Date.now())) / 1000), refunded: res.refunded === true });
   if (res.status !== "succeeded" || !res.output) {
     mine.status = "failed"; mine.error = res.error || "The AI service couldn't process this photo."; mine.refunded = res.refunded === true;
     saveJob(); await refreshAccount(); renderJob();
@@ -2253,6 +2258,7 @@ async function saveEdit(opts) {
   if (withOrig) items.unshift({ blob: ed.original.blob, name: `glow-${stamp}-original` });
   try {
     const where = await Platform.savePhotos(items, { share });
+    track(share ? "share" : "save", { from: "editor", edits: ed.idx, demo: !!ed.demo, marked: !!out.marked, where: String(where || "") });
     ed.savedIdx = ed.idx; if (withOrig) ed.originalSaved = true;
     ed.lastExport = { w: out.w, h: out.h, original: ed.original ? [ed.original.w, ed.original.h] : null };
     saveDraft(); renderEditor();
@@ -2345,6 +2351,7 @@ async function makeShareCard(photo) {
   return c.toDataURL("image/jpeg", 0.92);
 }
 async function openShareCard(photo) {
+  track("share_card", {});
   let card;
   try { card = await makeShareCard(photo); } catch { say("Couldn't make the share card. Try again.", true); return; }
   const c = await ask({ title: "Share Glow", text: "Your photo with a QR code to Glow underneath. Nothing is sent until you choose.", image: card, caption: "Share card preview",
@@ -2480,9 +2487,10 @@ async function call(path, opts = {}, retried) {
 // Glow's own database (migration 009) so the owner can see what works and what breaks. Never
 // photos, prompts or personal details. Sent in small batches, and only once the app has its account.
 const PLATFORM = native ? (window.Capacitor.getPlatform && window.Capacitor.getPlatform()) || "app" : "web";
-const telemetry = { queue: [], timer: 0, errors: new Set(), off: false };
+// var, not const: say() and go() can run before this line, and track() must then just skip.
+var telemetry = { queue: [], timer: 0, errors: new Set(), off: false };
 function track(name, props) {
-  if (telemetry.off) return;
+  if (typeof telemetry === "undefined" || telemetry.off) return;
   telemetry.queue.push({ name, props: props || {}, platform: PLATFORM });
   if (telemetry.queue.length > 50) telemetry.queue.splice(0, telemetry.queue.length - 50);
   clearTimeout(telemetry.timer);
@@ -2490,6 +2498,8 @@ function track(name, props) {
 }
 async function postRows(table, rows) {
   if (!session || !rows.length) return false;
+  // A token near expiry is refreshed first, so events from long sessions aren't lost.
+  if (session.expires_at * 1000 < Date.now() + 60000) { try { await ensureSession(); } catch { return false; } }
   const res = await fetch(`${CONFIG.supabaseUrl}/rest/v1/${table}`, {
     method: "POST", keepalive: true,
     headers: { "Content-Type": "application/json", apikey: CONFIG.supabaseKey, Authorization: `Bearer ${session.access_token}`, Prefer: "return=minimal" },
@@ -2552,7 +2562,7 @@ try {
 const lookName = () => (allLooks().find((l) => l.id === lookId) || { name: "Custom look" }).name;
 function saveBeauty() { store.set("glowBeauty", JSON.stringify(beauty)); store.set("glowLook", lookId); store.set("glowLooks", JSON.stringify(myLooks)); }
 // Looks saved before the face settings existed have none of them, so those start at zero.
-function useLook(l) { lookId = l.id; Object.assign(beauty, LIVE_DEFAULTS, Object.fromEntries(LOOK_KEYS.filter((k) => k in l).map((k) => [k, l[k]]))); saveBeauty(); renderLooks(); }
+function useLook(l) { track("look", { id: String(l.id).startsWith("my") ? "my_look" : l.id }); lookId = l.id; Object.assign(beauty, LIVE_DEFAULTS, Object.fromEntries(LOOK_KEYS.filter((k) => k in l).map((k) => [k, l[k]]))); saveBeauty(); renderLooks(); }
 
 const cam = { stream: null, facing: store.get("glowFacing") || "user", gl: null, raf: 0, state: "", torch: false, shot: null, thumb: "", gen: 0, opened: 0 };
 const isOriginalLook = () => !beauty.smooth && !beauty.bright && !beauty.warm && beauty.filter === "none" && LIVE_KEYS.every((k) => !beauty[k]);
@@ -2670,6 +2680,8 @@ $("viewfinder").addEventListener("pointerdown", (e) => {
 ["pointerup", "pointercancel", "pointerleave"].forEach((n) => $("viewfinder").addEventListener(n, endCompare));
 
 function camState(kind) {
+  // live = camera working; denied/error = someone who wanted the camera and couldn't use it.
+  if (kind !== cam.state && ["live", "denied", "error", "unavailable"].includes(kind)) track("camera", { state: kind });
   cam.state = kind;
   const S = {
     prompt: ["camera", "Take photos with Glow", "Glow needs your camera to show a live preview. Photos stay on your device until you save or edit them.", "Turn on camera"],
@@ -2823,6 +2835,7 @@ $("flashBtn").addEventListener("click", async () => {
 const canvasBlob = (c, type = "image/jpeg", q = 0.95) => new Promise((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error("Couldn't take the photo."))), type, q));
 $("shutter").addEventListener("click", async () => {
   const v = $("camVideo"); if (!v.videoWidth || cam.state !== "live" || cam.shot) return;
+  track("capture", { look: lookId });
   Platform.haptic("heavy");
   const flash = document.createElement("div"); flash.className = "cam-flash"; document.body.append(flash); setTimeout(() => flash.remove(), 400);
   let shot;
@@ -2889,6 +2902,7 @@ function saveShot(s, auto) {
     try {
       // Auto-save never opens a share sheet on its own; browsers get a download.
       const where = await Platform.savePhotos(items, { download: auto });
+      track("save", { from: "camera", auto: !!auto, look: lookId, where: String(where || "") });
       s.saved = true; if (withOrig || !s.processed) s.originalSaved = true;
       if (cam.shot === s || ed.shotStamp === s.stamp) say(savedText(where, items.length));
       if (ed.shotStamp === s.stamp) {
@@ -2953,9 +2967,9 @@ async function showBuild() {
 }
 $("camSettingsBtn").addEventListener("click", openSettings);
 $("homeSettingsBtn").addEventListener("click", openSettings);
-$("themeSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { store.set("glowTheme", b.dataset.theme); applyTheme(); } });
-$("saveOrigToggle").addEventListener("change", (e) => store.set("glowSaveOrig", e.target.checked ? "on" : "off"));
-$("autoSaveToggle").addEventListener("change", (e) => store.set("glowAutoSave", e.target.checked ? "on" : "off"));
+$("themeSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { store.set("glowTheme", b.dataset.theme); applyTheme(); track("setting", { theme: b.dataset.theme }); } });
+$("saveOrigToggle").addEventListener("change", (e) => { store.set("glowSaveOrig", e.target.checked ? "on" : "off"); track("setting", { save_original: e.target.checked }); });
+$("autoSaveToggle").addEventListener("change", (e) => { store.set("glowAutoSave", e.target.checked ? "on" : "off"); track("setting", { auto_save: e.target.checked }); });
 $("autoSaveHelp").textContent = native && plugins.Media
   ? "Each photo goes to the Glow album as soon as you take it. You can still edit or retake it."
   : "Each photo downloads as soon as you take it. Look in Downloads; browsers can't save to your photo library.";
@@ -3097,7 +3111,9 @@ async function restore() {
   try {
     if (!(await setupPurchases())) throw new Error("Restore works in the Glow app for iPhone and Android.");
     await purchases().restorePurchases();
-    say((await afterPurchase()) ? "Glow Pro restored." : "No active subscription found for this store account.");
+    const back = await afterPurchase();
+    track("restore", { found: back });
+    say(back ? "Glow Pro restored." : "No active subscription found for this store account.");
     $("paywall").close(); $("settings").close();
   } catch (err) { say(err.message, true); }
 }
@@ -3149,6 +3165,7 @@ $("adBtn").addEventListener("click", async () => {
   $("adBtn").disabled = true;
   try {
     const ok = await watchAdForEdit();
+    track("ad_watched", { rewarded: !!ok });
     $("paywall").close();
     if (ok) say("You earned 1 more AI credit.");
     else say("The ad didn't finish, so no edit was added.", true);
