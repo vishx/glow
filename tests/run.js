@@ -221,8 +221,9 @@ test('export: AI result saves at the size the AI returned, and later steps build
   await aiApply(p, 20000);
   await tool(p, 'edit', 'light', 'light'); await p.fill('.panel input[type=range]', '-10'); await idle(p); await p.click('#applyBtn'); await idle(p);
   await p.click('#saveBtn'); await downloads(state, 1);
-  const s = imageSize(state.downloads[0].file); eq([s.w, s.h], [1024, 1365], 'AI output size, not upscaled to 3024 × 4032');
-  assert(/size Pro edit returned/.test(await toast(p)), 'toast explains the AI size: ' + await toast(p));
+  // Pro edit's finish puts the photo's own detail back, so it comes back at the photo's size (up to 2560px), not the AI's 1024 × 1365.
+  const s = imageSize(state.downloads[0].file); eq([s.w, s.h], [1920, 2560], 'photo size (2560 cap), not the AI size or an upscale to 3024 × 4032');
+  assert(!/returned/.test(await toast(p)), 'toast does not claim the AI size: ' + await toast(p));
   eq(state.posts.length, 1, 'one paid request');
   state.report = { case: 'Enhance, then Light −10', original: [3024, 4032], working: [1024, 1365], exported: [s.w, s.h], steps: 'AI result is the base' };
 });
@@ -585,6 +586,13 @@ test('enhance: Pro Edit sends one "pro" request, keeps faces true on the phone, 
   await p.click('#enhGo');
   await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 60000 });
   eq(state.posts, ['pro'], 'one pro request');
+  eq(state.sheets.length, 1, 'the face sheet goes with it (faces restored from the photo)');
+  assert(await p.isVisible('#enhPro'), 'Pro panel shown on the result');
+  assert((await p.textContent('#enhChanges')).includes('kept true'), 'what changed: ' + await p.textContent('#enhChanges'));
+  const full = await p.evaluate(() => $('enhAfter').src);
+  await p.fill('#enhStrength', '50'); await p.waitForFunction((f) => $('enhAfter').src !== f, full, { timeout: 15000 });
+  eq(await p.textContent('#enhStrengthVal'), '50%', 'strength shown');
+  eq(state.posts, ['pro'], 'strength never calls the AI');
   eq(await p.evaluate(() => store.get('glow.enhStyle')), 'pro', 'choice remembered');
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false, plan: 'pro', quota: 40 });

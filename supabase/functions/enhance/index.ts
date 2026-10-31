@@ -208,7 +208,9 @@ Deno.serve(async (req) => {
         if (p && (p.status === "failed" || p.status === "canceled")) { console.log("hd failed, using Enhance", p.id, p.error ?? ""); p = null; }
         if (p) console.log("started enhance hd", info.model, p.id, p.status);
       }
-      const sheet = !p && mode === "enhance" && okFaceSheet(faces);
+      // Pro Edit sends one too: its model returns faces soft, so the phone uses the restored faces as
+      // the finish's detail (same credit).
+      const sheet = !p && (mode === "enhance" || mode === "pro") && okFaceSheet(faces);
       if (!p && mode === "enhance" && !paid && okTiles(tiles)) {
         // Every tile starts at once; the edit is one job made of them.
         try {

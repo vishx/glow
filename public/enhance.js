@@ -72,7 +72,7 @@ async function enhanceSample() {
 setIcon($("enhSheetClose"), "close");
 function openEnhSheet(work, original, name, demo) {
   if (enh.busy) return;
-  Object.assign(enh, { src: work, original, name, demo, ai: null, full: null, base: null, faces: [], pending: null, saved: null, fromBatch: null, fromCamera: null });
+  Object.assign(enh, { changes: null, strength: 100, style: ENH_MODE, src: work, original, name, demo, ai: null, full: null, base: null, faces: [], pending: null, saved: null, fromBatch: null, fromCamera: null });
   enh.cache.clear();
   $("enhSheetImg").src = work;
   $("enhSheetSample").hidden = !demo;
@@ -159,7 +159,13 @@ async function runEnhance() {
     if (pro) {
       // Faces stay the person's own: the model's light and color, the photo's own features.
       setSheetWorking(true, "Keeping faces true…");
-      try { const r = await proFinish(enh.src, full); full = r.data; track("pro_finish", { faces: r.faces, moved: r.moved }); }
+      // The detail comes from the photo with every face restored (the face sheet), not the model.
+      const detail = await putFacesBack(enh.src, enh.sheet, facesUrl);
+      try {
+        const r = await proFinish(detail, full); full = r.data;
+        track("pro_finish", { faces: r.faces, moved: r.moved, matched: r.matched, gap: r.gap, restored: detail !== enh.src });
+        enh.changes = await proChanges(enh.src, full, r.faces, { restored: detail !== enh.src }).catch(() => []);
+      }
       catch (e) { reportError("Pro Edit finish failed: " + (e && e.message)); }
     } else full = await putFacesBack(full, enh.sheet, facesUrl);
     // The toggles work on a 2048px copy; the untouched result is kept for saving at full size.
@@ -220,11 +226,11 @@ async function proEditRequest(h, src, onLabel, from) {
   if (h.pending && h.pending.done) return h.pending.done;
   if (!h.pending) {
     const image = await uploadable(src, aiMaxSide(PRO_MODE), aiMaxPixels(PRO_MODE)), requestId = rid();
-    h.sheet = null;
+    h.sheet = await faceSheet(src, h.cropFrom, true).catch(() => null);
     h.pending = { requestId, id: null, mode: PRO_MODE };
     try {
       track("ai_start", { mode: PRO_MODE, from });
-      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: PRO_MODE, request_id: requestId }) });
+      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: PRO_MODE, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined }) });
       h.pending.id = res.id || null;
       return await followEnhance(h, res, onLabel, from);
     } catch (err) {
@@ -346,7 +352,9 @@ async function enhFaces(src, img) {
   return findFaces(src + "|enhance", c);
 }
 // `src` is the working copy (faces are found on it); `from` is the untouched file, if any.
-async function faceSheet(src, from) {
+// `all`: every face, big ones too, in bigger cells when there are few (Pro Edit: its model returns
+// faces soft, so each one is restored from the photo here and becomes the finish's detail).
+async function faceSheet(src, from, all = false) {
   const work = await loadImg(src), faces = await enhFaces(src, work);
   if (!faces.length) return null;
   let pic = work, url = null;
@@ -359,10 +367,12 @@ async function faceSheet(src, from) {
     const maxPx = typeof aiMaxPixels === "function" ? aiMaxPixels(ENH_MODE) : Infinity;
     const sent = Math.min(1, (typeof aiMaxSide === "function" ? aiMaxSide(ENH_MODE) : 1600) / Math.max(W, H), Math.sqrt(maxPx / (W * H)));
     const cells = faces.map((f) => { const b = faceBox(f); return { cx: b.cx, cy: b.cy, px: Math.max(b.w * W, b.h * H) }; })
-      .filter((f) => f.px >= SHEET.minPx && f.px * sent < SHEET.bigPx)
+      .filter((f) => f.px >= SHEET.minPx && (all || f.px * sent < SHEET.bigPx))
       .sort((a, b) => b.px - a.px).slice(0, SHEET.max);
     if (!cells.length) return null;
-    const cols = Math.ceil(Math.sqrt(cells.length)), rows = Math.ceil(cells.length / cols), C = SHEET.cell;
+    const cols = Math.ceil(Math.sqrt(cells.length)), rows = Math.ceil(cells.length / cols);
+    // Never bigger than the face really is (x room), so nothing is blown up before the AI sees it.
+    const C = all ? Math.round(Math.max(SHEET.cell, Math.min(cells.length === 1 ? 1024 : cells.length <= 4 ? 640 : SHEET.cell, cells[0].px * SHEET.room))) : SHEET.cell;
     const sheet = newCanvas(cols * C, rows * C), x = sheet.getContext("2d");
     x.imageSmoothingQuality = "high";
     cells.forEach((f, i) => {
@@ -370,7 +380,7 @@ async function faceSheet(src, from) {
       f.side = side / W;   // the cell's width as a share of the photo's width
       x.drawImage(pic, f.cx * W - side / 2, f.cy * H - side / 2, side, side, (i % cols) * C, Math.floor(i / cols) * C, C, C);
     });
-    return { data: sheet.toDataURL("image/jpeg", 0.92), cells, cols, w: sheet.width };
+    return { data: sheet.toDataURL("image/jpeg", 0.92), cells, cols, w: sheet.width, cell: C };
   } finally { if (url) URL.revokeObjectURL(url); }
 }
 // Puts each restored face from the sheet back over the AI result. Anything going wrong leaves the
@@ -379,7 +389,7 @@ async function putFacesBack(full, sheet, facesUrl) {
   if (!sheet || !facesUrl) return full;
   try {
     const [r, o] = await Promise.all([loadImg(full), loadImg(facesUrl)]);
-    const W = r.naturalWidth, H = r.naturalHeight, k = o.naturalWidth / sheet.w, C = SHEET.cell * k;
+    const W = r.naturalWidth, H = r.naturalHeight, k = o.naturalWidth / sheet.w, C = (sheet.cell || SHEET.cell) * k;
     const c = newCanvas(W, H), x = c.getContext("2d");
     x.drawImage(r, 0, 0);
     for (const [i, f] of sheet.cells.entries()) {
@@ -415,6 +425,7 @@ function showEnhResult() {
   if (!enh.faces.length) { enh.on.face = true; enh.on.retouch = false; }
   $("enhBefore").src = enh.src; $("enhAfter").src = enh.ai;
   $("enhSampleTag").hidden = !enh.demo;
+  renderProPanel();
   renderToggles();
   showScreen("enhanceResult");
   fitEnhFrame(); czReset();
@@ -555,6 +566,36 @@ $("enhZoom").addEventListener("click", () => { czTo(1, czMid(), { animate: true 
   });
 })();
 
+// ---------- Pro Edit: what changed, and strength ----------
+// A few plain chips measured from the photo and the result (nothing the model claims), so it is
+// clear what the 2 credits did; and one strength slider, free to move.
+function renderProPanel() {
+  const pro = enh.style === PRO_MODE;
+  $("enhPro").hidden = !pro;
+  if (!pro) return;
+  enh.strength = 100; $("enhStrength").value = "100"; $("enhStrengthVal").textContent = "100%";
+  $("enhChanges").replaceChildren(...(enh.changes || []).map(([t, ok]) => { const s = document.createElement("span"); s.textContent = t; if (ok) s.className = "ok"; return s; }));
+}
+$("enhStrength").addEventListener("input", () => {
+  enh.strength = Number($("enhStrength").value); $("enhStrengthVal").textContent = enh.strength + "%";
+  clearTimeout(renderProPanel.t); renderProPanel.t = setTimeout(updateComposite, 120);
+});
+// Measures the change between the photo and the result: light, white balance, contrast, faces.
+async function proChanges(before, after, faces, info) {
+  const [a, b] = await Promise.all([loadImg(before), loadImg(after)]), w = 160, h = Math.max(1, Math.round(160 * a.naturalHeight / a.naturalWidth));
+  const px = (img) => { const c = newCanvas(w, h), x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(img, 0, 0, w, h); return x.getImageData(0, 0, w, h).data; };
+  const A = px(a), B = px(b), st = (d) => { let l = 0, l2 = 0, rb = 0; const n = d.length / 4; for (let i = 0; i < d.length; i += 4) { const y = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; l += y; l2 += y * y; rb += d[i] - d[i + 2]; } l /= n; return { l, sd: Math.sqrt(Math.max(0, l2 / n - l * l)), rb: rb / n }; };
+  const s0 = st(A), s1 = st(B), out = [];
+  const dl = (s1.l - s0.l) / Math.max(1, s0.l), drb = s1.rb - s0.rb, dc = (s1.sd - s0.sd) / Math.max(1, s0.sd);
+  if (Math.abs(drb) > 2.5) out.push([drb > 0 ? "Warmer white balance" : "Cooler white balance"]);
+  if (Math.abs(dl) > 0.03) out.push([dl > 0 ? `Brighter ${Math.round(dl * 100)}%` : `Highlights recovered`]);
+  if (Math.abs(dc) > 0.04) out.push([dc > 0 ? "More depth" : "Softer contrast"]);
+  out.push(["Color graded"]);
+  if (info && info.restored) out.push(["Face detail restored"]);
+  if (faces) out.push([faces === 1 ? "Face kept true" : `${faces} faces kept true`, true]);
+  return out;
+}
+
 function renderToggles() {
   const row = $("enhToggles");
   const btns = ENH_TOGGLES.filter(([k]) => enhToggleOn(k)).map(([k, label, ic]) => {
@@ -580,7 +621,7 @@ $("enhToggles").addEventListener("click", (e) => {
   updateComposite();
 });
 
-const enhKey = () => ENH_TOGGLES.map(([k]) => (enh.on[k] ? 1 : 0)).join("");
+const enhKey = () => ENH_TOGGLES.map(([k]) => (enh.on[k] ? 1 : 0)).join("") + (enh.style === PRO_MODE ? ":" + enh.strength : "");
 async function updateComposite() {
   const key = enhKey(), token = ++enh.token;
   if (enh.cache.has(key)) { showComposite(enh.cache.get(key)); return; }
@@ -614,6 +655,12 @@ async function composeEnhanced(on) {
       tracePoly(m, FACE.oval.map((i) => [C[0] + (P[i][0] - C[0]) * 1.1, C[1] + (P[i][1] - C[1]) * 1.12])); m.fill();
     }
     blendMasked(x, layer, mask, 1);
+    out = c.toDataURL("image/jpeg", 0.94);
+  }
+  // Pro Edit's strength: the photo as it was, up to the full Pro result (the faces stay true either way).
+  if (enh.style === PRO_MODE && enh.strength < 100) {
+    const [b, a] = await Promise.all([loadImg(enh.base), loadImg(out)]), [W, H] = enh.size, c = newCanvas(W, H), x = c.getContext("2d");
+    x.drawImage(b, 0, 0, W, H); x.globalAlpha = enh.strength / 100; x.drawImage(a, 0, 0, W, H);
     out = c.toDataURL("image/jpeg", 0.94);
   }
   if (on.retouch && enh.faces.length) {
@@ -963,7 +1010,7 @@ async function openBatchResult(it) {
   batch.opening = true;
   try {
     const full = await blobToData(it.full);
-    Object.assign(enh, { src: it.src, original: it.original, name: it.name, demo: false, full, ai: await shrinkData(full, 2048), base: null, faces: [], pending: null, saved: null, fromBatch: it, fromCamera: null });
+    Object.assign(enh, { style: ENH_MODE, changes: null, strength: 100, src: it.src, original: it.original, name: it.name, demo: false, full, ai: await shrinkData(full, 2048), base: null, faces: [], pending: null, saved: null, fromBatch: it, fromCamera: null });
     enh.cache.clear();
     await prepareResult();
     showEnhResult();

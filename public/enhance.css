@@ -218,3 +218,13 @@ dialog.enh-sheet[open] { animation: enh-pop 300ms cubic-bezier(.2, .9, .3, 1.15)
 #enhanceBatch .cost { margin: 0; min-height: 1.125rem; text-align: center; font-size: 0.8125rem; line-height: 1.125rem; color: #bfb2bc; }
 #enhanceBatch .cost b { color: #faf5f7; }
 #enhanceBatch .cost .link-btn { min-height: 32px; padding: 0 4px; font-size: 0.8125rem; color: #f2a5bb; }
+
+/* Pro Edit on the Result: what it changed, and how strong it is (original to full Pro). */
+.enh-pro { display: grid; gap: 6px; padding: 0 var(--s4) 4px; }
+.enh-changes { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.enh-changes::-webkit-scrollbar { display: none; }
+.enh-changes span { flex: none; padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; line-height: 1rem; color: #fff; background: rgb(255 255 255 / .1); white-space: nowrap; }
+.enh-changes span.ok { background: rgb(120 200 150 / .22); }
+.enh-strength { display: flex; align-items: center; gap: 10px; font-size: 0.8125rem; color: rgb(255 255 255 / .8); }
+.enh-strength input { flex: 1; min-height: 32px; accent-color: var(--accent); }
+.enh-strength b { min-width: 3em; text-align: right; font-weight: 600; color: #fff; }

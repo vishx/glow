@@ -2233,7 +2233,7 @@ async function renderExport(upto = ed.idx) {
     }
   } finally { IMG_MAX = keep; }
   const img = await loadImg(data);
-  return { data, w: img.naturalWidth, h: img.naturalHeight, capped: base.capped, ai: k && TOOL[steps[k].op.tool] && steps[k].op.tool !== "camlook" ? TOOL[steps[k].op.tool] : null };
+  return { data, w: img.naturalWidth, h: img.naturalHeight, capped: base.capped, ai: k && TOOL[steps[k].op.tool] && steps[k].op.tool !== "camlook" && steps[k].op.tool !== "pro" ? TOOL[steps[k].op.tool] : null };
 }
 function exportNote(r) {
   if (r.preview) return ` Saved at ${r.w} × ${r.h}, the preview size, because the full-size version couldn't be made on this device.`;

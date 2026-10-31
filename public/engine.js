@@ -1222,38 +1222,64 @@ async function proFinish(src, aiSrc) {
   const W = o.naturalWidth, H = o.naturalHeight, n = W * H;
   const co = newCanvas(W, H), ox = co.getContext("2d", { willReadFrequently: true });
   ox.drawImage(o, 0, 0);
-  let ca = newCanvas(W, H), ax = ca.getContext("2d", { willReadFrequently: true });
-  ax.imageSmoothingQuality = "high"; ax.drawImage(a, 0, 0, W, H);
-  // Faces on both pictures. Models often zoom or shift the frame a little, so the result is first
-  // lined up with the photo from the faces they share (scale and shift, least squares).
+  // The model answers in one of its own shapes (2:3, 9:16, ...), so a photo of another shape comes
+  // back reframed: zoomed, shifted, sometimes with more or less around the edges. Its result is kept
+  // in its own shape, at about the photo's scale, and lined up with the photo from the faces both
+  // share (scale and shift, least squares, weighted by face size). With no shared face it is
+  // assumed to cover the photo, centered.
+  const aw = a.naturalWidth, ah = a.naturalHeight, k0 = Math.sqrt((W * H) / (aw * ah));
+  const cw = Math.max(1, Math.round(aw * k0)), ch = Math.max(1, Math.round(ah * k0));
+  const cr = newCanvas(cw, ch), crx = cr.getContext("2d", { willReadFrequently: true });
+  crx.imageSmoothingQuality = "high"; crx.drawImage(a, 0, 0, cw, ch);
   const pts = [...FACE.oval, ...FACE.eyeL, ...FACE.eyeR];
   let faces = [], aiFaces = [];
-  try { faces = await findFaces(src + "|pro", co); aiFaces = faces.length ? await findFaces(aiSrc + "|pro", ca) : []; } catch {}
-  const px = (f) => f.map(([x, y]) => [x * W, y * H]);
+  try { faces = await findFaces(src + "|pro", co); aiFaces = faces.length ? (await findFaces(aiSrc + "|pro", cr)).map((g) => g.map(([x, y]) => [x * cw, y * ch])) : []; } catch {}
+  const s0 = Math.max(cw / W, ch / H);
+  let fit = { s: s0, tx: (cw - W * s0) / 2, ty: (ch - H * s0) / 2 }, matched = 0;
   const pairs = [];
   for (const f of faces) {
-    const P = px(f), faceW = dist(P[234], P[454]), c0 = mean(FACE.oval.map((i) => P[i]));
-    const Q = aiFaces.map(px).find((g) => dist(mean(FACE.oval.map((i) => g[i])), c0) < faceW * 0.5);
-    if (Q) for (const i of pts) pairs.push([P[i], Q[i], faceW]);
+    const P = f.map(([x, y]) => [x * W, y * H]), faceW = dist(P[234], P[454]), c0 = mean(FACE.oval.map((i) => P[i]));
+    const guess = [fit.s * c0[0] + fit.tx, fit.s * c0[1] + fit.ty];
+    const Q = aiFaces.reduce((m, g) => { const d = dist(mean(FACE.oval.map((i) => g[i])), guess); return d < faceW * fit.s * 0.8 && (!m || d < m.d) ? { g, d } : m; }, null);
+    if (Q) { matched++; for (const i of pts) pairs.push([P[i], Q.g[i], faceW]); }
   }
-  let fit = { s: 1, tx: 0, ty: 0 };
   if (pairs.length) {
-    // Weighted by face size, so the main people decide. Q = s * P + t.
     let sw = 0, mp = [0, 0], mq = [0, 0];
     for (const [P, Q, w] of pairs) { sw += w; mp[0] += P[0] * w; mp[1] += P[1] * w; mq[0] += Q[0] * w; mq[1] += Q[1] * w; }
     mp = mp.map((v) => v / sw); mq = mq.map((v) => v / sw);
     let num = 0, den = 0;
     for (const [P, Q, w] of pairs) { const dx = P[0] - mp[0], dy = P[1] - mp[1]; num += w * (dx * (Q[0] - mq[0]) + dy * (Q[1] - mq[1])); den += w * (dx * dx + dy * dy); }
-    const sc = den > 1 ? Math.max(0.85, Math.min(1.15, num / den)) : 1;
+    const sc = den > 1 ? Math.max(s0 * 0.7, Math.min(s0 * 1.4, num / den)) : s0;
     fit = { s: sc, tx: mq[0] - sc * mp[0], ty: mq[1] - sc * mp[1] };
   }
-  if (Math.abs(fit.s - 1) > 0.002 || Math.hypot(fit.tx, fit.ty) > 0.75) {
-    // Photo point p sits at s * p + t in the result: draw the result back so it sits at p.
-    const c2 = newCanvas(W, H), x2 = c2.getContext("2d", { willReadFrequently: true });
-    x2.imageSmoothingQuality = "high"; x2.drawImage(ca, 0, 0);   // the edges a shift uncovers
-    x2.setTransform(1 / fit.s, 0, 0, 1 / fit.s, -fit.tx / fit.s, -fit.ty / fit.s); x2.drawImage(ca, 0, 0); x2.setTransform(1, 0, 0, 1, 0, 0);
-    ca = c2; ax = x2;
-    aiFaces = aiFaces.map((g) => g.map(([x, y]) => [(x * W - fit.tx) / fit.s / W, (y * H - fit.ty) / fit.s / H]));
+  // Photo point p sits at s * p + t in the result: draw the result so it sits at p.
+  let ca = newCanvas(W, H), ax = ca.getContext("2d", { willReadFrequently: true });
+  ax.imageSmoothingQuality = "high";
+  ax.setTransform(1 / fit.s, 0, 0, 1 / fit.s, -fit.tx / fit.s, -fit.ty / fit.s); ax.drawImage(cr, 0, 0); ax.setTransform(1, 0, 0, 1, 0, 0);
+  aiFaces = aiFaces.map((g) => g.map(([x, y]) => [(x - fit.tx) / fit.s / W, (y - fit.ty) / fit.s / H]));
+  // Where the result doesn't reach (it showed less than the photo), the photo itself fills in,
+  // given the result's color (a per-channel gain and offset fitted where both exist), with a soft
+  // edge. Nothing is ever repeated or stretched.
+  const rx0 = -fit.tx / fit.s, ry0 = -fit.ty / fit.s, rx1 = (cw - fit.tx) / fit.s, ry1 = (ch - fit.ty) / fit.s;
+  const gap = rx0 > 0.5 || ry0 > 0.5 || rx1 < W - 0.5 || ry1 < H - 0.5;
+  if (gap) {
+    const O0 = ox.getImageData(0, 0, W, H).data, A0 = ax.getImageData(0, 0, W, H).data, feather = Math.max(4, Math.min(W, H) * 0.02);
+    const inside = (x, y) => clamp01(Math.min(x - rx0, rx1 - x, y - ry0, ry1 - y) / feather);
+    const st = [0, 1, 2].map(() => ({ so: 0, sa: 0, soo: 0, soa: 0, n: 0 }));
+    const step = Math.max(1, Math.round(Math.sqrt(n / 60000)));
+    for (let y = 0; y < H; y += step) for (let x = 0; x < W; x += step) {
+      if (inside(x, y) < 1) continue;
+      const i = (y * W + x) * 4;
+      for (let k = 0; k < 3; k++) { const v = O0[i + k], u = A0[i + k], t = st[k]; t.so += v; t.sa += u; t.soo += v * v; t.soa += v * u; t.n++; }
+    }
+    const gain = st.map((t) => { if (t.n < 50) return [1, 0]; const mo = t.so / t.n, ma = t.sa / t.n, vo = t.soo / t.n - mo * mo, cov = t.soa / t.n - mo * ma; const g = vo > 4 ? Math.max(0.6, Math.min(1.6, cov / vo)) : 1; return [g, ma - g * mo]; });
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const w = inside(x + 0.5, y + 0.5); if (w >= 1) continue;
+      const i = (y * W + x) * 4;
+      for (let k = 0; k < 3; k++) A0[i + k] = A0[i + k] * w + (O0[i + k] * gain[k][0] + gain[k][1]) * (1 - w);
+      A0[i + 3] = 255;
+    }
+    const img = ax.createImageData(W, H); img.data.set(A0); ax.putImageData(img, 0, 0);
   }
   const O = ox.getImageData(0, 0, W, H).data, A = ax.getImageData(0, 0, W, H).data;
   const blurred = (d, s) => { const c = new Uint8ClampedArray(d); boxBlurRGBA(c, W, H, s); return c; };
@@ -1261,9 +1287,9 @@ async function proFinish(src, aiSrc) {
   for (let i = 0, j = 0; i < n * 4; i += 4, j += 3) { out[j] = A[i]; out[j + 1] = A[i + 1]; out[j + 2] = A[i + 2]; }
 
   // 1. Fine detail the model couldn't keep at its size, wherever it kept what was there.
-  const sB = Math.max(1.2, 1.2 * W / a.naturalWidth);
+  const sB = Math.max(1.2, 1.2 / (fit.s / k0));   // the model's own pixel, in photo pixels
   const Ob = blurred(O, sB), Ab = blurred(A, sB);
-  const keep = changeMask(o, ca, W, H, a.naturalWidth, a.naturalHeight);
+  const keep = changeMask(o, ca, W, H, Math.min(W, aw / fit.s * k0), Math.min(H, ah / fit.s * k0));
   for (let i = 0, j = 0, p = 0; i < n * 4; i += 4, j += 3, p++) {
     const t = keep[p * 4] / 255;
     if (!t) continue;
@@ -1305,7 +1331,7 @@ async function proFinish(src, aiSrc) {
   const img = ox.createImageData(W, H), d = img.data;
   for (let i = 0, j = 0; i < n * 4; i += 4, j += 3) { d[i] = out[j]; d[i + 1] = out[j + 1]; d[i + 2] = out[j + 2]; d[i + 3] = 255; }
   ox.putImageData(img, 0, 0);
-  return { data: co.toDataURL("image/jpeg", 0.94), faces: faces.length, moved, fit };
+  return { data: co.toDataURL("image/jpeg", 0.94), faces: faces.length, moved, matched, fit, gap };
 }
 
 // Edge-preserving skin smoothing for still photos, using the camera's beauty shader.
