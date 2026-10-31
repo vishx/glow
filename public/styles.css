@@ -704,6 +704,21 @@ dialog.pw #buyBtn::after { content: ""; position: absolute; inset: 0; background
   transform: translateX(-100%); animation: pw-shine 3.4s ease-in-out 1s infinite; }
 @keyframes pw-shine { 0% { transform: translateX(-100%); } 40%, 100% { transform: translateX(100%); } }
 dialog.pw #adBtn { margin-top: var(--s3); }
+dialog.pw .pw-packs { display: block; margin: var(--s3) auto 0; padding: var(--s2); min-height: 44px; color: var(--muted); font-size: 0.875rem; }
+dialog.pw .pw-packs u { color: var(--text); text-underline-offset: 3px; }
+.packs-sub { margin: 0 0 var(--s4); color: var(--muted); }
+.packs { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s3); }
+.pack { position: relative; display: grid; justify-items: center; gap: 2px; padding: var(--s4) var(--s2) var(--s3); border-radius: 20px;
+  border: 0; background: var(--surface); color: var(--text); text-align: center; box-shadow: inset 0 0 0 1.5px var(--line); }
+.pack b { font-family: Fraunces, Georgia, serif; font-size: 1.75rem; line-height: 2rem; font-weight: 500; }
+.pack .unit { font-size: 0.8125rem; color: var(--muted); }
+.pack .price { margin-top: var(--s2); font-weight: 700; font-variant-numeric: tabular-nums; }
+.pack small { font-size: 0.6875rem; line-height: 1rem; color: var(--muted); }
+.pack em { position: absolute; top: -10px; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-style: normal; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.04em; }
+.pack:disabled { opacity: 0.55; }
+.pack[aria-busy="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+#packsSheet .fine { margin-top: var(--s4); }
+@media (max-width: 340px) { .packs { grid-template-columns: 1fr; } .pack { grid-template-columns: auto 1fr auto; justify-items: start; align-items: baseline; gap: var(--s2); } .pack .price { margin: 0; } .pack em { right: var(--s3); } }
 dialog.pw .pw-free { margin: var(--s3) 0 0; font-size: 0.8125rem; line-height: 1.125rem; text-align: center; }
 dialog.pw .fine { text-align: center; }
 dialog.pw .links { justify-content: center; }

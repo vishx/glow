@@ -44,7 +44,7 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
     // Old diagnostics aren't kept (privacy policy); also runs nightly through pg_cron.
     admin.rpc("purge_old_diagnostics").then(({ error }) => { if (error) console.error("purge", error.message); });
     const since30 = new Date(Date.now() - 30 * 864e5).toISOString();
-    const [daily, tools, plans, heavy, support, errors, features, funnel, quality, subs] = await Promise.all([
+    const [daily, tools, plans, heavy, support, errors, features, funnel, quality, subs, packs] = await Promise.all([
       admin.rpc("admin_daily", { p_days: days }),
       admin.rpc("admin_tools", { p_days: 7 }),
       admin.rpc("admin_plans").single(),
@@ -55,6 +55,7 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
       admin.rpc("admin_funnel", { p_days: 7 }),
       admin.rpc("admin_ai_quality", { p_days: 7 }),
       admin.from("subscription_events").select("price_usd").gte("created_at", since30).neq("environment", "SANDBOX").not("price_usd", "is", null).limit(10000),
+      admin.rpc("admin_credit_packs", { p_days: 30 }),
     ]);
     const p = must(plans) as { pro_weekly: number; pro_yearly: number };
     const monthly = p.pro_weekly * WEEKLY * 52 / 12 + p.pro_yearly * YEARLY / 12;
@@ -63,9 +64,11 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
       daily: must(daily), tools: must(tools), plans: p, heavy: must(heavy),
       openSupport: support.count ?? 0, errors24h: errors.count ?? 0,
       features: must(features), funnel: must(funnel), aiQuality: must(quality),
+      // Before migration 012 there are no packs to report.
+      creditPacks: packs.error ? [] : packs.data,
       revenue: {
         monthlyGross: Math.round(monthly * 100) / 100, last30: Math.round(real * 100) / 100,
-        note: "Last 30 days is what RevenueCat reported (purchases and renewals minus refunds, before store fees). The monthly figure is an estimate from active Pro plans at list price.",
+        note: "Last 30 days is what RevenueCat reported (subscriptions, renewals and credit packs minus refunds, before store fees). The monthly figure is an estimate from active Pro plans at list price.",
       },
     };
   },

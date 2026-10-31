@@ -433,7 +433,16 @@
   <div id="creditsBody"></div>
   <div class="stack">
     <button class="btn" id="creditsPro">See Glow Pro</button>
+    <button class="btn ghost" id="creditsPacks">Buy a credit pack</button>
   </div>
+</dialog>
+
+<dialog class="sheet" id="packsSheet" aria-labelledby="packsTitle">
+  <div class="sheet-head"><h2 class="t-section" id="packsTitle">AI credit packs</h2><button class="icon-btn" data-close aria-label="Close"></button></div>
+  <p class="packs-sub">Pay once. Bought credits never expire.</p>
+  <div class="packs" id="packs"></div>
+  <p class="fine" id="packsNote"></p>
+  <div class="stack"><button class="btn ghost" id="packsPro">Editing every week? Glow Pro is better value</button></div>
 </dialog>
 
 <dialog class="sheet pw" id="paywall" aria-labelledby="pwTitle">
@@ -456,6 +465,7 @@
   </div>
   <button class="btn" id="buyBtn">Continue with yearly</button>
   <button class="btn ghost" id="adBtn" hidden>Watch a short ad for 1 AI credit</button>
+  <button class="pw-packs" id="pwPacks">Just need a few? <u>Buy a credit pack</u></button>
   <p class="pw-free">Yearly gives up to 80 credits a month. Camera, filters and on-device tools stay free for everyone.</p>
   <p class="fine" id="pwNote"></p>
   <div class="links"><button id="restoreBtn2">Restore purchases</button><a href="/terms.html" target="_blank" rel="noopener">Terms</a><a href="/privacy.html" target="_blank" rel="noopener">Privacy</a></div>

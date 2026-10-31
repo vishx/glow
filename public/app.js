@@ -22,6 +22,14 @@ const CONFIG = {
   // Pricing v2 (migration 007): Fill and Expand cost 2 credits. Turn on only once 007 is applied,
   // so the cost shown always matches what the server charges. Applied on 2026-10-30.
   pricingV2: true,
+  // One-time AI credit packs: consumable store products sold through RevenueCat (migration 012).
+  // The server decides the credits from the product id; the prices here show until the store's
+  // own localized prices load, and on the web.
+  creditPacks: [
+    { id: "glow_credits_10", credits: 10, price: "$1.99" },
+    { id: "glow_credits_30", credits: 30, price: "$4.99", tag: "Popular" },
+    { id: "glow_credits_80", credits: 80, price: "$11.99" },
+  ],
 };
 const PUBLIC_HOST = CONFIG.publicUrl ? new URL(CONFIG.publicUrl).host : "";
 
@@ -100,8 +108,9 @@ const TWO_CREDITS = ["headshot", "anime", "watercolor", "fashion", "bgscene", "c
 const CHEAP_AI = ["erase", "enhance", "upscale", "faces", "colorize", "retouch", "toon3d", "clay", "older", "younger", "bgcut"];
 const aiOf = (t) => (t && t.id === "glowup" ? (glow.ai && !ed.demo ? TOOL[glow.ai] : null) : t);
 const trialTool = (t) => (t = aiOf(t) || t, !!account) && account.plan !== "pro" && account.trialLeft !== undefined && t.kind === "ai" && !CHEAP_AI.includes(t.id);
-// What this tool can draw on: the one-time trial for premium tools on the free plan, otherwise the usual balance.
-const balanceFor = (t) => (trialTool(t) ? account.trialLeft : account.remaining);
+// What this tool can draw on: the one-time trial for premium tools on the free plan (plus any
+// bought or given credits), otherwise the usual balance.
+const balanceFor = (t) => (trialTool(t) ? account.trialLeft + (account.bonus || 0) : account.remaining);
 const costOf = (t) => (t.id === "glowup" ? (aiOf(t) ? costOf(aiOf(t)) : 0) : t.kind !== "ai" ? 0 : TWO_CREDITS.includes(t.id) || (CONFIG.pricingV2 && ["fill", "expand"].includes(t.id)) ? 2 : 1);
 const credits = (n) => `${n} credit${n === 1 ? "" : "s"}`;
 
@@ -1529,15 +1538,15 @@ function panelState(t) {
     const again = lastCommitTool === t.id;
     const a = account, trial = trialTool(t), have = a ? balanceFor(t) : 0, short = a && have < cost;
     if (short) {
-      apply.textContent = trial ? "Go Pro to keep using it" : "Get more AI credits";
+      apply.textContent = trial ? "Go Pro or buy credits" : "Get more AI credits";
       note = trial
-        ? (have ? `This uses ${credits(cost)} and you have ${have} free premium ${have === 1 ? "credit" : "credits"} left.` : "You've used your 3 free premium credits. Your daily AI credits still work on the everyday AI tools.")
+        ? (have ? `This uses ${credits(cost)} and you have ${have} premium ${have === 1 ? "credit" : "credits"} left.` : "You've used your 3 free premium credits. Your daily AI credits still work on the everyday AI tools.")
         : have
         ? `This uses ${credits(cost)} and you have ${have} left.`
         : `You're out of AI credits ${a.plan === "pro" ? "for now" : "for today"}. On-device tools are still free.`;
     } else {
       apply.textContent = `${again ? "Run again" : gen ? "Generate" : "Apply"} · ${credits(cost)}`;
-      const bal = !a ? "" : trial ? ` Premium tool: ${have} of 3 free premium credits left.` : ` You have ${have} left ${a.plan === "pro" ? "this week" : "today"}.`;
+      const bal = !a ? "" : trial ? (a.bonus ? ` Premium tool: ${a.trialLeft} free and ${a.bonus} extra credits left.` : ` Premium tool: ${have} of 3 free premium credits left.`) : ` You have ${have} left ${a.plan === "pro" ? "this week" : "today"}.`;
       note = again ? `Running it again makes a new version and uses another ${credits(cost).replace(/^1 /, "")}.${bal}` : `${note}${bal}`.trim();
     }
     if (jobActive()) { apply.disabled = true; note = `Wait for ${job.title} to finish, or check its status above. Glow runs one AI edit at a time so nothing is charged twice.`; }
@@ -1661,7 +1670,7 @@ async function applyCurrent() {
   }
   // AI: check the balance we know about first; the server makes the final call.
   if (account && balanceFor(t) < cost) {
-    if (account.plan === "pro") say("You've used this week's AI credits. Each one comes back 7 days after it was used.", true); else openPaywall();
+    if (account.plan === "pro") openPacks("out"); else openPaywall();
     return;
   }
   if (jobActive()) { say(`${job.title} is still running. Check its status first.`, true); return; }
@@ -1951,7 +1960,7 @@ async function startAiEdit(t) {
       job = null; saveJob();
       // A premium tool on the free plan draws on the one-time trial, which never resets, so say that
       // rather than the server's "come back tomorrow".
-      if (err.limit && trialTool(t)) err.message = "You've used your free premium credits. Go Pro to keep using premium AI tools, or use the everyday AI tools with your daily credits.";
+      if (err.limit && trialTool(t)) err.message = "You've used your free premium credits. Go Pro or buy a credit pack to keep using premium AI tools, or use the everyday AI tools with your daily credits.";
       if (err.limit) { say(err.message, true); if (!err.blocked && (!account || account.plan !== "pro")) openPaywall(); renderPanel(); return; }
       await refreshAccount();
       const extra = before != null && account ? (account.remaining >= before ? " No AI credit was used." : ` Your balance shows ${account.remaining} left.`) : "";
@@ -2398,6 +2407,8 @@ function renderCreditsSheet() {
     if (native && plugins.AdMob && a.adsLeft > 0) facts.push(fact("star", "Out of credits?",
       `Watch a short ad for 1 more credit${a.trialLeft !== undefined ? " for the daily tools" : ""}, up to ${a.adsLeft} more today. Ads are always optional.`));
   }
+  if (a && a.bonus > 0) facts.unshift(fact("star", `${a.bonus} extra AI ${a.bonus === 1 ? "credit" : "credits"}, included above`,
+    `They never expire and are used after your ${a.plan === "pro" ? "weekly" : "free"} credits${a.plan === "pro" ? "" : ", on every AI tool"}.`));
   facts.push(fact("save", "Saving is free and unlimited", "On the free plan, saves carry a small Glow mark."),
     fact("sliders", "On-device tools are always free", "Camera, filters, face, makeup, backgrounds, light and color. Undo and redo never use credits."),
     fact("wand", `Most AI tools use 1 credit`, `Headshot, Fashion, Describe${CONFIG.pricingV2 ? ", Fill and AI scene" : " and AI scene"} use 2. Each tool shows its cost before you apply it.`),
@@ -2409,10 +2420,16 @@ function openCredits() { refreshAccount(); renderCreditsSheet(); $("creditsSheet
 $("balanceBtn").addEventListener("click", openCredits);
 $("homeCredits").addEventListener("click", openCredits);
 $("creditsPro").addEventListener("click", () => { $("creditsSheet").close(); openPaywall(); });
+$("creditsPacks").addEventListener("click", () => { $("creditsSheet").close(); openPacks(); });
 
 function showUsage(u) {
-  // A premium tool on the free plan draws on the one-time trial, not today's balance.
-  if (u && u.pool === "trial") u = { plan: u.plan, trialLeft: u.remaining };
+  // A premium tool on the free plan draws on the one-time trial, not today's balance. The server's
+  // trial balance includes extra credits; the exact split comes from the account a moment later.
+  if (u && u.pool === "trial") {
+    const extra = (account && account.bonus) || 0;
+    u = { plan: u.plan, trialLeft: Math.max(0, u.remaining - extra) };
+    if (extra) setTimeout(refreshAccount, 0);
+  }
   else if (u && u.pool) { const { pool, ...rest } = u; u = rest; }
   account = { ...(account || {}), ...u };
   if (u && u.plan === "pro" && u.expires) store.set("glowPro", u.expires);
@@ -3041,6 +3058,7 @@ function setupPurchases() {
     if (apiKey.startsWith("REVENUECAT_")) return false; // store not set up yet
     await purchases().configure({ apiKey, appUserID: s.user_id });
     rcUser = s.user_id; followAccount();   // the account may have changed while configuring
+    packsReady = loadPacks();
     const offerings = await purchases().getOfferings();
     for (const p of (offerings.current && offerings.current.availablePackages) || []) {
       if (p.packageType === "WEEKLY") packages.weekly = p;
@@ -3083,6 +3101,7 @@ $("plans").addEventListener("keydown", (e) => {
   if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
   e.preventDefault(); const other = document.querySelector(`.plan:not([data-plan="${plan}"])`); other.click(); other.focus();
 });
+$("pwPacks").addEventListener("click", () => { $("paywall").close(); openPacks(); });
 const buyLabel = () => (plan === "yearly" ? "Continue with yearly" : "Continue with weekly");
 // The store tells our server through RevenueCat; check a few times until Pro shows up.
 async function afterPurchase() {
@@ -3118,6 +3137,65 @@ async function restore() {
   } catch (err) { say(err.message, true); }
 }
 $("restoreBtn").addEventListener("click", restore);
+
+// One-time credit packs (RevenueCat consumables). RevenueCat tells our server about the purchase,
+// which adds the credits to this account (migration 012): they never expire and are used after
+// the plan's own credits. A consumable can't be restored, so the credits stay with this account.
+const packProducts = {};
+let packsReady = null;
+async function loadPacks() {
+  try {
+    const { products } = await purchases().getProducts({ productIdentifiers: CONFIG.creditPacks.map((k) => k.id), type: "NON_SUBSCRIPTION" });
+    for (const p of products || []) packProducts[p.identifier] = p;
+  } catch (e) { console.warn(e); }
+  if ($("packsSheet").open) renderPacks();
+}
+function renderPacks() {
+  $("packs").innerHTML = CONFIG.creditPacks.map((k) => {
+    const sp = packProducts[k.id];
+    return `<button class="pack" data-pack="${k.id}"${native ? "" : " disabled"} aria-label="${k.credits} AI credits for ${sp ? sp.priceString : k.price}">` +
+      `${k.tag ? `<em>${k.tag}</em>` : ""}<b>${k.credits}</b><span class="unit">AI credits</span><span class="price">${sp ? sp.priceString : k.price}</span></button>`;
+  }).join("");
+  $("packsNote").textContent = native
+    ? "One-time purchase, charged to your store account. Credits are added to this Glow account and used after your free or weekly credits. Deleting the app or your account removes them."
+    : "Credit packs are available in the Glow app for iPhone and Android.";
+  $("packsPro").hidden = !!(account && account.plan === "pro");
+}
+function openPacks(why) {
+  setupPurchases(); renderPacks();
+  $("packsTitle").textContent = why === "out" ? "Out of AI credits for this week" : "AI credit packs";
+  track("packs_view", { plan: account ? account.plan : "", from: why || screen });
+  $("packsSheet").showModal();
+}
+$("packsPro").addEventListener("click", () => { $("packsSheet").close(); openPaywall(); });
+// The store tells our server through RevenueCat; check a few times until the credits show up.
+async function afterPack(before) {
+  for (let i = 0; i < 6; i++) {
+    await refreshAccount();
+    if (account && (account.bonus || 0) > before) return true;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  return false;
+}
+$("packs").addEventListener("click", async (e) => {
+  const b = e.target.closest(".pack"); if (!b || b.disabled) return;
+  const k = CONFIG.creditPacks.find((x) => x.id === b.dataset.pack);
+  const all = [...document.querySelectorAll(".pack")];
+  try {
+    if (await setupPurchases()) await packsReady;
+    if (!packProducts[k.id]) throw new Error("The store isn't available right now. Try again in a moment.");
+    all.forEach((x) => { x.disabled = true; }); b.setAttribute("aria-busy", "true");
+    track("pack_start", { id: k.id });
+    const before = (account && account.bonus) || 0;
+    await purchases().purchaseStoreProduct({ product: packProducts[k.id] });
+    track("pack_purchase", { id: k.id });
+    $("packsSheet").close();
+    say((await afterPack(before)) ? `${k.credits} AI credits added. They never expire.` : "Purchase complete. Your credits will appear within a minute.");
+  } catch (err) {
+    track("pack_fail", { id: k.id, cancelled: !!(err && err.userCancelled) });
+    if (!(err && err.userCancelled)) say((err && err.message) || "Purchase didn't go through.", true);
+  } finally { renderPacks(); }
+});
 $("restoreBtn2").addEventListener("click", restore);
 
 // Optional rewarded ad: when free edits run out, the user can choose to watch one

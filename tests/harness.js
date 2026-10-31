@@ -72,7 +72,7 @@ exports.launch = async (opts = {}) => {
   await p.route('**/*', async (r) => {
     const u = new URL(r.request().url()), method = r.request().method();
     const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' };
-    const usage = () => ({ plan: state.plan, used: state.used, quota: state.quota, remaining: Math.max(0, state.quota - state.used), adsLeft: 3 });
+    const usage = () => ({ plan: state.plan, used: state.used, quota: state.quota, remaining: Math.max(0, state.quota - state.used) + (state.bonus || 0), adsLeft: 3, bonus: state.bonus || 0 });
     const ai = state.ai;
     if (u.host.endsWith('supabase.co')) {
       if (method === 'OPTIONS') return r.fulfill({ status: 200, headers: cors });

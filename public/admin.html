@@ -187,14 +187,17 @@ const EVENT_NAMES = {
   batch_start: "Started a batch Enhance", batch_done: "Batch Enhance finished", batch_save: "Saved a batch", save: "Saved a photo", share: "Shared a photo", share_card: "Opened share card",
   capture: "Took a camera photo", look: "Picked a camera look", camera: "Camera state", restore: "Restored last edit",
   paywall_view: "Saw Glow Pro", purchase_start: "Tapped buy", purchase: "Bought Glow Pro", purchase_fail: "Purchase failed",
+  packs_view: "Saw credit packs", pack_start: "Tapped a credit pack", pack_purchase: "Bought a credit pack", pack_fail: "Credit pack purchase failed",
   ad_watched: "Watched an ad", setting: "Changed a setting", support_sent: "Sent a support message", error_shown: "Saw an error message",
 };
 const SUB_NAMES = {
   INITIAL_PURCHASE: "New subscription", RENEWAL: "Renewal", CANCELLATION: "Cancelled (or refunded)", UNCANCELLATION: "Turned renewal back on",
   EXPIRATION: "Ended", BILLING_ISSUE: "Payment problem", PRODUCT_CHANGE: "Changed plan", TRANSFER: "Moved to another account",
   SUBSCRIPTION_PAUSED: "Paused", SUBSCRIPTION_EXTENDED: "Extended", TEMPORARY_ENTITLEMENT_GRANT: "Temporary access", TEST: "Test event",
-  NON_RENEWING_PURCHASE: "One-time purchase", REFUND_REVERSED: "Refund reversed",
+  NON_RENEWING_PURCHASE: "Credit pack", REFUND_REVERSED: "Refund reversed",
 };
+// glow_pro_yearly → yearly, glow_credits_30 → 30 credits.
+const planName = (id) => (id || "").replace(/^glow_pro_/, "").replace(/^glow_credits_(\d+).*/, "$1 credits");
 const subRow = (r) => [
   SUB_NAMES[r.type] || r.type,
   r.period_type === "TRIAL" ? h("span", { class: "pill", style: "margin-left:6px" }, "trial") : "",
@@ -260,6 +263,12 @@ const VIEWS = {
             { t: "Credits", n: 1, f: (r) => r.credits }, { t: "IP", cls: "mono", f: (r) => r.last_ip || "" }, { t: "", f: (r) => (r.blocked ? h("span", { class: "pill bad" }, "Blocked") : "") },
           ], o.heavy)),
       ),
+      h("section", { class: "card" }, h("h2", {}, "Credit packs, last 30 days"),
+        h("p", { class: "muted", style: "margin-top:0" }, "One-time packs bought in the app. Bought credits never expire and are used after a plan's own credits. Amounts are before store fees; test purchases are left out."),
+        table([
+          { t: "Pack", f: (r) => planName(r.product_id) }, { t: "Sold", n: 1, f: (r) => r.sold }, { t: "Buyers", n: 1, f: (r) => r.buyers },
+          { t: "Refunded", n: 1, f: (r) => r.refunded }, { t: "Revenue", n: 1, f: (r) => money(r.revenue) },
+        ], o.creditPacks || [], "No credit packs sold yet.")),
       h("section", { class: "card links" }, h("h2", {}, "Other consoles"),
         h("p", { class: "muted", style: "margin-top:0" }, "Payments, money refunds and subscriber history live in the stores and RevenueCat. AI cost figures here are estimates from ai_mode_costs; Replicate's billing page has the real bill."),
         ...[["RevenueCat", "https://app.revenuecat.com/"], ["Replicate billing", "https://replicate.com/account/billing"], ["Supabase", "https://supabase.com/dashboard/project/vahtdouihsnpnaskrtka"],
@@ -278,7 +287,7 @@ const VIEWS = {
       list.replaceChildren(table([
         { t: "Account", f: (r) => userLink(r.user_id) }, { t: "Joined", f: (r) => when(r.created_at) }, { t: "Last seen", f: (r) => when(r.last_seen) },
         { t: "Plan", f: (r) => [planPill(r.plan, r.plan_period), r.blocked ? h("span", { class: "pill bad" }, " Blocked") : ""] },
-        { t: "Bonus", n: 1, f: (r) => r.bonus_credits || "" }, { t: "AI 7d", n: 1, f: (r) => r.runs_7d }, { t: "Credits 7d", n: 1, f: (r) => r.credits_7d }, { t: "AI total", n: 1, f: (r) => r.runs_total },
+        { t: "Extra", n: 1, f: (r) => r.bonus_credits || "" }, { t: "AI 7d", n: 1, f: (r) => r.runs_7d }, { t: "Credits 7d", n: 1, f: (r) => r.credits_7d }, { t: "AI total", n: 1, f: (r) => r.runs_total },
       ], rows, "No accounts match."));
     };
     q.addEventListener("keydown", (e) => { if (e.key === "Enter") load().catch((err) => toast(err.message, true)); });
@@ -315,10 +324,10 @@ const VIEWS = {
       h("option", { value: "" }, "All events"),
       ...Object.entries(SUB_NAMES).map(([v, t]) => h("option", { value: v, selected: v === type }, t)));
     return h("section", { class: "card" }, h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Subscription events"), h("span", { class: "spacer" }), pick),
-      h("p", { class: "muted", style: "margin-top:0" }, "Everything RevenueCat reports: new subscriptions, renewals, trials, cancellations, refunds and payment problems. Amounts are in US dollars before store fees; refunds show as minus. Test purchases are marked and left out of revenue."),
+      h("p", { class: "muted", style: "margin-top:0" }, "Everything RevenueCat reports: new subscriptions, renewals, trials, credit packs, cancellations, refunds and payment problems. Amounts are in US dollars before store fees; refunds show as minus. Test purchases are marked and left out of revenue."),
       table([
         { t: "When", f: (r) => when(r.created_at) }, { t: "Event", f: subRow },
-        { t: "Plan", f: (r) => (r.product_id || "").replace(/^glow_pro_/, "") }, { t: "Store", f: (r) => (r.store || "").replace(/_/g, " ").toLowerCase() },
+        { t: "Plan", f: (r) => planName(r.product_id) }, { t: "Store", f: (r) => (r.store || "").replace(/_/g, " ").toLowerCase() },
         { t: "Amount", n: 1, f: (r) => (r.price_usd != null ? money(r.price_usd) : "") },
         { t: "Reason", cls: "muted", f: (r) => (r.cancel_reason || "").replace(/_/g, " ").toLowerCase() },
         { t: "Account", f: (r) => (r.user_id ? userLink(r.user_id) : "") },
@@ -388,7 +397,7 @@ async function userDetail(id) {
           h("dt", {}, "Joined"), h("dd", {}, when(d.account.created_at)),
           h("dt", {}, "Last seen"), h("dd", {}, when(d.account.last_seen)),
           h("dt", {}, "Plan"), h("dd", {}, planPill(a.plan, a.period), p.plan_expires_at && a.plan === "pro" ? ` until ${when(p.plan_expires_at)}` : ""),
-          h("dt", {}, "Credits left"), h("dd", {}, `${a.remaining ?? "?"} (${a.pool || ""}${a.bonus ? `, includes ${a.bonus} bonus` : ""})`),
+          h("dt", {}, "Credits left"), h("dd", {}, `${a.remaining ?? "?"} (${a.pool || ""}${a.bonus ? `, includes ${a.bonus} extra (bought or given)` : ""})`),
           a.plan !== "pro" ? [h("dt", {}, "Premium trial left"), h("dd", {}, a.trial_left ?? "")] : null,
           h("dt", {}, "Ads watched"), h("dd", {}, d.ads),
           h("dt", {}, "Status"), h("dd", {}, p.blocked_at ? h("span", { class: "pill bad" }, `Blocked ${when(p.blocked_at)}${p.blocked_reason ? ": " + p.blocked_reason : ""}`) : h("span", { class: "pill good" }, "OK")),
@@ -416,7 +425,7 @@ async function userDetail(id) {
     ], d.usage, "No AI runs.")),
     h("section", { class: "card" }, h("h2", {}, "Subscription history"), table([
       { t: "When", f: (r) => when(r.created_at) }, { t: "Event", f: subRow },
-      { t: "Plan", f: (r) => (r.product_id || "").replace(/^glow_pro_/, "") }, { t: "Amount", n: 1, f: (r) => (r.price_usd != null ? money(r.price_usd) : "") },
+      { t: "Plan", f: (r) => planName(r.product_id) }, { t: "Amount", n: 1, f: (r) => (r.price_usd != null ? money(r.price_usd) : "") },
       { t: "Reason", cls: "muted", f: (r) => (r.cancel_reason || "").replace(/_/g, " ").toLowerCase() },
     ], d.subscriptions || [], "No purchases.")),
     h("div", { class: "grid2" },

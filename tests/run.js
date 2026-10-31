@@ -1339,7 +1339,7 @@ test('ai: free plan v2 — premium tools use the one-time trial, cheap tools the
   eq(await p.evaluate(() => [$('applyBtn').textContent, /2 of 3 free premium credits left/.test($('panelNote').textContent)]), ['Apply · 1 credit', true], 'premium: trial balance shown');
   await p.evaluate(() => showUsage({ plan: 'free', pool: 'trial', used: 3, quota: 3, remaining: 0 }));
   eq(await p.evaluate(() => [account.remaining, account.trialLeft]), [3, 0], 'a trial charge only moves the trial balance');
-  eq(await p.evaluate(() => [$('applyBtn').textContent, /used your 3 free premium credits/.test($('panelNote').textContent)]), ['Go Pro to keep using it', true], 'trial used up');
+  eq(await p.evaluate(() => [$('applyBtn').textContent, /used your 3 free premium credits/.test($('panelNote').textContent)]), ['Go Pro or buy credits', true], 'trial used up');
   await p.click('#applyBtn'); await settle(200);
   eq([await p.evaluate(() => $('paywall').open), state.posts.length], [true, 0], 'opens Glow Pro, sends nothing');
   await p.evaluate(() => $('paywall').close());
@@ -1823,6 +1823,63 @@ test('enhance batch: one failed photo does not stop the rest, and it can be retr
   await p.click('.bt.failed .bt-ph'); await p.waitForFunction(() => !batch.running && batch.items.every((i) => i.status === 'done'), null, { timeout: 60000 });
   eq(await p.textContent('#batchGoLbl'), 'Save all', 'all done after retry');
 }, { start: 'enhance', camera: false, plan: 'pro', quota: 40 });
+// ---------- Credit packs ----------
+test('packs: bought credits pay for premium tools on the free plan once the free tries are used', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await p.waitForFunction(() => !!account);
+  await p.evaluate(() => showUsage({ plan: 'free', used: 0, quota: 3, remaining: 13, trialLeft: 0, adsLeft: 1, bonus: 10, v: 2 }));
+  await tool(p, 'edit', null, 'pro');
+  eq(await p.evaluate(() => [$('applyBtn').textContent, /0 free and 10 extra credits left/.test($('panelNote').textContent)]), ['Apply · 1 credit', true], 'premium tool runs on extra credits');
+  await p.evaluate(() => showUsage({ plan: 'free', pool: 'trial', used: 1, quota: 3, remaining: 9 }));
+  eq(await p.evaluate(() => account.trialLeft), 0, 'a run paid with extra credits leaves the free tries at 0');
+  state.bonus = 9; await p.evaluate(() => openCredits()); await p.waitForFunction(() => account.bonus === 9);
+  assert(/9 extra AI credits, included above/.test(await p.textContent('#creditsBody')), 'credits sheet lists the extra credits');
+});
+
+test('packs: web shows the packs with prices but sends buyers to the app', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!account);
+  await p.evaluate(() => openPaywall()); await p.click('#pwPacks');
+  await p.waitForSelector('#packsSheet[open]');
+  eq(await p.evaluate(() => [...document.querySelectorAll('.pack')].map((b) => [b.querySelector('b').textContent, b.querySelector('.price').textContent, b.disabled])),
+    [['10', '$1.99', true], ['30', '$4.99', true], ['80', '$11.99', true]], 'three packs, store prices, not buyable on the web');
+  assert(/available in the Glow app/.test(await p.textContent('#packsNote')), 'says where to buy');
+  eq(await p.evaluate(() => $('paywall').open), false, 'paywall closed behind it');
+});
+
+test('packs: in the phone app a pack is bought through the store and its credits show up', async ({ p, state }) => {
+  await p.exposeFunction('__grant', (n) => { state.bonus = (state.bonus || 0) + n; });
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!account && !!session);
+  await p.evaluate(() => { CONFIG.revenuecatAndroid = 'goog_test'; rcReady = null; });
+  await p.evaluate(() => openPacks());
+  await p.waitForFunction(() => $('packs').textContent.includes('€2,29'));
+  eq(await p.evaluate(() => [...document.querySelectorAll('.pack')].map((b) => b.disabled)), [false, false, false], 'buyable in the app');
+  await p.click('.pack[data-pack="glow_credits_30"]');
+  await p.waitForFunction(() => !$('packsSheet').open, null, { timeout: 15000 });
+  await p.waitForFunction(() => /30 AI credits added/.test($('toast').textContent), null, { timeout: 15000 });
+  eq(await p.evaluate(() => [window.__bought, account.bonus, account.remaining]), ['glow_credits_30', 30, 33], 'bought the pack the user tapped; balance includes it');
+  // A cancelled purchase says nothing and adds nothing.
+  await p.evaluate(() => { window.__cancel = true; openPacks(); }); await p.click('.pack[data-pack="glow_credits_10"]'); await settle(500);
+  eq(await p.evaluate(() => [$('packsSheet').open, account.bonus]), [true, 30], 'cancel keeps the sheet open');
+  // Pro users who run out get packs instead of a dead end.
+  await p.evaluate(() => { $('packsSheet').close(); showUsage({ plan: 'pro', used: 40, quota: 40, remaining: 0, bonus: 0 }); });
+  await pick(p, PORTRAIT); await tool(p, 'edit', null, 'pro'); await p.click('#applyBtn'); await settle(300);
+  eq(await p.evaluate(() => [$('packsSheet').open, $('packsTitle').textContent, $('packsPro').hidden]), [true, 'Out of AI credits for this week', true], 'Pro out of credits: packs, no Pro upsell');
+  await p.evaluate(() => flushTelemetry()); await settle(500);
+  const names = state.events.map((e) => e.name);
+  for (const n of ['packs_view', 'pack_start', 'pack_purchase', 'pack_fail']) assert(names.includes(n), n + ' tracked: ' + names);
+}, { init: () => {
+  const prices = { glow_credits_10: '€2,29', glow_credits_30: '€5,49', glow_credits_80: '€12,99' };
+  window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: { Purchases: {
+    configure: async () => {}, logIn: async () => {},
+    getOfferings: async () => ({ current: { availablePackages: [] } }),
+    getProducts: async ({ productIdentifiers, type }) => ({ products: type === 'NON_SUBSCRIPTION' ? productIdentifiers.map((id) => ({ identifier: id, priceString: prices[id] })) : [] }),
+    purchaseStoreProduct: async ({ product }) => {
+      if (window.__cancel) throw Object.assign(new Error('cancelled'), { userCancelled: true });
+      window.__bought = product.identifier; await window.__grant(+product.identifier.split('_').pop());
+    },
+  } } };
+} });
+
 
 (async () => {
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });

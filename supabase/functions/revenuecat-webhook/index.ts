@@ -1,5 +1,6 @@
 // RevenueCat calls this whenever a subscription starts, renews, or ends, and we
-// mirror it onto the user's profile. The app logs users into RevenueCat with
+// mirror it onto the user's profile. It also adds the credits of a one-time credit pack
+// (migration 012) and takes them back if the pack is refunded. The app logs users into RevenueCat with
 // their Supabase user id, so app_user_id is the Supabase user id.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -11,6 +12,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // has access until then; a refund arrives as a cancellation that ends now.
 const ACTIVE = new Set(["INITIAL_PURCHASE", "RENEWAL", "UNCANCELLATION", "PRODUCT_CHANGE", "CANCELLATION",
   "BILLING_ISSUE", "SUBSCRIPTION_EXTENDED", "TEMPORARY_ENTITLEMENT_GRANT"]);
+// One-time credit packs (consumables): store product id -> AI credits. The server decides the
+// credits from the product, never from the app. Same ids in App Store Connect and Play Console.
+const PACKS: Record<string, number> = { glow_credits_10: 10, glow_credits_30: 30, glow_credits_80: 80 };
+const packCredits = (productId?: string) => PACKS[String(productId ?? "").split(":")[0]] ?? 0;
 const uuids = (list: unknown) => (Array.isArray(list) ? list : []).filter((id) => UUID.test(String(id ?? "")));
 
 function same(a: string, b: string) {
@@ -50,10 +55,37 @@ async function logEvent(event: Record<string, any>) {
   if (error) console.error("revenuecat log", error.message);
 }
 
+async function creditPack(event: Record<string, any>) {
+  await logEvent(event);
+  const txn = String(event.transaction_id ?? event.original_transaction_id ?? event.id ?? "");
+  if (!txn) return new Response("ignored", { status: 200 });
+  if (event.type === "NON_RENEWING_PURCHASE") {
+    const user = uuids([event.app_user_id, ...(event.aliases ?? [])])[0];
+    if (!user) return new Response("ignored", { status: 200 });
+    const { data, error } = await admin.rpc("grant_credit_pack", {
+      p_user: user, p_txn: txn, p_product: event.product_id, p_credits: packCredits(event.product_id),
+      p_price: num(event.price), p_store: event.store ?? null, p_env: event.environment ?? null,
+    });
+    // A user deleted since buying has no auth row to reference; nothing to give.
+    if (error && !/foreign key/i.test(error.message)) throw error;
+    console.log("revenuecat credit pack", user, event.product_id, txn, data ?? 0);
+  } else if (event.type === "CANCELLATION") {
+    // For a one-time purchase, a cancellation is a refund.
+    const { data, error } = await admin.rpc("refund_credit_pack", { p_txn: txn });
+    if (error) throw error;
+    console.log("revenuecat credit pack refunded", event.product_id, txn, data ?? 0);
+  }
+  return new Response("ok", { status: 200 });
+}
+
 Deno.serve(async (req) => {
   if (!SECRET || !same(req.headers.get("Authorization") ?? "", `Bearer ${SECRET}`)) return new Response("unauthorized", { status: 401 });
   const { event } = await req.json().catch(() => ({}));
   if (!event) return new Response("bad request", { status: 400 });
+  // Credit packs aren't part of the Pro entitlement, so they're handled before that check.
+  if (packCredits(event.product_id)) {
+    try { return await creditPack(event); } catch (e) { return new Response((e as Error).message, { status: 500 }); }
+  }
   if (Array.isArray(event.entitlement_ids) && !event.entitlement_ids.some((e: string) => e === "pro" || e === "glow_pro")) return new Response("ignored", { status: 200 });
 
   try {
