@@ -172,6 +172,8 @@ function trackFace(video) {
 // Eases the points toward the new ones, so makeup doesn't shimmer when the face is still but
 // keeps up when it moves.
 function takeFace(norm) {
+  // The model now and then returns NaN points; drawing with them threw and stopped the preview.
+  if (norm && !norm.every(Number.isFinite)) norm = null;
   if (!norm || !liveFace.size) { liveFace.seen = Math.max(0, liveFace.seen - 0.34); if (!liveFace.seen) liveFace.pts = null; return; }
   const [W, H] = liveFace.size, raw = [];
   for (let i = 0; i < norm.length; i += 2) raw.push([norm[i] * W, norm[i + 1] * H]);

@@ -4,3 +4,4 @@ mobile/www/
 tests/.assets/
 tests/out/
 tools/demo/raw/
+__pycache__/

@@ -1948,7 +1948,7 @@ async function startAiEdit(t) {
       // A premium tool on the free plan draws on the one-time trial, which never resets, so say that
       // rather than the server's "come back tomorrow".
       if (err.limit && trialTool(t)) err.message = "You've used your free premium credits. Go Pro to keep using premium AI tools, or use the everyday AI tools with your daily credits.";
-      if (err.limit) { say(err.message, true); if (!account || account.plan !== "pro") openPaywall(); renderPanel(); return; }
+      if (err.limit) { say(err.message, true); if (!err.blocked && (!account || account.plan !== "pro")) openPaywall(); renderPanel(); return; }
       await refreshAccount();
       const extra = before != null && account ? (account.remaining >= before ? " No AI credit was used." : ` Your balance shows ${account.remaining} left.`) : "";
       say(err.message + extra, true);
@@ -2273,7 +2273,9 @@ $("saveBtn").addEventListener("click", saveEdit);
 // Saves on the free plan get a small "Glow · address" mark in the bottom-right corner, drawn on
 // the final full-size picture (after crop, rotation and every edit), never on the screen view.
 // Glow Pro saves stay clean. The mark is part of saving only: no credit, request or allowance.
-const isPro = () => !!(account && account.plan === "pro");
+// Pro is remembered (until it expires) for when the server can't be reached yet, such as right
+// after opening the app offline, so a Pro save never gets the free-plan mark.
+const isPro = () => (account && account.plan ? account.plan === "pro" : new Date(store.get("glowPro") || 0) > new Date());
 let shareOffered = false;
 async function markFonts() {
   try { await Promise.all([document.fonts.load('500 40px Fraunces'), document.fonts.load("600 20px Figtree")]); } catch {}
@@ -2406,6 +2408,8 @@ function showUsage(u) {
   if (u && u.pool === "trial") u = { plan: u.plan, trialLeft: u.remaining };
   else if (u && u.pool) { const { pool, ...rest } = u; u = rest; }
   account = { ...(account || {}), ...u };
+  if (u && u.plan === "pro" && u.expires) store.set("glowPro", u.expires);
+  else if (u && u.plan === "free") store.set("glowPro", "");
   $("planLine").textContent = account.plan === "pro"
     ? `Glow Pro: ${account.remaining} of ${account.quota} AI credits left this week.`
     : `Free plan: ${account.remaining} of ${account.quota} AI credits left today. On-device tools are always free.`;
@@ -2437,6 +2441,7 @@ async function authCall(path, body) {
   }
   session = { access_token: data.access_token, refresh_token: data.refresh_token, expires_at: data.expires_at, user_id: data.user && data.user.id };
   store.set("glowSession", JSON.stringify(session));
+  followAccount();
   return session;
 }
 // One sign-in at a time, so parallel calls can't create two accounts.
@@ -2465,7 +2470,7 @@ async function call(path, opts = {}, retried) {
   const body = await res.json().catch(() => ({}));
   if (body.usage) showUsage(body.usage);
   if (!res.ok) {
-    const e = new Error(body.error || "Something went wrong."); e.status = res.status; e.limit = body.limit; throw e;
+    const e = new Error(body.error || "Something went wrong."); e.status = res.status; e.limit = body.limit; e.blocked = !!body.blocked; throw e;
   }
   return body;
 }
@@ -2744,6 +2749,11 @@ const LIVE_PREVIEW = Math.round(Math.min(1280, Math.max(window.screen.width, win
 function drawFrame() {
   const v = $("camVideo"), c = $("camCanvas");
   if (!cam.stream) return;
+  // One bad frame must never stop the loop: the preview would freeze until the camera reopens.
+  try { drawCamFrame(v, c); } catch (e) { resetFace(); reportError(e && e.message, e && e.stack); }
+  cam.raf = requestAnimationFrame(drawFrame);
+}
+function drawCamFrame(v, c) {
   if (v.videoWidth) {
     // The live look is drawn at about screen size (it is worked out in camera pixels, so it
     // looks the same); the photo itself is drawn at full size when the shutter is pressed.
@@ -2766,7 +2776,6 @@ function drawFrame() {
       x.drawImage(v, 0, 0); x.restore();
     }
   }
-  cam.raf = requestAnimationFrame(drawFrame);
 }
 // The camera light goes off whenever Glow is in the background, and comes back once on return.
 document.addEventListener("visibilitychange", () => {
@@ -2944,8 +2953,12 @@ $("deleteAccount").addEventListener("click", async (e) => {
   if (!ok) return;
   try {
     await call("account", { method: "DELETE" });
-    session = null; store.set("glowSession", "");
-    $("settings").close(); say("Your account and data were deleted.");
+    session = null; store.set("glowSession", ""); store.set("glowPro", "");
+    // The photos being edited on this device go too, so nothing of the old account is left behind.
+    exitDemo(); ed.hist = []; ed.idx = 0; ed.pending = null; ed.session = ""; job = null; recovered = null; account = null;
+    await Promise.all([Drafts.clear(), Drafts.clearJob(), Drafts.clearRecovered()]).catch(() => {});
+    $("settings").close(); if (screen === "editorScreen" || screen === "editorHome") showScreen("editorHome");
+    say("Your account and data were deleted.");
     refreshAccount();
   } catch (err) { say(err.message, true); }
 });
@@ -2980,7 +2993,15 @@ $("manageSubs").addEventListener("click", (e) => {
 });
 
 // Subscriptions through RevenueCat (only inside the iPhone/Android app).
-let plan = "yearly", rcReady = null;
+let plan = "yearly", rcReady = null, rcUser = "";
+// RevenueCat must buy for the account Glow is signed in with now. If the account changes (it was
+// deleted, or its sign-in expired and a new one was made), a purchase made under the old id would
+// reach the server for an account that no longer exists, and Pro would never switch on.
+function followAccount() {
+  if (!rcUser || !session || !session.user_id || session.user_id === rcUser) return;
+  const id = session.user_id;
+  purchases().logIn({ appUserID: id }).then(() => { rcUser = id; }).catch((e) => reportError("RevenueCat logIn failed", e && e.message));
+}
 const packages = {};
 const purchases = () => plugins.Purchases;
 function setupPurchases() {
@@ -2991,6 +3012,7 @@ function setupPurchases() {
     const apiKey = ios ? CONFIG.revenuecatIos : CONFIG.revenuecatAndroid;
     if (apiKey.startsWith("REVENUECAT_")) return false; // store not set up yet
     await purchases().configure({ apiKey, appUserID: s.user_id });
+    rcUser = s.user_id; followAccount();   // the account may have changed while configuring
     const offerings = await purchases().getOfferings();
     for (const p of (offerings.current && offerings.current.availablePackages) || []) {
       if (p.packageType === "WEEKLY") packages.weekly = p;

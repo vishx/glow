@@ -1614,6 +1614,62 @@ test('ops: usage events are batched and never carry photos; errors are reported 
   state.errs = state.errs.filter((e) => !/test boom|limit/.test(e));   // thrown on purpose
 });
 
+// ---------- Whole-app audit (2026-10-31) ----------
+test('audit: a bad live-camera frame never stops the preview, and is reported once', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  await p.evaluate(() => {
+    // The first frame drawn from now on throws, as the NaN face points did on a phone.
+    window.__frames = 0; let thrown = false; const real = drawCamFrame;
+    drawCamFrame = function (...a) { window.__frames++; if (!thrown) { thrown = true; throw new Error('non-finite test frame'); } return real.apply(this, a); };
+  });
+  // Headless Chromium draws only a few frames a second here; any frame after the bad one is enough.
+  await p.waitForFunction(() => window.__frames >= 3, null, { timeout: 10000 });
+  eq(await p.evaluate(() => cam.state), 'live', 'camera still live');
+  await settle(500);
+  eq(state.appErrors.map((e) => e.message), ['non-finite test frame'], 'reported once');
+}, { start: 'camera' });
+
+test('audit: face points with NaN in them count as no face', async ({ p }) => {
+  await p.goto('https://app.test/');
+  eq(await p.evaluate(() => { liveFace.size = [640, 480]; liveFace.seen = 0; takeFace(new Float32Array([0.5, NaN, 0.2, 0.3])); return [liveFace.pts, liveFace.seen]; }), [null, 0], 'ignored');
+});
+
+test('audit: Pro is remembered while the server is out of reach, so Pro saves stay unmarked', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!account);
+  const r = await p.evaluate(() => {
+    const out = [];
+    showUsage({ plan: 'pro', expires: new Date(Date.now() + 864e5).toISOString(), remaining: 40, quota: 40 }); account = null; out.push(isPro());
+    store.set('glowPro', new Date(Date.now() - 1000).toISOString()); out.push(isPro());
+    showUsage({ plan: 'pro', expires: new Date(Date.now() + 864e5).toISOString(), remaining: 40, quota: 40 });
+    showUsage({ plan: 'free', remaining: 3, quota: 3 }); account = null; out.push(isPro());
+    return out;
+  });
+  eq(r, [true, false, false], 'remembered Pro, expired Pro, back to free');
+});
+
+test('audit: RevenueCat follows the account when Glow signs in as a new one', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
+  const r = await p.evaluate(async () => {
+    const calls = [];
+    plugins.Purchases = { logIn: async (o) => { calls.push(o.appUserID); } };
+    rcUser = 'old-account'; followAccount(); await new Promise((ok) => setTimeout(ok, 50));
+    const after = rcUser; followAccount(); await new Promise((ok) => setTimeout(ok, 50));
+    delete plugins.Purchases; rcUser = '';
+    return [calls, after];
+  });
+  eq(r, [['u1'], 'u1'], 'logged in to the current account once');
+});
+
+test('audit: Enhance saves the AI result at its full size, not the 2048px working copy', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 60000 });
+  eq(await p.evaluate(() => $('enhAfter').naturalWidth), 2048, 'the screen uses the 2048px copy');
+  await p.click('#enhDownload'); const [d] = await downloads(state, 1);
+  eq(imageSize(d.file).w, 6000, 'saved at the AI result size');
+}, { start: 'enhance', camera: false, files: { '/__ai.jpg': path.join(fixtures, 'large-24mp.jpg') } });
+
 // ---------- Runner ----------
 (async () => {
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });

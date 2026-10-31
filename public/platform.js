@@ -65,7 +65,7 @@ const Platform = {
 
   haptic(kind = "light") {
     try {
-      if (native && plugins.Haptics) plugins.Haptics.impact({ style: kind === "heavy" ? "HEAVY" : "LIGHT" });
+      if (native && plugins.Haptics) plugins.Haptics.impact({ style: kind === "heavy" ? "HEAVY" : "LIGHT" }).catch(() => {});
       else if (navigator.vibrate && matchMedia("(pointer: coarse)").matches) navigator.vibrate(kind === "heavy" ? 18 : 8);
     } catch {}
   },

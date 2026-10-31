@@ -61,7 +61,7 @@ async function enhanceSample() {
 setIcon($("enhSheetClose"), "close");
 function openEnhSheet(work, original, name, demo) {
   if (enh.busy) return;
-  Object.assign(enh, { src: work, original, name, demo, ai: null, base: null, faces: [], pending: null, saved: null });
+  Object.assign(enh, { src: work, original, name, demo, ai: null, full: null, base: null, faces: [], pending: null, saved: null });
   enh.cache.clear();
   $("enhSheetImg").src = work;
   $("enhSheetSample").hidden = !demo;
@@ -112,7 +112,8 @@ async function runEnhance() {
     let full;
     try { const r = await fetch(url); if (!r.ok) throw new Error(); full = await blobToData(await r.blob()); }
     catch { enh.pending = enh.pending || { done: url }; throw new Error("The result is ready but couldn't be downloaded yet. Tap Check again."); }
-    enh.ai = await shrinkData(full, 2048); enh.pending = null;
+    // The toggles work on a 2048px copy; the untouched result is kept for saving at full size.
+    enh.ai = await shrinkData(full, 2048); enh.full = full; enh.pending = null;
     if (!enh.demo) refreshAccount();
     await prepareResult();
     setSheetWorking(false);
@@ -121,7 +122,7 @@ async function runEnhance() {
     Platform.haptic("heavy");
   } catch (err) {
     setSheetWorking(false);
-    if (err.limit) { say(err.message, true); if (!isPro()) openPaywall(); }
+    if (err.limit) { say(err.message, true); if (!err.blocked && !isPro()) openPaywall(); }
     else if (err.message) say(err.message, true);
   }
 }
@@ -318,7 +319,9 @@ async function closeEnhResult() {
 $("enhDownload").addEventListener("click", enhDownload);
 async function enhDownload() {
   if (enh.busy || !enh.current) return;
-  let data = enh.current;
+  // With only the AI enhancers on, the photo saved is the AI's own full-size result (up to twice
+  // the uploaded size) rather than the 2048px working copy.
+  let data = enh.current === enh.ai && enh.full ? enh.full : enh.current;
   if (!isPro()) {
     let m; try { m = await addMark(data, false); } catch { m = null; }
     if (m) {
@@ -365,7 +368,8 @@ async function editEnhanced() {
   if (!enh.current) return;
   if (enh.demo) { openSample(); return; }   // the sample has its own editor demo (prepared AI previews)
   if (!(await confirmReplace())) return;
-  await openPhoto(enh.src, enh.original, { name: enh.name, processed: { data: enh.current, full: enh.current, label: "Enhance" } });
+  const full = enh.current === enh.ai && enh.full ? enh.full : enh.current;
+  await openPhoto(enh.src, enh.original, { name: enh.name, processed: { data: enh.current, full, label: "Enhance" } });
 }
 
 // Android back: Share goes back to Result, Result asks before leaving.
