@@ -80,11 +80,15 @@
       <div class="enh-changes" id="enhChanges" aria-label="What Pro Edit changed"></div>
       <label class="enh-strength"><span>Strength</span><input type="range" id="enhStrength" min="0" max="100" step="5" value="100" aria-label="Pro Edit strength"><b id="enhStrengthVal">100%</b></label>
     </div>
+    <!-- The tool row and a tool's levels share one space as tall as the taller of the two, so the
+         photo never changes size when a tool opens. -->
+    <div class="enh-dock" id="enhDock">
     <div class="enh-toggles" id="enhToggles" role="group" aria-label="Enhancers"></div>
     <div class="enh-levels" id="enhLevels" hidden>
       <label class="enh-default"><span>Set as default</span><input type="checkbox" id="enhDefault" role="switch"></label>
       <div class="enh-lv-row" id="enhLvRow" role="radiogroup" aria-labelledby="enhLvTitle"></div>
       <div class="enh-lv-bar"><button class="icon-btn" id="enhLvBack" aria-label="Back without this change"></button><h2 id="enhLvTitle"></h2><button class="icon-btn" id="enhLvDone" aria-label="Done"></button></div>
+    </div>
     </div>
   </section>
 

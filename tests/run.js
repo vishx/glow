@@ -620,7 +620,7 @@ test('enhance: pick, one AI request, before/after, toggles on the phone, save, s
     await p.waitForFunction(() => !$('enhWorking').classList.contains('on'), null, { timeout: 60000 });
     await p.click(done ? '#enhLvDone' : '#enhLvBack'); await p.waitForSelector('#enhToggles:not([hidden])');
   };
-  eq(await p.evaluate(() => [...$('enhLvRow').children].length), 0, 'no levels open at first');
+  eq(await p.evaluate(() => $('enhLevels').hidden), true, 'no levels open at first');
   await level('colors', 2); await level('bg', 0);
   eq(await p.evaluate(() => [enh.lv.colors, enh.lv.bg, document.querySelector('.enh-t[data-k=colors]').getAttribute('aria-pressed')]), [2, 0, 'true'], 'levels kept');
   const blur0 = await p.evaluate(() => enh.lv.blur);
@@ -638,6 +638,44 @@ test('enhance: pick, one AI request, before/after, toggles on the phone, save, s
   await p.click('#enhEdit'); await p.waitForFunction(() => screen === 'editorScreen' && ed.hist.length === 2 && ed.idx === 1);
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false });
+
+// 2026-10-31 (user's screenshots): the photo shrank when a tool's levels opened, levels 1-3 looked
+// alike, and some Colors looks barely differed. The frame keeps one size; each level and look differs.
+test('enhance result: the photo keeps its size when levels open, each level is stronger, every look differs, defaults round-trip', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0 && enh.faces.length > 0, null, { timeout: 30000 });
+  const size = () => p.evaluate(() => { const r = $('enhFrame').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+  const first = await size();
+  for (const k of ['face', 'colors']) {
+    await p.click(`.enh-t[data-k=${k}]`); await p.waitForSelector('#enhLevels:not([hidden])'); await p.waitForTimeout(100);
+    eq(await size(), first, k + ' levels open: same photo size');
+    await p.click('#enhLvBack'); await p.waitForTimeout(100); eq(await size(), first, 'closed: same size');
+  }
+  const r = await p.evaluate(async () => {
+    const px = async (s) => { const im = await loadImg(s), c = newCanvas(160, Math.round(160 * im.naturalHeight / im.naturalWidth)), x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0, c.width, c.height); return x.getImageData(0, 0, c.width, c.height).data; };
+    const d = (a, b) => { let s = 0; for (let i = 0; i < a.length; i += 4) s += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]); return s / (a.length / 4) / 3; };
+    const std = { face: 2, bg: 2, retouch: 0, colors: 0, blur: 0 }, out = {};
+    for (const k of ['retouch', 'colors']) {
+      const n = ENH_TOGGLES.find((t) => t[0] === k)[3].length, ims = [];
+      for (let i = 0; i < n; i++) ims.push(await px(await composeEnhanced({ ...std, [k]: i })));
+      out[k] = ims.map((a) => ims.map((b) => +d(a, b).toFixed(2)));
+    }
+    return { out, def: ENH_TOGGLES.map((t) => t[4]), key: enhAIKey() };
+  });
+  eq(r.def.slice(0, 2), [2, 2], 'Face and Background Enhancer start at 2, the AI result as it came');
+  const rt = r.out.retouch[0]; assert(rt[1] > 0 && rt[2] > rt[1] && rt[3] > rt[2], 'retouch grows with each level: ' + rt);
+  const c = r.out.colors;
+  for (let i = 2; i < c.length; i++) for (let j = 1; j < c.length; j++) if (i !== j) assert(c[i][j] > 1.5, `look ${i} vs ${j} differ: ${c[i][j]}`);
+  // Set as default on Retouch 2, then a new result opens with it.
+  await p.click('.enh-t[data-k=retouch]'); await p.click('#enhLvRow .enh-lv[data-i="2"]');
+  await p.click('#enhDefault'); await p.click('#enhLvDone');
+  eq(await p.evaluate(() => JSON.parse(store.get('glow.enhDefaults'))), { retouch: 2 }, 'saved');
+  await p.evaluate(() => showEnhResult()); eq(await p.evaluate(() => enh.lv.retouch), 2, 'loaded for the next result');
+  await p.click('.enh-t[data-k=retouch]'); eq(await p.evaluate(() => $('enhDefault').checked), true, 'switch shows it is the default');
+  eq(state.posts.length, 1, 'levels never call the AI again'); eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, viewport: { width: 412, height: 892 } });
 
 // 2026-10-31: More tools / Edit more opened the editor with no way back to the Enhance result
 // (its Back went to Editor home, and the browser's Back left the app).
@@ -691,9 +729,9 @@ test('settings: Enhance defaults, subscription details, share the app, and sugge
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   await p.evaluate(() => store.set('glow.enhDefaults', JSON.stringify({ blur: 2 })));
   await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
-  eq(await p.$$eval('#enhPrefsList select', (s) => s.map((x) => x.dataset.k + '=' + x.value)), ['face=3', 'bg=3', 'retouch=0', 'colors=0', 'blur=2'], 'each tool shows its default');
-  await p.selectOption('#enhPrefsList select[data-k=face]', '2'); await p.selectOption('#enhPrefsList select[data-k=blur]', '0');
-  eq(await p.evaluate(() => JSON.parse(store.get('glow.enhDefaults'))), { face: 2 }, 'changes saved; the standard level needs no entry');
+  eq(await p.$$eval('#enhPrefsList select', (s) => s.map((x) => x.dataset.k + '=' + x.value)), ['face=2', 'bg=2', 'retouch=0', 'colors=0', 'blur=2'], 'each tool shows its default');
+  await p.selectOption('#enhPrefsList select[data-k=face]', '3'); await p.selectOption('#enhPrefsList select[data-k=blur]', '0');
+  eq(await p.evaluate(() => JSON.parse(store.get('glow.enhDefaults'))), { face: 3 }, 'changes saved; the standard level needs no entry');
   await p.click('#enhPrefsReset'); eq(await p.evaluate(() => store.get('glow.enhDefaults')), '{}', 'reset');
   await p.evaluate(() => { window.__shared = null; navigator.share = async (d) => { window.__shared = d; }; });
   await p.click('#shareApp'); eq(await p.evaluate(() => window.__shared && window.__shared.url), 'https://glow-photo-enhancer.vercel.app', 'share sheet gets the app link');

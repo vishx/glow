@@ -15,19 +15,39 @@ const PRO_MODE = "pro", PRO_COST = 2;
 const proEditOn = () => featureOn("enhance:pro") && featureOn("tool:pro");
 // [key, label, icon, level names (0 = Disabled), level by default]. Each tool opens a row of
 // levels, and "Set as default" keeps the chosen level for the next photo. Face and Background
-// Enhancer mix, per area, the AI result into the original (level 3 = all AI); the rest are free
-// on-device steps on top.
+// Enhancer mix, per area, the AI result into the original: 1 = a light touch, 2 = the AI result
+// as it came (the standard), 3 = the AI result with extra fine detail brought out. The rest are
+// free on-device steps on top, each level clearly stronger than the one before.
 const ENH_COLORS = ["glow", "warm", "vivid", "soft", "cool", "film", "mono"];
-const ENH_TOGGLES = [["face", "Face Enhancer", "face", ["Disabled", "1", "2", "3"], 3], ["bg", "Background Enhancer", "upscale", ["Disabled", "1", "2", "3"], 3],
+const ENH_TOGGLES = [["face", "Face Enhancer", "face", ["Disabled", "1", "2", "3"], 2], ["bg", "Background Enhancer", "upscale", ["Disabled", "1", "2", "3"], 2],
   ["retouch", "Face Retouch", "fsmooth", ["Disabled", "1", "2", "3"], 0],
   ["colors", "Colors", "palette", ["Disabled", "Auto", ...ENH_COLORS.map((id) => FILTERS.find((f) => f.id === id).name)], 0],
   ["blur", "Background Blur", "bgblur", ["Disabled", "Low", "Medium", "High"], 0]];
-const ENH_MIX = [0, 0.5, 0.75, 1], ENH_RETOUCH = [null, [0.35, 0.2], [0.55, 0.35], [0.75, 0.5]];
+const ENH_MIX = [0, 0.4, 1, 1], ENH_DETAIL = { face: 0.9, bg: 1.1 };   // level 3's extra detail, faces gentler
+// Face Retouch: the editor's own skin and eye steps, each level stronger (Glow Up's one-pass recipe).
+const ENH_RETOUCH = [null,
+  [["fblemish", 0.6], ["fsmooth", 0.45], ["ftone", 0.2], ["fundereye", 0.35], ["feyes", 0.25]],
+  [["fblemish", 0.85], ["fsmooth", 0.8], ["ftone", 0.35], ["fundereye", 0.55], ["feyes", 0.4], ["fteeth", 0.4]],
+  [["fblemish", 1], ["fsmooth", 1], ["fsmooth", 0.7], ["ftone", 0.5], ["fundereye", 0.75], ["feyes", 0.55], ["fteeth", 0.6]]];
+// Colors: each look is its own grade, made for Enhance and applied in full after Auto (which evens
+// the light and takes out most of a color cast). wb: white balance gains; gamma < 1 brightens;
+// lift: matte blacks; sat: saturation (vib: gentler on already-strong colors and skin);
+// shadow/high: tints added to the dark and light tones; bloom: a soft glow.
+const ENH_LOOKS = {
+  glow: { wb: [1.04, 1, 0.96], gamma: 0.9, contrast: 0.96, lift: 0.015, sat: 1.08, high: [0.03, 0.01, 0.005], bloom: 0.22 },
+  warm: { wb: [1.08, 1.01, 0.88], gamma: 0.97, contrast: 1.04, sat: 1.1, vib: true, high: [0.02, 0.01, -0.02] },
+  vivid: { gamma: 0.98, contrast: 1.12, sat: 1.45, vib: true },
+  soft: { gamma: 0.93, contrast: 0.82, lift: 0.07, sat: 0.8, high: [0.01, 0.008, 0.012], bloom: 0.18 },
+  cool: { wb: [0.9, 0.99, 1.12], gamma: 0.99, contrast: 1.05, sat: 0.97, shadow: [-0.01, 0.01, 0.035] },
+  film: { gamma: 0.98, contrast: 1.1, lift: 0.07, sat: 0.8, shadow: [-0.02, 0.025, 0.045], high: [0.045, 0.02, -0.025] },
+  mono: { contrast: 1.15, lift: 0.02, mono: true },
+};
 const enhDefaults = () => { try { return JSON.parse(store.get("glow.enhDefaults") || "{}"); } catch { return {}; } };
 // Face and Background Enhancer are Enhance itself; the others can be switched off from the admin
 // page (features.js), which hides them and leaves them out of the picture.
 const enhToggleOn = (k) => k === "face" || k === "bg" || featureOn("enhance:" + k);
 const enh = {
+  lookThumbs: {},                                     // each Colors look on the small copy
   src: null, original: null, name: "", demo: false,   // the picked photo (working size) and its untouched file
   ai: null, base: null, faces: [],                    // the AI result, the photo at the result's size, face outlines (0–1)
   lv: {}, cache: new Map(), current: null, token: 0,  // each tool's level and the composites made so far
@@ -544,13 +564,13 @@ async function prepareResult() {
 function showEnhResult() {
   const saved = enhDefaults();
   enh.lv = Object.fromEntries(ENH_TOGGLES.map(([k, , , names, d]) => [k, Number.isInteger(saved[k]) && saved[k] >= 0 && saved[k] < names.length ? saved[k] : d]).map(([k, v]) => [k, enhToggleOn(k) ? v : 0]));
-  if (!enh.faces.length) { enh.lv.face = 3; enh.lv.retouch = 0; }
+  if (!enh.faces.length) { enh.lv.face = 2; enh.lv.retouch = 0; }
   enh.strength = 100;   // Pro Edit opens at full strength (renderProPanel sets the slider)
   enh.cache.clear(); enh.cache.set(enhAIKey(), enh.ai); enh.current = enh.ai; enh.saved = null;
-  enh.thumb = null;   // a small copy for the level pictures (ten full-size copies would weigh on a phone)
+  enh.thumb = null; enh.lookThumbs = {};   // a small copy for the level pictures (ten full-size copies would weigh on a phone)
   loadImg(enh.ai).then((im) => { const k = 200 / Math.max(im.naturalWidth, im.naturalHeight), c = newCanvas(Math.round(im.naturalWidth * k), Math.round(im.naturalHeight * k));
-    c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); enh.thumb = c.toDataURL("image/jpeg", 0.8); }).catch(() => {});
-  closeLevels(true);
+    c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); enh.thumb = c.toDataURL("image/jpeg", 0.8); return lookThumbs(); }).catch(() => {});
+  closeLevels(true); fillLevels("face");
   $("enhBefore").src = enh.src; $("enhAfter").src = enh.ai;
   if (enhKey() !== enhAIKey()) updateComposite();   // the user's own default levels
   $("enhSampleTag").hidden = !enh.demo;
@@ -623,7 +643,7 @@ $("enhZoom").addEventListener("click", () => { czTo(1, czMid(), { animate: true 
   let div = null, g = null, lastTap = null;
   const pt = (e) => { const r = f.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   const splitAt = (p) => enhSetSplit((p.x / f.clientWidth) * 100);
-  const onLine = (e, p) => !!e.target.closest("#enhKnob") || Math.abs(p.x - (f.clientWidth * enh.split) / 100) <= 24;
+  const onLine = (e, p) => !!e.target.closest("#enhKnob") || Math.abs(p.x - (f.clientWidth * enh.split) / 100) <= 32;
   function base() {
     const pts = [...ptrs.values()].slice(0, 2);
     if (!pts.length) { g = null; return; }
@@ -753,21 +773,27 @@ $("enhToggles").addEventListener("click", (e) => {
 // "Set as default" switch, and back (undo this tool's change) or done.
 const lvState = { k: null, was: 0 };
 function openLevels(k) {
-  const [, label, , names] = ENH_TOGGLES.find((t) => t[0] === k);
   lvState.k = k; lvState.was = enh.lv[k];
+  fillLevels(k);
+  markLevel();
+  $("enhToggles").hidden = true; $("enhLevels").hidden = false;
+  requestAnimationFrame(fitEnhFrame);   // (the dock keeps one height, so the photo stays the same size)
+  $("enhLvRow").querySelector('[aria-checked="true"]')?.scrollIntoView({ inline: "center", block: "nearest" });
+}
+// The level pictures. Also filled (unseen) when the result first shows, so the dock already has
+// the levels' height and nothing moves when a tool opens.
+function fillLevels(k) {
+  const [, label, , names] = ENH_TOGGLES.find((t) => t[0] === k);
   $("enhLvTitle").textContent = label;
   const thumb = enh.thumb || enh.ai;
   $("enhLvRow").replaceChildren(...names.map((name, i) => {
     const b = document.createElement("button");
     b.className = "enh-lv" + (i === 0 ? " off" : ""); b.dataset.i = i; b.setAttribute("role", "radio");
-    const f = k === "colors" && i > 1 ? FILTERS.find((x) => x.id === ENH_COLORS[i - 2]).f : k === "colors" && i === 1 ? "brightness(1.05) contrast(1.05)" : "";
-    b.innerHTML = `<img alt="" src="${thumb}"${f ? ` style="filter:${f}"` : ""}><span>${name}</span>`;
+    // Colors shows each look as it will really come out (same steps, on the small copy).
+    const pic = (k === "colors" && i > 0 && enh.lookThumbs[i]) || thumb;
+    b.innerHTML = `<img alt="" src="${pic}"><span>${name}</span>`;
     return b;
   }));
-  markLevel();
-  $("enhToggles").hidden = true; $("enhLevels").hidden = false;
-  requestAnimationFrame(fitEnhFrame);   // the levels take more room than the tool row: the photo shrinks to fit
-  $("enhLvRow").querySelector('[aria-checked="true"]')?.scrollIntoView({ inline: "center", block: "nearest" });
 }
 function markLevel() {
   const k = lvState.k, saved = enhDefaults(), def = ENH_TOGGLES.find((t) => t[0] === k)[4];
@@ -796,9 +822,9 @@ setIcon($("enhLvBack"), "back"); setIcon($("enhLvDone"), "check");
 $("enhLvBack").addEventListener("click", () => closeLevels(false));
 $("enhLvDone").addEventListener("click", () => closeLevels(true));
 
-// Face and Background Enhancer at 3, nothing else (and Pro Edit at full strength): the AI result as it came.
+// Face and Background Enhancer at 2, nothing else (and Pro Edit at full strength): the AI result as it came.
 const proKey = (st) => (enh.style === PRO_MODE ? ":" + st : "");
-const enhAIKey = () => "33000" + proKey(100);
+const enhAIKey = () => "22000" + proKey(100);
 const enhKey = () => ENH_TOGGLES.map(([k]) => enh.lv[k]).join("") + proKey(enh.strength);
 async function updateComposite() {
   const key = enhKey(), token = ++enh.token;
@@ -814,28 +840,24 @@ async function updateComposite() {
 function showComposite(data) { enh.current = data; $("enhAfter").src = data; enh.saved = null; }
 
 // Builds the picture for a set of levels. Background Enhancer mixes the AI result into the whole
-// frame; Face Enhancer then mixes the faces at its own level, through a soft face outline.
-// Retouch, Colors and Blur are the same free on-device tools the editor uses.
+// frame; Face Enhancer then mixes the faces at its own level, through a soft face outline. Level 3
+// of either brings out extra fine detail in its own area. Retouch, Colors and Blur are free
+// on-device steps on top.
 async function composeEnhanced(lv) {
   lv = Object.fromEntries(Object.entries(lv).map(([k, v]) => [k, enhToggleOn(k) ? v : 0]));
   let out;
-  const fa = ENH_MIX[lv.face], ba = ENH_MIX[lv.bg], plain = fa === ba || !enh.faces.length;
-  if (plain && (ba === 0 || ba === 1)) out = ba ? enh.ai : enh.base;
+  const faces = enh.faces.length > 0, fa = ENH_MIX[lv.face], ba = ENH_MIX[lv.bg];
+  const detail = { face: faces && lv.face === 3 ? ENH_DETAIL.face : 0, bg: lv.bg === 3 ? ENH_DETAIL.bg : 0 };
+  const split = faces && (fa !== ba || detail.face !== detail.bg);   // faces and the rest differ
+  if (!split && !detail.bg && (ba === 0 || ba === 1)) out = ba ? enh.ai : enh.base;
   else {
     const [ai, base] = await Promise.all([loadImg(enh.ai), loadImg(enh.base)]);
-    const [W, H] = enh.size, c = newCanvas(W, H), x = c.getContext("2d");
+    const [W, H] = enh.size, c = newCanvas(W, H), x = c.getContext("2d", { willReadFrequently: true });
     const mixed = (a) => { const m = newCanvas(W, H), mx = m.getContext("2d"); mx.drawImage(base, 0, 0, W, H); mx.globalAlpha = a; mx.drawImage(ai, 0, 0, W, H); return m; };
     x.drawImage(mixed(ba), 0, 0);
-    if (!plain) {
-      const mask = softMask(W, H, 1, () => {});
-      const m = mask.getContext("2d"); m.fillStyle = "#fff";
-      for (const f of enh.faces) {
-        const P = f.map(([px, py]) => [px * W, py * H]), fw = dist(P[234], P[454]), C = mean(FACE.oval.map((i) => P[i]));
-        m.filter = `blur(${Math.max(2, Math.round(fw / 12))}px)`;
-        tracePoly(m, FACE.oval.map((i) => [C[0] + (P[i][0] - C[0]) * 1.1, C[1] + (P[i][1] - C[1]) * 1.12])); m.fill();
-      }
-      blendMasked(x, mixed(fa), mask, 1);
-    }
+    const mask = split ? faceMaskFor(W, H) : null;
+    if (mask && fa !== ba) blendMasked(x, mixed(fa), mask, 1);
+    if (detail.face || detail.bg) detailBoost(c, mask, mask ? detail.face : detail.bg, detail.bg);
     out = c.toDataURL("image/jpeg", 0.94);
   }
   // Pro Edit's strength: the photo as it was, up to the full Pro result (the faces stay true either way).
@@ -845,16 +867,74 @@ async function composeEnhanced(lv) {
     out = c.toDataURL("image/jpeg", 0.94);
   }
   const rt = ENH_RETOUCH[lv.retouch];
-  if (rt && enh.faces.length) {
-    try { out = await faceEdit(out, "fauto", rt[0]); out = await faceEdit(out, "fsmooth", rt[1]); } catch (e) { if (!/face/i.test(e.message)) throw e; }
-  }
-  if (lv.colors) {
-    // Auto evens out the light and takes out most of a color cast; each look then goes on gently.
-    out = await autoLight(out, { balance: true });
-    if (lv.colors > 1) out = await applyFilter(out, FILTERS.find((f) => f.id === ENH_COLORS[lv.colors - 2]), ENH_COLORS[lv.colors - 2] === "mono" ? 1 : 0.45);
-  }
+  if (rt && faces) out = await glowUp(out, { face: rt });
+  if (lv.colors) out = await enhColors(out, lv.colors);
   if (lv.blur) out = await portraitBlur(out, lv.blur);
   return out;
+}
+// The faces' soft outlines, white on clear, at the result's size.
+function faceMaskFor(W, H) {
+  const mask = softMask(W, H, 1, () => {}), m = mask.getContext("2d"); m.fillStyle = "#fff";
+  for (const f of enh.faces) {
+    const P = f.map(([px, py]) => [px * W, py * H]), fw = dist(P[234], P[454]), C = mean(FACE.oval.map((i) => P[i]));
+    m.filter = `blur(${Math.max(2, Math.round(fw / 12))}px)`;
+    tracePoly(m, FACE.oval.map((i) => [C[0] + (P[i][0] - C[0]) * 1.1, C[1] + (P[i][1] - C[1]) * 1.12])); m.fill();
+  }
+  return mask;
+}
+// Level 3: fine detail brought out (an unsharp mask). Differences smaller than a few levels (noise,
+// JPEG grain) are left alone so they never turn gritty, and big edges are capped so no halo shows. `mask` (faces) takes faceAmt, the rest bgAmt.
+function detailBoost(c, mask, faceAmt, bgAmt) {
+  const W = c.width, H = c.height, r = Math.max(1, Math.round(Math.max(W, H) / 1000));
+  const blur = filtered(c, `blur(${r}px)`).getContext("2d", { willReadFrequently: true }), x = c.getContext("2d", { willReadFrequently: true });
+  const mx = mask && mask.getContext("2d", { willReadFrequently: true });
+  for (let y0 = 0; y0 < H; y0 += 256) {   // in strips, so a 12 MP photo never needs three full copies of its pixels
+    const h = Math.min(256, H - y0), a = x.getImageData(0, y0, W, h), d = a.data, bd = blur.getImageData(0, y0, W, h).data, md = mx && mx.getImageData(0, y0, W, h).data;
+    for (let i = 0; i < d.length; i += 4) {
+      const w = md ? md[i + 3] / 255 : 0, k = faceAmt * w + bgAmt * (1 - w);
+      if (!k) continue;
+      for (let ch = 0; ch < 3; ch++) { const hp = d[i + ch] - bd[i + ch], ah = Math.abs(hp); d[i + ch] += (ah < 4 ? hp * ah / 4 : Math.max(-10, Math.min(10, hp))) * k; }
+    }
+    x.putImageData(a, 0, y0);
+  }
+}
+// Colors level i: 1 = Auto; 2 and up = Auto, then that look (ENH_LOOKS).
+async function enhColors(src, i) {
+  const out = await autoLight(src, { balance: true });
+  return i > 1 ? enhLook(out, ENH_LOOKS[ENH_COLORS[i - 2]]) : out;
+}
+async function enhLook(src, L) {
+  const img = await loadImg(src), c = canvasFor(img), x = c.getContext("2d", { willReadFrequently: true });
+  x.drawImage(img, 0, 0, c.width, c.height);
+  if (L.bloom) {   // a soft glow: a blurred, brighter copy screened over the photo
+    x.save(); x.globalCompositeOperation = "screen"; x.globalAlpha = L.bloom;
+    drawWith(x, `blur(${Math.max(2, Math.round(Math.max(c.width, c.height) / 150))}px) brightness(0.9)`, (y) => y.drawImage(img, 0, 0, c.width, c.height)); x.restore();
+  }
+  const wb = L.wb || [1, 1, 1], g = L.gamma || 1, ct = L.contrast || 1, lift = L.lift || 0, sat = L.sat ?? 1, sh = L.shadow || [0, 0, 0], hi = L.high || [0, 0, 0];
+  const lut = [0, 1, 2].map((ch) => { const t = new Float32Array(256); for (let v = 0; v < 256; v++) { let u = Math.min(1, (v / 255) * wb[ch]); u = Math.pow(u, g); u = (u - 0.5) * ct + 0.5; t[v] = lift + Math.max(0, Math.min(1, u)) * (1 - lift); } return t; });
+  const a = x.getImageData(0, 0, c.width, c.height), d = a.data;
+  for (let i = 0; i < d.length; i += 4) {
+    let r = lut[0][d[i]], gg = lut[1][d[i + 1]], b = lut[2][d[i + 2]];
+    const l = 0.3 * r + 0.59 * gg + 0.11 * b, s2 = (1 - l) * (1 - l), h2 = l * l;
+    r += sh[0] * s2 + hi[0] * h2; gg += sh[1] * s2 + hi[1] * h2; b += sh[2] * s2 + hi[2] * h2;
+    if (L.mono) { r = gg = b = l; }
+    else if (sat !== 1) {
+      const s = Math.max(r, gg, b) - Math.min(r, gg, b), k = L.vib ? 1 + (sat - 1) * (1 - Math.min(1, s * 1.6)) : sat, m = 0.3 * r + 0.59 * gg + 0.11 * b;
+      r = m + (r - m) * k; gg = m + (gg - m) * k; b = m + (b - m) * k;
+    }
+    d[i] = r * 255; d[i + 1] = gg * 255; d[i + 2] = b * 255;
+  }
+  x.putImageData(a, 0, 0);
+  return encode(c, src);
+}
+// The Colors pictures: each look on the small copy, made once per result.
+async function lookThumbs() {
+  const t = enh.thumb; if (!t) return;
+  const auto = await autoLight(t, { balance: true }), got = { 1: auto };
+  for (let i = 0; i < ENH_COLORS.length; i++) got[i + 2] = await enhLook(auto, ENH_LOOKS[ENH_COLORS[i]]);
+  if (enh.thumb !== t) return;
+  enh.lookThumbs = got;
+  if (lvState.k === "colors") for (const b of $("enhLvRow").children) { const i = Number(b.dataset.i); if (i > 0 && got[i]) b.querySelector("img").src = got[i]; }
 }
 
 $("enhClose").addEventListener("click", closeEnhResult);

@@ -209,7 +209,7 @@ dialog.enh-sheet::backdrop { background: rgb(10 8 12 / .72); backdrop-filter: bl
 .enh-frame.zoomed { cursor: grab; }
 .enh-frame.zooming img { transition: transform 240ms cubic-bezier(.3, 0, .2, 1); }
 .enh-frame .line { position: absolute; top: 0; bottom: 0; left: var(--split, 50%); width: 2px; margin-left: -1px; background: #fff; pointer-events: none; }
-.enh-frame .knob { position: absolute; left: var(--split, 50%); top: 72%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; border: 0; padding: 0;
+.enh-frame .knob { position: absolute; left: clamp(24px, var(--split, 50%), calc(100% - 24px)); top: 72%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; border: 0; padding: 0;
   display: grid; place-items: center; background: #fff; color: #17121a; box-shadow: 0 2px 12px rgb(0 0 0 / .35); cursor: ew-resize; }
 .enh-frame .knob svg { width: 22px; height: 22px; }
 .enh-frame.reveal .after, .enh-frame.reveal .line, .enh-frame.reveal .knob { transition: clip-path 900ms cubic-bezier(.6, 0, .2, 1), left 900ms cubic-bezier(.6, 0, .2, 1); }
@@ -221,7 +221,10 @@ dialog.enh-sheet::backdrop { background: rgb(10 8 12 / .72); backdrop-filter: bl
 .enh-working { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / .25); pointer-events: none; opacity: 0; transition: opacity 160ms; }
 .enh-working.on { opacity: 1; }
 
-.enh-toggles { flex: none; display: flex; gap: var(--s1); overflow-x: auto; scrollbar-width: none; padding: var(--s4) var(--gutter) calc(var(--s4) + env(safe-area-inset-bottom));
+.enh-dock { flex: none; display: grid; }
+.enh-dock > * { grid-area: 1 / 1; min-width: 0; }
+.enh-dock > [hidden] { display: flex !important; visibility: hidden; pointer-events: none; }
+.enh-toggles { align-self: center; display: flex; gap: var(--s1); overflow-x: auto; scrollbar-width: none; padding: var(--s4) var(--gutter) calc(var(--s4) + env(safe-area-inset-bottom));
   scroll-snap-type: x proximity; }
 .enh-toggles::-webkit-scrollbar { display: none; }
 .enh-t { position: relative; flex: 0 0 auto; width: 92px; min-height: 84px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--s2) 2px;
@@ -239,8 +242,7 @@ dialog.enh-sheet::backdrop { background: rgb(10 8 12 / .72); backdrop-filter: bl
 .enh-t.more .ic { background: none; box-shadow: inset 0 0 0 1px #4a3f4b; }
 
 /* A tool's levels (Disabled, 1, 2, 3...), in place of the tool row. */
-.enh-levels { flex: none; display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) 0 calc(var(--s2) + env(safe-area-inset-bottom)); }
-.enh-levels[hidden] { display: none; }
+.enh-levels { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) 0 calc(var(--s2) + env(safe-area-inset-bottom)); }
 .enh-default { align-self: center; display: inline-flex; align-items: center; gap: var(--s3); min-height: 40px; color: #faf5f7; font-weight: 600; font-size: 0.9375rem; cursor: pointer; }
 .enh-default input { appearance: none; -webkit-appearance: none; margin: 0; width: 46px; height: 28px; border-radius: 14px; background: #4a3f4b; position: relative; cursor: pointer;
   transition: background var(--t-select); }
