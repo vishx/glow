@@ -243,7 +243,7 @@ function finishOnboarding(dest) {
   if (dest === "pick") { go(editor ? "editor" : "enhance"); if (editor) pickAndOpen(); else enhancePick(); }
   else if (dest === "sample") { go(editor ? "editor" : "enhance"); if (editor) openSample(); else enhanceSample(); }
   else if (dest === "camera") go("camera");
-  else go(store.get("glowLastDest") || "enhance");   // where you left off
+  else go("enhance");   // home
 }
 $("obPick").addEventListener("click", () => finishOnboarding("pick"));
 $("obSample").addEventListener("click", () => finishOnboarding("sample"));
@@ -3578,15 +3578,17 @@ ensureSession().then(refreshAccount).catch((e) => say(e.message, true));
 setupPurchases();
 setupAds();
 restoreDraft();
-// Glow Studio opens on Enhance, its main flow, unless Settings says otherwise. The Enhance screen is
-// its own welcome (sample before/after, Choose a photo, Try the sample); Settings can still show
-// the welcome screen.
+// Glow Studio always opens on Enhance, its home screen (sample before/after, Choose a photo, Try
+// the sample). It used to reopen the last tab, which dropped people straight into the live camera
+// (and its permission prompt) when they had last used it; the user wants home first.
+// __glowTestStart lets the browser checks start on another screen; the app never sets it.
+const START_DEST = window.__glowTestStart || "enhance";
 function startApp() {
   store.set("glowOnboarded", "1");
   applyFeatures();
-  go(store.get("glowLastDest") || "enhance");
+  go(START_DEST);
   refreshFeatures(true);
 }
 startApp();
-track("app_open", { dest: store.get("glowLastDest") || "enhance" });
+track("app_open", { dest: START_DEST, last: store.get("glowLastDest") || "" });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

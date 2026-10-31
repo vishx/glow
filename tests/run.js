@@ -572,7 +572,10 @@ test('first launch opens Enhance: sample before/after, Choose a photo, then the 
   assert(r.order[0] < r.order[1] && r.order[1] < r.order[2], 'Choose a photo, Try the sample, camera: ' + r.order);
   await p.click('#obSample');
   await p.waitForFunction(() => screen === 'editorScreen' && ed.demo && $('before').naturalWidth > 0, null, { timeout: 15000 });
-  await p.reload(); await p.waitForFunction(() => screen === 'editorHome');   // reopens where you left off
+  await p.reload(); await p.waitForFunction(() => screen === 'enhanceHome');   // always reopens on home, never the last tab
+  await p.evaluate(() => localStorage.setItem('glowLastDest', 'camera'));   // last used the camera
+  await p.reload(); await p.waitForFunction(() => screen === 'enhanceHome');
+  eq(await p.evaluate(() => window.__streams.length), 0, 'reopening after the camera asks for no camera');
 }, { onboarded: false, camera: false, viewport: { width: 390, height: 740 } });
 
 test('enhance: Pro Edit sends one "pro" request, keeps faces true on the phone, and is remembered', async ({ p, state }) => {

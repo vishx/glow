@@ -58,9 +58,9 @@ exports.launch = async (opts = {}) => {
   // Camera auto-save is on by default in the app; most checks were written with it off.
   if (!opts.autoSaveDefault) await ctx.addInitScript(() => { if (!localStorage.getItem('glowAutoSave')) localStorage.setItem('glowAutoSave', 'off'); });
   if (opts.init) await ctx.addInitScript(opts.init);
-  // Glow opens on Enhance by default; most checks here start where they always did (Camera), and
-  // the Enhance checks pass start: 'enhance'.
-  if (opts.onboarded !== false) await ctx.addInitScript((start) => { localStorage.setItem('glowOnboarded', '1'); localStorage.setItem('glowStart', start); if (!localStorage.getItem('glowLastDest')) localStorage.setItem('glowLastDest', start); }, opts.start || 'camera');
+  // Glow always opens on Enhance; most checks here start where they always did (Camera), and
+  // the Enhance checks pass start: 'enhance'. __glowTestStart is the app's test-only start screen.
+  if (opts.onboarded !== false) await ctx.addInitScript((start) => { localStorage.setItem('glowOnboarded', '1'); window.__glowTestStart = start; }, opts.start || 'camera');
   const p = await ctx.newPage();
   const state = { used: 0, plan: opts.plan || 'free', quota: opts.quota || 3, posts: [], polls: 0, lookups: 0, refunds: 0, errs: [], downloads: [],
     ai: { ...defaultAi(), ...(opts.ai || {}) }, features: opts.features === undefined ? null : opts.features, tester: !!opts.tester, featureChecks: [], aiBodies: [], jobs: {}, flaked: {}, authFail: !!opts.authFail, events: [], appErrors: [], support: [], sheets: [] };
