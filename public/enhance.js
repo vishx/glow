@@ -6,7 +6,13 @@
 // the second time. Loaded after app.js and uses its helpers (call, account, readPhoto, ...).
 
 const ENH_MODE = "enhance";
-const ENH_SAMPLE = { original: DEMO_DIR + "original.png", result: DEMO_DIR + "enhance.jpg" };
+const ENH_SAMPLE = { original: DEMO_DIR + "original.png", result: DEMO_DIR + "enhance.jpg", pro: DEMO_DIR + "pro.jpg" };
+// Pro Edit (2026-10-31): the photo finished the way a photographer and retoucher would (white
+// balance, exposure, color grade, light skin retouch, a tidier background) by an image-edit model
+// (the server's "pro" mode: a premium tool, 1 credit), then proFinish() on the phone puts each
+// person's own features and the photo's fine detail back, so faces stay true.
+const PRO_MODE = "pro";
+const enhStyle = () => (store.get("glow.enhStyle") === PRO_MODE ? PRO_MODE : ENH_MODE);
 // [key, label, icon, on by default]. Face and Background Enhancer choose, per area, between the
 // AI result and the original; the rest are free on-device steps on top.
 const ENH_TOGGLES = [["face", "Face Enhancer", "face", true], ["bg", "Background Enhancer", "upscale", true],
@@ -76,9 +82,22 @@ function renderEnhCost() {
   const c = $("enhCost"), a = account, go = $("enhGoLbl");
   if (enh.busy) return;
   c.classList.remove("err");
-  go.textContent = enh.pending ? "Check again" : "Enhance";
-  if (enh.demo) { c.textContent = "Free on the sample. No credits used."; return; }
+  renderEnhStyle();
+  const pro = (enh.pending ? enh.pending.mode : enhStyle()) === PRO_MODE;
+  go.textContent = enh.pending ? "Check again" : pro ? "Pro Edit" : "Enhance";
+  if (enh.demo) { c.textContent = pro ? "A photographer's color, light, skin and background. Free on the sample." : "Free on the sample. No credits used."; return; }
   if (enh.pending) { c.textContent = "Glow Studio lost the connection while enhancing. Checking again is free and never charges twice."; return; }
+  if (pro) {
+    // A premium tool: Pro uses its weekly credits; free uses the one-time premium tries and any credit packs.
+    const left = !a ? null : a.plan === "pro" ? a.remaining : (a.trialLeft || 0) + (a.bonus || 0);
+    if (left !== null && left < 1) {
+      go.textContent = "Get more credits";
+      c.textContent = a.plan === "pro" ? "You've used this week's AI credits. Each one comes back 7 days after you used it." : "Pro Edit is a premium tool. Go Pro or get a credit pack to use it.";
+      return;
+    }
+    c.innerHTML = "A photographer's color, light, skin and background. 1 premium credit" + (left === null ? "." : ` · <b>${left}</b> left`);
+    return;
+  }
   if (!a) { c.textContent = "Uses 1 AI credit."; return; }
   if (a.remaining < 1) {
     go.textContent = "Get more credits";
@@ -94,13 +113,25 @@ function setSheetWorking(on, text) {
   if (on) { $("enhGoLbl").textContent = text || "Enhancing…"; $("enhCost").textContent = enh.demo ? "Showing a result prepared with Glow Studio's Enhance." : "This usually takes 5 to 20 seconds."; }
   else renderEnhCost();
 }
+function renderEnhStyle() {
+  const st = enh.pending ? enh.pending.mode || ENH_MODE : enhStyle();
+  for (const b of $("enhStyle").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.style === st));
+}
+$("enhStyle").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-style]");
+  if (!b || enh.busy || enh.pending) return;
+  store.set("glow.enhStyle", b.dataset.style);
+  track("enhance_style", { style: b.dataset.style });
+  renderEnhCost();
+});
 $("enhSheetClose").addEventListener("click", () => $("enhSheet").close());
 $("enhSheet").addEventListener("cancel", (e) => { if (enh.busy) e.preventDefault(); });
 $("enhGo").addEventListener("click", () => {
-  if (!enh.demo && !enh.pending && account && account.remaining < 1) { openPaywall(); return; }
+  if (!enh.demo && !enh.pending && account && proLeft(account) < 1) { if (isPro() || enhStyle() !== PRO_MODE) openPaywall(); else openPacks(); return; }
   runEnhance();
 });
 
+const proLeft = (a) => (enhStyle() !== PRO_MODE || a.plan === "pro" ? a.remaining : (a.trialLeft || 0) + (a.bonus || 0));
 async function runEnhance() {
   if (enh.busy) return;
   const mine = enh.src;
@@ -111,7 +142,10 @@ async function runEnhance() {
   $("alertLive").textContent = "Enhancing your photo.";
   try {
     let url;
-    if (enh.demo) { await sleep(1800); url = ENH_SAMPLE.result; }   // a prepared result: no request, no credit
+    const pro = (enh.pending ? enh.pending.mode : enhStyle()) === PRO_MODE;
+    enh.style = pro ? PRO_MODE : ENH_MODE;
+    if (enh.demo) { await sleep(1800); url = pro ? ENH_SAMPLE.pro : ENH_SAMPLE.result; }   // a prepared result: no request, no credit
+    else if (pro) url = await proEditRequest(enh, enh.src, enhLabel, enh.fromCamera ? "camera" : "enhance");
     else url = await enhanceRequest(enh, enh.src, enhLabel, enh.fromCamera ? "camera" : "enhance");
     if (!url || enh.src !== mine) return;
     setSheetWorking(true, "Almost there…");
@@ -119,7 +153,12 @@ async function runEnhance() {
     const facesUrl = enh.pending && enh.pending.faces;
     try { full = await enhResultData(url); }
     catch { enh.pending = enh.pending || { done: url }; throw new Error("The result is ready but couldn't be downloaded yet. Tap Check again."); }
-    full = await putFacesBack(full, enh.sheet, facesUrl);
+    if (pro) {
+      // Faces stay the person's own: the model's light and color, the photo's own features.
+      setSheetWorking(true, "Keeping faces true…");
+      try { const r = await proFinish(enh.src, full); full = r.data; track("pro_finish", { faces: r.faces, moved: r.moved }); }
+      catch (e) { reportError("Pro Edit finish failed: " + (e && e.message)); }
+    } else full = await putFacesBack(full, enh.sheet, facesUrl);
     // The toggles work on a 2048px copy; the untouched result is kept for saving at full size.
     enh.ai = await shrinkData(full, 2048); enh.full = full; enh.pending = null;
     if (!enh.demo) refreshAccount();
@@ -172,6 +211,32 @@ async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from =
   }
   return followEnhance(h, null, onLabel, from);
 }
+// Pro Edit: one "pro" request (no face sheet, tiles or Topaz; the phone keeps the faces true
+// afterwards). Like Enhance, a dropped connection never sends it twice.
+async function proEditRequest(h, src, onLabel, from) {
+  if (h.pending && h.pending.done) return h.pending.done;
+  if (!h.pending) {
+    const image = await uploadable(src, aiMaxSide(PRO_MODE), aiMaxPixels(PRO_MODE)), requestId = rid();
+    h.sheet = null;
+    h.pending = { requestId, id: null, mode: PRO_MODE };
+    try {
+      track("ai_start", { mode: PRO_MODE, from });
+      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: PRO_MODE, request_id: requestId }) });
+      h.pending.id = res.id || null;
+      return await followEnhance(h, res, onLabel, from);
+    } catch (err) {
+      if (err.status) {
+        h.pending = null; track("ai_fail", { mode: PRO_MODE, from, status: err.status, limit: !!err.limit });
+        // The free plan's premium tries never reset, so don't say "come back tomorrow".
+        if (err.limit && !isPro() && !err.blocked) err.message = "Pro Edit is a premium tool and you've used your free tries. Go Pro or get a credit pack to keep using it.";
+        throw err;
+      }
+      if (err.failed || err.lost) throw err;
+      throw lostConnection();
+    }
+  }
+  return followEnhance(h, null, onLabel, from);
+}
 const enhLabel = (t) => { $("enhGoLbl").textContent = t; };
 function lostConnection() { const e = new Error("Glow Studio lost the connection. Tap Check again; it won't charge you twice."); e.lost = true; return e; }
 async function followEnhance(h, first, onLabel, from) {
@@ -179,7 +244,7 @@ async function followEnhance(h, first, onLabel, from) {
   let res = first, misses = 0;
   while (Date.now() - started < 240000) {
     if (res && res.status === "succeeded" && res.output) {
-      track("ai_done", { mode: ENH_MODE, from, secs: Math.round((Date.now() - started) / 1000), faces: h.sheet ? h.sheet.cells.length : 0, sheet: !!res.faces });
+      track("ai_done", { mode: p.mode || ENH_MODE, from, secs: Math.round((Date.now() - started) / 1000), faces: h.sheet ? h.sheet.cells.length : 0, sheet: !!res.faces });
       p.faces = res.faces || null;
       // A tiled Enhance answers with every tile's result, in order; the phone stitches them.
       p.done = res.tiles && Array.isArray(res.output) && p.layout && res.output.length === p.layout.tiles.length
@@ -188,9 +253,9 @@ async function followEnhance(h, first, onLabel, from) {
       track("ai_path", { from, path: res.hd ? "hd" : res.tiles ? "tiles" : "plain" });
       return p.done; }
     if (res && ["failed", "canceled"].includes(res.status)) {
-      track("ai_fail", { mode: ENH_MODE, from, refunded: res.refunded === true, oom: isOutOfMemory(res.error) });
+      track("ai_fail", { mode: p.mode || ENH_MODE, from, refunded: res.refunded === true, oom: isOutOfMemory(res.error) });
       h.pending = null;
-      const e = new Error(aiErrorText(res.error, "Enhance couldn't finish this photo. Please try again.") + (res.refunded ? " Your AI credit was returned." : ""));
+      const e = new Error(aiErrorText(res.error, p.mode === PRO_MODE ? "Pro Edit couldn't finish this photo. Please try again." : "Enhance couldn't finish this photo. Please try again.") + (res.refunded ? " Your AI credit was returned." : ""));
       // The live server words every failure the same way ("The AI couldn't edit this photo…"), so
       // the phone can't tell a GPU memory error from others. Any refunded failure gets one retry
       // at the smaller size: it costs nothing extra, and memory is the usual cause on big photos.
@@ -198,7 +263,7 @@ async function followEnhance(h, first, onLabel, from) {
       throw e;
     }
     if (res && res.status === "starting") onLabel("Warming up…");
-    else if (res) onLabel("Enhancing…");
+    else if (res) onLabel(p.mode === PRO_MODE ? "Editing like a pro…" : "Enhancing…");
     await sleep(1500);
     const q = p.id ? "id=" + encodeURIComponent(p.id) : "request=" + encodeURIComponent(p.requestId);
     try { res = await call("enhance?" + q, { method: "GET" }); if (res.id) p.id = res.id; misses = 0; }

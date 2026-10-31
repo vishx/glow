@@ -574,6 +574,21 @@ test('first launch opens Enhance: sample before/after, Choose a photo, then the 
   await p.reload(); await p.waitForFunction(() => screen === 'editorHome');   // reopens where you left off
 }, { onboarded: false, camera: false, viewport: { width: 390, height: 740 } });
 
+test('enhance: Pro Edit sends one "pro" request, keeps faces true on the phone, and is remembered', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]');
+  await p.click('#enhStyle button[data-style=pro]');
+  eq(await p.getAttribute('#enhStyle button[data-style=pro]', 'aria-pressed'), 'true', 'Pro Edit selected');
+  assert(/premium credit/.test(await p.textContent('#enhCost')), 'premium cost shown: ' + await p.textContent('#enhCost'));
+  eq(await p.textContent('#enhGoLbl'), 'Pro Edit', 'button says Pro Edit');
+  await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 60000 });
+  eq(state.posts, ['pro'], 'one pro request');
+  eq(await p.evaluate(() => store.get('glow.enhStyle')), 'pro', 'choice remembered');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, plan: 'pro', quota: 40 });
+
 test('enhance: pick, one AI request, before/after, toggles on the phone, save, share screen, editor hand-off', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
