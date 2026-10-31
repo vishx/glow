@@ -98,6 +98,7 @@ dialog.enh-sheet[open] { animation: enh-pop 300ms cubic-bezier(.2, .9, .3, 1.15)
 @keyframes enh-shine { from { background-position: 150% 0; } to { background-position: -100% 0; } }
 .enh-sheet .cost { margin: 0; text-align: center; font-size: 0.8125rem; line-height: 1.125rem; color: var(--muted); }
 .enh-sheet .cost b { color: var(--text); }
+.enh-sheet .cost.err { color: var(--danger); font-weight: 600; }
 .enh-sheet .cost .link-btn { min-height: 32px; padding: 0 4px; font-size: 0.8125rem; }
 /* While the AI works: a soft scan of light moves over the photo. */
 .enh-scan { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 240ms; }

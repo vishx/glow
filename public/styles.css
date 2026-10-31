@@ -119,6 +119,8 @@ a { color: var(--accent); }
   box-shadow: 0 0 0 1px var(--line); font-size: 0.9375rem; line-height: 1.375rem; text-align: center;
   opacity: 0; pointer-events: none; transition: opacity var(--t-result); }
 .toast.on { opacity: 1; pointer-events: auto; }
+/* As a popover (see say()): drop the browser's popover box so it keeps the toast's own place and look. */
+.toast[popover] { inset: auto; left: 50%; top: calc(env(safe-area-inset-top) + 64px); margin: 0; border: 0; overflow: visible; }
 .toast.err { box-shadow: 0 0 0 1px var(--danger); }
 .toast-act { min-height: 44px; margin: -10px -8px -10px 4px; padding: 0 var(--s3); border: 0; background: none; color: var(--accent); font-weight: 700; }
 

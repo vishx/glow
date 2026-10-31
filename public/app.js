@@ -164,6 +164,9 @@ function say(text, isErr, action) {
   const t = $("toast");
   clearTimeout(toastTimer);
   if (!text) { t.classList.remove("on"); return; }
+  // An open sheet or dialog (showModal) sits in the browser's top layer, above any z-index, so
+  // the toast joins the top layer too and is re-raised each time to land above the newest one.
+  if (t.showPopover) { try { if (!t.hasAttribute("popover")) t.setAttribute("popover", "manual"); if (t.matches(":popover-open")) t.hidePopover(); t.showPopover(); } catch {} }
   t.textContent = text; t.classList.toggle("err", !!isErr); t.classList.add("on");
   if (action) {
     const b = document.createElement("button"); b.className = "toast-act"; b.textContent = action.label;
@@ -1947,7 +1950,7 @@ async function startAiEdit(t) {
       keep = { mask };
     } else if (t.id === "expand") {
       const x = await expandInputs(base); body = { image: x.image, mode: "expand", mask: x.mask };
-    } else body = { image: await uploadable(base), mode: t.id, extra: t.id === "outfit" ? outfitData : undefined };
+    } else body = { image: await uploadable(base, aiMaxSide(t.id)), mode: t.id, extra: t.id === "outfit" ? outfitData : undefined };
   } catch (err) { setBusy(false); say(err.message, true); return; }
   job = { requestId: rid(), id: null, tool: t.id, title: t.title, session: ed.session, baseIdx: ed.idx, status: "starting", startedAt: Date.now(), before, ...keep };
   saveJob();
@@ -2026,7 +2029,7 @@ async function settleJob(res) {
   const mine = job;
   track(res.status === "succeeded" && res.output ? "ai_done" : "ai_fail", { mode: mine.tool, secs: Math.round((Date.now() - (mine.startedAt || Date.now())) / 1000), refunded: res.refunded === true });
   if (res.status !== "succeeded" || !res.output) {
-    mine.status = "failed"; mine.error = res.error || "The AI service couldn't process this photo."; mine.refunded = res.refunded === true;
+    mine.status = "failed"; mine.error = aiErrorText(res.error, "The AI service couldn't process this photo."); mine.refunded = res.refunded === true;
     saveJob(); await refreshAccount(); renderJob();
     $("alertLive").textContent = `${mine.title} failed.`;
     return;

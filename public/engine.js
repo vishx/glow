@@ -84,11 +84,23 @@ async function expandInputs(src) {
 }
 
 // Replicate URLs can be passed straight through; big client-made images get shrunk first.
-async function uploadable(src) {
+// Enhance (Real-ESRGAN with face repair) works at 4x inside its GPU before resizing, so a
+// 1600px photo can run it out of memory (2026-10-31: "CUDA out of memory" on a 1200x1600
+// shot). It gets 1280px, which still comes back 2560px; a retry after a memory error uses 1024.
+const AI_MAX_SIDE = { enhance: 1280, upscale: 1024 };
+const aiMaxSide = (mode) => AI_MAX_SIDE[mode] || 1600;
+// A model's own error (a Python traceback, "CUDA out of memory") means nothing to her; say it plainly.
+const isOutOfMemory = (e) => /out of memory|CUDA|OOM/i.test(String(e || ""));
+function aiErrorText(e, fallback = "The AI couldn't finish this photo. Please try again.") {
+  const t = String(e || "").trim();
+  if (!t || isOutOfMemory(t) || t.length > 140 || /Traceback|Error:|\.py\b|GiB|torch/i.test(t)) return fallback;
+  return t;
+}
+async function uploadable(src, maxSide = 1600) {
   if (!src.startsWith("data:")) return src;
   const img = await loadImg(src);
-  if (Math.max(img.naturalWidth, img.naturalHeight) <= 1600 && src.length < 1_500_000) return src;
-  const c = canvasFor(img, 1600);
+  if (Math.max(img.naturalWidth, img.naturalHeight) <= maxSide && src.length < 1_500_000) return src;
+  const c = canvasFor(img, maxSide);
   c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
   return c.toDataURL("image/jpeg", 0.9);
 }

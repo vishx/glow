@@ -590,6 +590,37 @@ test('enhance: pick, one AI request, before/after, toggles on the phone, save, s
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false });
 
+// 2026-10-31: a 1200x1600 photo ran Real-ESRGAN out of GPU memory; the credit came back but the
+// error toast sat behind the sheet and said "lost the connection", so nothing seemed to happen.
+const OOM = 'CUDA out of memory. Tried to allocate 3.66 GiB. GPU 0 has a total capacity of 14.56 GiB of which 3.28 GiB is free.';
+const upSide = (p, d) => p.evaluate(async (d) => { const i = await loadImg(d); return Math.max(i.naturalWidth, i.naturalHeight); }, d);
+test('enhance: uploads at most 1280px, and a GPU out-of-memory failure retries once at 1024px and shows the result', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(path.join(fixtures, 'phone-12mp-exif6.jpg'));
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  eq(state.posts, ['enhance', 'enhance'], 'one retry after the memory error');
+  eq([await upSide(p, state.sizes[0]), await upSide(p, state.sizes[1])], [1280, 1024], 'upload sizes');
+  eq([state.refunds, state.used], [1, 1], 'the failed try was refunded; one credit used in all');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, ai: { server: 'patched', failFirst: OOM, failCount: 1 } });
+
+test('enhance: when the AI fails, the sheet says so plainly (no model jargon, not "lost the connection") and nothing is hidden behind the sheet', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => $('enhCost').classList.contains('err'), null, { timeout: 30000 });
+  await p.waitForTimeout(600); await p.screenshot({ path: path.join(__dirname, 'out/enhance-fail-sheet.png') });
+  const r = await p.evaluate(() => ({ cost: $('enhCost').textContent, toast: $('toast').classList.contains('on'), open: $('enhSheet').open, go: $('enhGoLbl').textContent }));
+  assert(/couldn't finish this photo/.test(r.cost) && /credit was returned/.test(r.cost), 'plain message on the sheet: ' + r.cost);
+  assert(!/CUDA|GiB|connection/i.test(r.cost), 'no jargon, no "lost the connection": ' + r.cost);
+  eq([r.toast, r.open, r.go], [false, true, 'Enhance'], 'message on the sheet (no toast behind it), sheet still open, Enhance ready again');
+  // Any other toast raised while a sheet is open (say()) now draws above the sheet.
+  const above = await p.evaluate(() => { say('hello'); return $('toast').matches(':popover-open'); });
+  eq(above, true, 'toasts join the top layer above an open sheet');
+  eq([state.posts.length, state.refunds, state.used], [2, 2, 0], 'retried once at 1024px, both refunded');
+}, { start: 'enhance', camera: false, ai: { server: 'patched', failFirst: OOM, failCount: 2 } });
+
 test('enhance: the sample is free and never calls the AI', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]');

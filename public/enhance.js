@@ -75,6 +75,7 @@ function openEnhSheet(work, original, name, demo) {
 function renderEnhCost() {
   const c = $("enhCost"), a = account, go = $("enhGoLbl");
   if (enh.busy) return;
+  c.classList.remove("err");
   go.textContent = enh.pending ? "Check again" : "Enhance";
   if (enh.demo) { c.textContent = "Free on the sample. No credits used."; return; }
   if (enh.pending) { c.textContent = "Glow Studio lost the connection while enhancing. Checking again is free and never charges twice."; return; }
@@ -126,17 +127,23 @@ async function runEnhance() {
   } catch (err) {
     setSheetWorking(false);
     if (err.limit) { say(err.message, true); if (!err.blocked && !isPro()) openPaywall(); }
-    else if (err.message) say(err.message, true);
+    else if (err.message) {
+      // With the sheet open the message goes on the sheet itself, right under the button she just
+      // pressed (a toast used to land behind the sheet, so a failure looked like nothing happened).
+      if ($("enhSheet").open) { const c = $("enhCost"); c.textContent = err.message; c.classList.add("err"); $("alertLive").textContent = err.message; track("error_shown", { msg: err.message.slice(0, 120), screen: "enhSheet" }); }
+      else say(err.message, true);
+    }
+    if (!enh.demo) refreshAccount();
   }
 }
 
 // Starts the AI request once, then follows it. A dropped connection never sends it again: it
 // remembers the request and "Check again" only asks for its status, which is free.
 // `h` holds the request (h.pending); the single flow passes `enh`, batch Enhance one per photo.
-async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from = "enhance") {
+async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from = "enhance", maxSide = aiMaxSide(ENH_MODE)) {
   if (h.pending && h.pending.done) return h.pending.done;
   if (!h.pending) {
-    const image = await uploadable(src), requestId = rid();
+    const image = await uploadable(src, maxSide), requestId = rid();
     h.pending = { requestId, id: null };
     try {
       track("ai_start", { mode: ENH_MODE, from });
@@ -146,7 +153,10 @@ async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from =
     } catch (err) {
       // The server answered, so nothing started; it returns any credit it took.
       if (err.status) { h.pending = null; track("ai_fail", { mode: ENH_MODE, from, status: err.status, limit: !!err.limit }); throw err; }
-      if (err.lost) throw err;
+      // The AI ran out of memory on a big photo and the credit came back: try once more, smaller.
+      if (err.oom && maxSide > 1024) { onLabel("Trying again…"); return enhanceRequest(h, src, onLabel, from, 1024); }
+      // The AI answered "failed": that's the real reason, not a lost connection.
+      if (err.failed || err.lost) throw err;
       throw lostConnection();
     }
   }
@@ -162,9 +172,11 @@ async function followEnhance(h, first, onLabel, from) {
       track("ai_done", { mode: ENH_MODE, from, secs: Math.round((Date.now() - started) / 1000) });
       p.done = Array.isArray(res.output) ? res.output[0] : res.output; return p.done; }
     if (res && ["failed", "canceled"].includes(res.status)) {
-      track("ai_fail", { mode: ENH_MODE, from, refunded: res.refunded === true });
+      track("ai_fail", { mode: ENH_MODE, from, refunded: res.refunded === true, oom: isOutOfMemory(res.error) });
       h.pending = null;
-      throw new Error((res.error || "Enhance couldn't process this photo.") + (res.refunded ? " Your AI credit was returned." : ""));
+      const e = new Error(aiErrorText(res.error, "Enhance couldn't finish this photo. Please try again.") + (res.refunded ? " Your AI credit was returned." : ""));
+      e.failed = true; e.oom = isOutOfMemory(res.error) && res.refunded === true;
+      throw e;
     }
     if (res && res.status === "starting") onLabel("Warming up…");
     else if (res) onLabel("Enhancing…");

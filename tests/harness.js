@@ -94,9 +94,10 @@ exports.launch = async (opts = {}) => {
       if (u.pathname === '/functions/v1/enhance') {
         const answer = (job) => {
           if (job.n < ai.polls.length - 1) job.n++;
-          const st = ai.polls[job.n];
+          // ai.failFirst: the first N jobs fail with this model error (e.g. "CUDA out of memory").
+          const st = job.failWith ? 'failed' : ai.polls[job.n];
           if (st === 'failed' && !job.refunded) { job.refunded = true; state.used -= job.cost; state.refunds++; }
-          const body = { id: job.id, status: st, output: st === 'succeeded' ? 'https://app.test/__ai.jpg' : null, error: st === 'failed' ? "The model couldn't process this photo." : undefined };
+          const body = { id: job.id, status: st, output: st === 'succeeded' ? 'https://app.test/__ai.jpg' : null, error: st === 'failed' ? (job.failWith || "The model couldn't process this photo.") : undefined };
           if (ai.server === 'patched') body.refunded = !!job.refunded;
           return r.fulfill({ headers: cors, json: body });
         };
@@ -123,6 +124,8 @@ exports.launch = async (opts = {}) => {
         if (ai.post === 'error') return r.fulfill({ status: 502, headers: cors, json: { error: "Glow's AI service is temporarily unavailable. Please try again later." } });
         state.used += cost;
         const job = { id: 'job' + (Object.keys(state.jobs).length + 1), cost, n: -1, refunded: false };
+        if (ai.failFirst && (ai.failCount || 0) > 0) { ai.failCount--; job.failWith = ai.failFirst; }
+        state.sizes = state.sizes || []; state.sizes.push(body.image);
         state.jobs[body.request_id || job.id] = job;
         // The server took the request and charged, but the answer never arrives.
         if (ai.dropPost) { ai.dropPost = false; return r.abort('connectionreset'); }
