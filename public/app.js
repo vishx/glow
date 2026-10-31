@@ -2517,6 +2517,8 @@ function ensureSession(force) {
 // Server calls
 async function call(path, opts = {}, retried) {
   const s = await ensureSession();
+  // PREVIEW ONLY (never release): AI edits go to the enhance-pro preview function.
+  if (/^enhance(\?|$)/.test(path)) path = path.replace(/^enhance/, "enhance-pro");
   const res = await fetch(`${CONFIG.supabaseUrl}/functions/v1/${path}`, {
     ...opts,
     headers: { "Content-Type": "application/json", apikey: CONFIG.supabaseKey, Authorization: `Bearer ${s.access_token}` },
