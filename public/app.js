@@ -3280,7 +3280,7 @@ function renderEnhPrefs() {
   const box = $("enhPrefs");
   if (typeof ENH_TOGGLES === "undefined") { box.hidden = true; return; }
   const saved = enhDefaults();
-  $("enhPrefsList").replaceChildren(...ENH_TOGGLES.map(([k, label, , names, def]) => {
+  $("enhPrefsList").replaceChildren(...ENH_TOGGLES.filter(([k]) => enhToggleOn(k)).map(([k, label, , names, def]) => {
     const l = document.createElement("label"), sel = document.createElement("select");
     sel.dataset.k = k;
     names.forEach((n, i) => sel.add(new Option(i === def ? `${n} (standard)` : n, String(i))));
