@@ -2069,6 +2069,10 @@ async function settleJob(res) {
   if (mineHere && mine.keepFace) {
     try { const fb = await renderExport(mine.baseIdx), r = await restoreFace(fb.data, full); full = r.data; mine.faceKept = r.moved; } catch {}
   }
+  // Pro edit: the model's light and color, each person's own features and fine detail (engine.js proFinish).
+  if (mineHere && mine.tool === "pro") {
+    try { const fb = await renderExport(mine.baseIdx); full = (await proFinish(await shrinkData(fb.data, 2560), full)).data; } catch {}
+  }
   // HD cutout: the AI's edge, applied to the full-size photo.
   if (mineHere && mine.tool === "bgcut") {
     try { const fb = await renderExport(mine.baseIdx); full = await applyCutout(fb.data, full); } catch { mine.unblended = true; }

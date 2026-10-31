@@ -96,6 +96,8 @@ dialog.enh-sheet[open] { animation: enh-pop 300ms cubic-bezier(.2, .9, .3, 1.15)
 .enh-go.busy::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgb(242 165 187 / .35) 50%, transparent 70%);
   background-size: 250% 100%; animation: enh-shine 1.4s linear infinite; }
 @keyframes enh-shine { from { background-position: 150% 0; } to { background-position: -100% 0; } }
+.enh-sheet .enh-style button { min-height: 40px; }
+.enh-sheet.working .enh-style { opacity: .5; pointer-events: none; }
 .enh-sheet .cost { margin: 0; text-align: center; font-size: 0.8125rem; line-height: 1.125rem; color: var(--muted); }
 .enh-sheet .cost b { color: var(--text); }
 .enh-sheet .cost.err { color: var(--danger); font-weight: 600; }
