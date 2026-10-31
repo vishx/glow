@@ -541,12 +541,6 @@ async function prepareResult() {
   enh.base = c.toDataURL("image/jpeg", 0.94); enh.size = [W, H];
   try { enh.faces = await enhFaces(enh.src, o); } catch { enh.faces = []; }
 }
-// One clear person: a single face at least an eighth of the photo's width.
-function enhPortrait() {
-  if (enh.faces.length !== 1) return false;
-  const [, , w] = boxOf(enh.faces[0]);
-  return w >= 0.125;
-}
 function showEnhResult() {
   const saved = enhDefaults();
   enh.lv = Object.fromEntries(ENH_TOGGLES.map(([k, , , names, d]) => [k, Number.isInteger(saved[k]) && saved[k] >= 0 && saved[k] < names.length ? saved[k] : d]).map(([k, v]) => [k, enhToggleOn(k) ? v : 0]));
@@ -774,7 +768,7 @@ function openLevels(k) {
 function markLevel() {
   const k = lvState.k, saved = enhDefaults(), def = ENH_TOGGLES.find((t) => t[0] === k)[4];
   for (const b of $("enhLvRow").children) b.setAttribute("aria-checked", String(Number(b.dataset.i) === enh.lv[k]));
-  $("enhDefault").checked = k === "blur" ? saved[k] === enh.lv[k] : (saved[k] ?? def) === enh.lv[k];   // this level is what new results start with
+  $("enhDefault").checked = (saved[k] ?? def) === enh.lv[k];   // this level is what new results start with   // this level is what new results start with
 }
 function closeLevels(keep) {
   if (lvState.k && !keep && enh.lv[lvState.k] !== lvState.was) { enh.lv[lvState.k] = lvState.was; updateComposite(); }
@@ -789,8 +783,7 @@ $("enhLvRow").addEventListener("click", (e) => {
 });
 $("enhDefault").addEventListener("change", () => {
   const d = enhDefaults(), k = lvState.k, def = ENH_TOGGLES.find((t) => t[0] === k)[4];
-  // Blur's standard is "auto" (Medium on one-person portraits), so a chosen Blur level is always kept.
-  if ($("enhDefault").checked && (enh.lv[k] !== def || k === "blur")) d[k] = enh.lv[k]; else delete d[k];
+  if ($("enhDefault").checked && enh.lv[k] !== def) d[k] = enh.lv[k]; else delete d[k];   // the standard level needs no entry
   store.set("glow.enhDefaults", JSON.stringify(d));
   markLevel();
 });
