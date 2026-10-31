@@ -153,7 +153,7 @@ async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from =
     } catch (err) {
       // The server answered, so nothing started; it returns any credit it took.
       if (err.status) { h.pending = null; track("ai_fail", { mode: ENH_MODE, from, status: err.status, limit: !!err.limit }); throw err; }
-      // The AI ran out of memory on a big photo and the credit came back: try once more, smaller.
+      // The AI failed (usually out of memory on a big photo) and the credit came back: try once more, smaller.
       if (err.oom && maxPixels > AI_RETRY.pixels) { onLabel("Trying again…"); return enhanceRequest(h, src, onLabel, from, AI_RETRY.side, AI_RETRY.pixels); }
       // The AI answered "failed": that's the real reason, not a lost connection.
       if (err.failed || err.lost) throw err;
@@ -175,7 +175,10 @@ async function followEnhance(h, first, onLabel, from) {
       track("ai_fail", { mode: ENH_MODE, from, refunded: res.refunded === true, oom: isOutOfMemory(res.error) });
       h.pending = null;
       const e = new Error(aiErrorText(res.error, "Enhance couldn't finish this photo. Please try again.") + (res.refunded ? " Your AI credit was returned." : ""));
-      e.failed = true; e.oom = isOutOfMemory(res.error) && res.refunded === true;
+      // The live server words every failure the same way ("The AI couldn't edit this photo…"), so
+      // the phone can't tell a GPU memory error from others. Any refunded failure gets one retry
+      // at the smaller size: it costs nothing extra, and memory is the usual cause on big photos.
+      e.failed = true; e.oom = res.refunded === true;
       throw e;
     }
     if (res && res.status === "starting") onLabel("Warming up…");
