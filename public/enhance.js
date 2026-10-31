@@ -752,9 +752,9 @@ function openLevels(k) {
   $("enhLvRow").querySelector('[aria-checked="true"]')?.scrollIntoView({ inline: "center", block: "nearest" });
 }
 function markLevel() {
-  const k = lvState.k, saved = enhDefaults();
+  const k = lvState.k, saved = enhDefaults(), def = ENH_TOGGLES.find((t) => t[0] === k)[4];
   for (const b of $("enhLvRow").children) b.setAttribute("aria-checked", String(Number(b.dataset.i) === enh.lv[k]));
-  $("enhDefault").checked = saved[k] === enh.lv[k];
+  $("enhDefault").checked = (saved[k] ?? def) === enh.lv[k];   // this level is what new results start with
 }
 function closeLevels(keep) {
   if (lvState.k && !keep && enh.lv[lvState.k] !== lvState.was) { enh.lv[lvState.k] = lvState.was; updateComposite(); }
@@ -768,9 +768,10 @@ $("enhLvRow").addEventListener("click", (e) => {
   enh.lv[lvState.k] = Number(b.dataset.i); markLevel(); updateComposite();
 });
 $("enhDefault").addEventListener("change", () => {
-  const d = enhDefaults();
-  if ($("enhDefault").checked) d[lvState.k] = enh.lv[lvState.k]; else delete d[lvState.k];
+  const d = enhDefaults(), k = lvState.k, def = ENH_TOGGLES.find((t) => t[0] === k)[4];
+  if ($("enhDefault").checked && enh.lv[k] !== def) d[k] = enh.lv[k]; else delete d[k];   // the standard level needs no entry
   store.set("glow.enhDefaults", JSON.stringify(d));
+  markLevel();
 });
 setIcon($("enhLvBack"), "back"); setIcon($("enhLvDone"), "check");
 $("enhLvBack").addEventListener("click", () => closeLevels(false));

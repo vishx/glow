@@ -2461,6 +2461,9 @@ function renderCreditsSheet() {
   else if (a.plan === "pro") {
     html = card(a.remaining, `of ${a.quota} AI credits left`, "Glow Studio Pro includes 40 AI credits each week. Each credit comes back 7 days after you use it.",
       "Unused credits don't carry over. The yearly plan also has a limit of 80 credits in any 30 days.");
+    const until = store.get("glowPro"), d = until ? new Date(until) : null;
+    if (d && !isNaN(d)) facts.push(fact("star", `Your plan renews or ends on ${d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}`,
+      "Change or cancel it any time in your App Store or Google Play subscriptions."));
   } else {
     const r = nextUtcMidnight(), mins = Math.max(1, Math.round((r - Date.now()) / 60000));
     const left = mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
@@ -3195,7 +3198,7 @@ $("buildId").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(id); say("Account ID copied"); } catch { say(`Account ID: ${id}`); }
 });
 function openSettings() {
-  refreshAccount();
+  refreshAccount(); renderEnhPrefs();
   $("saveOrigToggle").checked = store.get("glowSaveOrig") === "on";
   $("autoSaveToggle").checked = autoSaveOn();
   applyTheme(); showBuild();
@@ -3244,12 +3247,54 @@ $("deleteAccount").addEventListener("click", async (e) => {
 });
 // Contact support: the message goes to the admin page's inbox with the account ID, so the owner
 // can look the account up, give credits back or check a purchase.
-$("contactSupport").addEventListener("click", (e) => {
-  e.preventDefault();
+// Contact support, or the same form for an idea (sent as "other" with an [Idea] tag, so it needs
+// no server change and still lands in the admin inbox).
+let supportIdea = false;
+function openSupport(idea) {
+  supportIdea = idea;
   const id = session && session.user_id;
   $("supportAccount").replaceChildren(id ? `Your account ID: ${id}. It's sent with your message so we can find your account.` : "");
+  $("supportTitle").textContent = idea ? "Suggest a feature" : "Contact support";
+  $("supportTopic").closest("label").hidden = idea;
+  $("supportMessage").placeholder = idea ? "What would make Glow Studio better for you?" : "Tell us what happened.";
   $("settings").close(); $("supportSheet").showModal();
+}
+$("contactSupport").addEventListener("click", (e) => { e.preventDefault(); openSupport(false); });
+$("suggestFeature").addEventListener("click", (e) => { e.preventDefault(); openSupport(true); });
+$("subsInfo").addEventListener("click", (e) => { e.preventDefault(); $("settings").close(); openCredits(); });
+// Share Glow Studio: the app's address through the phone's share sheet, or copied where there is none.
+$("shareApp").hidden = !CONFIG.publicUrl;
+$("shareApp").addEventListener("click", async (e) => {
+  e.preventDefault();
+  const data = { title: "Glow Studio", text: "I've been enhancing my photos with Glow Studio. Try it:", url: CONFIG.publicUrl };
+  track("share_app");
+  try {
+    if (native && plugins.Share) { await plugins.Share.share(data); return; }
+    if (navigator.share) { await navigator.share(data); return; }
+  } catch (err) { if (err && err.name === "AbortError") return; }
+  try { await navigator.clipboard.writeText(CONFIG.publicUrl); say("Link copied. Paste it anywhere to share Glow Studio."); }
+  catch { say(CONFIG.publicUrl); }
 });
+// Enhance defaults: each Result tool's starting level (enhance.js keeps them in glow.enhDefaults).
+function renderEnhPrefs() {
+  const box = $("enhPrefs");
+  if (typeof ENH_TOGGLES === "undefined") { box.hidden = true; return; }
+  const saved = enhDefaults();
+  $("enhPrefsList").replaceChildren(...ENH_TOGGLES.map(([k, label, , names, def]) => {
+    const l = document.createElement("label"), sel = document.createElement("select");
+    sel.dataset.k = k;
+    names.forEach((n, i) => sel.add(new Option(i === def ? `${n} (standard)` : n, String(i))));
+    sel.value = String(saved[k] ?? def);
+    l.append(label, sel); return l;
+  }));
+}
+$("enhPrefsList").addEventListener("change", (e) => {
+  const sel = e.target.closest("select"); if (!sel) return;
+  const d = enhDefaults(), k = sel.dataset.k, def = ENH_TOGGLES.find((t) => t[0] === k)[4], v = Number(sel.value);
+  if (v === def) delete d[k]; else d[k] = v;
+  store.set("glow.enhDefaults", JSON.stringify(d)); track("setting", { enhance_default: k, level: v });
+});
+$("enhPrefsReset").addEventListener("click", () => { store.set("glow.enhDefaults", "{}"); renderEnhPrefs(); say("Enhance tools are back to their standard levels."); });
 $("supportForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const message = $("supportMessage").value.trim();
@@ -3258,7 +3303,7 @@ $("supportForm").addEventListener("submit", async (e) => {
   try {
     const context = { plan: (account && account.plan) || "", credits: account ? account.remaining : "", platform: PLATFORM, build: buildFp, screen,
       device: navigator.userAgent.replace(/\s*\([^)]*\)\s*/, " ").slice(0, 120) };
-    await call("account", { method: "POST", body: JSON.stringify({ support: { topic: $("supportTopic").value, message, email: $("supportEmail").value.trim(), context } }) });
+    await call("account", { method: "POST", body: JSON.stringify({ support: { topic: supportIdea ? "other" : $("supportTopic").value, message: supportIdea ? "[Idea] " + message : message, email: $("supportEmail").value.trim(), context } }) });
     track("support_sent", { topic: $("supportTopic").value });
     $("supportMessage").value = "";
     $("supportSheet").close();

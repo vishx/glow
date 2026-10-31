@@ -677,6 +677,23 @@ test('enhance: the sample result opens the editor demo and Back returns to the s
   await p.click('#backBtn'); await p.waitForFunction(() => screen === 'enhanceResult' && enh.demo);
 }, { start: 'enhance', camera: false, files: demoFiles() });
 
+test('settings: Enhance defaults, subscription details, share the app, and suggest a feature', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => store.set('glow.enhDefaults', JSON.stringify({ blur: 2 })));
+  await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
+  eq(await p.$$eval('#enhPrefsList select', (s) => s.map((x) => x.dataset.k + '=' + x.value)), ['face=3', 'bg=3', 'retouch=0', 'colors=0', 'blur=2'], 'each tool shows its default');
+  await p.selectOption('#enhPrefsList select[data-k=face]', '2'); await p.selectOption('#enhPrefsList select[data-k=blur]', '0');
+  eq(await p.evaluate(() => JSON.parse(store.get('glow.enhDefaults'))), { face: 2 }, 'changes saved; the standard level needs no entry');
+  await p.click('#enhPrefsReset'); eq(await p.evaluate(() => store.get('glow.enhDefaults')), '{}', 'reset');
+  await p.evaluate(() => { window.__shared = null; navigator.share = async (d) => { window.__shared = d; }; });
+  await p.click('#shareApp'); eq(await p.evaluate(() => window.__shared && window.__shared.url), 'https://glow-photo-enhancer.vercel.app', 'share sheet gets the app link');
+  await p.click('#suggestFeature'); await p.waitForSelector('#supportSheet[open]');
+  eq([await p.textContent('#supportTitle'), await p.isVisible('#supportTopic')], ['Suggest a feature', false], 'idea form');
+  await p.click('#supportSheet [data-close]');
+  await p.click('#enhSettingsBtn'); await p.click('#subsInfo'); await p.waitForSelector('#creditsSheet[open]');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false });
+
 // 2026-10-31: a 1200x1600 photo ran Real-ESRGAN out of GPU memory; the credit came back but the
 // error toast sat behind the sheet and said "lost the connection", so nothing seemed to happen.
 const OOM = 'CUDA out of memory. Tried to allocate 3.66 GiB. GPU 0 has a total capacity of 14.56 GiB of which 3.28 GiB is free.';
