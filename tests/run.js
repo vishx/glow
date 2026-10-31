@@ -512,6 +512,12 @@ test('demo: the shipped prepared previews are all there, match the manifest, and
     await tool(p, 'foryou', null, e.tool); await p.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x && $('after').naturalWidth > 0, e.tool, { timeout: 15000 });
     eq(await p.evaluate(() => [ed.hist.length, $('after').naturalWidth, $('after').naturalHeight]), [2, e.width, e.height], `${e.tool}: shown alone, at its size`);
   }
+  // The outfit previews live inside Try on.
+  for (const id of ['suit', 'sundress'].filter((x) => ready.some((e) => e.tool === x))) {
+    await tool(p, 'looks', null, 'outfit'); await p.click(`.try-card[data-idea="${id}"]`);
+    await p.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x && sel === 'outfit' && $('after').naturalWidth > 0, id, { timeout: 15000 });
+    eq(await p.textContent('#applyBtn'), 'Done', `${id}: shown in Try on as a prepared preview`);
+  }
   eq(credit(state), before, 'no AI requests, credits unchanged');
   if (ready.length) { await p.click('#compareBtn'); await settle(300); }
   await p.screenshot({ path: path.join(__dirname, 'out', 'demo-shipped.png') });
@@ -1808,6 +1814,49 @@ test('ai: AI scene costs 2 credits, sends the background mask and the scene, and
   const base = await p.evaluate(() => committed()), shown = await p.evaluate(() => job.result.data);
   assert(nearPx(await pxAt(p, shown, 0.5, 0.3), await pxAt(p, base, 0.5, 0.3), 4), 'her face is her own pixels');
   eq([state.used, await p.evaluate(() => ed.idx)], [1, 0], 'one request, waiting for Apply');
+});
+
+test('try on: one tool with ideas, your photo or words; sends the part; keeps every look to flip back to free', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'looks', null, 'outfit');
+  eq(await p.evaluate(() => [tryOn.src, !!$('panelBody').querySelector('.try-card[data-idea="casual"][aria-pressed="true"]')]), ['ideas', true], 'opens on Ideas with one picked');
+  eq(state.posts.length, 0, 'opening it sends nothing');
+  await p.waitForFunction(() => tryOn.check !== null, null, { timeout: 30000 });
+  assert(/Little of your outfit/.test(await p.textContent('#panelNote')), 'the free photo check says a head-and-shoulders photo makes the AI guess: ' + await p.textContent('#panelNote'));
+  await p.click('.try-card[data-idea="suit"]'); await p.click('.try-color[aria-label="Navy"]');
+  let req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
+  await p.click('#applyBtn'); let body = JSON.parse((await req).postData());
+  eq([body.mode, body.part, /business suit/.test(body.prompt), /navy blue/.test(body.prompt), body.extra], ['outfit', 'full', true, true, undefined], 'an idea sends words, color and part');
+  await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
+  await p.waitForFunction(() => tryLooksNow().length === 1);
+  eq(await p.evaluate(() => [job.look, tryLooksNow()[0].label]), ['Navy suit', 'Navy suit'], 'the look is named');
+  // Discard keeps it in Your looks, without the "credit isn't returned" question.
+  await p.click('#cancelBtn'); await settle(200);
+  eq(await p.evaluate(() => [job, tryLooksNow().length]), [null, 1], 'discarded but kept');
+  // Your photo: any outfit picture, kept in the closet for next time, with the part to change.
+  if (!(await p.evaluate(() => sel === 'outfit'))) await tool(p, 'looks', null, 'outfit');
+  await p.click('.try-seg .opt:has-text("Your photo")');
+  eq(await p.evaluate(() => $('applyBtn').disabled), true, 'nothing to send before a photo is picked');
+  const fc = p.waitForEvent('filechooser'); await p.click('.try-add[aria-label^="Add"]'); await (await fc).setFiles(fx('coords-600x400.png'));
+  await p.waitForFunction(() => !!outfitData && tryOn.closet.length === 1);
+  await p.click('.try-parts .opt:has-text("Top")');
+  req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
+  await p.click('#applyBtn'); body = JSON.parse((await req).postData());
+  eq([body.mode, body.part, body.extra.startsWith('data:image/'), body.prompt], ['outfit', 'top', true, undefined], 'a photo sends the picture and the part');
+  await p.waitForFunction(() => job && job.status === 'done' && tryLooksNow().length === 2, null, { timeout: 30000 });
+  // Flip back to the first look: free, nothing sent.
+  const posts = state.posts.length;
+  await p.click('.try-look[aria-label^="Navy suit"]'); await settle(200);
+  eq(await p.evaluate(() => [job.look, job.status, reviewing()]), ['Navy suit', 'done', true], 'the earlier look is back for review');
+  eq(state.posts.length, posts, 'looking again sends nothing');
+  await p.click('#applyBtn'); await settle(200);
+  eq(await p.evaluate(() => [ed.idx, ed.hist[1].op.tool]), [1, 'outfit'], 'applied as one step');
+  // Words: her own description.
+  await tool(p, 'looks', null, 'outfit'); await p.click('.try-seg .opt:has-text("Describe")');
+  await p.fill('#tryWords', 'a red satin slip dress');
+  req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
+  await p.click('#applyBtn'); body = JSON.parse((await req).postData());
+  eq([body.prompt, body.part], ['a red satin slip dress', 'top'], 'words are sent as written, with the part picked before');
 });
 
 test('adjust: the full Adjust set changes the photo, and grain is the same every time', async ({ p }) => {
