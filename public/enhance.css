@@ -129,8 +129,10 @@ dialog.enh-sheet[open] { animation: enh-pop 300ms cubic-bezier(.2, .9, .3, 1.15)
 
 .enh-stage { position: relative; flex: 1 1 auto; min-height: 0; display: grid; place-items: center; padding: 0 var(--s2); }
 .enh-frame { position: relative; overflow: hidden; border-radius: var(--r-card); touch-action: none; user-select: none; -webkit-user-select: none; cursor: ew-resize; background: #111; }
-.enh-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; -webkit-user-drag: none; }
-.enh-frame .after { clip-path: inset(0 0 0 var(--split, 50%)); }
+.enh-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; -webkit-user-drag: none; transform-origin: 0 0; }
+.enh-frame .after { position: absolute; inset: 0; clip-path: inset(0 0 0 var(--split, 50%)); pointer-events: none; }
+.enh-frame.zoomed { cursor: grab; }
+.enh-frame.zooming img { transition: transform 240ms cubic-bezier(.3, 0, .2, 1); }
 .enh-frame .line { position: absolute; top: 0; bottom: 0; left: var(--split, 50%); width: 2px; margin-left: -1px; background: #fff; pointer-events: none; }
 .enh-frame .knob { position: absolute; left: var(--split, 50%); top: 72%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; border: 0; padding: 0;
   display: grid; place-items: center; background: #fff; color: #17121a; box-shadow: 0 2px 12px rgb(0 0 0 / .35); cursor: ew-resize; }
@@ -138,6 +140,9 @@ dialog.enh-sheet[open] { animation: enh-pop 300ms cubic-bezier(.2, .9, .3, 1.15)
 .enh-frame.reveal .after, .enh-frame.reveal .line, .enh-frame.reveal .knob { transition: clip-path 900ms cubic-bezier(.6, 0, .2, 1), left 900ms cubic-bezier(.6, 0, .2, 1); }
 .enh-frame .enh-pill { top: var(--s3); }
 .enh-frame .enh-pill.ai { top: auto; bottom: var(--s3); left: var(--s3); right: auto; font-weight: 600; font-size: 0.6875rem; }
+.enh-frame .enh-zoom { top: auto; bottom: var(--s3); right: var(--s3); min-height: 32px; display: inline-flex; align-items: center; gap: 6px; border: 0; font: inherit; font-weight: 600;
+  font-variant-numeric: tabular-nums; cursor: pointer; }
+.enh-frame .enh-zoom svg { width: 16px; height: 16px; }
 .enh-working { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / .25); pointer-events: none; opacity: 0; transition: opacity 160ms; }
 .enh-working.on { opacity: 1; }
 

@@ -202,13 +202,18 @@ function showEnhResult() {
   $("enhSampleTag").hidden = !enh.demo;
   renderToggles();
   showScreen("enhanceResult");
-  fitEnhFrame();
+  fitEnhFrame(); czReset();
   // The reveal: the line sweeps in from the right edge to the middle.
   const f = $("enhFrame");
   f.classList.remove("reveal"); enhSetSplit(100);
   requestAnimationFrame(() => requestAnimationFrame(() => { f.classList.add("reveal"); enhSetSplit(50); setTimeout(() => f.classList.remove("reveal"), 950); }));
   $("enhDownload").classList.remove("ready"); void $("enhDownload").offsetWidth; $("enhDownload").classList.add("ready");
   $("alertLive").textContent = "Your enhanced photo is ready.";
+  if (!store.get("glow.compareZoomHint")) setTimeout(() => {   // once, after the reveal
+    if (screen !== "enhanceResult" || $("toast").classList.contains("on")) return;
+    store.set("glow.compareZoomHint", "1");
+    say(matchMedia("(pointer: coarse)").matches ? "Pinch or double-tap to zoom in" : "Scroll or double-click to zoom in");
+  }, 1300);
 }
 setIcon($("enhClose"), "close"); setIcon($("enhDownload"), "save"); setIcon($("enhKnob"), "compare");
 
@@ -220,7 +225,7 @@ function fitTo(box, el, pad) {
 }
 function fitEnhFrame() {
   if (!enh.size) return;
-  if (screen === "enhanceResult") fitTo($("enhStage"), $("enhFrame"), [16, 0]);
+  if (screen === "enhanceResult") { fitTo($("enhStage"), $("enhFrame"), [16, 0]); czApply(); }
   if (screen === "enhanceShare") fitTo(document.querySelector(".enh-share-ph"), document.querySelector(".enh-share-ph .enh-card"), [32, 16]);
 }
 addEventListener("resize", fitEnhFrame);
@@ -230,17 +235,108 @@ function enhSetSplit(v) {
   $("enhFrame").style.setProperty("--split", enh.split + "%");
   $("enhKnob").setAttribute("aria-valuenow", String(Math.round(enh.split)));
 }
-(function compareDrag() {
+// Zoom for checking details. Both pictures move together under a divider that stays put, so
+// any spot can be compared up close. cz.x/cz.y are the pictures' offset as a share of the frame.
+const cz = { z: 1, x: 0, y: 0 };
+const czMax = () => { const w = $("enhFrame").clientWidth; return enh.size && w ? Math.max(3, Math.min(8, (enh.size[0] / w) * 2)) : 3; };
+function czApply() {
   const f = $("enhFrame");
-  let id = null;
-  const at = (e) => { const r = f.getBoundingClientRect(); enhSetSplit(((e.clientX - r.left) / r.width) * 100); };
-  f.addEventListener("pointerdown", (e) => { id = e.pointerId; f.setPointerCapture(id); f.classList.remove("reveal"); at(e); });
-  f.addEventListener("pointermove", (e) => { if (e.pointerId === id) at(e); });
-  const end = (e) => { if (e.pointerId === id) id = null; };
+  cz.z = Math.max(1, Math.min(czMax(), cz.z));
+  cz.x = Math.min(0, Math.max(1 - cz.z, cz.x)); cz.y = Math.min(0, Math.max(1 - cz.z, cz.y));
+  const t = `translate(${cz.x * f.clientWidth}px, ${cz.y * f.clientHeight}px) scale(${cz.z})`;
+  $("enhBefore").style.transform = $("enhAfter").style.transform = t;
+  const on = cz.z > 1.01; f.classList.toggle("zoomed", on); $("enhZoom").hidden = !on;
+  if (on) { $("enhZoom").innerHTML = icon("fit") + cz.z.toFixed(1) + "×"; $("enhZoom").setAttribute("aria-label", `Zoomed ${cz.z.toFixed(1)} times. Fit photo`); }
+}
+// Zooms to z keeping the picture point under p (frame pixels) still, or bringing it to the middle.
+function czTo(z, p, { centre = false, animate = false } = {}) {
+  const f = $("enhFrame"), w = f.clientWidth, h = f.clientHeight, z1 = Math.max(1, Math.min(czMax(), z));
+  const u = (p.x / w - cz.x) / cz.z, v = (p.y / h - cz.y) / cz.z;
+  cz.x = (centre ? 0.5 : p.x / w) - u * z1; cz.y = (centre ? 0.5 : p.y / h) - v * z1; cz.z = z1;
+  if (animate) { f.classList.add("zooming"); clearTimeout(czTo.t); czTo.t = setTimeout(() => f.classList.remove("zooming"), 260); }
+  czApply();
+}
+function czReset() { cz.z = 1; cz.x = cz.y = 0; czApply(); }
+const czMid = () => ({ x: $("enhFrame").clientWidth / 2, y: $("enhFrame").clientHeight / 2 });
+$("enhZoom").addEventListener("click", () => { czTo(1, czMid(), { animate: true }); $("alertLive").textContent = "Photo fits the screen"; });
+
+// Gestures on the result. Before zooming, one finger anywhere moves the divider (as it always
+// has); once zoomed, one finger on the divider moves it and anywhere else pans. Two fingers
+// pinch (and leave the divider where it was); double-tap zooms in on a spot, or back to fit.
+(function compareGestures() {
+  const f = $("enhFrame"), ptrs = new Map();
+  let div = null, g = null, lastTap = null;
+  const pt = (e) => { const r = f.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  const splitAt = (p) => enhSetSplit((p.x / f.clientWidth) * 100);
+  const onLine = (e, p) => !!e.target.closest("#enhKnob") || Math.abs(p.x - (f.clientWidth * enh.split) / 100) <= 24;
+  function base() {
+    const pts = [...ptrs.values()].slice(0, 2);
+    if (!pts.length) { g = null; return; }
+    const m = pts.length > 1 ? { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 } : pts[0];
+    g = { ...(g || { t: performance.now(), x0: m.x, y0: m.y, moved: 0, n: 0 }), z: cz.z, m,
+      u: (m.x / f.clientWidth - cz.x) / cz.z, v: (m.y / f.clientHeight - cz.y) / cz.z,
+      d: pts.length > 1 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0 };
+    g.n = Math.max(g.n, pts.length);
+  }
+  function move() {
+    const pts = [...ptrs.values()].slice(0, 2); if (!g || !pts.length) return;
+    const m = pts.length > 1 ? { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 } : pts[0];
+    const d = pts.length > 1 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0;
+    g.moved = Math.max(g.moved, Math.hypot(m.x - g.x0, m.y - g.y0));
+    cz.z = Math.max(1, Math.min(czMax(), g.d && d ? (g.z * d) / g.d : g.z));
+    cz.x = m.x / f.clientWidth - g.u * cz.z; cz.y = m.y / f.clientHeight - g.v * cz.z;
+    czApply();
+  }
+  // A quick tap with one finger that didn't move; two of them close together zoom.
+  function tapped(t) {
+    if (!t || t.n > 1 || t.moved > 10 || performance.now() - t.t > 300) { lastTap = null; return; }
+    const now = performance.now(), p = { x: t.x0, y: t.y0 };
+    if (lastTap && now - lastTap.t < 320 && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 30) {
+      lastTap = null;
+      if (cz.z > 1.05) czTo(1, p, { animate: true });
+      else { czTo(Math.min(2.5, czMax()), p, { centre: true, animate: true }); enhSetSplit(50); }   // the spot moves to the middle, under the divider
+      $("alertLive").textContent = cz.z > 1.01 ? `Zoomed ${cz.z.toFixed(1)} times` : "Photo fits the screen";
+    } else lastTap = { ...p, t: now };
+  }
+  f.addEventListener("pointerdown", (e) => {
+    if ((e.pointerType === "mouse" && e.button !== 0) || e.target.closest("#enhZoom")) return;
+    f.setPointerCapture(e.pointerId); f.classList.remove("reveal", "zooming");
+    const p = pt(e);
+    if (!ptrs.size && !div && (cz.z <= 1.01 || onLine(e, p))) {
+      div = { id: e.pointerId, p, split0: enh.split, t: performance.now(), x0: p.x, y0: p.y, moved: 0, n: 1 };
+      if (cz.z <= 1.01) splitAt(p);
+      return;
+    }
+    if (div) { enhSetSplit(div.split0); ptrs.set(div.id, div.p); g = { t: div.t, x0: div.x0, y0: div.y0, moved: div.moved, n: 1 }; div = null; }   // a second finger: pinch, not divider
+    ptrs.set(e.pointerId, p); base();
+  });
+  f.addEventListener("pointermove", (e) => {
+    if (div && div.id === e.pointerId) { div.p = pt(e); div.moved = Math.max(div.moved, Math.hypot(div.p.x - div.x0, div.p.y - div.y0)); splitAt(div.p); return; }
+    if (!ptrs.has(e.pointerId)) return;
+    ptrs.set(e.pointerId, pt(e)); move();
+  });
+  const end = (e) => {
+    if (div && div.id === e.pointerId) { const t = div; div = null; if (e.type === "pointerup") tapped(t); else lastTap = null; return; }
+    if (!ptrs.delete(e.pointerId)) return;
+    if (ptrs.size) { base(); return; }
+    const t = g; g = null;
+    if (e.type === "pointerup") tapped(t); else lastTap = null;
+  };
   f.addEventListener("pointerup", end); f.addEventListener("pointercancel", end);
+  // Desktop: the wheel (or a trackpad pinch) zooms around the cursor.
+  f.addEventListener("wheel", (e) => {
+    e.preventDefault(); f.classList.remove("zooming");
+    const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    czTo(cz.z * Math.exp(-d * (e.ctrlKey ? 0.01 : 0.0025)), pt(e));
+  }, { passive: false });
+  f.addEventListener("dblclick", (e) => e.preventDefault());
   $("enhKnob").addEventListener("keydown", (e) => {
     const d = { ArrowLeft: -5, ArrowRight: 5, Home: -100, End: 100 }[e.key];
-    if (d === undefined) return; e.preventDefault(); enhSetSplit(enh.split + d);
+    if (d !== undefined) { e.preventDefault(); enhSetSplit(enh.split + d); return; }
+    const k = { "+": 1.6, "=": 1.6, "-": 1 / 1.6, "0": 0 }[e.key];
+    if (k === undefined) return;
+    e.preventDefault(); czTo(k ? cz.z * k : 1, czMid(), { animate: true });
+    $("alertLive").textContent = cz.z > 1.01 ? `Zoomed ${cz.z.toFixed(1)} times` : "Photo fits the screen";
   });
 })();
 

@@ -535,6 +535,53 @@ test('enhance: the sample is free and never calls the AI', async ({ p, state }) 
   eq(state.posts.length, 0, 'no AI request for the sample');
 }, { start: 'enhance', camera: false, files: demoFiles() });
 
+test('enhance: pinch, pan and double-tap zoom on the result, with the divider still working', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]');
+  await p.click('#enhGo'); await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  await p.waitForTimeout(1100);
+  const c = await p.context().newCDPSession(p), T = (type, pts) => c.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y, id]) => ({ x, y, id })) });
+  const r = await p.evaluate(() => { const b = $('enhFrame').getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; });
+  const at = (fx, fy) => [r.x + r.w * fx, r.y + r.h * fy];
+  const st = () => p.evaluate(() => ({ z: cz.z, x: cz.x, y: cz.y, split: enh.split, chip: !$('enhZoom').hidden,
+    same: $('enhBefore').style.transform === $('enhAfter').style.transform }));
+  const tap = async (x, y) => { await T('touchStart', [[x, y, 0]]); await T('touchEnd', []); };
+  // Pinch out on the left of the face: zooms, the divider stays at 50%.
+  const [px, py] = at(0.3, 0.4);
+  await T('touchStart', [[px - 20, py, 0], [px + 20, py, 1]]);
+  for (let i = 1; i <= 6; i++) await T('touchMove', [[px - 20 - 12 * i, py, 0], [px + 20 + 12 * i, py, 1]]);
+  await T('touchEnd', []);
+  let s = await st();
+  assert(s.z > 1.8, 'pinch zooms in: ' + s.z); eq(Math.round(s.split), 50, 'pinch leaves the divider alone'); assert(s.same && s.chip, 'both pictures zoomed together, zoom chip shown');
+  // One finger away from the divider pans both pictures.
+  const [ax, ay] = at(0.8, 0.5), before = s;
+  await T('touchStart', [[ax, ay, 0]]); for (let i = 1; i <= 5; i++) await T('touchMove', [[ax - 10 * i, ay - 6 * i, 0]]); await T('touchEnd', []);
+  s = await st();
+  assert(s.x < before.x - 0.01 && s.y < before.y - 0.01, 'one finger pans once zoomed'); eq(Math.round(s.split), 50, 'panning leaves the divider alone'); eq(s.z.toFixed(2), before.z.toFixed(2), 'pan keeps the zoom');
+  // Dragging the divider while zoomed still moves it and doesn't pan.
+  const [lx, ly] = at(0.5, 0.6), panned = s;
+  await T('touchStart', [[lx, ly, 0]]); for (let i = 1; i <= 5; i++) await T('touchMove', [[lx - 16 * i, ly, 0]]); await T('touchEnd', []);
+  s = await st();
+  assert(s.split < 35, 'the divider moves while zoomed: ' + s.split); eq([s.x.toFixed(3), s.z.toFixed(2)], [panned.x.toFixed(3), panned.z.toFixed(2)], 'the divider drag does not pan');
+  // Double-tap goes back to fit.
+  const [dx, dy] = at(0.75, 0.3);
+  await tap(dx, dy); await p.waitForTimeout(80); await tap(dx, dy); await p.waitForTimeout(320);
+  s = await st(); eq([s.z, s.x, s.y, s.chip], [1, 0, 0, false], 'double-tap fits the photo again');
+  // At fit, double-tap zooms in on the spot and puts the divider through it.
+  const [ex, ey] = at(0.3, 0.3);
+  await tap(ex, ey); await p.waitForTimeout(80); await tap(ex, ey); await p.waitForTimeout(320);
+  s = await st();
+  eq(s.z.toFixed(1), '2.5', 'double-tap zooms to 2.5x'); eq(Math.round(s.split), 50, 'the divider moves to the middle');
+  const mid = await p.evaluate(() => [(0.5 - cz.x) / cz.z, (0.5 - cz.y) / cz.z]);
+  assert(Math.abs(mid[0] - 0.3) < 0.02 && Math.abs(mid[1] - 0.3) < 0.02, 'the tapped spot is in the middle: ' + mid);
+  // The chip fits it again; a single tap at fit still moves the divider as before.
+  await p.click('#enhZoom'); await p.waitForTimeout(300); s = await st(); eq(s.z, 1, 'zoom chip fits the photo');
+  await p.waitForTimeout(400); const [fx, fy] = at(0.8, 0.5); await tap(fx, fy); s = await st(); eq(Math.round(s.split), 80, 'a tap at fit still moves the divider');
+  // Wheel zoom (desktop) and keyboard on the divider.
+  await p.mouse.move(...at(0.5, 0.5)); await p.mouse.wheel(0, -300); s = await st(); assert(s.z > 1.3, 'wheel zooms: ' + s.z);
+  await p.focus('#enhKnob'); await p.keyboard.press('0'); await p.waitForTimeout(300); s = await st(); eq(s.z, 1, '0 on the divider fits');
+}, { start: 'enhance', camera: false, files: demoFiles() });
+
 test('onboarding: Choose a photo on the welcome screen opens the picker and the editor', async ({ p }) => {
   await p.goto('https://app.test/'); await p.evaluate(() => showOnboarding()); await p.waitForSelector('#onboarding:not([hidden])');
   const fc = p.waitForEvent('filechooser'); await p.click('#obPick'); await (await fc).setFiles(PORTRAIT);
