@@ -73,8 +73,7 @@ a { color: var(--accent); }
 .topbar.compact { height: 48px; grid-template-columns: auto 1fr auto; }
 .topbar.compact .wordmark { font-size: 1.5rem; color: var(--accent); }
 /* "Glow Studio" stays on one line: in the editor's busy top bar it shrinks on narrow phones. */
-.wordmark { white-space: nowrap; }
-.topbar.compact .wordmark { min-width: 0; font-size: clamp(1.0625rem, 5.6vw, 1.5rem); }
+.topbar.compact .wordmark { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: clamp(1.0625rem, 5.6vw, 1.5rem); }
 .topbar.compact .pill { min-height: 44px; padding: 0 var(--s4); }
 
 /* Buttons */

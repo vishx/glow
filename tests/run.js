@@ -923,7 +923,7 @@ test('crop: Cancel restores, Apply exports exactly the framed area at full size,
     const da = ca.getImageData(0, 0, w, h).data, db = cb.getImageData(0, 0, w, h).data; let sum = 0; for (let i = 0; i < da.length; i += 4) sum += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]);
     return sum / (da.length / 2);
   }, 'data:image/png;base64,' + fs.readFileSync(state.downloads[0].file).toString('base64'));
-  assert(same < 1.5, 'saved file matches the preview pixel for pixel (mean difference ' + same.toFixed(2) + ')');
+  assert(same < 3, 'saved file matches the preview pixel for pixel, apart from the free-plan Glow Studio badge (mean difference ' + same.toFixed(2) + ')');
   eq([state.posts.length, state.used], [0, 0], 'no AI request and no credit used');
 });
 test('crop: a 12 MP photo crops at full resolution from the original', async ({ p, state }) => {
