@@ -667,6 +667,43 @@ if (GROUP) test('enhance: group photo, every face found, sent on one face sheet 
   state.report = { faces: r.faces, cells: r.cells, sheet: wh };
 }, { start: 'enhance', camera: false });
 
+// 2026-10-31 owner's choice: Pro gets Topaz on a ~3 MP copy, free gets 2-4 tiles on one credit.
+const tileInfo = (d) => (d ? d.length : 0);
+test('enhance sharper: free sends 2-4 tiles under 1 MP each on one credit, and the stitched result matches the photo', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(path.join(fixtures, 'phone-12mp-exif6.jpg'));
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  eq([state.posts.length, state.used], [1, 1], 'one request, one credit');
+  const b = state.bodies[0];
+  assert(b.hd === null && tileInfo(b.tiles) >= 2 && tileInfo(b.tiles) <= 4, 'free: tiles, no Topaz copy: ' + tileInfo(b.tiles));
+  const sizes = await Promise.all(b.tiles.map((t) => upSize(p, t)));
+  assert(sizes.every(([w, h]) => w * h <= 1_000_000), 'each tile under 1 MP: ' + JSON.stringify(sizes));
+  // Stitched back (the mock returns each tile unchanged): same shape as the photo, ~3 MP, and
+  // close to the photo everywhere, seams included.
+  const r = await p.evaluate(async () => {
+    const a = await loadImg(enh.full), o = await loadImg(enh.src);
+    const c = newCanvas(64, 85), x = c.getContext('2d'); x.drawImage(a, 0, 0, 64, 85); const A = x.getImageData(0, 0, 64, 85).data;
+    x.drawImage(o, 0, 0, 64, 85); const B = x.getImageData(0, 0, 64, 85).data;
+    let d = 0; for (let i = 0; i < A.length; i += 4) d = Math.max(d, Math.abs(A[i] - B[i]), Math.abs(A[i + 1] - B[i + 1]), Math.abs(A[i + 2] - B[i + 2]));
+    return { w: a.naturalWidth, h: a.naturalHeight, ow: o.naturalWidth, oh: o.naturalHeight, d };
+  });
+  assert(Math.abs(r.w / r.h - r.ow / r.oh) < 0.01 && r.w * r.h > 2_500_000, 'stitched size: ' + JSON.stringify(r));
+  assert(r.d < 40, 'stitched result matches the photo (max diff ' + r.d + ')');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, ai: { server: 'patched', plus: true } });
+
+test('enhance sharper: Pro sends the ~3 MP copy for Topaz and no tiles', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(path.join(fixtures, 'phone-12mp-exif6.jpg'));
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  const b = state.bodies[0], [w, h] = await upSize(p, b.hd);
+  assert(!b.tiles && w * h > 2_500_000 && w * h <= 3_200_000, 'Pro: Topaz copy ~3 MP, no tiles: ' + [w, h]);
+  eq(state.used, 1, 'one credit');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, plan: 'pro', quota: 40, ai: { server: 'patched', plus: true } });
+
 test('enhance: the sample is free and never calls the AI', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]');

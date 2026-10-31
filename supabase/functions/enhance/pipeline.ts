@@ -117,6 +117,24 @@ export function imageSize(dataUrl: string): [number, number] | null {
   }
   return null;
 }
+// Sharper Enhance (owner's choice 2026-10-31, after a side-by-side test on a 12 MP phone photo):
+// - Pro and credit-pack charges run Topaz (topazlabs/image-upscale, $0.05 for up to 24 MP out):
+//   the most faithful and crisp result. The phone sends `hd`, up to ~3 MP; Topaz doubles it.
+// - Free charges run Real-ESRGAN on 2-4 overlapping tiles of a ~3 MP copy (`tiles`, each under the
+//   ~1 MP that fits its GPU), started together on one credit; the phone stitches them back.
+// Either way the charge is still one "enhance" credit, so the database needs no change.
+export const ENHANCE_HD: Mode = { model: "topazlabs/image-upscale", input: { enhance_model: "Standard V2", upscale_factor: "2x", face_enhancement: true, output_format: "jpg" } };
+export const HD_MAX = { side: 2600, pixels: 3_300_000 };
+export const TILE_MAX = { count: 4, side: 1400, pixels: 1_000_000 };
+const okImg = (v: unknown, max: { side: number; pixels: number }): v is string => {
+  if (typeof v !== "string" || !/^data:image\/(jpeg|png);base64,/.test(v) || v.length > 6_000_000) return false;
+  const wh = imageSize(v);
+  return !!wh && wh[0] >= 16 && wh[1] >= 16 && Math.max(...wh) <= max.side && wh[0] * wh[1] <= max.pixels;
+};
+export const okHd = (v: unknown): v is string => okImg(v, HD_MAX);
+export const okTiles = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.length >= 2 && v.length <= TILE_MAX.count && v.every((t) => okImg(t, TILE_MAX));
+
 export function okFaceSheet(v: unknown): v is string {
   if (typeof v !== "string" || !/^data:image\/(jpeg|png);base64,/.test(v) || v.length > FACE_SHEET_MAX.bytes * 1.37) return false;
   const wh = imageSize(v);
@@ -154,6 +172,7 @@ const KNOWN: Record<string, { image: string; list?: boolean; official?: boolean 
   "google/nano-banana": { image: "image_input", list: true, official: true },
   "black-forest-labs/flux-kontext-pro": { image: "input_image", official: true },
   "cuuupid/idm-vton": { image: "human_img" },
+  "topazlabs/image-upscale": { image: "image", official: true },
 };
 
 const versionCache: Record<string, ModelInfo> = {};

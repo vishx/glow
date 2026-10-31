@@ -101,6 +101,10 @@ exports.launch = async (opts = {}) => {
           // Enhance's face sheet (group photos): the mock "restores" it by sending the sheet back.
           if (st === 'succeeded' && job.sheet && ai.faces !== false) body.faces = 'https://app.test/__faces.jpg?' + job.id;
           if (ai.server === 'patched') body.refunded = !!job.refunded;
+          // Sharper Enhance (ai.plus): Topaz for Pro, tiles for free. The mock "enhances" each tile
+          // by sending it back as it came, so the stitched result must match the photo.
+          if (st === 'succeeded' && job.hd) body.hd = true;
+          if (st === 'succeeded' && job.tiles) { body.output = job.tiles; body.tiles = job.tiles.length; }
           return r.fulfill({ headers: cors, json: body });
         };
         if (method === 'GET') {
@@ -129,6 +133,11 @@ exports.launch = async (opts = {}) => {
         if (body.faces) state.sheets.push(body.faces);
         if (ai.failFirst && (ai.failCount || 0) > 0) { ai.failCount--; job.failWith = ai.failFirst; }
         state.sizes = state.sizes || []; state.sizes.push(body.image);
+        state.bodies = state.bodies || []; state.bodies.push({ hd: body.hd || null, tiles: body.tiles || null });
+        if (ai.plus && body.mode === 'enhance') {
+          if (state.plan === 'pro' && body.hd) job.hd = true;
+          else if (state.plan !== 'pro' && Array.isArray(body.tiles)) job.tiles = body.tiles;
+        }
         state.jobs[body.request_id || job.id] = job;
         // The server took the request and charged, but the answer never arrives.
         if (ai.dropPost) { ai.dropPost = false; return r.abort('connectionreset'); }

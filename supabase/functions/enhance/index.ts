@@ -6,7 +6,7 @@
 // refund the server confirmed. Needs migration 006 (ai_usage.client_request_id).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { cleanPrompt, FACE_SHEET, HttpError, lastOutput, MODES, okFaceSheet, rep, startPrediction, TOKEN } from "./pipeline.ts";
+import { cleanPrompt, ENHANCE_HD, FACE_SHEET, HttpError, lastOutput, MODES, okFaceSheet, okHd, okTiles, rep, startPrediction, TOKEN } from "./pipeline.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -52,6 +52,33 @@ async function withFaces(p: any, facesId: string | undefined) {
   return out;
 }
 
+// A tiled Enhance keeps its tile runs as "t1+t2+t3" (then ".faces"). Together they read as one
+// edit: failed if any tile failed, finished when all are, and the output is every tile's result
+// in order (the phone stitches them).
+async function mainRun(ids: string[]) {
+  if (ids.length === 1) return await rep(`/predictions/${ids[0]}`);
+  const ps = await Promise.all(ids.map((id) => rep(`/predictions/${id}`)));
+  const bad = ps.find((p) => p.status === "failed" || p.status === "canceled");
+  if (bad) { ps.forEach((p) => { if (!DONE.has(p.status)) rep(`/predictions/${p.id}/cancel`, { method: "POST" }).catch(() => {}); }); return bad; }
+  const all = ps.every((p) => p.status === "succeeded");
+  return { id: ids.join("+"), status: all ? "succeeded" : ps.some((p) => p.status === "processing" || p.status === "succeeded") ? "processing" : "starting",
+    output: all ? ps.map((p) => lastOutput(p.output)) : null, error: null, created_at: ps[0].created_at };
+}
+const outputOf = (p: any, tiled: boolean) => (tiled ? p.output : lastOutput(p.output));
+
+// Starts a run without waiting. Replicate allows only one new job at a time on a low balance
+// (429): wait the few seconds it asks, a few times, before giving up.
+async function startNow(cfg: Parameters<typeof startPrediction>[0], image: string, tries = 4) {
+  for (let i = 0; ; i++) {
+    try { return (await startPrediction(cfg, { image }, false)).p; }
+    catch (e) {
+      if (!(e instanceof HttpError) || e.status !== 429 || i >= tries - 1) throw e;
+      const secs = Math.min(12, Number(/resets in ~?(\d+)s/.exec((e as Error).message)?.[1] ?? 10));
+      await new Promise((r) => setTimeout(r, (secs + 1) * 1000));
+    }
+  }
+}
+
 // The state of one charged edit, read fresh from Replicate. Free to call any number of times.
 async function jobStatus(row: { id: number; prediction_id: string | null; refunded: boolean; status?: string | null }) {
   // Charged, but Replicate hasn't given an id yet (or starting it failed and was refunded).
@@ -62,13 +89,14 @@ async function jobStatus(row: { id: number; prediction_id: string | null; refund
   }
   try {
     const [mainId, facesId] = row.prediction_id.split(".");
-    const p = await rep(`/predictions/${mainId}`);
+    const ids = mainId.split("+"), tiled = ids.length > 1;
+    const p = await mainRun(ids);
     let refunded = row.refunded;
     // An edit that fails partway through doesn't count against the limit.
     if ((p.status === "failed" || p.status === "canceled") && !refunded) { await admin.rpc("refund_ai_edit", { p_usage: row.id }); refunded = true; }
     if (DONE.has(p.status) && !row.status) await finish(row.id, p.status, p.error);
     const w = await withFaces(p, facesId);
-    return { id: row.prediction_id, status: w.status, output: lastOutput(p.output), faces: w.faces, error: told(p), refunded };
+    return { id: row.prediction_id, status: w.status, output: outputOf(p, tiled), tiles: tiled ? ids.length : undefined, faces: w.faces, error: told(p), refunded };
   } catch (e) {
     // A brand-new prediction can briefly 404 before Replicate can read it back.
     if (e instanceof HttpError && e.status === 404) return { id: row.prediction_id, status: "starting", output: null, error: null, refunded: row.refunded };
@@ -89,7 +117,7 @@ Deno.serve(async (req) => {
       const q = new URL(req.url).searchParams, id = q.get("id"), request = q.get("request");
       // Only the user who started an edit can check on it.
       let sel = admin.from("ai_usage").select("id, prediction_id, refunded, status").eq("user_id", user.id);
-      if (id && /^[a-z0-9]+(\.[a-z0-9]+)?$/i.test(id)) sel = sel.eq("prediction_id", id);
+      if (id && /^[a-z0-9]+(\+[a-z0-9]+){0,3}(\.[a-z0-9]+)?$/i.test(id)) sel = sel.eq("prediction_id", id);
       else if (request && UUID.test(request)) sel = sel.eq("client_request_id", request);
       else return json({ error: "Bad id" }, 400);
       const { data: row } = await sel.maybeSingle();
@@ -99,7 +127,7 @@ Deno.serve(async (req) => {
     }
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-    const { image, mode, mask, extra, prompt, request_id, faces } = await req.json().catch(() => ({}));
+    const { image, mode, mask, extra, prompt, request_id, faces, hd, tiles } = await req.json().catch(() => ({}));
     const requestId = typeof request_id === "string" && UUID.test(request_id) ? request_id : null;
     // A resent request is the same edit: answer with it instead of charging again.
     if (requestId) {
@@ -153,8 +181,34 @@ Deno.serve(async (req) => {
     try {
       // Enhance with a face sheet starts the main edit without waiting, so the face sheet can start
       // right after it and both run together; the app follows the job either way.
-      const sheet = mode === "enhance" && okFaceSheet(faces);
-      const { p, info } = await startPrediction(cfg, { image, mask, extra, prompt: cleanPrompt(prompt) }, !sheet);
+      // Which Enhance this charge buys: Topaz for Pro and credit-pack credits, tiles for free ones.
+      let paid = quota.plan === "pro";
+      if (!paid && mode === "enhance" && okHd(hd)) {
+        const { data: u } = await admin.from("ai_usage").select("from_bonus").eq("id", quota.usage_id).maybeSingle();
+        paid = !!u?.from_bonus;
+      }
+      let p: any = null, info: any = null, tileIds: string[] = [];
+      if (mode === "enhance" && paid && okHd(hd)) {
+        // Topaz restores every face itself, so no face sheet. If it turns the photo down at once,
+        // the usual Enhance runs instead on the same credit.
+        try { ({ p, info } = await startPrediction(ENHANCE_HD, { image: hd })); } catch (e) { console.error("hd start", (e as Error).message); }
+        if (p && (p.status === "failed" || p.status === "canceled")) { console.log("hd failed, using Enhance", p.id, p.error ?? ""); p = null; }
+        if (p) console.log("started enhance hd", info.model, p.id, p.status);
+      }
+      const sheet = !p && mode === "enhance" && okFaceSheet(faces);
+      if (!p && mode === "enhance" && !paid && okTiles(tiles)) {
+        // Every tile starts at once; the edit is one job made of them.
+        try {
+          for (const t of tiles) tileIds.push((await startNow(cfg, t)).id);
+          p = { id: tileIds.join("+"), status: "starting", output: null, error: null };
+          info = { model: "nightmareai/real-esrgan (tiles)" };
+          console.log("started enhance tiles", p.id);
+        } catch (e) {
+          tileIds.forEach((id) => rep(`/predictions/${id}/cancel`, { method: "POST" }).catch(() => {}));
+          console.error("tiles start", (e as Error).message); tileIds = []; p = null;
+        }
+      }
+      if (!p) ({ p, info } = await startPrediction(cfg, { image, mask, extra, prompt: cleanPrompt(prompt) }, !sheet));
       console.log("started", mode, info.model, p.id, p.status, p.error ?? "");
       if (sheet) await admin.from("ai_usage").update({ prediction_id: p.id }).eq("id", quota.usage_id);   // findable while the sheet starts
       // The face sheet is an extra on the same credit. Replicate allows only one new job at a time
@@ -177,7 +231,8 @@ Deno.serve(async (req) => {
       if (failed) await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
       if (DONE.has(p.status)) await finish(quota.usage_id, p.status, p.error);
       const w = await withFaces(p, facesId);
-      return json({ id: pid, status: w.status, output: lastOutput(p.output), faces: w.faces, error: told(p), refunded: failed, usage });
+      return json({ id: pid, status: w.status, output: outputOf(p, tileIds.length > 1), tiles: tileIds.length > 1 ? tileIds.length : undefined,
+        hd: info.model === ENHANCE_HD.model || undefined, faces: w.faces, error: told(p), refunded: failed, usage });
     } catch (e) {
       dropFaces();
       await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });

@@ -117,7 +117,7 @@ async function runEnhance() {
     setSheetWorking(true, "Almost there…");
     let full;
     const facesUrl = enh.pending && enh.pending.faces;
-    try { const r = await fetch(url); if (!r.ok) throw new Error(); full = await blobToData(await r.blob()); }
+    try { full = await enhResultData(url); }
     catch { enh.pending = enh.pending || { done: url }; throw new Error("The result is ready but couldn't be downloaded yet. Tap Check again."); }
     full = await putFacesBack(full, enh.sheet, facesUrl);
     // The toggles work on a 2048px copy; the untouched result is kept for saving at full size.
@@ -149,11 +149,15 @@ async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from =
   if (h.pending && h.pending.done) return h.pending.done;
   if (!h.pending) {
     const image = await uploadable(src, maxSide, maxPixels), requestId = rid();
+    // The sharper passes (first try only; a retry after a failure is the plain, smaller one):
+    // Topaz for Pro and credit-pack credits (`hd`), tiles for free credits. The server decides
+    // which one the charge buys and falls back to `image` if neither fits.
+    const first = maxPixels === aiMaxPixels(ENH_MODE), plus = first ? await enhancePlus(src).catch(() => ({})) : {};
     h.sheet = await faceSheet(src, h.cropFrom).catch(() => null);
-    h.pending = { requestId, id: null };
+    h.pending = { requestId, id: null, layout: plus.layout || null };
     try {
-      track("ai_start", { mode: ENH_MODE, from });
-      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: ENH_MODE, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined }) });
+      track("ai_start", { mode: ENH_MODE, from, hd: !!plus.hd, tiles: plus.tiles ? plus.tiles.length : 0 });
+      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: ENH_MODE, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined, hd: plus.hd, tiles: plus.tiles }) });
       h.pending.id = res.id || null;
       return await followEnhance(h, res, onLabel, from);
     } catch (err) {
@@ -177,7 +181,12 @@ async function followEnhance(h, first, onLabel, from) {
     if (res && res.status === "succeeded" && res.output) {
       track("ai_done", { mode: ENH_MODE, from, secs: Math.round((Date.now() - started) / 1000), faces: h.sheet ? h.sheet.cells.length : 0, sheet: !!res.faces });
       p.faces = res.faces || null;
-      p.done = Array.isArray(res.output) ? res.output[0] : res.output; return p.done; }
+      // A tiled Enhance answers with every tile's result, in order; the phone stitches them.
+      p.done = res.tiles && Array.isArray(res.output) && p.layout && res.output.length === p.layout.tiles.length
+        ? { tiles: res.output, layout: p.layout } : Array.isArray(res.output) ? res.output[0] : res.output;
+      if (res.hd) p.hd = true;
+      track("ai_path", { from, path: res.hd ? "hd" : res.tiles ? "tiles" : "plain" });
+      return p.done; }
     if (res && ["failed", "canceled"].includes(res.status)) {
       track("ai_fail", { mode: ENH_MODE, from, refunded: res.refunded === true, oom: isOutOfMemory(res.error) });
       h.pending = null;
@@ -201,6 +210,59 @@ async function followEnhance(h, first, onLabel, from) {
     }
   }
   throw lostConnection();
+}
+
+// ---------- Sharper Enhance: Topaz (Pro, credit packs) and tiles (free) ----------
+// Chosen by the owner on 2026-10-31 after a side-by-side test on a 12 MP phone photo. The main pass
+// used to see at most 0.9 MP (more runs its GPU out of memory), so detail was lost before it began.
+// Now the phone sends the working copy (up to 2048px, ~3 MP): Pro gets Topaz on it as one image, and
+// free cuts it into 2-4 overlapping tiles under 0.9 MP each, run together on the same credit and
+// stitched back here. Results come back at twice the working size (up to ~12 MP).
+const ENH_PLUS = { hdPixels: 3_200_000, hdSide: 2560, srcPixels: 3_200_000, tilePixels: 820_000, overlap: 48 };
+async function enhancePlus(src) {
+  const a = account, pro = isPro(), packs = !!(a && a.bonus > 0);
+  const img = await loadImg(src), W0 = img.naturalWidth, H0 = img.naturalHeight, out = {};
+  if (pro || packs) out.hd = await uploadable(src, ENH_PLUS.hdSide, ENH_PLUS.hdPixels);
+  if (!pro && W0 * H0 > aiMaxPixels(ENH_MODE)) {
+    const k = Math.min(1, Math.sqrt(ENH_PLUS.srcPixels / (W0 * H0)));
+    const W = Math.floor(W0 * k), H = Math.floor(H0 * k), o = ENH_PLUS.overlap;
+    // Two tiles along the long side when that keeps each under the limit, otherwise a 2x2 grid.
+    const two = (Math.max(W, H) / 2 + o) * Math.min(W, H) <= ENH_PLUS.tilePixels;
+    const cols = two ? (W >= H ? 2 : 1) : 2, rows = two ? (W >= H ? 1 : 2) : 2;
+    const tw = Math.ceil(W / cols), th = Math.ceil(H / rows), tiles = [];
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const x = Math.max(0, c * tw - (c ? o : 0)), y = Math.max(0, r * th - (r ? o : 0));
+      const w = Math.min(W, (c + 1) * tw + (c < cols - 1 ? o : 0)) - x, h = Math.min(H, (r + 1) * th + (r < rows - 1 ? o : 0)) - y;
+      tiles.push({ x, y, w, h });
+    }
+    if (tiles.every((t) => t.w * t.h <= 1_000_000)) {
+      out.tiles = tiles.map((t) => {
+        const cv = newCanvas(t.w, t.h), cx = cv.getContext("2d");
+        cx.imageSmoothingQuality = "high";
+        cx.drawImage(img, t.x / k, t.y / k, t.w / k, t.h / k, 0, 0, t.w, t.h);
+        return cv.toDataURL("image/jpeg", 0.92);
+      });
+      out.layout = { W, H, o, tiles };
+    }
+  }
+  return out;
+}
+// The result as a data URL: one picture, or the tiles stitched back with soft seams.
+async function enhResultData(done) {
+  if (typeof done === "string") { const r = await fetch(done); if (!r.ok) throw new Error(); return blobToData(await r.blob()); }
+  const { tiles, layout: L } = done, imgs = await Promise.all(tiles.map(loadImg));
+  const s = imgs[0].naturalWidth / L.tiles[0].w, W = Math.round(L.W * s), H = Math.round(L.H * s), o = L.o * s;
+  const c = newCanvas(W, H), x = c.getContext("2d");
+  L.tiles.forEach((t, i) => {
+    const w = Math.round(t.w * s), h = Math.round(t.h * s), cv = newCanvas(w, h), cx = cv.getContext("2d");
+    cx.imageSmoothingQuality = "high"; cx.drawImage(imgs[i], 0, 0, w, h);
+    // Fade in across the overlap with the tile to the left and above, so no seam shows.
+    cx.globalCompositeOperation = "destination-in";
+    if (t.x > 0) { const g = cx.createLinearGradient(0, 0, o * 2, 0); g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "#000"); cx.fillStyle = g; cx.fillRect(0, 0, w, h); }
+    if (t.y > 0) { const g = cx.createLinearGradient(0, 0, 0, o * 2); g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "#000"); cx.fillStyle = g; cx.fillRect(0, 0, w, h); }
+    x.drawImage(cv, Math.round(t.x * s), Math.round(t.y * s));
+  });
+  return c.toDataURL("image/jpeg", 0.95);
 }
 
 // ---------- Every face, group photos included ----------
@@ -798,7 +860,7 @@ async function batchOne(it) {
   const url = await enhanceRequest(it, it.src, (t) => { if (it.label !== t) { it.label = t; renderTile(it); } }, "batch");
   const facesUrl = it.pending && it.pending.faces;
   let blob;
-  try { const r = await fetch(url); if (!r.ok) throw new Error(); blob = await r.blob(); }
+  try { blob = await (await fetch(await enhResultData(url))).blob(); }
   catch { throw new Error("The result is ready but couldn't be downloaded yet."); }
   if (facesUrl && it.sheet) { try { blob = await (await fetch(await putFacesBack(await blobToData(blob), it.sheet, facesUrl))).blob(); } catch { /* keep the main result */ } }
   it.full = blob; it.pending = null;
