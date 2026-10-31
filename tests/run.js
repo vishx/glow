@@ -605,9 +605,24 @@ test('enhance: pick, one AI request, before/after, toggles on the phone, save, s
   await p.click('#enhGo');
   await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
   eq(state.posts.length, 1, 'one AI request'); eq(state.posts[0], 'enhance', 'the enhance mode');
-  for (const k of ['colors', 'bg']) { await p.click(`.enh-t[data-k=${k}]`); await p.waitForFunction(() => !$('enhWorking').classList.contains('on'), null, { timeout: 30000 }); }
+  // Each tool opens its levels: pick one, then done (or back to undo it).
+  const level = async (k, i, done = true) => {
+    await p.click(`.enh-t[data-k=${k}]`); await p.waitForSelector('#enhLevels:not([hidden])');
+    await p.click(`#enhLvRow .enh-lv[data-i="${i}"]`);
+    await p.waitForFunction(() => !$('enhWorking').classList.contains('on'), null, { timeout: 60000 });
+    await p.click(done ? '#enhLvDone' : '#enhLvBack'); await p.waitForSelector('#enhToggles:not([hidden])');
+  };
+  eq(await p.evaluate(() => [...$('enhLvRow').children].length), 0, 'no levels open at first');
+  await level('colors', 2); await level('bg', 0);
+  eq(await p.evaluate(() => [enh.lv.colors, enh.lv.bg, document.querySelector('.enh-t[data-k=colors]').getAttribute('aria-pressed')]), [2, 0, 'true'], 'levels kept');
+  await level('blur', 3, false);
+  eq(await p.evaluate(() => enh.lv.blur), 0, 'back undoes the blur');
+  await level('blur', 1);
+  // Set as default: the next photo opens with Low blur.
+  await p.click('.enh-t[data-k=blur]'); await p.click('#enhDefault'); await p.click('#enhLvDone');
+  eq(await p.evaluate(() => JSON.parse(store.get('glow.enhDefaults'))), { blur: 1 }, 'default saved');
   await p.waitForTimeout(300);
-  eq(state.posts.length, 1, 'toggles never call the AI again');
+  eq(state.posts.length, 1, 'levels never call the AI again');
   await p.click('#enhDownload'); await downloads(state, 1);
   await p.waitForFunction(() => screen === 'enhanceShare'); eq(await p.textContent('#enhSavedText'), 'Downloaded', 'honest save label in a browser');
   await p.click('#enhEdit'); await p.waitForFunction(() => screen === 'editorScreen' && ed.hist.length === 2 && ed.idx === 1);

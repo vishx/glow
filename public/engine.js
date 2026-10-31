@@ -1531,12 +1531,12 @@ async function hairColor(src, amt, color) {
 // frame with. For a photo background she is matched to it a little: its color is let into her
 // edges (light wrap) and her overall tone moves slightly toward its tone, so she sits in it.
 async function backdrop(src, bg, o = {}) {
+  if (bg === "blur") return portraitBlur(src, o.level ?? 2);
   const img = await loadImg(src), c = canvasFor(img), cx = c.getContext("2d", { willReadFrequently: true });
   cx.drawImage(img, 0, 0, c.width, c.height);
   const W = c.width, H = c.height, alpha = await matte(src, c), subj = subjectLayer(c, alpha);
   const back = newCanvas(W, H), bx = back.getContext("2d", { willReadFrequently: true });
-  if (bg === "blur") bx.drawImage(cleanBackground(c, alpha, Math.max(W, H) / 40), 0, 0);
-  else if (typeof bg === "function") bg(bx, W, H, img);
+  if (typeof bg === "function") bg(bx, W, H, img);
   else {
     // A soft blur is drawn a little larger than the frame, so its edges don't fade to dark.
     const p = await loadImg(bg), r = o.blur ? Math.round(Math.max(W, H) / 150) : 0;
@@ -1570,6 +1570,99 @@ async function backdrop(src, bg, o = {}) {
     ox.putImageData(d, 0, 0);
   }
   return out.toDataURL("image/jpeg", 0.92);
+}
+// ---------- Portrait blur ----------
+// Background blur like a phone camera's portrait mode. The people are cut out one at a time: the
+// person segmenter (256 px, made for selfies) runs on squares around each main face and on down
+// their body, so a full-length or group photo gets a fine outline instead of one blurry blob for
+// the whole picture. Only what joins a main face is kept; people further back blur with the room.
+// The blur then grows with distance: in a full-length photo the floor is sharp at their feet and
+// softer toward the horizon, and everything above that is the far background. Levels 1–3 are
+// Low, Medium and High, and even High keeps the room recognizable.
+const BLUR_LEVELS = [0, 0.0022, 0.0036, 0.0055];   // blur radius, as a share of the photo's width
+async function portraitBlur(src, level = 2) {
+  const img = await loadImg(src), c = canvasFor(img), cx = c.getContext("2d", { willReadFrequently: true });
+  cx.drawImage(img, 0, 0, c.width, c.height);
+  const W = c.width, H = c.height, R = W * (BLUR_LEVELS[level] ?? BLUR_LEVELS[2]);
+  if (!R) return c.toDataURL("image/jpeg", 0.92);
+  let faces = [];
+  try { faces = await findFaces(src, c); } catch { /* no face model: blur around the whole-picture cutout */ }
+  const bx = faces.map(boxOf).map(([x, y, w, h]) => [x * W, y * H, w * W, h * H]);
+  const big = Math.max(0, ...bx.map((b) => b[2]));
+  const main = bx.filter((b) => b[2] >= 0.55 * big);
+  const alpha = main.length ? await peopleMatte(c, main) : await matte(src, c);
+  // Where they stand: the lowest row of the cutout, and whether their whole body is in the picture.
+  let feet = 0;
+  for (let y = H - 1; y >= 0 && !feet; y--) for (let x = 0; x < W; x += 2) if (alpha[y * W + x] > 0.5) { feet = y; break; }
+  const fh = Math.max(0, ...main.map((b) => b[3])), fy = Math.max(0, ...main.map((b) => b[1] + b[3] / 2));
+  const full = main.length && feet - fy > 5 * fh, horizon = fy + 1.5 * fh;   // the camera is about at chest height
+  const sharp = cx.getImageData(0, 0, W, H).data;
+  const half = cleanBackground(c, alpha, R / 2).getContext("2d").getImageData(0, 0, W, H).data;
+  const most = cleanBackground(c, alpha, R).getContext("2d").getImageData(0, 0, W, H).data;
+  const out = newCanvas(W, H), ox = out.getContext("2d", { willReadFrequently: true }), od = ox.createImageData(W, H), D = od.data;
+  for (let y = 0; y < H; y++) {
+    // 0 = in focus, 1 = the far background. On the floor: how far that row is from their feet.
+    let t = full && y > horizon ? Math.min(1, Math.abs(1 - (y - horizon) / Math.max(1, feet - horizon)) * 1.15) : 1;
+    t = Math.max(0.12, t);
+    const [A, B, f] = t < 0.5 ? [sharp, half, t * 2] : [half, most, t * 2 - 1];
+    for (let j = y * W * 4, e = j + W * 4; j < e; j += 4) {
+      D[j] = A[j] + (B[j] - A[j]) * f; D[j + 1] = A[j + 1] + (B[j + 1] - A[j + 1]) * f; D[j + 2] = A[j + 2] + (B[j + 2] - A[j + 2]) * f; D[j + 3] = 255;
+    }
+  }
+  ox.putImageData(od, 0, 0); ox.drawImage(subjectLayer(c, alpha), 0, 0);
+  return out.toDataURL("image/jpeg", 0.92);
+}
+// The alpha (0–1 per pixel of c) of the people whose faces are `boxes` (pixels of c).
+async function peopleMatte(c, boxes) {
+  const W = c.width, H = c.height, seg = await segmenter(), S = 256;
+  const k = Math.min(1, 1600 / Math.max(W, H)), w = Math.round(W * k), h = Math.round(H * k);
+  const acc = newCanvas(w, h), ax = acc.getContext("2d", { willReadFrequently: true });
+  ax.fillStyle = "#000"; ax.fillRect(0, 0, w, h); ax.globalCompositeOperation = "lighten"; ax.imageSmoothingQuality = "high";
+  const tile = newCanvas(S, S), tx = tile.getContext("2d", { willReadFrequently: true });
+  for (const b of boxes) {
+    const fw = Math.max(b[2], b[3]), mid = b[0] + b[2] / 2, side = Math.min(W, H, fw * 5.5);
+    for (let top = Math.max(0, b[1] - fw); ;) {
+      const y0 = Math.min(top, H - side), x0 = Math.max(0, Math.min(W - side, mid - side / 2));
+      tx.drawImage(c, x0, y0, side, side, 0, 0, S, S);
+      const r = seg.segment(tile), m = r.confidenceMasks[0], conf = m.getAsFloat32Array();
+      const mc = newCanvas(m.width, m.height), mx = mc.getContext("2d"), px = mx.createImageData(m.width, m.height);
+      for (let i = 0; i < conf.length; i++) { const v = Math.round(clamp01(conf[i]) * 255); px.data[i * 4] = px.data[i * 4 + 1] = px.data[i * 4 + 2] = v; px.data[i * 4 + 3] = 255; }
+      if (r.close) r.close();
+      mx.putImageData(px, 0, 0); ax.drawImage(mc, x0 * k, y0 * k, side * k, side * k);
+      if (y0 + side >= H) break;
+      top = y0 + side * 0.6;
+    }
+  }
+  const md = ax.getImageData(0, 0, w, h).data, p = new Float32Array(w * h);
+  for (let i = 0; i < p.length; i++) p[i] = clamp01((md[i * 4] / 255 - 0.25) / 0.5);
+  // Keep only what joins one of the faces (a flood fill on a coarse grid, then grown a little).
+  const g = 3, gw = Math.ceil(w / g), gh = Math.ceil(h / g), on = new Uint8Array(gw * gh), keep = new Uint8Array(gw * gh), near = new Uint8Array(gw * gh);
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) on[y * gw + x] = p[Math.min(h - 1, y * g) * w + Math.min(w - 1, x * g)] > 0.5 ? 1 : 0;
+  const stack = boxes.map((b) => Math.min(gh - 1, Math.floor((b[1] + b[3] / 2) * k / g)) * gw + Math.min(gw - 1, Math.floor((b[0] + b[2] / 2) * k / g)));
+  while (stack.length) {
+    const i = stack.pop(); if (keep[i] || !on[i]) continue;
+    keep[i] = 1; const x = i % gw;
+    if (x > 0) stack.push(i - 1); if (x < gw - 1) stack.push(i + 1); if (i >= gw) stack.push(i - gw); if (i + gw < gw * gh) stack.push(i + gw);
+  }
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) if (keep[y * gw + x])
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < gw && Y < gh) near[Y * gw + X] = 1; }
+  const I = new Float32Array(w * h), cc = newCanvas(w, h), cg = cc.getContext("2d", { willReadFrequently: true });
+  cg.drawImage(c, 0, 0, w, h); const gd = cg.getImageData(0, 0, w, h).data;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x; I[i] = lum(gd[i * 4], gd[i * 4 + 1], gd[i * 4 + 2]) / 255;
+    if (!near[((y / g) | 0) * gw + ((x / g) | 0)]) p[i] = 0;
+  }
+  // The same edge refinement as matte(), finer: snap the outline, then follow the hair.
+  let q = guided(I, p, w, h, Math.max(4, Math.round(w / 150)), 1e-3);
+  q = guided(I, q, w, h, Math.max(2, Math.round(w / 400)), 2e-4);
+  const ac = newCanvas(w, h), acx = ac.getContext("2d"), ad = acx.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) ad.data[i * 4 + 3] = Math.round(smoothstep(0.15, 0.85, q[i]) * 255);
+  acx.putImageData(ad, 0, 0);
+  const out = newCanvas(W, H), ox = out.getContext("2d", { willReadFrequently: true });
+  ox.imageSmoothingQuality = "high"; ox.drawImage(ac, 0, 0, W, H);
+  const ab = ox.getImageData(0, 0, W, H).data, alpha = new Float32Array(W * H);
+  for (let i = 0; i < alpha.length; i++) alpha[i] = ab[i * 4 + 3] / 255;
+  return alpha;
 }
 // The mask an AI scene repaints: white wherever the background is, including the soft edge of her
 // hair, so the new scene meets her naturally; she herself stays her own pixels.

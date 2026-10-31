@@ -13,17 +13,24 @@ const ENH_SAMPLE = { original: DEMO_DIR + "original.png", result: DEMO_DIR + "en
 // person's own features and the photo's fine detail back, so faces stay true.
 const PRO_MODE = "pro", PRO_COST = 2;
 const proEditOn = () => featureOn("enhance:pro") && featureOn("tool:pro");
-// [key, label, icon, on by default]. Face and Background Enhancer choose, per area, between the
-// AI result and the original; the rest are free on-device steps on top.
-const ENH_TOGGLES = [["face", "Face Enhancer", "face", true], ["bg", "Background Enhancer", "upscale", true],
-  ["retouch", "Face Retouch", "fsmooth", false], ["colors", "Colors", "palette", false], ["blur", "Background Blur", "bgblur", false]];
+// [key, label, icon, level names (0 = Disabled), level by default]. Each tool opens a row of
+// levels, and "Set as default" keeps the chosen level for the next photo. Face and Background
+// Enhancer mix, per area, the AI result into the original (level 3 = all AI); the rest are free
+// on-device steps on top.
+const ENH_COLORS = ["glow", "warm", "vivid", "soft", "cool", "film", "mono"];
+const ENH_TOGGLES = [["face", "Face Enhancer", "face", ["Disabled", "1", "2", "3"], 3], ["bg", "Background Enhancer", "upscale", ["Disabled", "1", "2", "3"], 3],
+  ["retouch", "Face Retouch", "fsmooth", ["Disabled", "1", "2", "3"], 0],
+  ["colors", "Colors", "palette", ["Disabled", "Auto", ...ENH_COLORS.map((id) => FILTERS.find((f) => f.id === id).name)], 0],
+  ["blur", "Background Blur", "bgblur", ["Disabled", "Low", "Medium", "High"], 0]];
+const ENH_MIX = [0, 0.5, 0.75, 1], ENH_RETOUCH = [null, [0.35, 0.2], [0.55, 0.35], [0.75, 0.5]];
+const enhDefaults = () => { try { return JSON.parse(store.get("glow.enhDefaults") || "{}"); } catch { return {}; } };
 // Face and Background Enhancer are Enhance itself; the others can be switched off from the admin
 // page (features.js), which hides them and leaves them out of the picture.
 const enhToggleOn = (k) => k === "face" || k === "bg" || featureOn("enhance:" + k);
 const enh = {
   src: null, original: null, name: "", demo: false,   // the picked photo (working size) and its untouched file
   ai: null, base: null, faces: [],                    // the AI result, the photo at the result's size, face outlines (0–1)
-  on: {}, cache: new Map(), current: null, token: 0,  // toggle state and the composites made so far
+  lv: {}, cache: new Map(), current: null, token: 0,  // each tool's level and the composites made so far
   busy: false, pending: null, saved: null, split: 50,
 };
 
@@ -521,10 +528,14 @@ async function prepareResult() {
   try { enh.faces = await enhFaces(enh.src, o); } catch { enh.faces = []; }
 }
 function showEnhResult() {
-  enh.on = Object.fromEntries(ENH_TOGGLES.map(([k, , , d]) => [k, d && enhToggleOn(k)]));
-  enh.cache.clear(); enh.cache.set(enhKey(), enh.ai); enh.current = enh.ai; enh.saved = null;
-  if (!enh.faces.length) { enh.on.face = true; enh.on.retouch = false; }
+  const saved = enhDefaults();
+  enh.lv = Object.fromEntries(ENH_TOGGLES.map(([k, , , names, d]) => [k, Number.isInteger(saved[k]) && saved[k] >= 0 && saved[k] < names.length ? saved[k] : d]).map(([k, v]) => [k, enhToggleOn(k) ? v : 0]));
+  if (!enh.faces.length) { enh.lv.face = 3; enh.lv.retouch = 0; }
+  enh.strength = 100;   // Pro Edit opens at full strength (renderProPanel sets the slider)
+  enh.cache.clear(); enh.cache.set(enhAIKey(), enh.ai); enh.current = enh.ai; enh.saved = null;
+  closeLevels(true);
   $("enhBefore").src = enh.src; $("enhAfter").src = enh.ai;
+  if (enhKey() !== enhAIKey()) updateComposite();   // the user's own default levels
   $("enhSampleTag").hidden = !enh.demo;
   renderProPanel();
   renderToggles();
@@ -701,7 +712,7 @@ function renderToggles() {
   const row = $("enhToggles");
   const btns = ENH_TOGGLES.filter(([k]) => enhToggleOn(k)).map(([k, label, ic]) => {
     const b = document.createElement("button");
-    b.className = "enh-t"; b.dataset.k = k; b.setAttribute("aria-pressed", String(!!enh.on[k]));
+    b.className = "enh-t"; b.dataset.k = k; b.setAttribute("aria-pressed", String(enh.lv[k] > 0));
     b.disabled = (k === "face" || k === "retouch") && !enh.faces.length;
     if (b.disabled) b.title = "No face found in this photo";
     b.innerHTML = `<span class="ic">${icon(ic)}<span class="tick">${icon("check")}</span></span><span>${label}</span>`;
@@ -717,18 +728,64 @@ $("enhToggles").addEventListener("click", (e) => {
   const b = e.target.closest(".enh-t"); if (!b || b.disabled) return;
   if (b.id === "enhMore") { editEnhanced(); return; }
   Platform.haptic();
-  enh.on[b.dataset.k] = !enh.on[b.dataset.k];
-  b.setAttribute("aria-pressed", String(enh.on[b.dataset.k]));
-  updateComposite();
+  openLevels(b.dataset.k);
 });
 
-const enhKey = () => ENH_TOGGLES.map(([k]) => (enh.on[k] ? 1 : 0)).join("") + (enh.style === PRO_MODE ? ":" + enh.strength : "");
+// ---------- Levels ----------
+// A tool's levels replace the tool row: a small picture per level (Colors shows each look), a
+// "Set as default" switch, and back (undo this tool's change) or done.
+const lvState = { k: null, was: 0 };
+function openLevels(k) {
+  const [, label, , names] = ENH_TOGGLES.find((t) => t[0] === k);
+  lvState.k = k; lvState.was = enh.lv[k];
+  $("enhLvTitle").textContent = label;
+  const thumb = enh.current;
+  $("enhLvRow").replaceChildren(...names.map((name, i) => {
+    const b = document.createElement("button");
+    b.className = "enh-lv" + (i === 0 ? " off" : ""); b.dataset.i = i; b.setAttribute("role", "radio");
+    const f = k === "colors" && i > 1 ? FILTERS.find((x) => x.id === ENH_COLORS[i - 2]).f : k === "colors" && i === 1 ? "brightness(1.05) contrast(1.05)" : "";
+    b.innerHTML = `<img alt="" src="${thumb}"${f ? ` style="filter:${f}"` : ""}><span>${name}</span>`;
+    return b;
+  }));
+  markLevel();
+  $("enhToggles").hidden = true; $("enhLevels").hidden = false;
+  $("enhLvRow").querySelector('[aria-checked="true"]')?.scrollIntoView({ inline: "center", block: "nearest" });
+}
+function markLevel() {
+  const k = lvState.k, saved = enhDefaults();
+  for (const b of $("enhLvRow").children) b.setAttribute("aria-checked", String(Number(b.dataset.i) === enh.lv[k]));
+  $("enhDefault").checked = saved[k] === enh.lv[k];
+}
+function closeLevels(keep) {
+  if (lvState.k && !keep && enh.lv[lvState.k] !== lvState.was) { enh.lv[lvState.k] = lvState.was; updateComposite(); }
+  lvState.k = null;
+  $("enhLevels").hidden = true; $("enhToggles").hidden = false;
+  if (screen === "enhanceResult") renderToggles();
+}
+$("enhLvRow").addEventListener("click", (e) => {
+  const b = e.target.closest(".enh-lv"); if (!b || !lvState.k) return;
+  Platform.haptic();
+  enh.lv[lvState.k] = Number(b.dataset.i); markLevel(); updateComposite();
+});
+$("enhDefault").addEventListener("change", () => {
+  const d = enhDefaults();
+  if ($("enhDefault").checked) d[lvState.k] = enh.lv[lvState.k]; else delete d[lvState.k];
+  store.set("glow.enhDefaults", JSON.stringify(d));
+});
+setIcon($("enhLvBack"), "back"); setIcon($("enhLvDone"), "check");
+$("enhLvBack").addEventListener("click", () => closeLevels(false));
+$("enhLvDone").addEventListener("click", () => closeLevels(true));
+
+// Face and Background Enhancer at 3, nothing else (and Pro Edit at full strength): the AI result as it came.
+const proKey = (st) => (enh.style === PRO_MODE ? ":" + st : "");
+const enhAIKey = () => "33000" + proKey(100);
+const enhKey = () => ENH_TOGGLES.map(([k]) => enh.lv[k]).join("") + proKey(enh.strength);
 async function updateComposite() {
   const key = enhKey(), token = ++enh.token;
   if (enh.cache.has(key)) { showComposite(enh.cache.get(key)); return; }
   const slow = setTimeout(() => { if (token === enh.token) $("enhWorking").classList.add("on"); }, 120);
   try {
-    const out = await composeEnhanced(enh.on);
+    const out = await composeEnhanced(enh.lv);
     enh.cache.set(key, out);
     if (token === enh.token) showComposite(out);
   } catch (err) { if (token === enh.token) say(err.message || "Couldn't make that change.", true); }
@@ -736,26 +793,29 @@ async function updateComposite() {
 }
 function showComposite(data) { enh.current = data; $("enhAfter").src = data; enh.saved = null; }
 
-// Builds the picture for a set of toggles. Background Enhancer decides the whole frame (AI or
-// original); Face Enhancer then puts the chosen face back in through a soft face outline.
+// Builds the picture for a set of levels. Background Enhancer mixes the AI result into the whole
+// frame; Face Enhancer then mixes the faces at its own level, through a soft face outline.
 // Retouch, Colors and Blur are the same free on-device tools the editor uses.
-async function composeEnhanced(on) {
-  on = Object.fromEntries(Object.entries(on).map(([k, v]) => [k, v && enhToggleOn(k)]));
+async function composeEnhanced(lv) {
+  lv = Object.fromEntries(Object.entries(lv).map(([k, v]) => [k, enhToggleOn(k) ? v : 0]));
   let out;
-  if (on.face === on.bg || !enh.faces.length) out = on.bg ? enh.ai : enh.base;
+  const fa = ENH_MIX[lv.face], ba = ENH_MIX[lv.bg], plain = fa === ba || !enh.faces.length;
+  if (plain && (ba === 0 || ba === 1)) out = ba ? enh.ai : enh.base;
   else {
-    const [bgImg, faceImg] = await Promise.all([loadImg(on.bg ? enh.ai : enh.base), loadImg(on.face ? enh.ai : enh.base)]);
+    const [ai, base] = await Promise.all([loadImg(enh.ai), loadImg(enh.base)]);
     const [W, H] = enh.size, c = newCanvas(W, H), x = c.getContext("2d");
-    x.drawImage(bgImg, 0, 0, W, H);
-    const layer = newCanvas(W, H); layer.getContext("2d").drawImage(faceImg, 0, 0, W, H);
-    const mask = softMask(W, H, 1, () => {});
-    const m = mask.getContext("2d"); m.fillStyle = "#fff";
-    for (const f of enh.faces) {
-      const P = f.map(([px, py]) => [px * W, py * H]), fw = dist(P[234], P[454]), C = mean(FACE.oval.map((i) => P[i]));
-      m.filter = `blur(${Math.max(2, Math.round(fw / 12))}px)`;
-      tracePoly(m, FACE.oval.map((i) => [C[0] + (P[i][0] - C[0]) * 1.1, C[1] + (P[i][1] - C[1]) * 1.12])); m.fill();
+    const mixed = (a) => { const m = newCanvas(W, H), mx = m.getContext("2d"); mx.drawImage(base, 0, 0, W, H); mx.globalAlpha = a; mx.drawImage(ai, 0, 0, W, H); return m; };
+    x.drawImage(mixed(ba), 0, 0);
+    if (!plain) {
+      const mask = softMask(W, H, 1, () => {});
+      const m = mask.getContext("2d"); m.fillStyle = "#fff";
+      for (const f of enh.faces) {
+        const P = f.map(([px, py]) => [px * W, py * H]), fw = dist(P[234], P[454]), C = mean(FACE.oval.map((i) => P[i]));
+        m.filter = `blur(${Math.max(2, Math.round(fw / 12))}px)`;
+        tracePoly(m, FACE.oval.map((i) => [C[0] + (P[i][0] - C[0]) * 1.1, C[1] + (P[i][1] - C[1]) * 1.12])); m.fill();
+      }
+      blendMasked(x, mixed(fa), mask, 1);
     }
-    blendMasked(x, layer, mask, 1);
     out = c.toDataURL("image/jpeg", 0.94);
   }
   // Pro Edit's strength: the photo as it was, up to the full Pro result (the faces stay true either way).
@@ -764,11 +824,15 @@ async function composeEnhanced(on) {
     x.drawImage(b, 0, 0, W, H); x.globalAlpha = enh.strength / 100; x.drawImage(a, 0, 0, W, H);
     out = c.toDataURL("image/jpeg", 0.94);
   }
-  if (on.retouch && enh.faces.length) {
-    try { out = await faceEdit(out, "fauto", 0.55); out = await faceEdit(out, "fsmooth", 0.35); } catch (e) { if (!/face/i.test(e.message)) throw e; }
+  const rt = ENH_RETOUCH[lv.retouch];
+  if (rt && enh.faces.length) {
+    try { out = await faceEdit(out, "fauto", rt[0]); out = await faceEdit(out, "fsmooth", rt[1]); } catch (e) { if (!/face/i.test(e.message)) throw e; }
   }
-  if (on.colors) out = await autoLight(out);
-  if (on.blur) out = await backdrop(out, "blur");
+  if (lv.colors) {
+    out = await autoLight(out);
+    if (lv.colors > 1) out = await applyFilter(out, FILTERS.find((f) => f.id === ENH_COLORS[lv.colors - 2]), 0.7);
+  }
+  if (lv.blur) out = await portraitBlur(out, lv.blur);
   return out;
 }
 
