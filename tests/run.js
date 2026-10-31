@@ -419,7 +419,7 @@ test('demo: Try a sample opens the attached original with demo labels', async ({
     return { inRow: !!$('demoOwnBtn').closest('.viewbar'), bh: b.height, name: $('demoOwnBtn').getAttribute('aria-label'), header: !!$('demoOwnBtn').closest('.topbar') }; });
   eq([row.inRow, row.header, row.bh >= 44, row.name], [true, false, true, 'Use your photo'], 'small Use your photo action in the utility row');
   assert(await p.isVisible('#demoOwnBtn'), 'Try your own photo'); assert(await p.isHidden('#balanceBtn'), 'no credit balance in the demo');
-  await p.click('.tab[data-cat="edit"]');   // Pro edit and Golden hour are filed under Edit
+  await p.click('.tab[data-cat="ai"]');   // Pro edit and Enhance are filed under AI · Improve
   eq(await p.evaluate(() => [...document.querySelectorAll('.tool .cost')].map((c) => c.textContent)), ['Preview', 'Preview'], 'AI tools offered = prepared ones');
   assert(/prepared preview, no credits/.test(await p.getAttribute('.tool[data-tool="pro"]', 'aria-label')), 'screen-reader label');
   await p.screenshot({ path: path.join(__dirname, 'out', 'demo-open.png') });
@@ -479,6 +479,7 @@ test('demo: with no prepared previews, no AI tools are offered and the note expl
   await p.click('.tab[data-cat="ai"]');
   eq(await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => [b.dataset.tool, b.querySelector('.cost') && b.querySelector('.cost').textContent])),
     [['erase', null], ['fill', null], ['custom', null]], 'Remove, Fill and Describe stay listed, with no badge (the panel explains)');
+  eq(await p.evaluate(() => $('subchips').hidden), true, 'one group left on the tab: no chips');
   assert(await p.$$eval('#tools .tool[data-tool]', (x) => x.every((b) => /needs your own photo/.test(b.getAttribute('aria-label')))), 'spoken: needs your own photo');
   await p.click('.tab[data-cat="looks"]');
   assert(!(await p.$$eval('#tools .tool', (x) => x.some((b) => /uses \d credit/.test(b.getAttribute('aria-label'))))), 'no AI tool offered as chargeable on the sample');
@@ -881,9 +882,9 @@ for (const [w, h] of [[390, 844], [320, 640], [412, 915]]) test(`layout: categor
   for (const run of ['photo', 'sample']) {
     if (run === 'sample') { await p.click('#backBtn'); await p.click('#sampleBtn'); await p.waitForFunction(() => ed.demo && $('before').naturalWidth > 0); }
     const boxes = {};
-    for (const c of ['retouch', 'looks', 'edit', 'ai']) { await p.click(`.tab[data-cat="${c}"]`); await settle(120); boxes[c] = await stageBox(p); }
+    for (const c of ['retouch', 'looks', 'edit', 'bg', 'ai']) { await p.click(`.tab[data-cat="${c}"]`); await settle(120); boxes[c] = await stageBox(p); }
     const first = JSON.stringify(boxes.retouch);
-    for (const [c, b] of Object.entries(boxes)) eq(JSON.stringify(b), first, `${run}: ${c} vs Retouch`);
+    for (const [c, b] of Object.entries(boxes)) eq(JSON.stringify(b), first, `${run}: ${c} vs Beauty`);
     eq(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${run}: no sideways scroll`);
   }
 }, { viewport: { width: w, height: h } });
@@ -936,10 +937,10 @@ test('layout: Search covers every tool in a taller catalog; the last tools scrol
   await p.click('#searchBtn'); eq(await p.evaluate(() => [searching, !$('searchBox').hidden]), [true, true], 'search open');
   eq(await p.evaluate(() => document.activeElement.id), 'searchInput', 'focus in the search field');
   const tall = await p.evaluate(() => $('tools').getBoundingClientRect().height); assert(tall > 300, 'taller catalog ' + tall);
-  eq(await p.evaluate(() => new Set([...document.querySelectorAll('#tools .tool')].map((b) => b.dataset.tool)).size), await p.evaluate(() => TOOLS.filter((t) => !RETIRED.includes(t.id)).length), 'every tool still offered is in Search');
+  eq(await p.evaluate(() => new Set([...document.querySelectorAll('#tools .tool')].map((b) => b.dataset.tool)).size), await p.evaluate(() => TOOLS.filter((t) => !RETIRED.includes(t.id) && !IN_TRY_ON.includes(t.id)).length), 'every tool still offered is in Search');
   await p.fill('#searchInput', 'blur'); eq(await p.$$eval('#tools .tool', (x) => x.map((b) => b.dataset.tool)), ['bgblur'], 'search');
   await p.click('.tool[data-tool="bgblur"]'); await idle(p);
-  eq(await p.evaluate(() => [sel, cat, searching]), ['bgblur', 'edit', false], 'a found tool opens in its own tab');
+  eq(await p.evaluate(() => [sel, cat, searching]), ['bgblur', 'bg', false], 'a found tool opens in its own tab');
   await p.click('#cancelBtn'); await settle(150);
   eq(JSON.stringify(await stageBox(p)), JSON.stringify(s0), 'closing restores the photo size');
   await p.click('.tab[data-cat="retouch"]');
@@ -1303,14 +1304,16 @@ test('layout: on phones the idle editor reserves no panel space, and a closed to
   await p.click('#cancelBtn'); await box('closed');
   for (const n of ['cancelled', 'closed']) eq(sizes[n], sizes.home, 'closing gives the room back: ' + n);
 }, { viewport: { width: 390, height: 844 } });
-test('layout: the default Retouch row is Glow Up, Smooth, Blemish, Eyes, Face; the other tools follow on scroll', async ({ p }) => {
+test('layout: the default Beauty row is Glow Up, Auto, Retouch, Smooth, Blemish under chips Auto, Skin, Face, Makeup, Hair', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   const r = await p.evaluate(() => { const box = document.querySelector('#editorScreen .side > .tools').getBoundingClientRect();
     const tiles = [...document.querySelectorAll('#tools .tool[data-tool]')].map((b) => ({ id: b.dataset.tool, name: b.querySelector('.name').textContent, r: b.getBoundingClientRect() }));
     return { first: tiles.slice(0, 5).map((t) => t.name), visible: tiles.filter((t) => t.r.right <= box.right + 1).map((t) => t.name), all: tiles.map((t) => t.id) }; });
-  eq(r.first, ['Glow Up', 'Smooth', 'Blemish', 'Eyes', 'Face'], 'default row');
-  eq(r.visible.slice(0, 5), ['Glow Up', 'Smooth', 'Blemish', 'Eyes', 'Face'], 'all five on screen at 390 wide');
-  for (const id of ['fundereye', 'fauto', 'fbigeyes', 'fteeth', 'retouch', 'flips', 'hcolor']) assert(r.all.includes(id), id + ' still in the Retouch tab');
+  eq(r.first, ['Glow Up', 'Auto', 'Retouch', 'Smooth', 'Blemish'], 'default row');
+  eq(r.visible.slice(0, 5), ['Glow Up', 'Auto', 'Retouch', 'Smooth', 'Blemish'], 'all five on screen at 390 wide');
+  for (const id of ['fundereye', 'fauto', 'fbigeyes', 'fteeth', 'retouch', 'flips', 'hcolor']) assert(r.all.includes(id), id + ' still in the Beauty tab');
+  eq(await p.$$eval('#subchips .subchip', (x) => x.map((c) => [c.textContent, c.getAttribute('aria-pressed')])),
+    [['Auto', 'true'], ['Skin', 'false'], ['Face', 'false'], ['Makeup', 'false'], ['Hair', 'false']], 'group chips, the first marked');
 }, { viewport: { width: 390, height: 740 } });
 test('layout: at 390x740 the sample portrait shows wide and whole, with a small badge and no extra rows', async ({ p }) => {
   await openDemo(p); await settle(600);
@@ -1442,17 +1445,17 @@ test('view: full view keeps the preview, zoom and comparison, and Back closes it
 }, { viewport: { width: 390, height: 844 } });
 
 // ---------- Navigation: four tabs, Hold for original ----------
-test('nav: four tabs file every tool still offered once, retired tools nowhere, one row per tab with Search last', async ({ p }) => {
+test('nav: five tabs file every tool still offered once, retired tools nowhere, one row per tab with Search last', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, fx('transparent.png'));
   const c = await p.evaluate(() => {
     const filed = [...Object.values(CATS), ADVANCED].flatMap((g) => g.flatMap((x) => x[2]));
     const counts = {}; filed.forEach((id) => { counts[id] = (counts[id] || 0) + 1; });
-    return { missing: TOOLS.map((t) => t.id).filter((id) => !counts[id] && !RETIRED.includes(id)), twice: Object.keys(counts).filter((id) => counts[id] > 1), unknown: filed.filter((id) => !TOOL[id]),
+    return { missing: TOOLS.map((t) => t.id).filter((id) => !counts[id] && !RETIRED.includes(id) && !IN_TRY_ON.includes(id)), twice: Object.keys(counts).filter((id) => counts[id] > 1), unknown: filed.filter((id) => !TOOL[id]),
       tabs: [...document.querySelectorAll('#tabs .tab')].map((t) => t.textContent.trim()),
       bodyOnlyInSearch: TOOLS.filter((t) => t.kind === 'body').every((t) => tabFor(t.id) === null) };
   });
-  eq(c, { missing: [], twice: [], unknown: [], tabs: ['Retouch', 'Looks', 'Edit', 'AI'], bodyOnlyInSearch: true }, 'every tool filed once, four tabs, body tools advanced');
-  for (const cat of ['retouch', 'looks', 'edit', 'ai']) {
+  eq(c, { missing: [], twice: [], unknown: [], tabs: ['Beauty', 'Looks', 'Adjust', 'Background', 'AI'], bodyOnlyInSearch: true }, 'every tool filed once, five tabs, body tools advanced');
+  for (const cat of ['retouch', 'looks', 'edit', 'bg', 'ai']) {
     await p.click(`.tab[data-cat="${cat}"]`);
     const r = await p.evaluate(() => [[...document.querySelectorAll('#tools .tool')].pop().id, document.querySelectorAll('#tools .tool[data-tool^="b"][data-tool$="s"], #tools .tool[data-tool="bwaist"]').length]);
     eq(r, ['searchBtn', 0], `${cat}: Search is the last tile and no body tools are listed`);
@@ -1463,7 +1466,7 @@ test('nav: four tabs file every tool still offered once, retired tools nowhere, 
   eq(await p.evaluate(() => [sel, $('panelBody').querySelectorAll('.tool').length]), ['crop', 0], 'one tap from Edit to the crop controls');
   await p.click('#cancelBtn');
   await p.click('.tab[data-cat="ai"]');
-  eq(await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => b.dataset.tool)), ['erase', 'fill', 'custom'], 'AI: Remove, Fill, Describe');
+  eq(await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => b.dataset.tool)), ['pro', 'enhance', 'colorize', 'erase', 'fill', 'custom'], 'AI: Improve (Pro edit, Enhance, Colorize), Change (Remove, Fill, Describe)');
   await settle(400);
   const pill = await p.evaluate(() => { const t = document.querySelector('.tab[aria-selected="true"]'); return [t.dataset.cat, getComputedStyle(t.firstElementChild).backgroundColor !== 'rgba(0, 0, 0, 0)']; });
   eq(pill, ['ai', true], 'the open tab sits on a pill');
@@ -1474,8 +1477,32 @@ test('nav: four tabs file every tool still offered once, retired tools nowhere, 
   eq(await p.$$eval('#tools .tool', (x) => x.map((b) => b.dataset.tool)), [], 'Search skips retired tools');
   eq(await p.evaluate(() => { localStorage.setItem('glowCat', 'foryou'); return true; }), true, 'old saved tab');
   await p.reload(); await p.waitForFunction(() => typeof cat === 'string');
-  eq(await p.evaluate(() => cat), 'retouch', 'a saved tab that no longer exists falls back to Retouch');
+  eq(await p.evaluate(() => cat), 'retouch', 'a saved tab that no longer exists falls back to Beauty');
 }, { viewport: { width: 1280, height: 860 }, mobile: false, touch: false });
+
+test('nav: group chips jump to their group, follow the row as it scrolls, and drop groups that are switched off', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await p.click('.tab[data-cat="retouch"]');
+  const on = () => p.evaluate(() => document.querySelector('#subchips .subchip[aria-pressed="true"]').dataset.chip);
+  const firstVisible = () => p.evaluate(() => { const b = $('tools').getBoundingClientRect(); return [...document.querySelectorAll('#tools .tool[data-tool]')].find((t) => t.getBoundingClientRect().left >= b.left - 1).dataset.tool; });
+  eq(await on(), 'auto', 'Auto first');
+  await p.click('.subchip[data-chip="makeup"]'); await settle(900);
+  eq([await on(), await firstVisible()], ['makeup', 'fglam'], 'Makeup jumps to Looks (the first makeup tool)');
+  await p.evaluate(() => { const g = document.querySelector('#tools .group[data-group="skin"]'); $('tools').scrollTo({ left: g.offsetLeft - 16 }); }); await settle(400);
+  eq(await on(), 'skin', 'scrolling back marks Skin');
+  await p.click('.tab[data-cat="edit"]');
+  eq(await p.$$eval('#subchips .subchip', (x) => x.map((c) => c.textContent)), ['Crop', 'Light', 'Color', 'Effects'], 'Adjust chips');
+  await p.click('.tab[data-cat="bg"]');
+  eq(await p.evaluate(() => $('subchips').hidden), true, 'one group: no chips');
+  // A group whose tools are all switched off (Hair color, from the admin page) loses its chip.
+  await p.click('.tab[data-cat="retouch"]');
+  eq(await p.$$eval('#subchips .subchip', (x) => x.map((c) => c.dataset.chip)), ['auto', 'skin', 'face', 'makeup'], 'Hair chip gone with hair color off');
+  // A tool open keeps the chips; Search hides them.
+  await p.click('.tool[data-tool="fsmooth"]'); await idle(p);
+  assert(await p.isVisible('#subchips'), 'chips stay while a tool is open');
+  await p.click('#cancelBtn'); await p.click('#searchBtn');
+  assert(await p.isHidden('#subchips'), 'no chips in Search');
+}, { viewport: { width: 390, height: 844 }, features: { 'tool:hcolor': false } });
 
 test('nav: Compare taps through split, original and back; holding shows the original; keys work', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
@@ -2235,11 +2262,11 @@ test('features: with no server answer every released tool shows and retired tool
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await p.waitForFunction(() => Features.checkedAt > 0, null, { timeout: 10000 });
   const all = await searchAll(p);
-  const expect = await p.evaluate(() => TOOLS.filter((t) => !RETIRED.includes(t.id) && t.kind !== 'filter').map((t) => t.id));
+  const expect = await p.evaluate(() => TOOLS.filter((t) => !RETIRED.includes(t.id) && !IN_TRY_ON.includes(t.id) && t.kind !== 'filter').map((t) => t.id));
   for (const id of expect) assert(all.includes(id), id + ' offered');
   for (const id of await p.evaluate(() => RETIRED)) assert(!all.includes(id), id + ' (retired) hidden');
   const c = state.featureChecks[0]; eq([c.p_platform, typeof c.p_build], ['web', 'number'], 'platform and build sent');
-  eq(await p.evaluate(() => $$tabs()), ['retouch', 'looks', 'edit', 'ai'], 'all four tabs');
+  eq(await p.evaluate(() => $$tabs()), ['retouch', 'looks', 'edit', 'bg', 'ai'], 'all five tabs');
   eq(state.errs, [], 'no page errors');
 }, { features: 404, init: () => { window.$$tabs = () => [...document.querySelectorAll('#tabs .tab')].filter((t) => !t.hidden).map((t) => t.dataset.cat); } });
 
@@ -2261,12 +2288,12 @@ test('features: switched-off tools leave the tabs and Search, an empty tab disap
   for (const id of ['erase', 'fill', 'custom', 'fsmooth']) assert(!all.includes(id), id + ' hidden');
   assert(all.includes('smile'), 'retired Smile switched on for testers shows');
   await p.evaluate(() => setSearching(false));
-  eq(await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')].filter((t) => !t.hidden).map((t) => t.dataset.cat)), ['retouch', 'looks', 'edit'], 'AI tab gone (all its tools off)');
+  eq(await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')].filter((t) => !t.hidden).map((t) => t.dataset.cat)), ['retouch', 'looks', 'edit', 'bg'], 'AI tab gone (all its tools off)');
   // Opening a hidden tool any other way (Recent, an old link) is refused.
   await p.evaluate(() => selectTool('fsmooth')); await settle(200);
   eq(await p.evaluate(() => sel), null, 'not opened'); assert(/isn't available/.test(await toast(p)), 'says so');
   eq(state.errs, [], 'no page errors');
-}, { features: { 'tool:erase': false, 'tool:fill': false, 'tool:custom': false, 'tool:fsmooth': false, 'tool:smile': true } });
+}, { features: { 'tool:erase': false, 'tool:fill': false, 'tool:custom': false, 'tool:pro': false, 'tool:enhance': false, 'tool:colorize': false, 'tool:fsmooth': false, 'tool:smile': true } });
 
 test('features: the last answer applies at launch before the server is asked (no flicker) and a failed check keeps it', async ({ p, state }) => {
   await p.goto('https://app.test/');

@@ -380,6 +380,17 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .search input { flex: 1; min-width: 0; height: 44px; border: 0; background: none; outline: none; font-size: 1rem; }
 .search:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
 
+/* Group chips over a tab's tool row (phones): plain words, the group in view on a blush pill. */
+.subchips { flex: none; display: flex; gap: var(--s1); overflow-x: auto; scrollbar-width: none; padding: var(--s2) var(--gutter) 0;
+  border-top: 1px solid var(--line); overscroll-behavior-x: contain; }
+.subchips::-webkit-scrollbar { display: none; }
+.subchips[hidden] { display: none; }
+.subchip { flex: none; min-height: 32px; padding: 0 var(--s3); border: 0; border-radius: 16px; background: none; color: var(--muted);
+  font-size: 0.8125rem; line-height: 1rem; font-weight: 600; white-space: nowrap; transition: background var(--t-select), color var(--t-select); }
+.subchip[aria-pressed="true"] { background: var(--blush); color: var(--text); font-weight: 700; }
+.subchip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tools-open .subchips { display: none; }
+
 /* The tools scroll on their own, inside a fixed height. */
 .tools { flex: none; height: var(--tools-h); display: flex; align-items: flex-start; gap: var(--s3); overflow-x: auto; overflow-y: hidden;
   padding: var(--s2) var(--gutter); scrollbar-width: none; scroll-padding: 0 var(--gutter); overscroll-behavior-x: contain; }
@@ -469,7 +480,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
   .panel-collapsed .tools { display: none; }
 }
 @media (max-height: 600px) and (max-width: 959px) {
-  .editing-tool .tools { display: none; }
+  .editing-tool .tools, .editing-tool .subchips { display: none; }
   .stage { min-height: 140px; }
 }
 
@@ -485,6 +496,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
   #editorScreen .group-items { flex-wrap: wrap; }
   #editorScreen .panel { flex: none; border-radius: var(--r-card); margin: var(--s3) var(--gutter) 0; }
   #expandBtn { display: none; }
+  #editorScreen .subchips { display: none; }   /* the side column shows every group with its name */
 }
 .side { display: contents; }
 @media (min-width: 960px) { .side { display: flex; } }
@@ -497,6 +509,12 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
   #editorScreen .stage { margin: 0 10px; border-radius: 16px; }
   #editorScreen .side { display: flex; flex-direction: column; flex: none; max-height: 62dvh; overflow: hidden; padding-bottom: env(safe-area-inset-bottom); }
   #editorScreen .side > .tools { flex: none; height: auto; min-height: 0; padding-top: var(--s1); padding-bottom: var(--s1); border-top: 1px solid var(--line); }
+  #editorScreen.has-chips:not(.tools-open) .side > .tools { border-top: 0; }
+  /* A thin line between groups, so where one ends and the next starts is visible without words. */
+  #editorScreen:not(.tools-open) .side > .tools > .group[data-group] + .group { position: relative; margin-left: var(--s2); }
+  #editorScreen:not(.tools-open) .side > .tools > .group[data-group] + .group::before { content: ""; position: absolute; left: -6.5px; top: 10px; height: 38px; width: 1px; background: var(--line); }
+  #editorScreen.no-tools .side > .subchips, #editorScreen.panel-collapsed .side > .subchips { display: none; }
+  #editorScreen.no-tools.has-chips .side > .panel, #editorScreen.panel-collapsed.has-chips .side > .panel { border-top: 0; }
   /* Five tools fit across a phone, as in the approved design; more follow on scroll. */
   #editorScreen .side > .tools, #editorScreen .side > .tools .group-items { gap: var(--s1); }
   #editorScreen .side > .tools .tool { width: clamp(64px, calc((100vw - 2 * var(--gutter) - 4 * var(--s1)) / 5), 80px); }

@@ -19,7 +19,7 @@
 // The build number sent with each check, so a switch can require a newer app (min build).
 // Bump it (YYYYMMDD, or YYYYMMDD + one more digit for a second release that day) whenever a
 // release changes how a switchable feature behaves.
-const APP_BUILD = 202610316;
+const APP_BUILD = 202610320;
 
 // Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
 // another tool, or (body reshaping) didn't fit Glow Studio. Their code stays so saved drafts still
@@ -58,7 +58,7 @@ const FEATURE_AREAS = [
     ["camera:makeup", "Live makeup (lips, blush, brows)", true, "In Adjust."],
     ["camera:filters", "Filters", true, "In Adjust."],
   ]],
-  ["Editor · Retouch", [
+  ["Editor · Beauty", [
     ["tool:glowup", "Glow Up", true], ["tool:fsmooth", "Smooth skin", true], ["tool:fblemish", "Blemishes", true],
     ["tool:feyes", "Brighten eyes", true], ["tool:fslim", "Face shape", true], ["tool:fnose", "Nose shape", true],
     ["tool:fundereye", "Under-eyes", true], ["tool:fauto", "Auto beauty", true], ["tool:ftone", "Even tone", true],
@@ -72,21 +72,24 @@ const FEATURE_AREAS = [
   ["Editor · Looks", [
     ["tool:filters", "Filters (all)", true],
     ["tool:headshot", "Headshot", true, "AI, uses credits."], ["tool:fashion", "Fashion shoot", true, "AI, uses credits."],
-    ["tool:outfit", "Try on an outfit", true, "AI, uses credits."], ["tool:suit", "Business suit", true, "AI, uses credits."],
-    ["tool:sundress", "Summer dress", true, "AI, uses credits."],
+    ["tool:golden", "Golden hour", true, "AI, uses credits."],
+    ["tool:outfit", "Try on an outfit", true, "AI, uses credits."], ["tool:suit", "Business suit", true, "AI, uses credits. Inside Try on."],
+    ["tool:sundress", "Summer dress", true, "AI, uses credits. Inside Try on."],
     ["tool:mylook", "My Look (camera looks)", true, "In Search."],
   ]],
-  ["Editor · Edit", [
+  ["Editor · Adjust", [
     ["tool:crop", "Crop and rotate", true], ["tool:light", "Light", true], ["tool:contrast", "Contrast", true],
     ["tool:highlights", "Highlights", true], ["tool:shadows", "Shadows", true], ["tool:color", "Color", true],
     ["tool:vibrance", "Vibrance", true], ["tool:warmth", "Warmth", true], ["tool:tint", "Tint", true],
     ["tool:detail", "Detail", true], ["tool:fade", "Fade", true], ["tool:vignette", "Vignette", true], ["tool:grain", "Grain", true],
-    ["tool:pro", "Pro edit", true, "AI, uses credits."], ["tool:enhance", "Enhance (in the Editor)", true, "AI. The Enhance tab itself has no switch."],
-    ["tool:golden", "Golden hour", true, "AI, uses credits."], ["tool:colorize", "Colorize", true, "AI, uses credits."],
-    ["tool:bgscene", "AI background", true, "AI, uses credits."], ["tool:bgphoto", "Your background", true],
+  ]],
+  ["Editor · Background", [
     ["tool:bgblur", "Portrait blur", true], ["tool:bgremove", "Cutout", true], ["tool:bgcolor", "Color background", true],
+    ["tool:bgphoto", "Your background", true], ["tool:bgscene", "AI background", true, "AI, uses credits."],
   ]],
   ["Editor · AI", [
+    ["tool:pro", "Pro edit", true, "AI, uses credits."], ["tool:enhance", "Enhance (in the Editor)", true, "AI. The Enhance tab itself has no switch."],
+    ["tool:colorize", "Colorize", true, "AI, uses credits."],
     ["tool:erase", "Remove", true, "AI, uses credits."], ["tool:fill", "Fill", true, "AI, uses credits."],
     ["tool:custom", "Describe an edit", true, "AI, uses credits."],
   ]],

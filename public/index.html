@@ -346,6 +346,7 @@
           <input type="search" id="searchInput" placeholder="Search all tools" autocomplete="off"></label>
         <button class="icon-btn" id="searchClose" aria-label="Close search"></button>
       </div>
+      <div class="subchips" id="subchips" role="group" aria-label="Tool groups" hidden></div>
       <div class="tools" id="tools" role="group" aria-label="Tools"></div>
       <div class="panel" id="panel" hidden role="region" aria-labelledby="toolName">
         <div class="panel-head">
@@ -362,9 +363,10 @@
         </div>
       </div>
       <div class="tabs" id="tabs" role="tablist" aria-label="Tool categories">
-        <button class="tab" role="tab" data-cat="retouch"><span data-icon="wand"></span><span>Retouch</span></button>
+        <button class="tab" role="tab" data-cat="retouch"><span data-icon="wand"></span><span>Beauty</span></button>
         <button class="tab" role="tab" data-cat="looks"><span data-icon="looks"></span><span>Looks</span></button>
-        <button class="tab" role="tab" data-cat="edit"><span data-icon="sliders"></span><span>Edit</span></button>
+        <button class="tab" role="tab" data-cat="edit"><span data-icon="sliders"></span><span>Adjust</span></button>
+        <button class="tab" role="tab" data-cat="bg"><span data-icon="bgremove"></span><span>Background</span></button>
         <button class="tab" role="tab" data-cat="ai"><span data-icon="sparkle"></span><span>AI</span></button>
       </div>
     </div>

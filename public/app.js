@@ -119,29 +119,53 @@ const credits = (n) => `${n} credit${n === 1 ? "" : "s"}`;
 
 const ORIGINAL_CATS = [["fix", "Fix"], ["face", "Face"], ["hair", "Hair"], ["body", "Body"], ["styles", "Styles"], ["bg", "Backdrop"], ["edit", "Edit"], ["ai", "AI"], ["filters", "Filters"]];
 const FILTER_IDS = TOOLS.filter((t) => t.kind === "filter").map((t) => t.id);
-// Four tabs, each one row of tools in small labeled groups (no second row of subgroups).
-// Body reshaping is kept out of the tabs: it is only in Search, under "Body (advanced)", and is
-// never suggested or applied automatically. AI holds the tools that change what is in the photo;
-// other paid tools sit with their task and carry the same credit badge.
+// Five tabs, named for what you want to change (Beauty, Looks, Adjust, Background, AI), each one
+// row of tools in small named groups. On a phone the group names are a row of chips above the
+// tools: a chip jumps to its group and follows the row as you scroll (as Snapseed's Refine / Fix /
+// Style, Lightroom's Light / Color / Effects, and Meitu's and BeautyPlus's Skin / Face / Makeup).
+// Internal tab ids stay as before (retouch, edit) so saved tabs and drafts keep working.
+// Body reshaping is kept out of the tabs (retired). AI holds the tools that improve or change what
+// is in the photo; other paid tools sit with their task and carry the same credit badge.
 const CATS = {
-  // The first five are the default row (as in the approved design); the rest follow on scroll.
-  retouch: [["glow", "Glow Up", ["glowup"]], ["skin", "Skin", ["fsmooth", "fblemish", "feyes", "fslim", "fnose"]],
-    ["face", "Face", ["fundereye", "fauto", "ftone", "fskin", "fbigeyes", "fteeth", "retouch", "smile", "faces"]],
+  retouch: [["auto", "Auto", ["glowup", "fauto", "retouch"]],
+    ["skin", "Skin", ["fsmooth", "fblemish", "fundereye", "ftone", "fskin"]],
+    ["face", "Face", ["feyes", "fteeth", "fbigeyes", "fslim", "fnose"]],
     ["makeup", "Makeup", ["fglam", "flips", "fblush", "flashes", "fliner", "fshadow", "fbrows", "feyecolor", "fcontour", "fhighlight", "fbronzer"]],
     ["hair", "Hair", ["hcolor"]]],
-  looks: [["filters", "Filters", FILTER_IDS],
-    ["styles", "Styles", ["headshot", "fashion"]],
-    ["outfits", "Outfits", ["outfit", "suit", "sundress"]]],
-  edit: [["adjust", "Adjust", ["crop", "light", "contrast", "highlights", "shadows", "color", "vibrance", "warmth", "tint", "detail", "fade", "vignette", "grain"]],
-    ["enhance", "Enhance", ["pro", "enhance", "golden", "colorize"]],
-    ["bg", "Background", ["bgscene", "bgphoto", "bgblur", "bgremove", "bgcolor"]]],
-  ai: [["gen", "AI tools", ["erase", "fill", "custom"]]],
+  // Try on is one tool with its own outfit choices inside (the separate Suit and Sundress tiles left the menu).
+  looks: [["tryon", "Try on", ["outfit"]],
+    ["styles", "Styles", ["headshot", "fashion", "golden"]],
+    ["filters", "Filters", FILTER_IDS]],
+  edit: [["crop", "Crop", ["crop"]],
+    ["light", "Light", ["light", "contrast", "highlights", "shadows"]],
+    ["color", "Color", ["color", "vibrance", "warmth", "tint"]],
+    ["effects", "Effects", ["detail", "fade", "vignette", "grain"]]],
+  bg: [["bg", "Background", ["bgblur", "bgremove", "bgcolor", "bgphoto", "bgscene"]]],
+  ai: [["improve", "Improve", ["pro", "enhance", "colorize"]],
+    ["change", "Change", ["erase", "fill", "custom"]]],
 };
+// Everyday words people search with, beyond each tool's own name (Snapseed and Picsart both
+// added tool search; these catch the words a tool's name doesn't use).
+const SEARCH_WORDS = {
+  outfit: "clothes outfit dress suit gown wear fashion try", fsmooth: "airbrush skin soften", fblemish: "acne spot pimple",
+  fundereye: "dark circles bags", fslim: "slim jaw chin", fbigeyes: "bigger eyes", fteeth: "white smile",
+  fglam: "makeup preset", hcolor: "hair dye", bgremove: "cut out transparent remove background", bgblur: "bokeh portrait",
+  bgscene: "new background", bgphoto: "replace background", erase: "eraser object people delete", custom: "prompt text describe ask",
+  pro: "auto fix photographer", enhance: "sharpen blurry hd quality upscale", colorize: "black white old photo",
+  crop: "rotate straighten resize", light: "brightness exposure", warmth: "temperature", detail: "sharpen noise",
+  golden: "sunset warm glow", headshot: "linkedin professional",
+};
+// Try on holds the outfit presets (suit, summer dress, ...) inside its own panel; their old tool
+// ids stay registered so saved drafts replay, but they have no tile of their own.
+const IN_TRY_ON = ["suit", "sundress"];
+// Remove, Fill, Describe and Try on are always listed, even on the sample, whose panel says they
+// need your own photo (instead of the tools silently disappearing).
+const DEMO_LISTED = ["erase", "fill", "custom", "outfit"];
 const ADVANCED = [["camlooks", "Camera looks", ["mylook"]]];
 // Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
 // another tool, or (body reshaping) didn't fit Glow Studio. Their code stays so saved drafts still replay.
 const RETIRED = RETIRED_TOOLS;   // features.js: retired tools are switches that default to off
-const TAB_NAMES = { retouch: "Retouch", looks: "Looks", edit: "Edit", ai: "AI" };
+const TAB_NAMES = { retouch: "Beauty", looks: "Looks", edit: "Adjust", bg: "Background", ai: "AI" };
 // Where a tool lives: its tab, or null for tools reached through Search only.
 function tabFor(id) {
   for (const [c, groups] of Object.entries(CATS)) for (const [, , ids] of groups) if (ids.includes(id)) return [c, null];
@@ -961,9 +985,9 @@ $("redoBtn").addEventListener("click", () => {
 });
 
 // ---------- Categories and tools ----------
-// Four tabs at the bottom: Retouch, Looks, Edit, AI. Each shows one row of tools in small
-// labeled groups. Search (the last tile) covers every tool, with favorites and recent tools first,
-// and is the way to the advanced body tools.
+// Five tabs at the bottom: Beauty, Looks, Adjust, Background, AI. Each shows one row of tools in
+// named groups (chips above the row on a phone). Search (the last tile) covers every tool, with
+// favorites and recent tools first, and also finds tools by everyday words (SEARCH_WORDS).
 let searching = false;
 function groupsFor(c) {
   const all = [...Object.values(CATS).flat(), ...ADVANCED];
@@ -975,7 +999,7 @@ function groupsFor(c) {
       if (recent.length) g.push(["recent", "Recent", recent.filter((id) => !favs.includes(id)).slice(0, 6)]);
       return [...g, ...all.map(([k, name, ids]) => [k, `${TAB_NAMES[(tabFor(ids[0]) || [])[0]] ? TAB_NAMES[tabFor(ids[0])[0]] + " · " : ""}${name}`, ids])];
     }
-    return all.map(([k, name, ids]) => [k, name, ids.filter((id) => TOOL[id] && `${TOOL[id].label} ${TOOL[id].title} ${name}`.toLowerCase().includes(q))]).filter((x) => x[2].length);
+    return all.map(([k, name, ids]) => [k, name, ids.filter((id) => TOOL[id] && `${TOOL[id].label} ${TOOL[id].title} ${name} ${SEARCH_WORDS[id] || ""}`.toLowerCase().includes(q))]).filter((x) => x[2].length);
   }
   return CATS[c];
 }
@@ -996,7 +1020,7 @@ function renderTabs() {
 // Fill before the server has it), with a badge saying why, instead of silently disappearing.
 // A tool switched off from the admin page (features.js) is hidden everywhere, Search included.
 const toolOn = (id) => featureOn(toolKey(id));
-const toolShown = (id) => toolOn(id) && (demoOffers(id) || (ed.demo && CATS.ai[0][2].includes(id)));
+const toolShown = (id) => toolOn(id) && (demoOffers(id) || (ed.demo && DEMO_LISTED.includes(id)));
 function toolBadge(t) {
   if (ed.demo && t.kind === "ai") return demo && demo.ready.includes(t.id) ? ["Preview", ", prepared preview, no credits"] : [null, ", needs your own photo"];   // the panel explains; a badge on every tile was noise
   if (!aiLive(t.id)) return ["Soon", ", not available yet"];
@@ -1032,7 +1056,8 @@ function renderTools() {
   ensureCat();
   const groups = groupsFor(cat).map((g) => [g[0], g[1], g[2].filter((id) => TOOL[id] && toolShown(id))]).filter((g) => g[2].length), box = $("tools");
   if (!groups.length && searching) { box.innerHTML = `<p class="empty-note">No tools match that search.</p>`; return; }
-  renderToolGroups(box, groups, true);   // group names show in Search and on wide screens; a phone tab is one plain row
+  renderToolGroups(box, groups, true);   // group names show in Search and on wide screens; on a phone they are the chips above
+  renderChips(searching ? [] : groups);
   if (!searching) {
     // Search sits at the end of every row.
     const b = document.createElement("button"); b.className = "tool search-tile"; b.id = "searchBtn";
@@ -1042,9 +1067,57 @@ function renderTools() {
     const items = document.createElement("div"); items.className = "group-items"; items.append(b); g.append(items); box.append(g);
   }
 }
+// The group chips over a tab's row (only when it has more than one group): a chip scrolls the
+// row to its group, and the chip of the group in view is marked as the row scrolls.
+function renderChips(groups) {
+  const row = $("subchips");
+  row.hidden = groups.length < 2;
+  row.replaceChildren(...(row.hidden ? [] : groups.map(([k, name]) => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "subchip"; b.dataset.chip = k; b.textContent = name;
+    b.setAttribute("aria-pressed", "false"); return b;
+  })));
+  $("editorScreen").classList.toggle("has-chips", !row.hidden);
+  syncChips();
+}
+let chipJump = 0;   // while a chip's jump is scrolling, the tapped chip stays marked
+function syncChips() {
+  const row = $("subchips"); if (row.hidden) return;
+  const box = $("tools"), groups = [...box.querySelectorAll(".group[data-group]")];
+  if (!groups.length) return;
+  let on = groups[0].dataset.group;
+  if (Date.now() < chipJump && row.dataset.on) on = row.dataset.on;
+  else {
+    const x = box.scrollLeft, start = box.getBoundingClientRect().left;
+    const left = (g) => g.getBoundingClientRect().left - start + x;
+    if (x >= box.scrollWidth - box.clientWidth - 2) {
+      // At the end of the row, the last group that starts on screen is the one being looked at.
+      for (const g of groups) if (left(g) < x + box.clientWidth * 0.6) on = g.dataset.group;
+    } else for (const g of groups) if (left(g) <= x + 24) on = g.dataset.group;
+  }
+  row.dataset.on = on;
+  row.querySelectorAll(".subchip").forEach((c) => {
+    const pressed = c.dataset.chip === on;
+    if (c.getAttribute("aria-pressed") !== String(pressed)) {
+      c.setAttribute("aria-pressed", String(pressed));
+      if (pressed && row.scrollWidth > row.clientWidth) row.scrollTo({ left: c.offsetLeft - row.clientWidth / 2 + c.offsetWidth / 2, behavior: "smooth" });
+    }
+  });
+}
+$("subchips").addEventListener("click", (e) => {
+  const c = e.target.closest(".subchip"); if (!c) return;
+  const box = $("tools"), g = box.querySelector(`.group[data-group="${c.dataset.chip}"]`); if (!g) return;
+  Platform.haptic();
+  const pad = parseFloat(getComputedStyle(box).paddingLeft) || 0;
+  const left = g.getBoundingClientRect().left - box.getBoundingClientRect().left + box.scrollLeft - pad;
+  $("subchips").dataset.on = c.dataset.chip; chipJump = Date.now() + 600;
+  box.scrollTo({ left: Math.max(0, left), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  syncChips();
+});
+$("tools").addEventListener("scroll", () => { if (Date.now() >= chipJump) syncChips(); }, { passive: true });
+$("tools").addEventListener("scrollend", () => { chipJump = 0; syncChips(); });
 function renderToolGroups(box, groups, showLabels) {
-  box.replaceChildren(...groups.map(([, name, ids]) => {
-    const g = document.createElement("div"); g.className = "group"; g.setAttribute("role", "group"); g.setAttribute("aria-label", name);
+  box.replaceChildren(...groups.map(([key, name, ids]) => {
+    const g = document.createElement("div"); g.className = "group"; g.setAttribute("role", "group"); g.setAttribute("aria-label", name); g.dataset.group = key;
     if (showLabels) { const l = document.createElement("span"); l.className = "group-label"; l.textContent = name; l.setAttribute("aria-hidden", "true"); g.append(l); }
     const items = document.createElement("div"); items.className = "group-items";
     items.append(...ids.filter((id) => TOOL[id] && toolShown(id)).map((id) => toolButton(TOOL[id])));
