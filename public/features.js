@@ -49,6 +49,7 @@ const FEATURE_AREAS = [
     ["enhance:colors", "Colors switch", true, "On the Enhance result."],
     ["enhance:blur", "Background Blur switch", true, "On the Enhance result."],
     ["enhance:batch", "Batch Enhance (Pro)", true, "Enhance up to 10 photos at once."],
+    ["enhance:pro", "Pro Edit choice", true, "A photographer-style edit, 2 credits. Also needs Editor · Pro edit on (same AI)."],
   ]],
   ["Camera", [
     ["camera:ai", "AI Enhance on photos", true, "The AI switch and the AI Enhance button after a shot."],

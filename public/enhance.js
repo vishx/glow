@@ -9,10 +9,11 @@ const ENH_MODE = "enhance";
 const ENH_SAMPLE = { original: DEMO_DIR + "original.png", result: DEMO_DIR + "enhance.jpg", pro: DEMO_DIR + "pro.jpg" };
 // Pro Edit (2026-10-31): the photo finished the way a photographer and retoucher would (white
 // balance, exposure, color grade, light skin retouch, a tidier background) by an image-edit model
-// (the server's "pro" mode: a premium tool, 2 credits from migration 013), then proFinish() on the phone puts each
+// (the server's "pro" mode: a premium tool, 2 credits from migration 014), then proFinish() on the phone puts each
 // person's own features and the photo's fine detail back, so faces stay true.
 const PRO_MODE = "pro", PRO_COST = 2;
-const enhStyle = () => (store.get("glow.enhStyle") === PRO_MODE ? PRO_MODE : ENH_MODE);
+const proEditOn = () => featureOn("enhance:pro") && featureOn("tool:pro");
+const enhStyle = () => (proEditOn() && store.get("glow.enhStyle") === PRO_MODE ? PRO_MODE : ENH_MODE);
 // [key, label, icon, on by default]. Face and Background Enhancer choose, per area, between the
 // AI result and the original; the rest are free on-device steps on top.
 const ENH_TOGGLES = [["face", "Face Enhancer", "face", true], ["bg", "Background Enhancer", "upscale", true],
@@ -117,6 +118,7 @@ function setSheetWorking(on, text) {
   else renderEnhCost();
 }
 function renderEnhStyle() {
+  $("enhStyle").hidden = !proEditOn() && !(enh.pending && enh.pending.mode === PRO_MODE);
   const st = enh.pending ? enh.pending.mode || ENH_MODE : enhStyle();
   for (const b of $("enhStyle").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.style === st));
 }
@@ -230,7 +232,7 @@ async function proEditRequest(h, src, onLabel, from) {
     h.pending = { requestId, id: null, mode: PRO_MODE };
     try {
       track("ai_start", { mode: PRO_MODE, from });
-      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: PRO_MODE, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined }) });
+      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: PRO_MODE, from: "enhance", platform: PLATFORM, build: APP_BUILD, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined }) });
       h.pending.id = res.id || null;
       return await followEnhance(h, res, onLabel, from);
     } catch (err) {
