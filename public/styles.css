@@ -904,7 +904,7 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
 #cameraScreen #adjFilter .looks { padding-top: 0 !important; }
 
 /* Setting name on one line: the chip already names it, so the slider row is just the slider. */
-#cameraScreen .adjust-panel .slider { grid-template-columns: 1fr 2rem; font-size: 0; }
+#cameraScreen .adjust-panel .slider { grid-template-columns: 0 1fr 2rem; column-gap: var(--s2); font-size: 0; margin-left: calc(-1 * var(--s2)); }
 #cameraScreen .adjust-panel .slider output { font-size: 0.875rem; }
 #cameraScreen .swatches { padding-left: 0; }
 #cameraScreen .adj-chips button { white-space: nowrap; }
