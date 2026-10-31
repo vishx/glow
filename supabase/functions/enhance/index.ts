@@ -6,7 +6,7 @@
 // refund the server confirmed. Needs migration 006 (ai_usage.client_request_id).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { cleanPrompt, HttpError, lastOutput, MODES, rep, startPrediction, TOKEN } from "./pipeline.ts";
+import { cleanPrompt, FACE_SHEET, HttpError, lastOutput, MODES, okFaceSheet, rep, startPrediction, TOKEN } from "./pipeline.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -31,6 +31,26 @@ async function finish(id: number, status: string, error: unknown = null) {
   if (e) console.error("ai_usage outcome", e.message);
 }
 const DONE = new Set(["succeeded", "failed", "canceled"]);
+// The model's own error (kept as it is for the admin page) in words for the app.
+const told = (p: { status: string; error?: unknown }) =>
+  p.status === "failed" ? "The AI couldn't edit this photo. Please try again, or try another photo." : p.error ?? null;
+// How long a finished Enhance waits for its face sheet (group photos) before it's answered without it.
+const FACES_WAIT_MS = 90_000;
+
+// Enhance with a face sheet keeps both Replicate ids in prediction_id as "main.faces". The edit's
+// outcome (and any refund) follows the main run only; the face sheet is an extra the app uses if
+// it finished. Until it has (or FACES_WAIT_MS passed), a finished main run reads as "processing".
+async function withFaces(p: any, facesId: string | undefined) {
+  const out = { status: p.status, faces: null as unknown };
+  if (!facesId || p.status !== "succeeded") return out;
+  try {
+    const f = await rep(`/predictions/${facesId}`);
+    if (f.status === "succeeded") out.faces = lastOutput(f.output);
+    else if (!DONE.has(f.status) && Date.now() - Date.parse(f.created_at) < FACES_WAIT_MS) out.status = "processing";
+    else if (f.status === "failed") console.error("face sheet failed", facesId, f.error ?? "");
+  } catch (e) { console.error("face sheet check", (e as Error).message); }
+  return out;
+}
 
 // The state of one charged edit, read fresh from Replicate. Free to call any number of times.
 async function jobStatus(row: { id: number; prediction_id: string | null; refunded: boolean; status?: string | null }) {
@@ -41,12 +61,14 @@ async function jobStatus(row: { id: number; prediction_id: string | null; refund
       : { id: null, status: "starting", output: null, error: null, refunded: false };
   }
   try {
-    const p = await rep(`/predictions/${row.prediction_id}`);
+    const [mainId, facesId] = row.prediction_id.split(".");
+    const p = await rep(`/predictions/${mainId}`);
     let refunded = row.refunded;
     // An edit that fails partway through doesn't count against the limit.
     if ((p.status === "failed" || p.status === "canceled") && !refunded) { await admin.rpc("refund_ai_edit", { p_usage: row.id }); refunded = true; }
     if (DONE.has(p.status) && !row.status) await finish(row.id, p.status, p.error);
-    return { id: p.id, status: p.status, output: lastOutput(p.output), error: p.error ?? null, refunded };
+    const w = await withFaces(p, facesId);
+    return { id: row.prediction_id, status: w.status, output: lastOutput(p.output), faces: w.faces, error: told(p), refunded };
   } catch (e) {
     // A brand-new prediction can briefly 404 before Replicate can read it back.
     if (e instanceof HttpError && e.status === 404) return { id: row.prediction_id, status: "starting", output: null, error: null, refunded: row.refunded };
@@ -67,7 +89,7 @@ Deno.serve(async (req) => {
       const q = new URL(req.url).searchParams, id = q.get("id"), request = q.get("request");
       // Only the user who started an edit can check on it.
       let sel = admin.from("ai_usage").select("id, prediction_id, refunded, status").eq("user_id", user.id);
-      if (id && /^[a-z0-9]+$/i.test(id)) sel = sel.eq("prediction_id", id);
+      if (id && /^[a-z0-9]+(\.[a-z0-9]+)?$/i.test(id)) sel = sel.eq("prediction_id", id);
       else if (request && UUID.test(request)) sel = sel.eq("client_request_id", request);
       else return json({ error: "Bad id" }, 400);
       const { data: row } = await sel.maybeSingle();
@@ -77,7 +99,7 @@ Deno.serve(async (req) => {
     }
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-    const { image, mode, mask, extra, prompt, request_id } = await req.json().catch(() => ({}));
+    const { image, mode, mask, extra, prompt, request_id, faces } = await req.json().catch(() => ({}));
     const requestId = typeof request_id === "string" && UUID.test(request_id) ? request_id : null;
     // A resent request is the same edit: answer with it instead of charging again.
     if (requestId) {
@@ -126,15 +148,38 @@ Deno.serve(async (req) => {
       return json({ error: msg, limit: true, usage }, 429);
     }
 
+    let facesId: string | undefined;
+    const dropFaces = () => { if (facesId) rep(`/predictions/${facesId}/cancel`, { method: "POST" }).catch(() => {}); };
     try {
-      const { p, info } = await startPrediction(cfg, { image, mask, extra, prompt: cleanPrompt(prompt) });
+      // Enhance with a face sheet starts the main edit without waiting, so the face sheet can start
+      // right after it and both run together; the app follows the job either way.
+      const sheet = mode === "enhance" && okFaceSheet(faces);
+      const { p, info } = await startPrediction(cfg, { image, mask, extra, prompt: cleanPrompt(prompt) }, !sheet);
       console.log("started", mode, info.model, p.id, p.status, p.error ?? "");
-      await admin.from("ai_usage").update({ prediction_id: p.id }).eq("id", quota.usage_id);
+      if (sheet) await admin.from("ai_usage").update({ prediction_id: p.id }).eq("id", quota.usage_id);   // findable while the sheet starts
+      // The face sheet is an extra on the same credit. Replicate allows only one new job at a time
+      // on a low balance (429): wait the few seconds it asks once, then go on without it.
+      if (sheet && p.status !== "failed" && p.status !== "canceled") {
+        for (let i = 0; i < 2 && !facesId; i++) {
+          try { facesId = (await startPrediction(FACE_SHEET, { image: faces }, false)).p.id; console.log("face sheet", facesId); }
+          catch (e) {
+            console.error("face sheet start", (e as Error).message);
+            if (!(e instanceof HttpError) || e.status !== 429 || i) break;
+            const secs = Math.min(12, Number(/resets in ~?(\d+)s/.exec((e as Error).message)?.[1] ?? 10));
+            await new Promise((r) => setTimeout(r, (secs + 1) * 1000));
+          }
+        }
+      }
       const failed = p.status === "failed" || p.status === "canceled";
+      if (failed) { dropFaces(); facesId = undefined; }
+      const pid = facesId ? `${p.id}.${facesId}` : p.id;
+      await admin.from("ai_usage").update({ prediction_id: pid }).eq("id", quota.usage_id);
       if (failed) await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
       if (DONE.has(p.status)) await finish(quota.usage_id, p.status, p.error);
-      return json({ id: p.id, status: p.status, output: lastOutput(p.output), error: p.error ?? null, refunded: failed, usage });
+      const w = await withFaces(p, facesId);
+      return json({ id: pid, status: w.status, output: lastOutput(p.output), faces: w.faces, error: told(p), refunded: failed, usage });
     } catch (e) {
+      dropFaces();
       await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
       await finish(quota.usage_id, "failed", (e as Error).message);
       throw e;
@@ -142,7 +187,9 @@ Deno.serve(async (req) => {
   } catch (e) {
     const status = e instanceof HttpError ? e.status : 500;
     console.error("enhance failed", status, (e as Error).message);
-    const msg = status === 402 ? "Glow Studio's AI service is temporarily unavailable. Please try again later." : (e as Error).message;
+    const msg = status === 402 ? "Glow Studio's AI service is temporarily unavailable. Please try again later."
+      : status === 429 ? "Glow Studio's AI is busy right now. Please try again in a few seconds. Your credit was returned."
+      : (e as Error).message;
     return json({ error: msg }, status >= 500 || status === 402 ? 502 : status);
   }
 });

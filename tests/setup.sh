@@ -10,6 +10,7 @@ base=https://storage.googleapis.com/mediapipe-models
 fetch() { [ -s "tests/.assets/$1" ] || curl -fsSL -o "tests/.assets/$1" "$2"; }
 fetch selfie_segmenter.tflite "$base/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite"
 fetch face_landmarker.task "$base/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+fetch blaze_face_short_range.tflite "$base/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite"
 fetch pose_landmarker_lite.task "$base/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
 fetch hair_segmenter.tflite "$base/image_segmenter/hair_segmenter/float32/latest/hair_segmenter.tflite"
 # The live camera checks show the fake camera a gently moving portrait (the app's own sample).

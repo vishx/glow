@@ -241,7 +241,7 @@ function faceFinder() {
   if (!faceFinderPromise) faceFinderPromise = (async () => {
     const { vision, fileset } = await visionLib();
     return vision.FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: native ? "vendor/face_landmarker.task" : FACE_MODEL }, runningMode: "IMAGE", numFaces: 4,
+      baseOptions: { modelAssetPath: native ? "vendor/face_landmarker.task" : FACE_MODEL }, runningMode: "IMAGE", numFaces: 8,
     });
   })().catch(() => { faceFinderPromise = null; throw new Error("Couldn't load the face tools. Check your connection and try again."); });
   return faceFinderPromise;
@@ -997,9 +997,80 @@ function faceOps(ctx, P, amt, toolId) {
 const faceCache = new Map();
 async function findFaces(src, c) {
   if (faceCache.has(src)) return faceCache.get(src);
-  const finder = await faceFinder();
-  const faces = (finder.detect(detectCopy(c)).faceLandmarks || []).map((f) => f.map((p) => [p.x, p.y]));
+  const faces = await findAllFaces(detectCopy(c));
   faceCache.set(src, faces); if (faceCache.size > 4) faceCache.delete(faceCache.keys().next().value);
+  return faces;
+}
+
+// Every face in a picture, group photos and wide shots included. MediaPipe's face models only see
+// faces that fill at least about a fifth of what they look at, so a search over the whole picture
+// misses everyone in a group or standing back. So: the whole picture first, then the quick face
+// detector over overlapping squares at two sizes, and each new spot it finds is checked by the
+// landmark model on a close-up (which also gives the face's 478 points). Faces under 12 px are
+// left out. Returns landmarks in 0–1 coordinates of `c`.
+const FACE_DETECT_MODEL = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite";
+let faceSpotterPromise = null;
+function faceSpotter() {
+  if (!faceSpotterPromise) faceSpotterPromise = (async () => {
+    const { vision, fileset } = await visionLib();
+    return vision.FaceDetector.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: native ? "vendor/blaze_face_short_range.tflite" : FACE_DETECT_MODEL }, runningMode: "IMAGE", minDetectionConfidence: 0.4,
+    });
+  })().catch(() => { faceSpotterPromise = null; return null; });
+  return faceSpotterPromise;
+}
+function boxOf(f) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of f) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  return [x0, y0, x1 - x0, y1 - y0];
+}
+// How much of the smaller box lies inside the other.
+function boxOverlap(a, b) {
+  const w = Math.min(a[0] + a[2], b[0] + b[2]) - Math.max(a[0], b[0]), h = Math.min(a[1] + a[3], b[1] + b[3]) - Math.max(a[1], b[1]);
+  return w <= 0 || h <= 0 ? 0 : (w * h) / Math.max(1e-9, Math.min(a[2] * a[3], b[2] * b[3]));
+}
+async function findAllFaces(c, max = 24) {
+  const finder = await faceFinder(), W = c.width, H = c.height, L = Math.max(W, H), faces = [];
+  const add = (f) => {
+    const b = boxOf(f);
+    if (b[2] * W < 12 || faces.some((g) => boxOverlap(boxOf(g), b) > 0.35)) return;
+    faces.push(f);
+  };
+  for (const f of finder.detect(c).faceLandmarks || []) add(f.map((p) => [p.x, p.y]));
+  const spotter = await faceSpotter();
+  if (!spotter || L < 320) return faces;
+  const S = 256, tile = newCanvas(S, S), tx = tile.getContext("2d");
+  const look = (X, Y, T) => { tx.fillStyle = "#000"; tx.fillRect(0, 0, S, S); tx.drawImage(c, X, Y, T, T, 0, 0, S, S); };
+  const spots = [];
+  for (const T of [Math.round(L / 2.5), Math.round(L / 5)]) {
+    if (T < 96) continue;
+    const step = Math.round(T * 0.72);
+    for (let y = 0; ; y += step) {
+      const Y = Math.max(0, Math.min(y, H - T));
+      for (let x = 0; ; x += step) {
+        const X = Math.max(0, Math.min(x, W - T));
+        look(X, Y, T);
+        for (const d of spotter.detect(tile).detections || []) {
+          const b = d.boundingBox, k = T / S;
+          spots.push([(X + b.originX * k) / W, (Y + b.originY * k) / H, (b.width * k) / W, (b.height * k) / H, d.categories[0]?.score ?? 0]);
+        }
+        if (X >= W - T) break;
+      }
+      if (Y >= H - T) break;
+    }
+  }
+  spots.sort((a, b) => b[4] - a[4]);
+  for (const b of spots) {
+    if (faces.length >= max) break;
+    if (faces.some((g) => boxOverlap(boxOf(g), b) > 0.3)) continue;
+    const T = Math.max(b[2] * W, b[3] * H) * 2.2, X = (b[0] + b[2] / 2) * W - T / 2, Y = (b[1] + b[3] / 2) * H - T / 2;
+    look(X, Y, T);
+    // The close-up must show one face where the detector saw it (not a pattern beside it).
+    for (const f of finder.detect(tile).faceLandmarks || []) {
+      const g = f.map((p) => [(X + p.x * T) / W, (Y + p.y * T) / H]);
+      if (boxOverlap(boxOf(g), b) > 0.4) { add(g); break; }
+    }
+  }
   return faces;
 }
 // An error that means "this tool can't be used on this photo", shown in the tool's panel.
