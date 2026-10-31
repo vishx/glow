@@ -910,6 +910,6 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
 #cameraScreen .adj-chips button { white-space: nowrap; }
 
 /* Selfie screen flash: a soft warm white over everything, at full strength, for the shot. */
-.screen-flash { position: fixed; inset: 0; z-index: 95; background: #fff8ef; pointer-events: none; }
+.screen-flash { position: fixed; inset: 0; z-index: 95; background: #fff; pointer-events: none; }
 #flashBtn.sflash { position: relative; }
 #flashBtn .fa { position: absolute; right: 6px; bottom: 6px; font-size: 0.625rem; font-weight: 800; line-height: 1; }

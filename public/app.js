@@ -2931,7 +2931,10 @@ async function screenFlashOn(v) {
   const m = screenFlashMode();
   if (!cam.screenFlash || m === "off" || (m === "auto" && sceneLight(v) > 70)) return null;
   const el = document.createElement("div"); el.className = "screen-flash"; document.body.append(el);
-  await sleep(550);
+  // In the phone app the screen also goes to full brightness for the shot (a web page can't).
+  const sb = window.Capacitor?.Plugins?.ScreenBrightness;
+  if (sb) { try { const { brightness } = await sb.getBrightness(); el.restore = () => sb.setBrightness({ brightness }).catch(() => {}); await sb.setBrightness({ brightness: 1 }); } catch {} }
+  await sleep(800);   // time for the camera's exposure to settle on the lit face
   return el;
 }
 $("flashBtn").addEventListener("click", async () => {
@@ -2975,7 +2978,7 @@ $("shutter").addEventListener("click", async () => {
       look: looked ? lookName() : null, stamp, saved: false, originalSaved: false, saving: null };
   } catch {
     say("Couldn't take the photo. Try again.", true); return;
-  } finally { if (lit) lit.remove(); cam.shooting = false; }
+  } finally { if (lit) { lit.remove(); if (lit.restore) lit.restore(); } cam.shooting = false; }
   cam.shot = shot;
   stopCamera(); renderReview();
   makeThumb(shot.processed || shot.raw).then((t) => { cam.thumb = t; renderReview(); }).catch(() => {});
