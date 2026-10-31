@@ -46,7 +46,7 @@ $("enhSample").addEventListener("click", enhanceSample);
 async function enhancePick() {
   const f = await Platform.pickPhoto("file");
   if (!f) return;
-  try { const r = await readPhoto(f, f.name); openEnhSheet(r.work, r.original, f.name, false); }
+  try { const r = await readPhoto(f, f.name); openEnhSheet(r.work, r.original, f.name, false); track("photo_open", { from: "enhance" }); }
   catch (err) { say(err.message, true); }
 }
 async function enhanceSample() {
@@ -54,6 +54,7 @@ async function enhanceSample() {
     const r = await fetch(ENH_SAMPLE.original); if (!r.ok) throw new Error();
     const p = await readPhoto(await r.blob(), "glow-sample");
     openEnhSheet(p.work, p.original, "AI sample", true);
+    track("sample_open", { from: "enhance" });
   } catch { say("Couldn't load the sample. Check your internet and try again.", true); }
 }
 
@@ -153,8 +154,11 @@ async function followEnhance(first) {
   const p = enh.pending, started = Date.now();
   let res = first, misses = 0;
   while (Date.now() - started < 240000) {
-    if (res && res.status === "succeeded" && res.output) { p.done = Array.isArray(res.output) ? res.output[0] : res.output; return p.done; }
+    if (res && res.status === "succeeded" && res.output) {
+      track("ai_done", { mode: ENH_MODE, from: "enhance", secs: Math.round((Date.now() - started) / 1000) });
+      p.done = Array.isArray(res.output) ? res.output[0] : res.output; return p.done; }
     if (res && ["failed", "canceled"].includes(res.status)) {
+      track("ai_fail", { mode: ENH_MODE, from: "enhance", refunded: res.refunded === true });
       enh.pending = null;
       throw new Error((res.error || "Enhance couldn't process this photo.") + (res.refunded ? " Your AI credit was returned." : ""));
     }
@@ -337,6 +341,7 @@ async function enhDownload() {
   const name = enh.demo ? `glow-ai-sample-enhanced-${Date.now()}` : `glow-enhanced-${Date.now()}`;
   try {
     const where = await Platform.savePhotos([{ data, name }]);
+    track("save", { from: "enhance", demo: !!enh.demo, marked: !isPro(), where: String(where || "") });
     enh.saved = { data, where, name };
     showEnhShare();
   } catch (err) {
@@ -357,7 +362,7 @@ setIcon($("enhShareBack"), "back"); setIcon($("enhShareBtn"), "share"); setIcon(
 $("enhShareBack").addEventListener("click", () => { showScreen("enhanceResult"); fitEnhFrame(); });
 $("enhShareDone").addEventListener("click", () => showScreen("enhanceHome"));
 $("enhShareBtn").addEventListener("click", async () => {
-  try { await Platform.savePhotos([{ data: enh.saved.data, name: enh.saved.name }], { share: true }); }
+  try { await Platform.savePhotos([{ data: enh.saved.data, name: enh.saved.name }], { share: true }); track("share", { from: "enhance" }); }
   catch (err) { if (!(err && err.name === "AbortError")) say("Couldn't open sharing. Try again.", true); }
 });
 $("enhAnother").addEventListener("click", enhancePick);
@@ -369,6 +374,7 @@ async function editEnhanced() {
   if (enh.demo) { openSample(); return; }   // the sample has its own editor demo (prepared AI previews)
   if (!(await confirmReplace())) return;
   const full = enh.current === enh.ai && enh.full ? enh.full : enh.current;
+  track("enhance_to_editor", {});
   await openPhoto(enh.src, enh.original, { name: enh.name, processed: { data: enh.current, full, label: "Enhance" } });
 }
 

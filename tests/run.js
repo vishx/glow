@@ -1597,6 +1597,27 @@ test('ops: Contact support sends the message with the account ID and app details
   assert(state.events.some((e) => e.name === 'support_sent' && e.props.topic === 'billing'), 'support_sent event');
 });
 
+test('ops: the editor and Enhance report what people do (photo, tool, AI result, save)', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  await p.click('#enhDownload'); await downloads(state, 1); await p.waitForFunction(() => screen === 'enhanceShare');
+  await p.click('#enhEdit'); await p.waitForFunction(() => screen === 'editorScreen' && ed.hist.length === 2);
+  await tool(p, 'edit', 'light', 'light'); await p.fill('.panel input[type=range]', '20'); await idle(p);
+  await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 2);
+  await settle(4500);
+  const ev = (n) => state.events.filter((e) => e.name === n).map((e) => e.props);
+  eq(ev('photo_open')[0]?.from, 'enhance', 'photo_open from enhance');
+  eq(ev('ai_start')[0]?.mode, 'enhance', 'ai_start with the tool');
+  assert(ev('ai_done').length === 1 && typeof ev('ai_done')[0].secs === 'number', 'ai_done with duration: ' + JSON.stringify(ev('ai_done')));
+  eq(ev('save').map((x) => x.from), ['enhance', 'editor'], 'both saves reported with where they came from');
+  assert(ev('enhance_to_editor').length === 1, 'hand-off to the editor');
+  assert(ev('edit').some((x) => x.tool === 'light'), 'editor tool reported: ' + JSON.stringify(ev('edit')));
+  assert(state.events.every((e) => JSON.stringify(e).length < 300), 'events stay small');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false });
+
 test('ops: usage events are batched and never carry photos; errors are reported once', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
   await p.evaluate(() => openPaywall());

@@ -23,8 +23,17 @@ const clientIp = (req: Request) =>
   req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || null;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Writes how an AI run ended, once, for the admin page's AI quality report (migration 010).
+async function finish(id: number, status: string, error: unknown = null) {
+  const { error: e } = await admin.from("ai_usage")
+    .update({ status, finished_at: new Date().toISOString(), error: error ? String(error).slice(0, 300) : null })
+    .eq("id", id).is("status", null);
+  if (e) console.error("ai_usage outcome", e.message);
+}
+const DONE = new Set(["succeeded", "failed", "canceled"]);
+
 // The state of one charged edit, read fresh from Replicate. Free to call any number of times.
-async function jobStatus(row: { id: number; prediction_id: string | null; refunded: boolean }) {
+async function jobStatus(row: { id: number; prediction_id: string | null; refunded: boolean; status?: string | null }) {
   // Charged, but Replicate hasn't given an id yet (or starting it failed and was refunded).
   if (!row.prediction_id) {
     return row.refunded
@@ -36,6 +45,7 @@ async function jobStatus(row: { id: number; prediction_id: string | null; refund
     let refunded = row.refunded;
     // An edit that fails partway through doesn't count against the limit.
     if ((p.status === "failed" || p.status === "canceled") && !refunded) { await admin.rpc("refund_ai_edit", { p_usage: row.id }); refunded = true; }
+    if (DONE.has(p.status) && !row.status) await finish(row.id, p.status, p.error);
     return { id: p.id, status: p.status, output: lastOutput(p.output), error: p.error ?? null, refunded };
   } catch (e) {
     // A brand-new prediction can briefly 404 before Replicate can read it back.
@@ -56,7 +66,7 @@ Deno.serve(async (req) => {
     if (req.method === "GET") {
       const q = new URL(req.url).searchParams, id = q.get("id"), request = q.get("request");
       // Only the user who started an edit can check on it.
-      let sel = admin.from("ai_usage").select("id, prediction_id, refunded").eq("user_id", user.id);
+      let sel = admin.from("ai_usage").select("id, prediction_id, refunded, status").eq("user_id", user.id);
       if (id && /^[a-z0-9]+$/i.test(id)) sel = sel.eq("prediction_id", id);
       else if (request && UUID.test(request)) sel = sel.eq("client_request_id", request);
       else return json({ error: "Bad id" }, 400);
@@ -71,7 +81,7 @@ Deno.serve(async (req) => {
     const requestId = typeof request_id === "string" && UUID.test(request_id) ? request_id : null;
     // A resent request is the same edit: answer with it instead of charging again.
     if (requestId) {
-      const { data: row } = await admin.from("ai_usage").select("id, prediction_id, refunded")
+      const { data: row } = await admin.from("ai_usage").select("id, prediction_id, refunded, status")
         .eq("user_id", user.id).eq("client_request_id", requestId).maybeSingle();
       if (row) return json(await jobStatus(row));
     }
@@ -92,7 +102,8 @@ Deno.serve(async (req) => {
       if (dup) {
         // Two copies of the same request raced; keep the first one and return this charge.
         await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
-        const { data: row } = await admin.from("ai_usage").select("id, prediction_id, refunded")
+        await finish(quota.usage_id, "duplicate");
+        const { data: row } = await admin.from("ai_usage").select("id, prediction_id, refunded, status")
           .eq("user_id", user.id).eq("client_request_id", requestId).maybeSingle();
         if (row) return json(await jobStatus(row));
         throw dup;
@@ -121,9 +132,11 @@ Deno.serve(async (req) => {
       await admin.from("ai_usage").update({ prediction_id: p.id }).eq("id", quota.usage_id);
       const failed = p.status === "failed" || p.status === "canceled";
       if (failed) await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
+      if (DONE.has(p.status)) await finish(quota.usage_id, p.status, p.error);
       return json({ id: p.id, status: p.status, output: lastOutput(p.output), error: p.error ?? null, refunded: failed, usage });
     } catch (e) {
       await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
+      await finish(quota.usage_id, "failed", (e as Error).message);
       throw e;
     }
   } catch (e) {

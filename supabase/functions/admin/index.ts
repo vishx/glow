@@ -1,6 +1,6 @@
 // The Glow admin page (/admin) talks to this function. Every request must carry the owner's
 // admin key (the ADMIN_KEY secret) in the x-admin-key header; nothing else can reach it.
-// POST { action, ...args }. Needs migration 009. Every change is written to admin_audit.
+// POST { action, ...args }. Needs migrations 009 and 010. Every change is written to admin_audit.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -41,23 +41,32 @@ class HttpError extends Error {}
 const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> = {
   async overview(a) {
     const days = Math.min(90, Math.max(1, Number(a.days) || 14));
-    // Old diagnostics aren't needed; trim them whenever the owner looks at the page.
-    admin.from("app_events").delete().lt("created_at", new Date(Date.now() - 180 * 864e5).toISOString()).then(() => {});
-    admin.from("app_errors").delete().lt("created_at", new Date(Date.now() - 60 * 864e5).toISOString()).then(() => {});
-    const [daily, tools, plans, heavy, support, errors] = await Promise.all([
+    // Old diagnostics aren't kept (privacy policy); also runs nightly through pg_cron.
+    admin.rpc("purge_old_diagnostics").then(({ error }) => { if (error) console.error("purge", error.message); });
+    const since30 = new Date(Date.now() - 30 * 864e5).toISOString();
+    const [daily, tools, plans, heavy, support, errors, features, funnel, quality, subs] = await Promise.all([
       admin.rpc("admin_daily", { p_days: days }),
       admin.rpc("admin_tools", { p_days: 7 }),
       admin.rpc("admin_plans").single(),
       admin.rpc("admin_heavy_users", { p_limit: 10 }),
       admin.from("support_requests").select("id", { count: "exact", head: true }).eq("status", "open"),
       admin.from("app_errors").select("id", { count: "exact", head: true }).gte("created_at", new Date(Date.now() - 864e5).toISOString()),
+      admin.rpc("admin_features", { p_days: 7 }),
+      admin.rpc("admin_funnel", { p_days: 7 }),
+      admin.rpc("admin_ai_quality", { p_days: 7 }),
+      admin.from("subscription_events").select("price_usd").gte("created_at", since30).neq("environment", "SANDBOX").not("price_usd", "is", null).limit(10000),
     ]);
     const p = must(plans) as { pro_weekly: number; pro_yearly: number };
     const monthly = p.pro_weekly * WEEKLY * 52 / 12 + p.pro_yearly * YEARLY / 12;
+    const real = (must(subs) as { price_usd: number }[]).reduce((t, r) => t + Number(r.price_usd), 0);
     return {
       daily: must(daily), tools: must(tools), plans: p, heavy: must(heavy),
       openSupport: support.count ?? 0, errors24h: errors.count ?? 0,
-      revenue: { monthlyGross: Math.round(monthly * 100) / 100, note: "Estimate from active Pro plans at list price, before store fees. RevenueCat has the real figure." },
+      features: must(features), funnel: must(funnel), aiQuality: must(quality),
+      revenue: {
+        monthlyGross: Math.round(monthly * 100) / 100, last30: Math.round(real * 100) / 100,
+        note: "Last 30 days is what RevenueCat reported (purchases and renewals minus refunds, before store fees). The monthly figure is an estimate from active Pro plans at list price.",
+      },
     };
   },
 
@@ -67,22 +76,23 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
 
   async user(a) {
     const id = userId(a.user);
-    const [auth, profile, allowance, usage, ads, support, events, errors] = await Promise.all([
+    const [auth, profile, allowance, usage, ads, support, events, errors, subs] = await Promise.all([
       admin.auth.admin.getUserById(id),
       admin.from("profiles").select("*").eq("id", id).maybeSingle(),
       admin.rpc("ai_allowance", { p_user: id }).maybeSingle(),
-      admin.from("ai_usage").select("id, mode, cost, created_at, refunded, from_bonus, prediction_id, ip").eq("user_id", id).order("created_at", { ascending: false }).limit(50),
+      admin.from("ai_usage").select("id, mode, cost, created_at, refunded, from_bonus, prediction_id, ip, status, finished_at, error").eq("user_id", id).order("created_at", { ascending: false }).limit(50),
       admin.from("ad_rewards").select("id", { count: "exact", head: true }).eq("user_id", id),
       admin.from("support_requests").select("id, topic, message, status, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(10),
       admin.from("app_events").select("name, props, platform, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(30),
       admin.from("app_errors").select("message, build, platform, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(20),
+      admin.from("subscription_events").select("type, product_id, period_type, store, environment, price_usd, cancel_reason, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(30),
     ]);
     if (!auth.data?.user) throw new HttpError("No account with that ID (it may have been deleted).");
     const u = auth.data.user;
     return {
       account: { id: u.id, created_at: u.created_at, last_seen: u.last_sign_in_at, anonymous: u.is_anonymous ?? !u.email },
       profile: profile.data, allowance: allowance.data, usage: must(usage), ads: ads.count ?? 0,
-      support: support.data ?? [], events: events.data ?? [], errors: errors.data ?? [],
+      support: support.data ?? [], events: events.data ?? [], errors: errors.data ?? [], subscriptions: subs.data ?? [],
     };
   },
 
@@ -169,6 +179,17 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
     return must(await admin.from("app_errors").select("*").order("created_at", { ascending: false }).limit(100));
   },
 
+  // Every RevenueCat event: purchases, renewals, trials, cancellations, refunds, billing issues.
+  async subscriptions(a) {
+    let q = admin.from("subscription_events").select("*").order("created_at", { ascending: false }).limit(200);
+    if (a.type) q = q.eq("type", text(a.type, 40));
+    return must(await q);
+  },
+
+  async deletions() {
+    return must(await admin.from("account_deletions").select("*").order("created_at", { ascending: false }).limit(100));
+  },
+
   async audit() {
     return must(await admin.from("admin_audit").select("*").order("created_at", { ascending: false }).limit(100));
   },
@@ -190,9 +211,9 @@ Deno.serve(async (req) => {
   } catch (e) {
     const msg = (e as Error).message;
     console.error("admin", body.action, msg);
-    // Before migration 009 the report functions don't exist yet.
-    if (/admin_daily|admin_users|admin_plans|function .* does not exist|relation .* does not exist|column .* does not exist/i.test(msg)) {
-      return json({ error: "Run migration 009 in the Supabase SQL editor first.", detail: msg }, 409);
+    // Before migrations 009 and 010 the report functions and tables don't exist yet.
+    if (/admin_\w+|subscription_events|account_deletions|function .* does not exist|relation .* does not exist|column .* does not exist|schema cache/i.test(msg)) {
+      return json({ error: "Run migration 010 (and 009 before it) in the Supabase SQL editor first.", detail: msg }, 409);
     }
     return json({ error: msg }, e instanceof HttpError ? 400 : 500);
   }
