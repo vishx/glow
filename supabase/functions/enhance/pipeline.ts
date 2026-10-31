@@ -149,8 +149,29 @@ export async function modelInfo(model: string | string[]): Promise<ModelInfo> {
 export const lastOutput = (o: unknown) => (Array.isArray(o) ? o[o.length - 1] : o) ?? null;
 
 // Starts one edit on Replicate and waits up to a minute for it. Charging is the caller's job.
-export async function startPrediction(cfg: Mode, { image, mask, extra, prompt }: { image: string; mask?: string; extra?: string; prompt?: string }) {
-  const info = await modelInfo(cfg.model);
+// A tool with a list of models falls back to the next one when a model is missing or turns the
+// photo down at once (Nano Banana sometimes answers "Failed to generate image." within seconds
+// for an ordinary photo), so one charge still gets a result. An edit still running after the
+// wait is returned as it is and never started twice.
+export async function startPrediction(cfg: Mode, args: { image: string; mask?: string; extra?: string; prompt?: string }) {
+  const models = Array.isArray(cfg.model) ? cfg.model : [cfg.model];
+  let last: { p: any; info: ModelInfo } | null = null, missing: unknown = null;
+  for (const model of models) {
+    let info: ModelInfo;
+    try { info = await modelInfo(model); } catch (e) {
+      if (e instanceof HttpError && e.status === 404) { missing = e; continue; }
+      throw e;
+    }
+    const p = await runOn(info, cfg, args);
+    last = { p, info };
+    if (p.status !== "failed") return last;
+    console.log("model failed, trying the next", model, p.id, p.error ?? "");
+  }
+  if (last) return last;
+  throw missing ?? new HttpError(404, "This tool's AI model isn't available right now.");
+}
+
+async function runOn(info: ModelInfo, cfg: Mode, { image, mask, extra, prompt }: { image: string; mask?: string; extra?: string; prompt?: string }) {
   const images = cfg.needsExtra ? [image, extra] : [image];
   const input: Record<string, unknown> = { [info.imageKey]: info.imageList ? images : image };
   for (const [k, v] of Object.entries(cfg.input)) if (info.open || k in info.props) input[k] = v;
@@ -162,10 +183,9 @@ export async function startPrediction(cfg: Mode, { image, mask, extra, prompt }:
   if (cfg.needsMask) input[info.maskKey] = mask;
   if (cfg.userPrompt && prompt) input.prompt = cfg.userPrompt.replace("{p}", prompt);
   // Wait up to a minute so most edits finish in one request.
-  const p = await rep(info.version ? "/predictions" : `/models/${info.model}/predictions`, {
+  return await rep(info.version ? "/predictions" : `/models/${info.model}/predictions`, {
     method: "POST",
     headers: { Prefer: "wait=55" },
     body: JSON.stringify(info.version ? { version: info.version, input } : { input }),
   });
-  return { p, info };
 }

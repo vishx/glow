@@ -31,6 +31,9 @@ async function finish(id: number, status: string, error: unknown = null) {
   if (e) console.error("ai_usage outcome", e.message);
 }
 const DONE = new Set(["succeeded", "failed", "canceled"]);
+// The model's own error (kept as it is for the admin page) in words for the app.
+const told = (p: { status: string; error?: unknown }) =>
+  p.status === "failed" ? "The AI couldn't edit this photo. Please try again, or try another photo." : p.error ?? null;
 
 // The state of one charged edit, read fresh from Replicate. Free to call any number of times.
 async function jobStatus(row: { id: number; prediction_id: string | null; refunded: boolean; status?: string | null }) {
@@ -46,7 +49,7 @@ async function jobStatus(row: { id: number; prediction_id: string | null; refund
     // An edit that fails partway through doesn't count against the limit.
     if ((p.status === "failed" || p.status === "canceled") && !refunded) { await admin.rpc("refund_ai_edit", { p_usage: row.id }); refunded = true; }
     if (DONE.has(p.status) && !row.status) await finish(row.id, p.status, p.error);
-    return { id: p.id, status: p.status, output: lastOutput(p.output), error: p.error ?? null, refunded };
+    return { id: p.id, status: p.status, output: lastOutput(p.output), error: told(p), refunded };
   } catch (e) {
     // A brand-new prediction can briefly 404 before Replicate can read it back.
     if (e instanceof HttpError && e.status === 404) return { id: row.prediction_id, status: "starting", output: null, error: null, refunded: row.refunded };
@@ -133,7 +136,7 @@ Deno.serve(async (req) => {
       const failed = p.status === "failed" || p.status === "canceled";
       if (failed) await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
       if (DONE.has(p.status)) await finish(quota.usage_id, p.status, p.error);
-      return json({ id: p.id, status: p.status, output: lastOutput(p.output), error: p.error ?? null, refunded: failed, usage });
+      return json({ id: p.id, status: p.status, output: lastOutput(p.output), error: told(p), refunded: failed, usage });
     } catch (e) {
       await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
       await finish(quota.usage_id, "failed", (e as Error).message);
