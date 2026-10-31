@@ -6,7 +6,7 @@
 // refund the server confirmed. Needs migration 006 (ai_usage.client_request_id).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { cleanPrompt, ENHANCE_HD, FACE_SHEET, HttpError, lastOutput, MODES, okFaceSheet, okHd, okTiles, rep, startPrediction, TOKEN } from "./pipeline.ts";
+import { cleanPrompt, ENHANCE_HD, FACE_SHEET, HttpError, lastOutput, MODES, okFaceSheet, okHd, okTiles, rep, tryOnMode, startPrediction, TOKEN } from "./pipeline.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
     }
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-    const { image, mode, mask, extra, prompt, request_id, faces, hd, tiles, from, tool, platform, build } = await req.json().catch(() => ({}));
+    const { image, mode, mask, extra, prompt, part, request_id, faces, hd, tiles, from, tool, platform, build } = await req.json().catch(() => ({}));
     const requestId = typeof request_id === "string" && UUID.test(request_id) ? request_id : null;
     // A resent request is the same edit: answer with it instead of charging again.
     if (requestId) {
@@ -135,13 +135,18 @@ Deno.serve(async (req) => {
         .eq("user_id", user.id).eq("client_request_id", requestId).maybeSingle();
       if (row) return json(await jobStatus(row));
     }
-    const cfg = MODES[mode];
+    let cfg = MODES[mode];
     if (!cfg) return json({ error: "Unknown tool" }, 400);
     const okImage = typeof image === "string" &&
       (image.startsWith("data:image/") || /^https:\/\/([a-z0-9-]+\.)*replicate\.delivery\//.test(image));
     if (!okImage) return json({ error: "Send the photo as a data URL" }, 400);
     if (cfg.needsMask && (typeof mask !== "string" || !mask.startsWith("data:image/"))) return json({ error: "Mark the area first" }, 400);
-    if (cfg.needsExtra && (typeof extra !== "string" || !extra.startsWith("data:image/"))) return json({ error: "Pick the outfit photo first" }, 400);
+    // Try on takes an outfit photo or words for one (an idea from the app's list, or her own).
+    const hasExtra = typeof extra === "string" && extra.startsWith("data:image/") && extra.length < 4_000_000;
+    if (mode === "outfit") {
+      if (!hasExtra && !cleanPrompt(prompt)) return json({ error: "Pick an outfit first" }, 400);
+      cfg = tryOnMode(cfg, part, cleanPrompt(prompt), hasExtra);
+    } else if (cfg.needsExtra && !hasExtra) return json({ error: "Pick the outfit photo first" }, 400);
 
     // Feature switches (migration 013): a tool switched off on the admin page is refused here, before
     // anything is charged. The Enhance tab (and the camera's AI Enhance) has no switch; an editor tool
