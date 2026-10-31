@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"><g transform="translate(71.7 71.7) scale(0.86)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs><mask id="m"><rect width="1024" height="1024" fill="#fff"/>
+<circle cx="512" cy="512" r="268" fill="#000"/>
+<path d="M338.0,226.0 Q353.8,322.2 450.0,338.0 Q353.8,353.8 338.0,450.0 Q322.2,353.8 226.0,338.0 Q322.2,322.2 338.0,226.0 Z" fill="#000"/>
+</mask><mask id="h"><rect width="1024" height="1024" fill="#fff"/><polygon points="532,436 588,492 568,568 492,588 436,532 456,456" fill="#000"/><path d="M338.0,226.0 Q353.8,322.2 450.0,338.0 Q353.8,353.8 338.0,450.0 Q322.2,353.8 226.0,338.0 Q322.2,322.2 338.0,226.0 Z" fill="#000"/></mask></defs>
+<circle cx="512" cy="512" r="312" fill="#fff" mask="url(#m)"/>
+<circle cx="512" cy="512" r="184" fill="#fff" mask="url(#h)"/>
+<path d="M338.0,254.0 Q346.9,329.1 422.0,338.0 Q346.9,346.9 338.0,422.0 Q329.1,346.9 254.0,338.0 Q329.1,329.1 338.0,254.0 Z" fill="#fff"/>
+</svg></g></svg>

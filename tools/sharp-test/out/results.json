@@ -1,0 +1,473 @@
+{
+  "A_current": {
+    "file": "A_current.jpg",
+    "model": "nightmareai/real-esrgan",
+    "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+    "id": "mbbd8z1cnhrge0d1jaztq2xyg8",
+    "predict_time": 10.234939814,
+    "wall": 11.4,
+    "input": {
+      "scale": 2,
+      "face_enhance": true
+    },
+    "in_size": [
+      821,
+      1095
+    ],
+    "out_size": [
+      1642,
+      2190
+    ]
+  },
+  "B_tiled": {
+    "file": "B_tiled.jpg",
+    "model": "nightmareai/real-esrgan (tiles)",
+    "tiles": 20,
+    "predict_time": 122.1,
+    "runs": [
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "jb1jvy09q1rga0d1jb39th08e8",
+        "predict_time": 7.254740379,
+        "wall": 13.7,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          900
+        ],
+        "out_size": [
+          1800,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "w0tmsb9y95rgc0d1jb39rnspfw",
+        "predict_time": 7.726196286,
+        "wall": 8.6,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          900
+        ],
+        "out_size": [
+          1800,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "71x7r84w5drgc0d1jb399m9ggc",
+        "predict_time": 7.493036293,
+        "wall": 26.1,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          900
+        ],
+        "out_size": [
+          1800,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "wjv6nzp5xsrgc0d1jb3acbfpbm",
+        "predict_time": 4.013316651,
+        "wall": 5.0,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          492,
+          900
+        ],
+        "out_size": [
+          984,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "sevg508nt5rgc0d1jb3rpn1mtg",
+        "predict_time": 6.83979922,
+        "wall": 23.3,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          900
+        ],
+        "out_size": [
+          1800,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "nvad0c3ks5rga0d1jb3sjtywvg",
+        "predict_time": 5.870643402,
+        "wall": 23.8,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          900
+        ],
+        "out_size": [
+          1800,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "ryhbnqegw9rga0d1jb3s6bkhqc",
+        "predict_time": 6.446870905,
+        "wall": 23.4,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          900
+        ],
+        "out_size": [
+          1800,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "cakpy3s999rge0d1jb48g40kvc",
+        "predict_time": 3.297277397,
+        "wall": 25.2,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          492,
+          900
+        ],
+        "out_size": [
+          984,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "39bq7g4cyhrga0d1jb4b54b07m",
+        "predict_time": 9.629891863,
+        "wall": 28.9,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          900
+        ],
+        "out_size": [
+          1800,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "41a35yy4dhrge0d1jb4943x6mm",
+        "predict_time": 8.468507764,
+        "wall": 10.0,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          900
+        ],
+        "out_size": [
+          1800,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "nxs5a0s62drg80d1jb4vt8tefc",
+        "predict_time": 9.145978735,
+        "wall": 28.6,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          900
+        ],
+        "out_size": [
+          1800,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "v0byfptrqhrgc0d1jb4tnnk92c",
+        "predict_time": 4.139758246,
+        "wall": 5.4,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          492,
+          900
+        ],
+        "out_size": [
+          984,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "sz8x15n9f9rgc0d1jb4s3fdzar",
+        "predict_time": 8.125531836,
+        "wall": 24.1,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          900
+        ],
+        "out_size": [
+          1800,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "g1w0zvg941rg80d1jb5at0aznc",
+        "predict_time": 6.890909203,
+        "wall": 25.9,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          900
+        ],
+        "out_size": [
+          1800,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "6ejasbskqxrg80d1jb5avbzbn0",
+        "predict_time": 6.810366749,
+        "wall": 10.5,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          900
+        ],
+        "out_size": [
+          1800,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "h9qjthavmxrg80d1jb58fte4nm",
+        "predict_time": 3.257752848,
+        "wall": 13.4,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          492,
+          900
+        ],
+        "out_size": [
+          984,
+          1800
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "5hhzevwhesrg80d1jb59q8vrbm",
+        "predict_time": 4.631206221,
+        "wall": 9.4,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          656
+        ],
+        "out_size": [
+          1800,
+          1312
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "7nrvkgqjghrgc0d1jb5b2ef770",
+        "predict_time": 4.798233292,
+        "wall": 23.1,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          656
+        ],
+        "out_size": [
+          1800,
+          1312
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "hgxhajjc61rg80d1jb5ty9y0k0",
+        "predict_time": 4.6210396,
+        "wall": 29.8,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          900,
+          656
+        ],
+        "out_size": [
+          1800,
+          1312
+        ]
+      },
+      {
+        "model": "nightmareai/real-esrgan",
+        "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+        "id": "s0npj5c6bsrga0d1jb5t75167c",
+        "predict_time": 2.612144839,
+        "wall": 12.1,
+        "input": {
+          "scale": 2,
+          "face_enhance": true
+        },
+        "in_size": [
+          492,
+          656
+        ],
+        "out_size": [
+          984,
+          1312
+        ]
+      }
+    ]
+  },
+  "C_clarity": {
+    "file": "C_clarity.jpg",
+    "model": "philz1337x/clarity-upscaler",
+    "version": "dfad41707589d68ecdccd1dfa600d55a208f9310748e44bfe35b4a6291453d5e",
+    "id": "b76s4gdqrdrna0d1jb5vscw9vg",
+    "predict_time": 19.535513659,
+    "wall": 20.9,
+    "input": {
+      "scale_factor": 2,
+      "creativity": 0.25,
+      "resemblance": 0.8,
+      "dynamic": 6,
+      "prompt": "masterpiece, best quality, highres, sharp focus, natural skin",
+      "output_format": "jpg"
+    },
+    "in_size": [
+      1060,
+      1414
+    ],
+    "out_size": [
+      2120,
+      2824
+    ]
+  },
+  "D_recraft": {
+    "file": "D_recraft.jpg",
+    "model": "recraft-ai/recraft-crisp-upscale",
+    "version": "2177c1e3a177f5a76c632e467c32b413e424c23d84e43f7b036a965e305f6557",
+    "id": "d24ym58dpxrmw0d1jb68ggz3hw",
+    "predict_time": 20.503812664,
+    "wall": 23.7,
+    "input": {},
+    "in_size": [
+      1732,
+      2309
+    ],
+    "out_size": [
+      3072,
+      4096
+    ]
+  },
+  "E_topaz": {
+    "file": "E_topaz.jpg",
+    "model": "topazlabs/image-upscale",
+    "version": "2fdc3b86a01d338ae89ad58e5d9241398a8a01de9b0dda41ba8a0434c8a00dc3",
+    "id": "jjkxh6kfknrmw0d1jb6a04kgn4",
+    "predict_time": 10.161115177,
+    "wall": 13.1,
+    "input": {
+      "enhance_model": "Standard V2",
+      "upscale_factor": "2x",
+      "face_enhancement": true,
+      "output_format": "jpg"
+    },
+    "in_size": [
+      1500,
+      2000
+    ],
+    "out_size": [
+      3000,
+      4000
+    ]
+  }
+}

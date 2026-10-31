@@ -1,8 +1,8 @@
 {
   "appId": "com.vishx.glow",
-  "appName": "Glow",
+  "appName": "Glow Studio",
   "webDir": "www",
-  "backgroundColor": "#0f0f14",
+  "backgroundColor": "#121014",
   "ios": { "contentInset": "always" },
-  "android": { "backgroundColor": "#0f0f14" }
+  "android": { "backgroundColor": "#121014" }
 }

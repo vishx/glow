@@ -1,0 +1,706 @@
+{
+  "two__nano_banana": {
+    "file": "two__nano_banana.jpg",
+    "model": "google/nano-banana",
+    "id": "77er6ptadhrmw0d1jcgthhbf20",
+    "predict_time": 9.574100707,
+    "wall": 11.1,
+    "inputs": {
+      "output_format": "jpg"
+    },
+    "in_size": [
+      1560,
+      2080
+    ],
+    "out_size": [
+      864,
+      1184
+    ],
+    "price": 0.039,
+    "note": "current editor Pro edit",
+    "identity": [
+      0.913,
+      0.909,
+      0.636,
+      0.495
+    ]
+  },
+  "two__nano_banana__true": {
+    "file": "two__nano_banana__true.jpg",
+    "from": "two__nano_banana",
+    "identity": [
+      0.949,
+      0.773,
+      0.755,
+      0.804
+    ]
+  },
+  "two__nano_banana_2": {
+    "file": "two__nano_banana_2.jpg",
+    "model": "google/nano-banana-2",
+    "id": "rnfmnxw6g1rmy0d1jcgs2py7wr",
+    "predict_time": 17.676212326,
+    "wall": 18.5,
+    "inputs": {
+      "output_format": "jpg",
+      "resolution": "2K",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1560,
+      2080
+    ],
+    "out_size": [
+      1792,
+      2400
+    ],
+    "price": null,
+    "note": "",
+    "identity": [
+      0.945,
+      0.919,
+      0.734,
+      0.562
+    ]
+  },
+  "two__nano_banana_2__true": {
+    "file": "two__nano_banana_2__true.jpg",
+    "from": "two__nano_banana_2",
+    "identity": [
+      0.983,
+      0.983,
+      0.968,
+      0.964
+    ]
+  },
+  "two__nano_banana_pro": {
+    "file": "two__nano_banana_pro.jpg",
+    "model": "google/nano-banana-pro",
+    "id": "yqxt9vz3f1rmt0d1jcgsmzj9p0",
+    "predict_time": 26.104874614,
+    "wall": 27.5,
+    "inputs": {
+      "output_format": "jpg",
+      "resolution": "2K",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1560,
+      2080
+    ],
+    "out_size": [
+      1792,
+      2400
+    ],
+    "price": 0.15,
+    "note": "",
+    "identity": [
+      0.923,
+      0.909,
+      0.821,
+      0.543
+    ]
+  },
+  "two__nano_banana_pro__true": {
+    "file": "two__nano_banana_pro__true.jpg",
+    "from": "two__nano_banana_pro",
+    "identity": [
+      0.981,
+      0.979,
+      0.971,
+      0.966
+    ]
+  },
+  "two__kontext_pro": {
+    "file": "two__kontext_pro.jpg",
+    "model": "black-forest-labs/flux-kontext-pro",
+    "id": "f93km330mnrmr0d1jch8gyq6j8",
+    "predict_time": 5.037239749,
+    "wall": 7.0,
+    "inputs": {
+      "output_format": "jpg",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1560,
+      2080
+    ],
+    "out_size": [
+      880,
+      1184
+    ],
+    "price": 0.04,
+    "note": "current fallback",
+    "identity": [
+      0.971,
+      0.977,
+      0.896,
+      0.835
+    ]
+  },
+  "two__kontext_pro__true": {
+    "file": "two__kontext_pro__true.jpg",
+    "from": "two__kontext_pro",
+    "identity": [
+      0.978,
+      0.987,
+      0.902,
+      0.921
+    ]
+  },
+  "two__flux_2_pro": {
+    "file": "two__flux_2_pro.jpg",
+    "model": "black-forest-labs/flux-2-pro",
+    "id": "cxxf3bcdfdrmr0d1jch8f65gzc",
+    "predict_time": 11.097324198,
+    "wall": 12.2,
+    "inputs": {
+      "output_format": "jpg",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1560,
+      2080
+    ],
+    "out_size": [
+      896,
+      1184
+    ],
+    "price": null,
+    "note": "",
+    "identity": [
+      0.839,
+      0.835,
+      0.83,
+      0.765
+    ]
+  },
+  "two__flux_2_pro__true": {
+    "file": "two__flux_2_pro__true.jpg",
+    "from": "two__flux_2_pro",
+    "identity": [
+      0.715,
+      0.747,
+      0.726,
+      0.794
+    ]
+  },
+  "two__seedream_4": {
+    "file": "two__seedream_4.jpg",
+    "model": "bytedance/seedream-4",
+    "id": "0hn1xmpejdrmr0d1jch8ky7apc",
+    "predict_time": 17.725651636,
+    "wall": 18.8,
+    "inputs": {
+      "size": "2K",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1560,
+      2080
+    ],
+    "out_size": [
+      1536,
+      2048
+    ],
+    "price": 0.03,
+    "note": "",
+    "identity": [
+      0.891,
+      0.883,
+      0.7,
+      0.527
+    ]
+  },
+  "two__seedream_4__true": {
+    "file": "two__seedream_4__true.jpg",
+    "from": "two__seedream_4",
+    "identity": [
+      0.973,
+      0.973,
+      0.968,
+      0.983
+    ]
+  },
+  "two__qwen_edit_plus": {
+    "error": "qwen/qwen-image-edit-plus failed: Model execution failed (User Input Error): AiError: AiError: Invalid input (d490b0b1-10b4-461b-a39f-7579dc7fa4d7)"
+  },
+  "event__nano_banana": {
+    "file": "event__nano_banana.jpg",
+    "model": "google/nano-banana",
+    "id": "547wsa9gkhrmw0d1jcj9sxz6d8",
+    "predict_time": 8.99536934,
+    "wall": 10.5,
+    "inputs": {
+      "output_format": "jpg"
+    },
+    "in_size": [
+      1500,
+      2000
+    ],
+    "out_size": [
+      864,
+      1184
+    ],
+    "price": 0.039,
+    "note": "current editor Pro edit",
+    "identity": [
+      0.652,
+      0.675,
+      0.393,
+      0.392
+    ]
+  },
+  "event__nano_banana__true": {
+    "file": "event__nano_banana__true.jpg",
+    "from": "event__nano_banana",
+    "identity": [
+      0.907,
+      0.825,
+      0.681,
+      0.624
+    ]
+  },
+  "event__nano_banana_2": {
+    "file": "event__nano_banana_2.jpg",
+    "model": "google/nano-banana-2",
+    "id": "bfw7evvqedrmy0d1jcjbqt3ntr",
+    "predict_time": 17.659670911,
+    "wall": 18.6,
+    "inputs": {
+      "output_format": "jpg",
+      "resolution": "2K",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1500,
+      2000
+    ],
+    "out_size": [
+      1792,
+      2400
+    ],
+    "price": null,
+    "note": "",
+    "identity": [
+      0.8,
+      0.744,
+      0.411,
+      0.369
+    ]
+  },
+  "event__nano_banana_2__true": {
+    "file": "event__nano_banana_2__true.jpg",
+    "from": "event__nano_banana_2",
+    "identity": [
+      0.965,
+      0.962,
+      0.924,
+      0.774
+    ]
+  },
+  "event__nano_banana_pro": {
+    "file": "event__nano_banana_pro.jpg",
+    "model": "google/nano-banana-pro",
+    "id": "cqp614pzgnrmw0d1jcjankz740",
+    "predict_time": 24.470943474,
+    "wall": 25.6,
+    "inputs": {
+      "output_format": "jpg",
+      "resolution": "2K",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1500,
+      2000
+    ],
+    "out_size": [
+      1792,
+      2400
+    ],
+    "price": 0.15,
+    "note": "",
+    "identity": [
+      0.73,
+      0.742,
+      0.388,
+      0.367
+    ]
+  },
+  "event__nano_banana_pro__true": {
+    "file": "event__nano_banana_pro__true.jpg",
+    "from": "event__nano_banana_pro",
+    "identity": [
+      0.966,
+      0.959,
+      0.927,
+      0.765
+    ]
+  },
+  "event__kontext_pro": {
+    "file": "event__kontext_pro.jpg",
+    "model": "black-forest-labs/flux-kontext-pro",
+    "id": "de45t9b5zxrmr0d1jcjrh66ctr",
+    "predict_time": 5.088005627,
+    "wall": 7.1,
+    "inputs": {
+      "output_format": "jpg",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1500,
+      2000
+    ],
+    "out_size": [
+      880,
+      1184
+    ],
+    "price": 0.04,
+    "note": "current fallback",
+    "identity": [
+      0.858,
+      0.876,
+      0.608,
+      0.434
+    ]
+  },
+  "event__kontext_pro__true": {
+    "file": "event__kontext_pro__true.jpg",
+    "from": "event__kontext_pro",
+    "identity": [
+      0.967,
+      0.976,
+      0.909,
+      0.515
+    ]
+  },
+  "event__flux_2_pro": {
+    "file": "event__flux_2_pro.jpg",
+    "model": "black-forest-labs/flux-2-pro",
+    "id": "dsvgmzn05hrmy0d1jcjr53b2sw",
+    "predict_time": 10.895621941,
+    "wall": 12.3,
+    "inputs": {
+      "output_format": "jpg",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1500,
+      2000
+    ],
+    "out_size": [
+      896,
+      1184
+    ],
+    "price": null,
+    "note": "",
+    "identity": [
+      0.855,
+      0.863,
+      0.649,
+      0.646
+    ]
+  },
+  "event__flux_2_pro__true": {
+    "file": "event__flux_2_pro__true.jpg",
+    "from": "event__flux_2_pro",
+    "identity": [
+      0.406,
+      0.541,
+      0.451,
+      0.174
+    ]
+  },
+  "event__seedream_4": {
+    "file": "event__seedream_4.jpg",
+    "model": "bytedance/seedream-4",
+    "id": "g8w2fyfg2nrmr0d1jcjtgnqph8",
+    "predict_time": 19.274985556,
+    "wall": 21.0,
+    "inputs": {
+      "size": "2K",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1500,
+      2000
+    ],
+    "out_size": [
+      1500,
+      2000
+    ],
+    "price": 0.03,
+    "note": "",
+    "identity": [
+      0.57,
+      0.592,
+      0.198,
+      0.306
+    ]
+  },
+  "event__seedream_4__true": {
+    "file": "event__seedream_4__true.jpg",
+    "from": "event__seedream_4",
+    "identity": [
+      0.779,
+      0.808,
+      0.737,
+      0.581
+    ]
+  },
+  "event__qwen_edit_plus": {
+    "file": "event__qwen_edit_plus.jpg",
+    "model": "qwen/qwen-image-edit-plus",
+    "id": "ph9h9s2xy1rna0d1jck9jwagwm",
+    "predict_time": 4.827175627,
+    "wall": 5.7,
+    "inputs": {
+      "output_format": "jpg",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1500,
+      2000
+    ],
+    "out_size": [
+      896,
+      1184
+    ],
+    "price": 0.03,
+    "note": "",
+    "identity": [
+      0.676,
+      0.724,
+      0.301,
+      0.461
+    ]
+  },
+  "event__qwen_edit_plus__true": {
+    "file": "event__qwen_edit_plus__true.jpg",
+    "from": "event__qwen_edit_plus",
+    "identity": [
+      0.746,
+      0.782,
+      0.813,
+      0.352
+    ]
+  },
+  "portrait__nano_banana": {
+    "file": "portrait__nano_banana.jpg",
+    "model": "google/nano-banana",
+    "id": "s6y1t6cs85rmt0d1jckapzp9pm",
+    "predict_time": 8.07607869,
+    "wall": 9.6,
+    "inputs": {
+      "output_format": "jpg"
+    },
+    "in_size": [
+      1086,
+      1448
+    ],
+    "out_size": [
+      864,
+      1184
+    ],
+    "price": 0.039,
+    "note": "current editor Pro edit",
+    "identity": [
+      0.926
+    ]
+  },
+  "portrait__nano_banana__true": {
+    "file": "portrait__nano_banana__true.jpg",
+    "from": "portrait__nano_banana",
+    "identity": [
+      0.885
+    ]
+  },
+  "portrait__nano_banana_2": {
+    "file": "portrait__nano_banana_2.jpg",
+    "model": "google/nano-banana-2",
+    "id": "qrnwttp4ssrmw0d1jckasj9nn8",
+    "predict_time": 16.810782014,
+    "wall": 17.7,
+    "inputs": {
+      "output_format": "jpg",
+      "resolution": "2K",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1086,
+      1448
+    ],
+    "out_size": [
+      1792,
+      2400
+    ],
+    "price": null,
+    "note": "",
+    "identity": [
+      0.957
+    ]
+  },
+  "portrait__nano_banana_2__true": {
+    "file": "portrait__nano_banana_2__true.jpg",
+    "from": "portrait__nano_banana_2",
+    "identity": [
+      0.996
+    ]
+  },
+  "portrait__nano_banana_pro": {
+    "file": "portrait__nano_banana_pro.jpg",
+    "model": "google/nano-banana-pro",
+    "id": "a70kzm0n2srmw0d1jckt07qfrm",
+    "predict_time": 25.008030941,
+    "wall": 25.9,
+    "inputs": {
+      "output_format": "jpg",
+      "resolution": "2K",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1086,
+      1448
+    ],
+    "out_size": [
+      1792,
+      2400
+    ],
+    "price": 0.15,
+    "note": "",
+    "identity": [
+      0.958
+    ]
+  },
+  "portrait__nano_banana_pro__true": {
+    "file": "portrait__nano_banana_pro__true.jpg",
+    "from": "portrait__nano_banana_pro",
+    "identity": [
+      0.995
+    ]
+  },
+  "portrait__kontext_pro": {
+    "file": "portrait__kontext_pro.jpg",
+    "model": "black-forest-labs/flux-kontext-pro",
+    "id": "1e4pagc9pxrmy0d1jckrgpth2m",
+    "predict_time": 4.816223342,
+    "wall": 5.8,
+    "inputs": {
+      "output_format": "jpg",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1086,
+      1448
+    ],
+    "out_size": [
+      880,
+      1184
+    ],
+    "price": 0.04,
+    "note": "current fallback",
+    "identity": [
+      0.685
+    ]
+  },
+  "portrait__kontext_pro__true": {
+    "file": "portrait__kontext_pro__true.jpg",
+    "from": "portrait__kontext_pro",
+    "identity": [
+      0.774
+    ]
+  },
+  "portrait__flux_2_pro": {
+    "file": "portrait__flux_2_pro.jpg",
+    "model": "black-forest-labs/flux-2-pro",
+    "id": "5chddmf88drmt0d1jcktmys6e8",
+    "predict_time": 10.287200952,
+    "wall": 27.7,
+    "inputs": {
+      "output_format": "jpg",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1086,
+      1448
+    ],
+    "out_size": [
+      896,
+      1184
+    ],
+    "price": null,
+    "note": "",
+    "identity": [
+      0.895
+    ]
+  },
+  "portrait__flux_2_pro__true": {
+    "file": "portrait__flux_2_pro__true.jpg",
+    "from": "portrait__flux_2_pro",
+    "identity": [
+      0.935
+    ]
+  },
+  "portrait__seedream_4": {
+    "file": "portrait__seedream_4.jpg",
+    "model": "bytedance/seedream-4",
+    "id": "he5mkkrx21rmy0d1jcmah4as40",
+    "predict_time": 13.727719622,
+    "wall": 15.7,
+    "inputs": {
+      "size": "2K",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1086,
+      1448
+    ],
+    "out_size": [
+      1086,
+      1448
+    ],
+    "price": 0.03,
+    "note": "",
+    "identity": [
+      0.859
+    ]
+  },
+  "portrait__seedream_4__true": {
+    "file": "portrait__seedream_4__true.jpg",
+    "from": "portrait__seedream_4",
+    "identity": [
+      0.969
+    ]
+  },
+  "portrait__qwen_edit_plus": {
+    "file": "portrait__qwen_edit_plus.jpg",
+    "model": "qwen/qwen-image-edit-plus",
+    "id": "ygax0c35g9rne0d1jcm86cqd3m",
+    "predict_time": 4.792469524,
+    "wall": 5.8,
+    "inputs": {
+      "output_format": "jpg",
+      "aspect_ratio": "match_input_image"
+    },
+    "in_size": [
+      1086,
+      1448
+    ],
+    "out_size": [
+      896,
+      1184
+    ],
+    "price": 0.03,
+    "note": "",
+    "identity": [
+      0.867
+    ]
+  },
+  "portrait__qwen_edit_plus__true": {
+    "file": "portrait__qwen_edit_plus__true.jpg",
+    "from": "portrait__qwen_edit_plus",
+    "identity": [
+      0.855
+    ]
+  }
+}
