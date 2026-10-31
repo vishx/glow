@@ -3177,7 +3177,8 @@ function applyFeatures() {
   if (typeof renderBatchLink === "function") renderBatchLink();
   if (screen === "enhanceResult" && typeof enh !== "undefined" && enh.ai) {
     let changed = false;
-    for (const k of Object.keys(enh.on)) if (enh.on[k] && !enhToggleOn(k)) { enh.on[k] = false; changed = true; }
+    for (const k of Object.keys(enh.lv || {})) if (enh.lv[k] && !enhToggleOn(k)) { enh.lv[k] = 0; changed = true; }
+    if (lvState.k && !enhToggleOn(lvState.k)) closeLevels(true);
     renderToggles(); if (changed) updateComposite();
   }
   // Editor: a tool switched off while open closes (keeping nothing it hadn't applied).
