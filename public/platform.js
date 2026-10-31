@@ -11,17 +11,21 @@ const store = {
 const Platform = {
   // Opens the system photo picker. Resolves with the File, or null if the user backs out.
   pickPhoto(inputId = "file") {
+    return this.pickPhotos(inputId).then((fs) => fs[0] || null);
+  },
+  // The same, for an input that allows several photos. Resolves with an array (empty on cancel).
+  pickPhotos(inputId = "files") {
     return new Promise((done) => {
       const input = document.getElementById(inputId);
       let settled = false;
       const finish = (f) => {
         if (settled) return; settled = true;
         window.removeEventListener("focus", onFocus); input.onchange = null; input.value = "";
-        done(f || null);
+        done(f);
       };
       // Some browsers never fire "change" on cancel; returning focus without a file means cancel.
-      const onFocus = () => setTimeout(() => { if (!input.files.length) finish(null); }, 1000);
-      input.onchange = () => finish(input.files[0]);
+      const onFocus = () => setTimeout(() => { if (!input.files.length) finish([]); }, 1000);
+      input.onchange = () => finish([...input.files]);
       window.addEventListener("focus", onFocus);
       input.click();
     });

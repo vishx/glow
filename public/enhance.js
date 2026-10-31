@@ -35,6 +35,7 @@ const enh = {
 setIcon($("enhSettingsBtn"), "settings");
 $("enhSettingsBtn").addEventListener("click", openSettings);
 function renderEnhanceHome() {
+  if (typeof renderBatchLink === "function") renderBatchLink();
   const b = $("enhCredits"), a = account;
   b.hidden = !a;
   if (a) b.innerHTML = icon("sparkle") + `<span>${balanceText(a)}</span>`;
@@ -62,7 +63,7 @@ async function enhanceSample() {
 setIcon($("enhSheetClose"), "close");
 function openEnhSheet(work, original, name, demo) {
   if (enh.busy) return;
-  Object.assign(enh, { src: work, original, name, demo, ai: null, full: null, base: null, faces: [], pending: null, saved: null });
+  Object.assign(enh, { src: work, original, name, demo, ai: null, full: null, base: null, faces: [], pending: null, saved: null, fromBatch: null });
   enh.cache.clear();
   $("enhSheetImg").src = work;
   $("enhSheetSample").hidden = !demo;
@@ -130,45 +131,47 @@ async function runEnhance() {
 
 // Starts the AI request once, then follows it. A dropped connection never sends it again: it
 // remembers the request and "Check again" only asks for its status, which is free.
-async function enhanceRequest() {
-  if (enh.pending && enh.pending.done) return enh.pending.done;
-  if (!enh.pending) {
-    const image = await uploadable(enh.src), requestId = rid();
-    enh.pending = { requestId, id: null };
+// `h` holds the request (h.pending); the single flow passes `enh`, batch Enhance one per photo.
+async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from = "enhance") {
+  if (h.pending && h.pending.done) return h.pending.done;
+  if (!h.pending) {
+    const image = await uploadable(src), requestId = rid();
+    h.pending = { requestId, id: null };
     try {
-      track("ai_start", { mode: ENH_MODE, from: "enhance" });
+      track("ai_start", { mode: ENH_MODE, from });
       const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: ENH_MODE, request_id: requestId }) });
-      enh.pending.id = res.id || null;
-      return await followEnhance(res);
+      h.pending.id = res.id || null;
+      return await followEnhance(h, res, onLabel, from);
     } catch (err) {
       // The server answered, so nothing started; it returns any credit it took.
-      if (err.status) { enh.pending = null; track("ai_fail", { mode: ENH_MODE, from: "enhance", status: err.status, limit: !!err.limit }); throw err; }
+      if (err.status) { h.pending = null; track("ai_fail", { mode: ENH_MODE, from, status: err.status, limit: !!err.limit }); throw err; }
       if (err.lost) throw err;
       throw lostConnection();
     }
   }
-  return followEnhance(null);
+  return followEnhance(h, null, onLabel, from);
 }
+const enhLabel = (t) => { $("enhGoLbl").textContent = t; };
 function lostConnection() { const e = new Error("Glow lost the connection. Tap Check again; it won't charge you twice."); e.lost = true; return e; }
-async function followEnhance(first) {
-  const p = enh.pending, started = Date.now();
+async function followEnhance(h, first, onLabel, from) {
+  const p = h.pending, started = Date.now();
   let res = first, misses = 0;
   while (Date.now() - started < 240000) {
     if (res && res.status === "succeeded" && res.output) {
-      track("ai_done", { mode: ENH_MODE, from: "enhance", secs: Math.round((Date.now() - started) / 1000) });
+      track("ai_done", { mode: ENH_MODE, from, secs: Math.round((Date.now() - started) / 1000) });
       p.done = Array.isArray(res.output) ? res.output[0] : res.output; return p.done; }
     if (res && ["failed", "canceled"].includes(res.status)) {
-      track("ai_fail", { mode: ENH_MODE, from: "enhance", refunded: res.refunded === true });
-      enh.pending = null;
+      track("ai_fail", { mode: ENH_MODE, from, refunded: res.refunded === true });
+      h.pending = null;
       throw new Error((res.error || "Enhance couldn't process this photo.") + (res.refunded ? " Your AI credit was returned." : ""));
     }
-    if (res && res.status === "starting") $("enhGoLbl").textContent = "Warming up…";
-    else if (res) $("enhGoLbl").textContent = "Enhancing…";
+    if (res && res.status === "starting") onLabel("Warming up…");
+    else if (res) onLabel("Enhancing…");
     await sleep(1500);
     const q = p.id ? "id=" + encodeURIComponent(p.id) : "request=" + encodeURIComponent(p.requestId);
     try { res = await call("enhance?" + q, { method: "GET" }); if (res.id) p.id = res.id; misses = 0; }
     catch (err) {
-      if (err.status === 404 && !p.id) { enh.pending = null; throw new Error("Enhance never started, so no AI credit was used. Tap Enhance to try again."); }
+      if (err.status === 404 && !p.id) { h.pending = null; throw new Error("Enhance never started, so no AI credit was used. Tap Enhance to try again."); }
       if (err.status && err.status !== 429 && err.status < 500) { throw lostConnection(); }
       if (++misses >= 3) throw lostConnection();
       res = null;
@@ -310,6 +313,7 @@ async function composeEnhanced(on) {
 
 $("enhClose").addEventListener("click", closeEnhResult);
 async function closeEnhResult() {
+  if (enh.fromBatch) { showScreen("enhanceBatch"); return; }   // the batch still holds this photo
   if (!enh.saved && !enh.demo) {
     const c = await ask({ title: "Leave without saving?", text: "This enhanced photo hasn't been saved yet.", actions: [
       { label: "Save it", value: "save" }, { label: "Discard", value: "discard", kind: "ghost" }, { label: "Keep looking", value: "", kind: "ghost" }] });
@@ -343,6 +347,7 @@ async function enhDownload() {
     const where = await Platform.savePhotos([{ data, name }]);
     track("save", { from: "enhance", demo: !!enh.demo, marked: !isPro(), where: String(where || "") });
     enh.saved = { data, where, name };
+    if (enh.fromBatch) enh.fromBatch.saved = true;
     showEnhShare();
   } catch (err) {
     if (err && err.name === "AbortError") return;
@@ -353,6 +358,7 @@ const SAVED_LABEL = { photos: "Saved to Photos", downloaded: "Downloaded", share
 function showEnhShare() {
   $("enhShareImg").src = enh.saved.data;
   $("enhSavedText").textContent = SAVED_LABEL[enh.saved.where] || "Saved";
+  $("enhAnother").hidden = !!enh.fromBatch;
   const st = $("enhSavedState"); st.style.animation = "none"; void st.offsetWidth; st.style.animation = "";
   showScreen("enhanceShare");
   fitEnhFrame();
@@ -360,7 +366,7 @@ function showEnhShare() {
 }
 setIcon($("enhShareBack"), "back"); setIcon($("enhShareBtn"), "share"); setIcon(document.querySelector("#enhSavedState .ok"), "check");
 $("enhShareBack").addEventListener("click", () => { showScreen("enhanceResult"); fitEnhFrame(); });
-$("enhShareDone").addEventListener("click", () => showScreen("enhanceHome"));
+$("enhShareDone").addEventListener("click", () => showScreen(enh.fromBatch ? "enhanceBatch" : "enhanceHome"));
 $("enhShareBtn").addEventListener("click", async () => {
   try { await Platform.savePhotos([{ data: enh.saved.data, name: enh.saved.name }], { share: true }); track("share", { from: "enhance" }); }
   catch (err) { if (!(err && err.name === "AbortError")) say("Couldn't open sharing. Try again.", true); }
@@ -378,8 +384,239 @@ async function editEnhanced() {
   await openPhoto(enh.src, enh.original, { name: enh.name, processed: { data: enh.current, full, label: "Enhance" } });
 }
 
+// ---------- Batch Enhance (Glow Pro) ----------
+// Up to 10 photos at once. Each photo is its own Enhance request (1 AI credit, refunded by the
+// server if it fails), three run at a time, and each tile shows its result as soon as it is
+// ready. The total cost shows before anything starts. Tapping a finished photo opens the usual
+// Result screen (compare, enhancers, save); Save all saves every finished photo at full size.
+const BATCH_MAX = 10, BATCH_PARALLEL = 3;
+// items: { key, src, original, name, thumb, status, pending, full (Blob), after, error, saved, el }
+// status: ready (not started), queued, working, done, failed.
+const batch = { items: [], running: false, stop: false, loading: 0, saving: false, saved: "", action: "", next: 1 };
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+setIcon($("batchClose"), "close"); setIcon($("batchAdd"), "plus");
+
+$("enhBatchPick").addEventListener("click", () => {
+  if (batch.items.length) { showScreen("enhanceBatch"); renderBatch(); return; }   // back to the batch in progress
+  if (!isPro()) { track("batch_locked", {}); openPaywall(); return; }
+  batchPick();
+});
+$("batchAdd").addEventListener("click", batchPick);
+function renderBatchLink() {
+  const n = batch.items.length, b = $("enhBatchPick");
+  b.innerHTML = icon("gallery") + (n ? `Back to your ${plural(n, "photo")}` : `Enhance up to ${BATCH_MAX} at once<span class="pro-chip">Pro</span>`);
+}
+
+async function batchPick() {
+  if (batch.running || batch.loading) return;
+  const room = BATCH_MAX - batch.items.length;
+  if (room < 1) { say(`Glow enhances up to ${BATCH_MAX} photos at a time.`); return; }
+  const files = await Platform.pickPhotos("files");
+  if (!files.length) return;
+  if (files.length > room) say(`Glow enhances up to ${BATCH_MAX} photos at a time, so ${room === BATCH_MAX ? "the first " + room : room + " more"} were added.`);
+  const take = files.slice(0, room);
+  if (!batch.items.length) { batch.saved = ""; track("batch_open", { photos: take.length }); }
+  batch.loading = take.length;
+  if (screen !== "enhanceBatch") showScreen("enhanceBatch");
+  renderBatch();
+  refreshAccount().then(renderBatch);
+  let bad = 0;
+  for (const f of take) {
+    try {
+      const r = await readPhoto(f, f.name);
+      batch.items.push({ key: batch.next++, src: r.work, original: r.original, name: f.name, thumb: await shrinkData(r.work, 480), status: "ready", pending: null });
+      batch.saved = "";
+    } catch { bad++; }
+    batch.loading--; renderBatch();
+  }
+  if (bad) say(`${plural(bad, "photo")} couldn't be read. Try JPEG or PNG.`, true);
+}
+
+function renderBatch() {
+  renderBatchLink();
+  const its = batch.items, n = its.length, a = account;
+  const done = its.filter((i) => i.status === "done"), todo = its.filter((i) => i.status === "ready" || i.status === "failed");
+  const charge = todo.filter((i) => !i.pending).length;   // a photo already charged is only checked again, for free
+  const grid = $("batchGrid");
+  for (const it of its) renderTile(it);
+  if (grid.children.length !== n || its.some((i, k) => grid.children[k] !== i.el)) grid.replaceChildren(...its.map((i) => i.el));
+  const left = a ? (a.plan === "pro" ? "this week" : "today") : "";
+  $("batchTitle").textContent = batch.running ? `${done.length} of ${n} ready` : n ? plural(n, "photo") : "Enhance several";
+  $("batchAdd").hidden = batch.running || n >= BATCH_MAX || !!batch.loading;
+  const go = $("batchGo"), lbl = $("batchGoLbl"), cost = $("batchCost");
+  go.classList.toggle("busy", batch.running || batch.saving); go.classList.remove("off");
+  let action = "";
+  if (batch.loading) { lbl.textContent = "Adding photos…"; cost.textContent = ""; }
+  else if (batch.running) {
+    lbl.textContent = "Enhancing…";
+    cost.innerHTML = batch.stop ? "Stopping once the photos already started are done." : `Each photo appears as soon as it's ready. <button class="link-btn" id="batchStop">Stop</button>`;
+  } else if (batch.saving) { lbl.textContent = "Saving…"; cost.textContent = ""; }
+  else if (!n) { action = "add"; lbl.textContent = "Choose photos"; cost.textContent = `Up to ${BATCH_MAX} photos. Each uses 1 AI credit.`; }
+  else if (done.length) {
+    action = batch.saved ? "done" : "save";
+    lbl.textContent = batch.saved ? "Done" : done.length === n ? "Save all" : `Save ${done.length} enhanced`;
+    if (todo.length) cost.innerHTML = `${plural(todo.length, "photo")} not enhanced. <button class="link-btn" id="batchRest">Enhance ${todo.length === 1 ? "it" : "them"}${charge ? ` · ${plural(charge, "credit")}` : " · free"}</button>`;
+    else cost.textContent = batch.saved ? `${SAVED_LABEL[batch.saved] || "Saved"}: ${plural(done.length, "photo")}.` : "Tap a photo to compare before and after.";
+  } else {
+    action = "run";
+    lbl.textContent = `Enhance ${plural(todo.length, "photo")}`;
+    if (!a) cost.textContent = `Uses ${plural(charge, "AI credit")}.`;
+    else if (a.remaining < charge) {
+      action = "short"; go.classList.add("off");
+      cost.textContent = a.remaining < 1
+        ? (a.plan === "pro" ? "You've used this week's AI credits. Each one comes back 7 days after you used it." : "You've used today's AI credits.")
+        : `You have ${plural(a.remaining, "AI credit")} left ${left}. Remove ${plural(charge - a.remaining, "photo")} to start.`;
+    } else cost.innerHTML = `Uses ${plural(charge, "AI credit")} · <b>${a.remaining}</b> left ${left}`;
+  }
+  batch.action = action;
+  go.disabled = !action;
+  const ic = action === "save" ? "save" : action === "done" ? "check" : action === "add" ? "imageplus" : "sparkle";
+  if ($("batchGoIc").dataset.icon !== ic) { $("batchGoIc").dataset.icon = ic; setIcon($("batchGoIc"), ic); }
+  if ($("batchStop")) $("batchStop").onclick = batchStop;
+  if ($("batchRest")) $("batchRest").onclick = () => batchRun(todo);
+}
+
+function renderTile(it) {
+  if (!it.el) {
+    it.el = document.createElement("div"); it.el.setAttribute("role", "listitem");
+    it.el.innerHTML = `<button class="bt-ph"><img alt=""><span class="enh-scan" aria-hidden="true"></span><span class="bt-state"></span></button>` +
+      `<button class="bt-x" aria-label="Remove photo">${icon("close")}</button>`;
+    it.el.querySelector(".bt-ph").onclick = () => batchTap(it);
+    it.el.querySelector(".bt-x").onclick = () => { if (batch.running) return; batch.items.splice(batch.items.indexOf(it), 1); renderBatch(); };
+  }
+  const st = it.status, img = it.el.querySelector("img"), src = st === "done" ? it.after : it.thumb;
+  if (img.getAttribute("src") !== src) img.src = src;
+  it.el.className = "bt " + st;
+  it.el.querySelector(".bt-x").hidden = batch.running || st === "done" || st === "working" || st === "queued";
+  const label = { ready: "", queued: "Waiting", working: it.label || "Enhancing…", done: "", failed: it.pending ? "Check again" : "Try again" }[st];
+  it.el.querySelector(".bt-state").innerHTML = st === "done" ? icon("check") : st === "failed" ? icon("revert") + `<span>${label}</span>` : label ? `<span>${label}</span>` : "";
+  it.el.querySelector(".bt-ph").setAttribute("aria-label", `${it.name}: ${st === "done" ? "enhanced, open to compare" : st === "failed" ? (it.error || "couldn't be enhanced") + ". Tap to try again" : label || "not enhanced yet"}`);
+}
+
+function batchTap(it) {
+  if (it.status === "done") openBatchResult(it);
+  else if (it.status === "failed" && !batch.running) {
+    if (!it.pending && account && account.remaining < 1) { openCredits(); return; }
+    batchRun([it]);
+  } else if (it.status === "failed") say(it.error || "This photo couldn't be enhanced.", true);
+}
+
+$("batchGo").addEventListener("click", () => {
+  const act = batch.action;
+  if (act === "add") batchPick();
+  else if (act === "run") batchRun(batch.items.filter((i) => i.status === "ready" || i.status === "failed"));
+  else if (act === "short") say($("batchCost").textContent, true);
+  else if (act === "save") batchSave();
+  else if (act === "done") { batch.items = []; showScreen("enhanceHome"); }
+});
+
+async function batchRun(list) {
+  if (batch.running || !list.length) return;
+  if (!isPro()) { track("batch_locked", {}); openPaywall(); return; }
+  Object.assign(batch, { running: true, stop: false, saved: "" });
+  const t0 = Date.now();
+  for (const it of list) { it.status = "queued"; it.error = ""; it.label = ""; }
+  track("batch_start", { photos: list.length, charged: list.filter((i) => !i.pending).length });
+  $("alertLive").textContent = `Enhancing ${plural(list.length, "photo")}.`;
+  renderBatch();
+  let limit = null;
+  const worker = async () => {
+    for (;;) {
+      if (batch.stop) return;
+      const it = batch.items.find((i) => i.status === "queued");
+      if (!it) return;
+      it.status = "working"; renderBatch();
+      try { await batchOne(it); it.status = "done"; }
+      catch (err) {
+        // Out of credits: this photo wasn't charged, so it and the rest just wait.
+        if (err.limit) { limit = limit || err; batch.stop = true; it.status = "ready"; }
+        else { it.status = "failed"; it.error = err.message; }
+      }
+      renderBatch();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(BATCH_PARALLEL, list.length) }, worker));
+  for (const it of batch.items) if (it.status === "queued") it.status = "ready";
+  const ok = list.filter((i) => i.status === "done").length, failed = list.filter((i) => i.status === "failed").length;
+  track("batch_done", { photos: list.length, done: ok, failed, stopped: batch.stop && !limit, limit: !!limit, secs: Math.round((Date.now() - t0) / 1000) });
+  batch.running = false; batch.stop = false;
+  renderBatch();
+  refreshAccount().then(renderBatch);
+  if (limit) say(limit.message, true);
+  else if (failed) say(`${plural(failed, "photo")} couldn't be enhanced. Tap ${failed === 1 ? "it" : "one"} to try again.`, true);
+  if (ok) { Platform.haptic("heavy"); $("alertLive").textContent = `${plural(ok, "enhanced photo")} ready.`; }
+}
+// One photo: the same request as the single flow, kept on the photo so a lost connection is
+// checked again for free.
+async function batchOne(it) {
+  const url = await enhanceRequest(it, it.src, (t) => { if (it.label !== t) { it.label = t; renderTile(it); } }, "batch");
+  let blob;
+  try { const r = await fetch(url); if (!r.ok) throw new Error(); blob = await r.blob(); }
+  catch { throw new Error("The result is ready but couldn't be downloaded yet."); }
+  it.full = blob; it.pending = null;
+  it.after = await shrinkData(await blobToData(blob), 480);
+}
+function batchStop() { if (!batch.running) return; batch.stop = true; renderBatch(); }
+
+async function openBatchResult(it) {
+  if (enh.busy || batch.opening) return;
+  batch.opening = true;
+  try {
+    const full = await blobToData(it.full);
+    Object.assign(enh, { src: it.src, original: it.original, name: it.name, demo: false, full, ai: await shrinkData(full, 2048), base: null, faces: [], pending: null, saved: null, fromBatch: it });
+    enh.cache.clear();
+    await prepareResult();
+    showEnhResult();
+  } catch { say("Couldn't open that photo. Try again.", true); }
+  finally { batch.opening = false; }
+}
+
+// Saves every finished photo at the AI's full size, in one go.
+async function batchSave() {
+  const done = batch.items.filter((i) => i.status === "done");
+  if (!done.length || batch.saving) return;
+  batch.saving = true; renderBatch();
+  try {
+    const stamp = Date.now(), pro = isPro(), files = [];
+    for (const [k, it] of done.entries()) {
+      const name = `glow-enhanced-${stamp}-${k + 1}`;
+      if (pro) { files.push({ blob: it.full, name }); continue; }
+      let m; try { m = await addMark(await blobToData(it.full), false); } catch { m = null; }   // Pro lapsed meanwhile: free saves carry the mark
+      files.push(m ? { data: m.data, name } : { blob: it.full, name });
+    }
+    const where = await Platform.savePhotos(files);
+    track("batch_save", { photos: files.length, marked: !pro, where: String(where || "") });
+    batch.saved = where || "downloaded";
+    for (const it of done) it.saved = true;
+    $("alertLive").textContent = `${SAVED_LABEL[batch.saved] || "Saved"}: ${plural(files.length, "photo")}.`;
+    Platform.haptic("heavy");
+  } catch (err) {
+    if (!(err && err.name === "AbortError")) say(saveFailText(), true);
+  } finally { batch.saving = false; renderBatch(); }
+}
+
+$("batchClose").addEventListener("click", closeBatch);
+async function closeBatch() {
+  if (batch.running) {
+    const c = await ask({ title: "Stop enhancing?", text: "Photos already being enhanced will finish. The rest won't start, so they won't use credits.",
+      actions: [{ label: "Stop", value: "stop" }, { label: "Keep going", value: "", kind: "ghost" }] });
+    if (c) batchStop();
+    return;
+  }
+  const unsaved = batch.items.filter((i) => i.status === "done" && !i.saved).length;
+  if (unsaved && !batch.saved) {
+    const c = await ask({ title: "Leave without saving?", text: `${plural(unsaved, "enhanced photo")} ${unsaved === 1 ? "hasn't" : "haven't"} been saved yet.`, actions: [
+      { label: "Save all", value: "save" }, { label: "Discard", value: "discard", kind: "ghost" }, { label: "Keep looking", value: "", kind: "ghost" }] });
+    if (c === "save") { batchSave(); return; }
+    if (c !== "discard") return;
+  }
+  batch.items = []; batch.saved = "";
+  showScreen("enhanceHome");
+}
+
 // Android back: Share goes back to Result, Result asks before leaving.
 function enhanceBack() {
+  if (screen === "enhanceBatch") { closeBatch(); return true; }
   if (screen === "enhanceShare") { showScreen("enhanceResult"); fitEnhFrame(); return true; }
   if (screen === "enhanceResult") { closeEnhResult(); return true; }
   return false;

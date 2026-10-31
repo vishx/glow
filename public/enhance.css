@@ -175,3 +175,38 @@ dialog.enh-sheet[open] { animation: enh-pop 300ms cubic-bezier(.2, .9, .3, 1.15)
 @media (min-width: 900px) {
   .enh-toggles { justify-content: center; }
 }
+
+/* ---------- Batch Enhance (Pro): a link on the home screen, then a grid that fills in ---------- */
+.enh-batch-link { justify-self: center; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--text); font-size: 0.875rem; }
+.enh-batch-link svg { width: 18px; height: 18px; }
+.pro-chip { padding: 2px 7px; border-radius: 999px; background: #f2a5bb; color: #1d181b; font-size: 0.6875rem; font-weight: 800; line-height: 1rem; letter-spacing: .04em; text-transform: uppercase; }
+#enhanceBatch { max-width: none; background: #000; color: #faf5f7; }
+.batch-grid { flex: 1 1 auto; min-height: 0; overflow-y: auto; width: 100%; max-width: 680px; align-self: center; box-sizing: border-box; display: grid;
+  grid-template-columns: repeat(3, 1fr); gap: var(--s2); align-content: start; padding: var(--s2) var(--gutter); }
+@media (min-width: 600px) { .batch-grid { grid-template-columns: repeat(4, 1fr); } }
+.bt { position: relative; aspect-ratio: 3 / 4; }
+.bt-ph { position: absolute; inset: 0; width: 100%; padding: 0; border: 0; border-radius: var(--r-well); overflow: hidden; background: #1d181e; color: #faf5f7; }
+.bt-ph img { display: block; width: 100%; height: 100%; object-fit: cover; transition: opacity 240ms; }
+.bt.queued img { opacity: .45; }
+.bt.done img { animation: enh-pop 380ms cubic-bezier(.2, .9, .3, 1.15); }
+.bt.working .enh-scan { opacity: 1; }
+.bt-state { position: absolute; left: 6px; bottom: 6px; display: inline-flex; align-items: center; gap: 4px; padding: 2px var(--s2); border-radius: 999px;
+  background: rgb(18 16 20 / .7); font-size: 0.75rem; font-weight: 700; line-height: 1.125rem; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.bt-state:empty { display: none; }
+.bt-state svg { width: 14px; height: 14px; }
+.bt.done .bt-state { left: auto; right: 6px; top: 6px; bottom: auto; width: 24px; height: 24px; padding: 0; justify-content: center; background: #f2a5bb; color: #1d181b; }
+.bt.done .bt-state svg { stroke-width: 3; }
+.bt.failed img { opacity: .4; }
+.bt.failed .bt-state { left: 50%; bottom: 50%; transform: translate(-50%, 50%); white-space: nowrap; background: #faf5f7; color: #17121a; }
+.bt-x { position: absolute; top: -6px; right: -6px; width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 0; display: grid; place-items: center;
+  background: #faf5f7; color: #17121a; box-shadow: 0 2px 8px rgb(0 0 0 / .4); }
+.bt-x::after { content: ""; position: absolute; inset: -8px; }   /* 44px touch target */
+.bt-x svg { width: 15px; height: 15px; stroke-width: 2.5; }
+.batch-foot { flex: none; width: 100%; max-width: 520px; margin: 0 auto; box-sizing: border-box; display: grid; gap: var(--s2);
+  padding: var(--s3) var(--gutter) calc(var(--s4) + env(safe-area-inset-bottom)); }
+#enhanceBatch .enh-go { background: #faf5f7; color: #17121a; }
+#enhanceBatch .enh-go svg { color: #c4718f; }
+#enhanceBatch .enh-go.off { opacity: .55; }
+#enhanceBatch .cost { margin: 0; min-height: 1.125rem; text-align: center; font-size: 0.8125rem; line-height: 1.125rem; color: #bfb2bc; }
+#enhanceBatch .cost b { color: #faf5f7; }
+#enhanceBatch .cost .link-btn { min-height: 32px; padding: 0 4px; font-size: 0.8125rem; color: #f2a5bb; }

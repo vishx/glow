@@ -52,6 +52,7 @@
       <div class="enh-cta">
         <button class="btn" id="enhPick"><span data-icon="sparkle"></span>Choose a photo</button>
         <button class="btn quiet" id="enhSample">Try it on the sample · Free</button>
+        <button class="link-btn enh-batch-link" id="enhBatchPick"><span data-icon="gallery"></span>Enhance up to 10 at once<span class="pro-chip">Pro</span></button>
       </div>
       <div class="enh-meta"><button id="enhCredits" hidden></button></div>
     </div>
@@ -75,6 +76,20 @@
       </div>
     </div>
     <div class="enh-toggles" id="enhToggles" role="group" aria-label="Enhancers"></div>
+  </section>
+
+  <!-- Batch Enhance (Pro): up to 10 photos, a few at a time; each appears as it finishes. -->
+  <section class="screen dark" id="enhanceBatch" hidden aria-label="Enhance several photos">
+    <header class="enh-top">
+      <button class="icon-btn" id="batchClose" aria-label="Close"></button>
+      <h1 id="batchTitle">Photos</h1>
+      <button class="icon-btn end" id="batchAdd" aria-label="Add photos"></button>
+    </header>
+    <div class="batch-grid" id="batchGrid" role="list"></div>
+    <div class="batch-foot">
+      <button class="enh-go" id="batchGo"><span id="batchGoIc" data-icon="sparkle"></span><span id="batchGoLbl">Enhance</span></button>
+      <p class="cost" id="batchCost" aria-live="polite"></p>
+    </div>
   </section>
 
   <section class="screen dark" id="enhanceShare" hidden aria-label="Share">
@@ -349,6 +364,7 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="sr-only" id="alertLive" role="alert" aria-live="assertive"></div>
 <input type="file" id="file" accept="image/*" hidden>
+<input type="file" id="files" accept="image/*" multiple hidden>
 <input type="file" id="sysCamera" accept="image/*" capture="user" hidden>
 <input type="file" id="outfitFile" accept="image/*" hidden>
 

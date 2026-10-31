@@ -199,7 +199,7 @@ let screen = "";
 function showScreen(id) {
   if (screen === "cameraScreen" && id !== "cameraScreen") stopCamera();
   screen = id;
-  ["onboarding", "enhanceHome", "enhanceResult", "enhanceShare", "cameraScreen", "editorHome", "editorScreen"].forEach((s) => { $(s).hidden = s !== id; });
+  ["onboarding", "enhanceHome", "enhanceResult", "enhanceBatch", "enhanceShare", "cameraScreen", "editorHome", "editorScreen"].forEach((s) => { $(s).hidden = s !== id; });
   const dest = id === "cameraScreen" ? "camera" : id === "editorHome" ? "editor" : id === "enhanceHome" ? "enhance" : "";
   $("nav").hidden = !dest || (id === "cameraScreen" && !!cam.shot);
   $("nav").classList.toggle("dark", id === "cameraScreen");

@@ -1745,6 +1745,85 @@ test('audit: Enhance saves the AI result at its full size, not the 2048px workin
 }, { start: 'enhance', camera: false, files: { '/__ai.jpg': path.join(fixtures, 'large-24mp.jpg') } });
 
 // ---------- Runner ----------
+// ---------- Batch Enhance (Pro) ----------
+const BATCH_FILES = ['demo-test-a.jpg', 'demo-test-b.jpg', 'group-two.jpg', 'coords-600x400.png', 'phone-12mp-exif6.jpg'].map(fx);
+async function batchOpen(p, files) {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && account && account.plan);
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhBatchPick'); await (await fc).setFiles(files);
+  await p.waitForFunction(() => screen === 'enhanceBatch' && !batch.loading, null, { timeout: 30000 });
+}
+test('enhance batch: free plan sees it as Pro and gets the paywall, no picker', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && account && account.plan === 'free');
+  assert(/Pro/.test(await p.textContent('#enhBatchPick')), 'Pro label on the link');
+  let picked = false; p.on('filechooser', () => { picked = true; });
+  await p.click('#enhBatchPick'); await p.waitForSelector('#paywall[open]'); await settle(4500);
+  assert(!picked, 'no picker on the free plan');
+  assert(state.events.some((e) => e.name === 'batch_locked'), 'batch_locked reported');
+  eq(state.posts.length, 0, 'no AI request');
+}, { start: 'enhance', camera: false });
+
+test('enhance batch: cost first, three at a time, each result as it lands, Save all saves every photo', async ({ p, state }) => {
+  await batchOpen(p, BATCH_FILES);
+  eq(await p.evaluate(() => batch.items.length), 5, 'five photos added');
+  assert(/Uses 5 AI credits · 40 left this week/.test(await p.textContent('#batchCost')), 'total cost before starting: ' + await p.textContent('#batchCost'));
+  eq(await p.textContent('#batchGoLbl'), 'Enhance 5 photos', 'button names the count');
+  eq(state.posts.length, 0, 'nothing sent before tapping');
+  await p.evaluate(() => { window.__maxWorking = 0; window.__seen = setInterval(() => { window.__maxWorking = Math.max(window.__maxWorking, batch.items.filter((i) => i.status === 'working').length); }, 50); });
+  await p.click('#batchGo');
+  // The first finished photo shows while others are still running.
+  await p.waitForFunction(() => batch.items.some((i) => i.status === 'done') && batch.running, null, { timeout: 60000 });
+  assert(await p.isVisible('.bt.done .bt-state svg'), 'finished tile shows a check');
+  await p.waitForFunction(() => !batch.running, null, { timeout: 90000 });
+  eq(await p.evaluate(() => window.__maxWorking), 3, 'three at a time');
+  eq(state.posts.length, 5, 'one request per photo'); eq(state.used, 5, 'five credits');
+  eq(await p.evaluate(() => batch.items.map((i) => i.status)), Array(5).fill('done'), 'all done');
+  eq(await p.textContent('#batchGoLbl'), 'Save all', 'Save all offered');
+  // A finished photo opens in the usual Result screen and comes back to the batch.
+  await p.click('.bt.done >> nth=1');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  await p.click('#enhClose'); await p.waitForFunction(() => screen === 'enhanceBatch');
+  eq(state.posts.length, 5, 'opening a result costs nothing');
+  await p.click('#batchGo'); await downloads(state, 5); await settle(400);
+  eq(state.downloads.length, 5, 'five files saved');
+  assert(state.downloads.every((d) => /^glow-enhanced-\d+-\d\.\w+$/.test(d.name)), 'named in order: ' + state.downloads.map((d) => d.name));
+  const ai = imageSize(path.join(fixtures, 'ai-result.jpg'));
+  assert(state.downloads.every((d) => imageSize(d.file).w === ai.w), 'saved at the AI result\'s full size');
+  eq(await p.textContent('#batchGoLbl'), 'Done', 'Done after saving');
+  await settle(4500);
+  const ev = (n) => state.events.filter((e) => e.name === n).map((e) => e.props);
+  eq(ev('batch_open')[0]?.photos, 5, 'batch_open'); eq(ev('batch_start')[0]?.photos, 5, 'batch_start');
+  eq([ev('batch_done')[0]?.done, ev('batch_done')[0]?.failed], [5, 0], 'batch_done'); eq(ev('batch_save')[0]?.photos, 5, 'batch_save');
+  eq(ev('ai_start').filter((x) => x.from === 'batch').length, 5, 'each photo reported as from batch');
+  await p.click('#batchGo'); await p.waitForFunction(() => screen === 'enhanceHome' && !batch.items.length);
+}, { start: 'enhance', camera: false, plan: 'pro', quota: 40, ai: { post: 'processing', polls: ['processing', 'processing', 'succeeded'] } });
+
+test('enhance batch: never starts without the credits, caps at 10, and asks before leaving unsaved', async ({ p, state }) => {
+  await batchOpen(p, [...BATCH_FILES, ...BATCH_FILES, BATCH_FILES[0]]);
+  eq(await p.evaluate(() => batch.items.length), 10, 'capped at 10');
+  assert(/up to 10/.test(await toast(p)), 'says why: ' + await toast(p));
+  assert(await p.isHidden('#batchAdd'), 'no Add at 10');
+  assert(/You have 3 AI credits left this week. Remove 7 photos to start./.test(await p.textContent('#batchCost')), 'short on credits: ' + await p.textContent('#batchCost'));
+  await p.click('#batchGo'); await settle(300); eq(state.posts.length, 0, 'nothing sent');
+  for (let k = 0; k < 7; k++) await p.click('.bt-x >> nth=0');
+  assert(/Uses 3 AI credits · 3 left/.test(await p.textContent('#batchCost')), 'fits now');
+  await p.click('#batchGo'); await p.waitForFunction(() => !batch.running && batch.items.every((i) => i.status === 'done'), null, { timeout: 60000 });
+  eq(state.posts.length, 3, 'three requests');
+  await p.click('#batchClose'); await p.waitForSelector('#ask[open], dialog[open]');
+  assert(/Leave without saving/.test(await p.textContent('dialog[open]')), 'asks before discarding');
+}, { start: 'enhance', camera: false, plan: 'pro', quota: 3 });
+
+test('enhance batch: one failed photo does not stop the rest, and it can be retried', async ({ p, state }) => {
+  await batchOpen(p, BATCH_FILES.slice(0, 3));
+  await p.evaluate(() => { const f = window.fetch; let n = 0; window.fetch = (u, o) => (String(u).includes('/functions/v1/enhance') && o && o.method === 'POST' && n++ === 1 ? Promise.resolve(new Response(JSON.stringify({ error: 'Glow\'s AI service is temporarily unavailable.' }), { status: 502 })) : f(u, o)); });
+  await p.click('#batchGo'); await p.waitForFunction(() => !batch.running, null, { timeout: 60000 });
+  eq(await p.evaluate(() => batch.items.map((i) => i.status).sort()), ['done', 'done', 'failed'], 'one failed, two done');
+  assert(/couldn't be enhanced/.test(await toast(p)), 'says so: ' + await toast(p));
+  assert(/1 photo not enhanced/.test(await p.textContent('#batchCost')), 'offers the rest: ' + await p.textContent('#batchCost'));
+  eq(await p.textContent('#batchGoLbl'), 'Save 2 enhanced', 'can save what worked');
+  await p.click('.bt.failed .bt-ph'); await p.waitForFunction(() => !batch.running && batch.items.every((i) => i.status === 'done'), null, { timeout: 60000 });
+  eq(await p.textContent('#batchGoLbl'), 'Save all', 'all done after retry');
+}, { start: 'enhance', camera: false, plan: 'pro', quota: 40 });
+
 (async () => {
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
   const results = [];
