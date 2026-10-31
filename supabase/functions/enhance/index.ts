@@ -148,17 +148,28 @@ Deno.serve(async (req) => {
       return json({ error: msg, limit: true, usage }, 429);
     }
 
-    // Enhance's face sheet (see FACE_SHEET) starts first, without waiting, so it runs alongside
-    // the main edit on the same credit. If it can't start, the edit goes on without it.
     let facesId: string | undefined;
-    if (mode === "enhance" && okFaceSheet(faces)) {
-      try { facesId = (await startPrediction(FACE_SHEET, { image: faces }, false)).p.id; console.log("face sheet", facesId); }
-      catch (e) { console.error("face sheet start", (e as Error).message); }
-    }
     const dropFaces = () => { if (facesId) rep(`/predictions/${facesId}/cancel`, { method: "POST" }).catch(() => {}); };
     try {
-      const { p, info } = await startPrediction(cfg, { image, mask, extra, prompt: cleanPrompt(prompt) });
+      // Enhance with a face sheet starts the main edit without waiting, so the face sheet can start
+      // right after it and both run together; the app follows the job either way.
+      const sheet = mode === "enhance" && okFaceSheet(faces);
+      const { p, info } = await startPrediction(cfg, { image, mask, extra, prompt: cleanPrompt(prompt) }, !sheet);
       console.log("started", mode, info.model, p.id, p.status, p.error ?? "");
+      if (sheet) await admin.from("ai_usage").update({ prediction_id: p.id }).eq("id", quota.usage_id);   // findable while the sheet starts
+      // The face sheet is an extra on the same credit. Replicate allows only one new job at a time
+      // on a low balance (429): wait the few seconds it asks once, then go on without it.
+      if (sheet && p.status !== "failed" && p.status !== "canceled") {
+        for (let i = 0; i < 2 && !facesId; i++) {
+          try { facesId = (await startPrediction(FACE_SHEET, { image: faces }, false)).p.id; console.log("face sheet", facesId); }
+          catch (e) {
+            console.error("face sheet start", (e as Error).message);
+            if (!(e instanceof HttpError) || e.status !== 429 || i) break;
+            const secs = Math.min(12, Number(/resets in ~?(\d+)s/.exec((e as Error).message)?.[1] ?? 10));
+            await new Promise((r) => setTimeout(r, (secs + 1) * 1000));
+          }
+        }
+      }
       const failed = p.status === "failed" || p.status === "canceled";
       if (failed) { dropFaces(); facesId = undefined; }
       const pid = facesId ? `${p.id}.${facesId}` : p.id;
@@ -176,7 +187,9 @@ Deno.serve(async (req) => {
   } catch (e) {
     const status = e instanceof HttpError ? e.status : 500;
     console.error("enhance failed", status, (e as Error).message);
-    const msg = status === 402 ? "Glow Studio's AI service is temporarily unavailable. Please try again later." : (e as Error).message;
+    const msg = status === 402 ? "Glow Studio's AI service is temporarily unavailable. Please try again later."
+      : status === 429 ? "Glow Studio's AI is busy right now. Please try again in a few seconds. Your credit was returned."
+      : (e as Error).message;
     return json({ error: msg }, status >= 500 || status === 402 ? 502 : status);
   }
 });
