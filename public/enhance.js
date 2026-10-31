@@ -13,7 +13,6 @@ const ENH_SAMPLE = { original: DEMO_DIR + "original.png", result: DEMO_DIR + "en
 // person's own features and the photo's fine detail back, so faces stay true.
 const PRO_MODE = "pro", PRO_COST = 2;
 const proEditOn = () => featureOn("enhance:pro") && featureOn("tool:pro");
-const enhStyle = () => (proEditOn() && store.get("glow.enhStyle") === PRO_MODE ? PRO_MODE : ENH_MODE);
 // [key, label, icon, on by default]. Face and Background Enhancer choose, per area, between the
 // AI result and the original; the rest are free on-device steps on top.
 const ENH_TOGGLES = [["face", "Face Enhancer", "face", true], ["bg", "Background Enhancer", "upscale", true],
@@ -70,12 +69,40 @@ async function enhanceSample() {
 }
 
 // ---------- Pick sheet ----------
+// 2026-10-31 redesign: full screen on phones, the photo on a blurred copy of itself, the kinds of
+// edit as cards (when there is more than one), and a progress bar with the step in place of the
+// button while the AI works. See enhance.css.
 setIcon($("enhSheetClose"), "close");
+// The kinds of edit offered on the sheet. Each: id (the server mode), name, a short line, icon,
+// cost in credits, and pro: true for a premium tool. With one kind the cards stay hidden.
+const ENH_STYLES = [{ id: ENH_MODE, name: "Enhance", line: "Sharper faces, finer detail", icon: "sparkle", cost: 1 },
+  { id: PRO_MODE, name: "Pro Edit", line: "Pro color, light and retouch", icon: "wand", cost: PRO_COST, pro: true }];
+// Pro Edit is offered only while its feature switches are on (or an unfinished Pro Edit is being checked).
+const enhStyles = () => ENH_STYLES.filter((s) => s.id !== PRO_MODE || proEditOn() || (enh.pending && enh.pending.mode === PRO_MODE));
+const enhStyle = () => (enhStyles().some((s) => s.id === store.get("glow.enhStyle")) ? store.get("glow.enhStyle") : ENH_MODE);
+function renderEnhStyle() {
+  const box = $("enhStyle"), st = enh.pending ? enh.pending.mode || ENH_MODE : enhStyle();
+  const list = enhStyles();
+  box.hidden = list.length < 2;
+  if (box.hidden) return;
+  if (box.childElementCount !== list.length) box.innerHTML = list.map((s) =>
+    `<button type="button" role="radio" data-style="${s.id}"><span class="ic">${icon(s.icon)}</span><b>${s.name}${s.pro ? '<span class="pro-chip">Pro</span>' : ""}</b><small>${s.line}</small></button>`).join("");
+  for (const b of box.querySelectorAll("button")) b.setAttribute("aria-checked", String(b.dataset.style === st));
+}
+$("enhStyle").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-style]");
+  if (!b || enh.busy || enh.pending) return;
+  store.set("glow.enhStyle", b.dataset.style);
+  track("enhance_style", { style: b.dataset.style });
+  renderEnhCost();
+});
 function openEnhSheet(work, original, name, demo) {
   if (enh.busy) return;
   Object.assign(enh, { changes: null, strength: 100, style: ENH_MODE, src: work, original, name, demo, ai: null, full: null, base: null, faces: [], pending: null, saved: null, fromBatch: null, fromCamera: null });
   enh.cache.clear();
-  $("enhSheetImg").src = work;
+  $("enhSheetImg").src = work; $("enhSheetFill").src = work;
+  $("enhSheetPic").querySelector(".done")?.remove();
+  $("enhRings").innerHTML = "";
   $("enhSheetSample").hidden = !demo;
   setSheetWorking(false);
   renderEnhCost();
@@ -89,11 +116,16 @@ function renderEnhCost() {
   renderEnhStyle();
   const pro = (enh.pending ? enh.pending.mode : enhStyle()) === PRO_MODE;
   go.textContent = enh.pending ? "Check again" : pro ? "Pro Edit" : "Enhance";
+  // The price sits on the button itself: a credit count, or Free on the sample. Pro Edit is a premium
+  // tool: Pro pays from its weekly credits, free from the one-time premium tries and any credit packs.
+  const gc = $("enhGoCost"), cost = (enhStyles().find((s) => s.id === enhStyle()) || ENH_STYLES[0]).cost;
+  const left = !a ? null : pro ? (a.plan === "pro" ? a.remaining : (a.trialLeft || 0) + (a.bonus || 0)) : a.remaining;
+  gc.hidden = !!enh.pending || (left !== null && !enh.demo && left < cost);
+  gc.innerHTML = enh.demo ? "Free" : cost + icon("sparkle");
+  gc.setAttribute("aria-label", enh.demo ? "free" : cost === 1 ? "1 credit" : cost + " credits");
   if (enh.demo) { c.textContent = pro ? "A photographer's color, light, skin and background. Free on the sample." : "Free on the sample. No credits used."; return; }
   if (enh.pending) { c.textContent = "Glow Studio lost the connection while enhancing. Checking again is free and never charges twice."; return; }
   if (pro) {
-    // A premium tool: Pro uses its weekly credits; free uses the one-time premium tries and any credit packs.
-    const left = !a ? null : a.plan === "pro" ? a.remaining : (a.trialLeft || 0) + (a.bonus || 0);
     if (left !== null && left < PRO_COST) {
       go.textContent = "Get more credits";
       c.textContent = a.plan === "pro" ? "You've used this week's AI credits. Each one comes back 7 days after you used it." : "Pro Edit is a premium tool. Go Pro or get a credit pack to use it.";
@@ -110,25 +142,91 @@ function renderEnhCost() {
   }
   c.innerHTML = `Uses 1 AI credit · <b>${a.remaining}</b> left ${a.plan === "pro" ? "this week" : "today"}`;
 }
+
+// Progress while the AI works. The server only says "starting" or "processing", so the bar is an
+// estimate: quick while the photo is prepared and sent, then easing toward 90% over the usual
+// 5 to 20 seconds, and the last stretch while the result is downloaded and the faces put back.
+// The line names what Enhance is doing at that point.
+const PROG = { prep: [0, 14, 2.2], warm: [14, 24, 6], ai: [24, 90, 9], finish: [90, 99, 1.2] };
+const prog = { stage: null, from: 0, t0: 0, p: 0, timer: 0, steps: [], step: 0, stepAt: 0 };
+function progStage(stage, text) {
+  if (prog.stage !== stage) { prog.from = Math.max(prog.p, PROG[stage][0]); prog.t0 = performance.now(); prog.stage = stage; prog.step = 0; prog.stepAt = prog.t0; }
+  prog.steps = Array.isArray(text) ? text : [text];
+  progLabel(prog.steps[prog.step % prog.steps.length]);
+  $("enhSheet").classList.toggle("faces", stage === "ai" && /face/i.test(prog.steps[prog.step % prog.steps.length]));
+}
+function progLabel(t) {
+  const l = $("enhProgLbl");
+  if (l.textContent === t) return;
+  l.textContent = t; l.classList.remove("swap"); void l.offsetWidth; l.classList.add("swap");
+}
+function progTick() {
+  if (!prog.stage) return;
+  const [, to, tau] = PROG[prog.stage], now = performance.now(), t = (now - prog.t0) / 1000;
+  prog.p = Math.max(prog.p, prog.from + (to - prog.from) * (1 - Math.exp(-t / tau)));
+  $("enhProgBar").style.setProperty("--p", prog.p.toFixed(1) + "%");
+  $("enhProgPct").textContent = Math.floor(prog.p) + "%";
+  if (prog.steps.length > 1 && now - prog.stepAt > 2600) {
+    prog.step++; prog.stepAt = now;
+    const s = prog.steps[prog.step % prog.steps.length];
+    progLabel(s); $("enhSheet").classList.toggle("faces", /face/i.test(s));
+  }
+  if (prog.stage === "ai" && t > 22 && !prog.slow) { prog.slow = true; $("enhCost").textContent = "Taking a little longer than usual. Keep Glow Studio open."; }
+}
+// The faces Enhance will restore get a soft glowing ring while it works on them.
+async function showFaceRings(src) {
+  const box = $("enhRings");
+  try {
+    const faces = (await enhFaces(src)).map(faceBox).slice(0, 8);
+    if (enh.src !== src || !enh.busy) return;
+    box.innerHTML = faces.map((b) => {
+      const w = b.w * 1.25, h = b.h * 1.3;
+      return `<i style="left:${((b.cx - w / 2) * 100).toFixed(2)}%;top:${((b.cy - h / 2) * 100).toFixed(2)}%;width:${(w * 100).toFixed(2)}%;height:${(h * 100).toFixed(2)}%"></i>`;
+    }).join("");
+    enh.faceCount = faces.length;
+  } catch { box.innerHTML = ""; }
+}
+// Maps the labels the request code reports to a stage and the words shown.
+function enhLabel(t) {
+  if (!enh.busy) { $("enhGoLbl").textContent = t; return; }
+  if (/warm/i.test(t)) progStage("warm", "Warming up the AI…");
+  else if (/like a pro/i.test(t)) progStage("ai", ["Balancing color and light…", "Retouching skin…", "Giving the background depth…"]);
+  else if (/^enhancing/i.test(t)) progStage("ai", (enh.faceCount ? ["Restoring faces…"] : []).concat(["Sharpening details…", "Cleaning up blur and noise…", "Doubling the resolution…"]));
+  else if (/almost|keeping|finish/i.test(t)) progStage("finish", t.replace(/^Almost there…$/, "Adding the finishing touches…"));
+  else progStage(prog.stage || "prep", t);
+}
 function setSheetWorking(on, text) {
   enh.busy = on;
-  $("enhSheet").classList.toggle("working", on);
+  const sh = $("enhSheet");
+  sh.classList.toggle("working", on);
   $("enhGo").classList.toggle("busy", on); $("enhGo").disabled = on; $("enhSheetClose").disabled = on;
-  if (on) { $("enhGoLbl").textContent = text || "Enhancing…"; $("enhCost").textContent = enh.demo ? "Showing a result prepared with Glow Studio's Enhance." : "This usually takes 5 to 20 seconds."; }
-  else renderEnhCost();
+  $("enhProg").setAttribute("aria-hidden", String(!on));
+  clearInterval(prog.timer);
+  if (on) {
+    if (!prog.stage) { Object.assign(prog, { p: 0, slow: false }); progStage("prep", "Getting your photo ready…"); }
+    if (text) enhLabel(text);
+    prog.timer = setInterval(progTick, 120); progTick();
+    $("enhCost").textContent = enh.demo ? "Showing a result prepared with Glow Studio's Enhance." : "This usually takes 5 to 20 seconds.";
+  } else {
+    prog.stage = null; sh.classList.remove("faces");
+    $("enhProgBar").style.setProperty("--p", "0%");
+    renderEnhCost();
+  }
 }
-function renderEnhStyle() {
-  $("enhStyle").hidden = !proEditOn() && !(enh.pending && enh.pending.mode === PRO_MODE);
-  const st = enh.pending ? enh.pending.mode || ENH_MODE : enhStyle();
-  for (const b of $("enhStyle").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.style === st));
+// The last moment on the sheet: the bar fills and the result wipes in over the photo.
+async function sheetReveal(data) {
+  if (!$("enhSheet").open) return;
+  clearInterval(prog.timer);
+  prog.p = 100; $("enhProgBar").style.setProperty("--p", "100%"); $("enhProgPct").textContent = "100%";
+  progLabel("Done"); $("enhSheet").classList.remove("faces");
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const im = new Image(); im.className = "done"; im.alt = "";
+  im.src = data;
+  try { await im.decode(); } catch { return; }
+  $("enhSheetPic").appendChild(im);
+  void im.offsetWidth; im.classList.add("in");
+  await sleep(700);
 }
-$("enhStyle").addEventListener("click", (e) => {
-  const b = e.target.closest("button[data-style]");
-  if (!b || enh.busy || enh.pending) return;
-  store.set("glow.enhStyle", b.dataset.style);
-  track("enhance_style", { style: b.dataset.style });
-  renderEnhCost();
-});
 $("enhSheetClose").addEventListener("click", () => $("enhSheet").close());
 $("enhSheet").addEventListener("cancel", (e) => { if (enh.busy) e.preventDefault(); });
 $("enhGo").addEventListener("click", () => {
@@ -144,12 +242,13 @@ async function runEnhance() {
   // (before its look), so its faces come from the picture itself.
   enh.cropFrom = enh.fromCamera ? null : enh.original;
   setSheetWorking(true);
+  showFaceRings(mine);
   $("alertLive").textContent = "Enhancing your photo.";
   try {
     let url;
     const pro = (enh.pending ? enh.pending.mode : enhStyle()) === PRO_MODE;
     enh.style = pro ? PRO_MODE : ENH_MODE;
-    if (enh.demo) { await sleep(1800); url = pro ? ENH_SAMPLE.pro : ENH_SAMPLE.result; }   // a prepared result: no request, no credit
+    if (enh.demo) { await sleep(700); enhLabel(pro ? "Editing like a pro…" : "Enhancing…"); await sleep(2600); url = pro ? ENH_SAMPLE.pro : ENH_SAMPLE.result; }   // a prepared result: no request, no credit
     else if (pro) url = await proEditRequest(enh, enh.src, enhLabel, enh.fromCamera ? "camera" : "enhance");
     else url = await enhanceRequest(enh, enh.src, enhLabel, enh.fromCamera ? "camera" : "enhance");
     if (!url || enh.src !== mine) return;
@@ -174,6 +273,7 @@ async function runEnhance() {
     enh.ai = await shrinkData(full, 2048); enh.full = full; enh.pending = null;
     if (!enh.demo) refreshAccount();
     await prepareResult();
+    await sheetReveal(enh.ai);
     setSheetWorking(false);
     if ($("enhSheet").open) $("enhSheet").close();
     showEnhResult();
@@ -248,7 +348,6 @@ async function proEditRequest(h, src, onLabel, from) {
   }
   return followEnhance(h, null, onLabel, from);
 }
-const enhLabel = (t) => { $("enhGoLbl").textContent = t; };
 function lostConnection() { const e = new Error("Glow Studio lost the connection. Tap Check again; it won't charge you twice."); e.lost = true; return e; }
 async function followEnhance(h, first, onLabel, from) {
   const p = h.pending, started = Date.now();

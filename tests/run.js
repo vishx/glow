@@ -580,9 +580,10 @@ test('enhance: Pro Edit sends one "pro" request, keeps faces true on the phone, 
   const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
   await p.waitForSelector('#enhSheet[open]');
   await p.click('#enhStyle button[data-style=pro]');
-  eq(await p.getAttribute('#enhStyle button[data-style=pro]', 'aria-pressed'), 'true', 'Pro Edit selected');
+  eq(await p.getAttribute('#enhStyle button[data-style=pro]', 'aria-checked'), 'true', 'Pro Edit selected');
   assert(/premium credit/.test(await p.textContent('#enhCost')), 'premium cost shown: ' + await p.textContent('#enhCost'));
   eq(await p.textContent('#enhGoLbl'), 'Pro Edit', 'button says Pro Edit');
+  eq(await p.getAttribute('#enhGoCost', 'aria-label'), '2 credits', 'price on the button');
   await p.click('#enhGo');
   await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 60000 });
   eq(state.posts, ['pro'], 'one pro request');

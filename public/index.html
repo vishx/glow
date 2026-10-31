@@ -484,18 +484,25 @@
 
 <dialog class="enh-sheet" id="enhSheet" aria-label="Enhance this photo">
   <div class="ph">
-    <img id="enhSheetImg" alt="The photo you picked">
-    <div class="enh-scan" aria-hidden="true"></div>
-    <div class="sparkles" aria-hidden="true"><i style="left:22%;top:30%"></i><i style="left:70%;top:22%"></i><i style="left:58%;top:64%"></i></div>
+    <img class="ph-fill" id="enhSheetFill" alt="" aria-hidden="true">
+    <div class="ph-pic" id="enhSheetPic">
+      <img id="enhSheetImg" alt="The photo you picked">
+      <div class="enh-scan" aria-hidden="true"></div>
+      <div class="enh-rings" id="enhRings" aria-hidden="true"></div>
+      <div class="sparkles" aria-hidden="true"><i style="left:22%;top:30%"></i><i style="left:70%;top:22%"></i><i style="left:58%;top:64%"></i><i style="left:34%;top:78%"></i></div>
+    </div>
     <button class="x" id="enhSheetClose" aria-label="Close"></button>
     <span class="enh-pill ai" id="enhSheetSample" hidden>AI-generated sample</span>
   </div>
   <div class="foot">
-    <div class="seg enh-style" id="enhStyle" role="group" aria-label="Kind of edit">
-      <button type="button" data-style="enhance" aria-pressed="true">Enhance</button>
-      <button type="button" data-style="pro" aria-pressed="false">Pro Edit</button>
+    <div class="enh-style" id="enhStyle" role="radiogroup" aria-label="Kind of edit" hidden></div>
+    <div class="enh-act">
+      <button class="enh-go" id="enhGo"><span data-icon="sparkle"></span><span id="enhGoLbl">Enhance</span><span class="go-cost" id="enhGoCost" hidden></span></button>
+      <div class="enh-prog" id="enhProg" aria-hidden="true">
+        <div class="enh-prog-row"><span class="lbl" id="enhProgLbl"></span><span class="pct" id="enhProgPct"></span></div>
+        <div class="enh-prog-bar"><i id="enhProgBar"></i></div>
+      </div>
     </div>
-    <button class="enh-go" id="enhGo"><span data-icon="sparkle"></span><span id="enhGoLbl">Enhance</span><span class="go-arrow" data-icon="chevron"></span></button>
     <p class="cost" id="enhCost" aria-live="polite"></p>
   </div>
 </dialog>
