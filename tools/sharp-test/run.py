@@ -92,7 +92,7 @@ jobs = {
   "B_tiled": lambda: (lambda o: (o[0], {"model": "nightmareai/real-esrgan (tiles)", "tiles": len(o[1]), "predict_time": round(sum((r["predict_time"] or 0) for r in o[1]), 1), "runs": o[1]}))(tiled("nightmareai/real-esrgan", full, {"scale": 2, "face_enhance": True})),
   "C_clarity": lambda: run("philz1337x/clarity-upscaler", fit(full, max_px=1_500_000), {"scale_factor": 2, "creativity": 0.25, "resemblance": 0.8, "dynamic": 6, "prompt": "masterpiece, best quality, highres, sharp focus, natural skin", "output_format": "jpg"}),
   "D_recraft": lambda: run("recraft-ai/recraft-crisp-upscale", fit(full, max_px=4_000_000), {}, official=True),
-  "E_topaz": lambda: run("topazlabs/image-upscale", fit(full, max_px=6_000_000), {"enhance_model": "Standard V2", "upscale_factor": "2x", "face_enhancement": True, "output_format": "jpg"}, official=True),
+  "E_topaz": lambda: run("topazlabs/image-upscale", fit(full, max_px=3_000_000), {"enhance_model": "Standard V2", "upscale_factor": "2x", "face_enhancement": True, "output_format": "jpg"}, official=True),
 }
 only = sys.argv[1:]
 for name, job in jobs.items():
