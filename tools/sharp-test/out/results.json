@@ -1,0 +1,34 @@
+{
+  "A_current": {
+    "file": "A_current.jpg",
+    "model": "nightmareai/real-esrgan",
+    "version": "b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8",
+    "id": "mbbd8z1cnhrge0d1jaztq2xyg8",
+    "predict_time": 10.234939814,
+    "wall": 11.4,
+    "input": {
+      "scale": 2,
+      "face_enhance": true
+    },
+    "in_size": [
+      821,
+      1095
+    ],
+    "out_size": [
+      1642,
+      2190
+    ]
+  },
+  "B_tiled": {
+    "error": "401 Unauthorized"
+  },
+  "C_clarity": {
+    "error": "401 Unauthorized"
+  },
+  "D_recraft": {
+    "error": "401 Unauthorized"
+  },
+  "E_topaz": {
+    "error": "401 Unauthorized"
+  }
+}
