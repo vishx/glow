@@ -59,6 +59,17 @@ jobs:
           name: glow-native-camera-apk
           path: ${{ steps.apk.outputs.name }}
 
+      - name: Publish as a pre-release (a download page for the phone)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="android-native-camera-${{ steps.apk.outputs.sha }}"
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" "${{ steps.apk.outputs.name }}" \
+            --repo "$GITHUB_REPOSITORY" --target "$(git rev-parse HEAD)" --prerelease \
+            --title "Glow native camera test build (${{ steps.apk.outputs.sha }})" \
+            --notes "Debug build of the native Android camera prototype for sideloading. Not for the Play Store."
+
       - name: Keep a copy on the apk-native-camera branch
         run: |
           NAME="${{ steps.apk.outputs.name }}"
