@@ -1,4 +1,4 @@
-/* Glow's public pages: help, privacy, terms, deleting your data. Blush & Ink, light and dark. */
+/* Glow Studio's public pages: help, privacy, terms, deleting your data. Blush & Ink, light and dark. */
 :root { --bg: #fbf7f5; --surface: #fffdfc; --text: #1d181b; --muted: #6f6368; --line: #eadfdb; --rose: #b04468; --blush: #f6d9df; color-scheme: light dark; }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #141013; --surface: #1d171b; --text: #f6eef1; --muted: #b9aab1; --line: #3a2f35; --rose: #f2a5bb; --blush: rgb(242 165 187 / 0.18); }

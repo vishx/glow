@@ -10,12 +10,12 @@ const CONFIG = {
   // From AdMob > Apps > Ad units (rewarded). These are Google's test units until real ones are added.
   admobRewardIos: "ca-app-pub-3940256099942544/1712485313",
   admobRewardAndroid: "ca-app-pub-3940256099942544/5224354917",
-  // Glow's public address: encoded in the Share Glow QR card, and printed under "Glow" in the
+  // Glow Studio's public address: encoded in the Share Glow Studio QR card, and printed under "Glow Studio" in the
   // badge on free saves unless badgeLine says otherwise. This is the project's production domain
-  // on Vercel. Leave it "" and Share Glow is not offered.
+  // on Vercel. Leave it "" and Share Glow Studio is not offered.
   publicUrl: "https://glow-photo-enhancer.vercel.app",
   // The small second line of the badge on free saves, such as a real domain or "On the App Store".
-  // "" uses publicUrl's address; "none" shows "Glow" alone.
+  // "" uses publicUrl's address; "none" shows "Glow Studio" alone.
   badgeLine: "",
   // Fill sends mode "fill" with a short prompt. Live since enhance v9 (2026-10-30, after migration 006).
   aiFill: true,
@@ -106,7 +106,7 @@ const TOOL = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
 
 // AI cost per tool. Must match ai_edit_cost() on the server, which is what actually charges.
 const TWO_CREDITS = ["headshot", "anime", "watercolor", "fashion", "bgscene", "custom"];
-// Free plan (pricing v2): these AI tools cost Glow under a cent and get 3 free credits a day; every
+// Free plan (pricing v2): these AI tools cost Glow Studio under a cent and get 3 free credits a day; every
 // other AI tool is premium, with 3 one-time trial credits. The server (migration 007) has the same list.
 const CHEAP_AI = ["erase", "enhance", "upscale", "faces", "colorize", "retouch", "toon3d", "clay", "older", "younger", "bgcut"];
 const aiOf = (t) => (t && t.id === "glowup" ? (glow.ai && !ed.demo ? TOOL[glow.ai] : null) : t);
@@ -139,7 +139,7 @@ const CATS = {
 };
 const ADVANCED = [["camlooks", "Camera looks", ["mylook"]]];
 // Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
-// another tool, or (body reshaping) didn't fit Glow. Their code stays so saved drafts still replay.
+// another tool, or (body reshaping) didn't fit Glow Studio. Their code stays so saved drafts still replay.
 const RETIRED = ["smile", "relight", "older", "younger", "expand", "upscale", "faces", "bgcut", "bgwhite", "bgblush", "bgsky",
   "anime", "watercolor", "toon3d", "clay", "gown", "street", "hair_waves", "hair_bob", "hair_pixie", "hair_bangs", "hair_curls",
   "hair_bun", "hair_braids", "hair_butterfly", "bwaist", "bhips", "barms", "bslimlegs", "blegs"];
@@ -150,7 +150,7 @@ function tabFor(id) {
   return null;
 }
 const SUGGESTED = ["glowup", "pro", "fauto", "bgblur"];
-// Remove, Fill and Expand: the marked or new area only, never auto-run, and Glow's server must
+// Remove, Fill and Expand: the marked or new area only, never auto-run, and Glow Studio's server must
 // have the mode. Fill needs the "fill" mode from supabase/functions/enhance (not yet live).
 const MASK_TOOLS = ["erase", "fill"];
 const aiLive = (id) => (id === "glowup" ? !glow.ai || aiLive(glow.ai) : (id !== "fill" || CONFIG.aiFill) && (!["bgscene", "bgcut", "custom"].includes(id) || CONFIG.aiV10));
@@ -352,7 +352,7 @@ $("sampleBtn").addEventListener("click", openSample);
 
 // ---------- Try a sample: a free demo ----------
 // The sample is an AI-generated portrait. On-device tools work on it normally. AI tools show
-// results prepared once with Glow's real pipeline (see samples/demo-v2/manifest.json), loaded as
+// results prepared once with Glow Studio's real pipeline (see samples/demo-v2/manifest.json), loaded as
 // static files: no AI request, no credits, no sign-in, no paywall. This is only a display
 // path; the server still enforces credits on every real AI request, whatever the app says.
 const DEMO_DIR = "/samples/demo-v2/";   // versioned: a new sample gets a new folder, so no stale cache
@@ -382,7 +382,7 @@ async function openSample() {
     // Only results that line up with the original (same size and framing) are offered.
     ready: entries.filter((e) => e.status === "ready" && e.result && e.aligned === true && e.tool !== "colorize" && TOOL[e.tool] && TOOL[e.tool].kind === "ai").map((e) => e.tool) };
   cat = "retouch";
-  try { await openFile(new File([blob], "glow-ai-sample.png", { type: blob.type || "image/png" }), "AI-generated sample", { demo: true }); }
+  try { await openFile(new File([blob], "glow-studio-ai-sample.png", { type: blob.type || "image/png" }), "AI-generated sample", { demo: true }); }
   catch (err) { exitDemo(); say(err.message, true); return; }
   $("alertLive").textContent = "AI-generated sample opened. Demo, no credits used.";
   // The "AI sample" badge on the photo is the disclosure; tapping it explains the demo.
@@ -488,7 +488,7 @@ async function restoreDraft() {
   job = await Drafts.getJob();
   if (screen === "editorHome") renderHome();
   if (screen === "editorScreen") renderEditor();
-  if (job && job.status === "starting") { job.status = "unknown"; job.error = "Glow was closed before it heard back."; }
+  if (job && job.status === "starting") { job.status = "unknown"; job.error = "Glow Studio was closed before it heard back."; }
   if (jobActive()) checkJob(); // a free status check, never a new charge
 }
 async function discardSession() {
@@ -1536,7 +1536,7 @@ function panelState(t) {
   } else if (!aiLive(t.id)) {
     chip.textContent = "Not available yet"; chip.className = "chip";
     apply.textContent = "Not available yet"; apply.disabled = true;
-    note = `${t.label} needs an update to Glow's AI server that isn't live yet. Nothing is sent or charged.`;
+    note = `${t.label} needs an update to Glow Studio's AI server that isn't live yet. Nothing is sent or charged.`;
   } else {
     const again = lastCommitTool === t.id;
     const a = account, trial = trialTool(t), have = a ? balanceFor(t) : 0, short = a && have < cost;
@@ -1552,7 +1552,7 @@ function panelState(t) {
       const bal = !a ? "" : trial ? (a.bonus ? ` Premium tool: ${a.trialLeft} free and ${a.bonus} extra credits left.` : ` Premium tool: ${have} of 3 free premium credits left.`) : ` You have ${have} left ${a.plan === "pro" ? "this week" : "today"}.`;
       note = again ? `Running it again makes a new version and uses another ${credits(cost).replace(/^1 /, "")}.${bal}` : `${note}${bal}`.trim();
     }
-    if (jobActive()) { apply.disabled = true; note = `Wait for ${job.title} to finish, or check its status above. Glow runs one AI edit at a time so nothing is charged twice.`; }
+    if (jobActive()) { apply.disabled = true; note = `Wait for ${job.title} to finish, or check its status above. Glow Studio runs one AI edit at a time so nothing is charged twice.`; }
     else if (resultReady()) { apply.disabled = true; note = `Apply or discard the ${job.title} result first (in the bar above).`; }
     if (t.id === "outfit" && !outfitData && !short) apply.disabled = true;
     if (t.id === "custom" && !customText.trim()) apply.disabled = true;
@@ -1971,7 +1971,7 @@ async function startAiEdit(t) {
       return;
     }
     // No answer: the edit may or may not have started. Don't send it again.
-    job.status = "unknown"; job.error = "The connection dropped before Glow heard back."; saveJob();
+    job.status = "unknown"; job.error = "The connection dropped before Glow Studio heard back."; saveJob();
     return;
   }
   job.id = res.id; job.status = "processing"; saveJob();
@@ -1995,7 +1995,7 @@ async function followJob(first, blockMs, blocking) {
       if (document.hidden) { mine.status = "processing"; saveJob(); return; } // checked again on return
       const q = mine.id ? "id=" + encodeURIComponent(mine.id) : "request=" + encodeURIComponent(mine.requestId);
       try { res = await call("enhance?" + q, { method: "GET" }); if (res.id) mine.id = res.id; mine.status = "processing"; }
-      catch { mine.status = "unknown"; mine.error = "Glow couldn't reach its server to check."; saveJob(); return; }
+      catch { mine.status = "unknown"; mine.error = "Glow Studio couldn't reach its server to check."; saveJob(); return; }
     }
   } finally {
     following = false;
@@ -2015,7 +2015,7 @@ async function checkJob() {
   catch (err) {
     if (err.status === 404) { job = null; saveJob(); say(`${mine.title} never started, so no AI credit was used.`); return; }
     mine.status = "unknown";
-    mine.error = err.status === 400 ? "Glow's server can't look up this edit yet." : "Glow couldn't reach its server to check.";
+    mine.error = err.status === 400 ? "Glow Studio's server can't look up this edit yet." : "Glow Studio couldn't reach its server to check.";
     saveJob(); await refreshAccount(); renderJob(); return;
   }
   mine.id = res.id || null; mine.status = "processing"; saveJob();
@@ -2075,8 +2075,8 @@ function renderJob() {
   $("jobSpin").hidden = !working;
   let text = `${job.title} ${JOB_TEXT[job.status] || ""}`;
   if (job.status === "processing" && !following) text = `${job.title} may still be processing.`;
-  if (job.status === "unknown") text += ` ${job.error || ""} Glow won't charge you again to check.`;
-  if (job.status === "failed") text += ` ${job.error}` + (job.refunded ? " Glow's server returned the AI credit." : account ? ` Your balance shows ${balanceText(account)}.` : "");
+  if (job.status === "unknown") text += ` ${job.error || ""} Glow Studio won't charge you again to check.`;
+  if (job.status === "failed") text += ` ${job.error}` + (job.refunded ? " Glow Studio's server returned the AI credit." : account ? ` Your balance shows ${balanceText(account)}.` : "");
   if (job.status === "done" && ed.idx !== job.baseIdx) text += " It was made from an earlier version of this photo.";
   $("jobText").textContent = text;
   const btn = (label, fn, kind) => { const b = document.createElement("button"); b.className = "btn small " + (kind || "quiet"); b.textContent = label; b.addEventListener("click", fn); return b; };
@@ -2213,7 +2213,7 @@ function exportNote(r) {
   if (r.preview) return ` Saved at ${r.w} × ${r.h}, the preview size, because the full-size version couldn't be made on this device.`;
   if (r.ai && ed.demo) return ` Saved at ${r.w} × ${r.h}, the prepared preview's size.`;
   if (r.ai) return ` Saved at ${r.w} × ${r.h}, the size ${r.ai.title} returned.`;
-  if (r.capped) return ` Saved at ${r.w} × ${r.h}, Glow's 16-megapixel limit.`;
+  if (r.capped) return ` Saved at ${r.w} × ${r.h}, Glow Studio's 16-megapixel limit.`;
   return ` Saved at ${r.w} × ${r.h}.`;
 }
 async function saveEdit(opts) {
@@ -2231,8 +2231,8 @@ async function saveEdit(opts) {
   if (ed.demo) {
     const op = ed.hist[ed.idx].op, prep = op && op.demo ? TOOL[op.tool].title : "";
     const c = await ask({ title: prep ? "Save this prepared preview?" : "Save the AI-generated sample?",
-      text: prep ? `A prepared preview of Glow's ${prep} tool on the AI-generated sample photo. It isn't a real person. The file name marks it as a prepared preview.`
-        : "This is Glow's sample photo, made with AI. It isn't a real person. The file name marks it as a sample.",
+      text: prep ? `A prepared preview of Glow Studio's ${prep} tool on the AI-generated sample photo. It isn't a real person. The file name marks it as a prepared preview.`
+        : "This is Glow Studio's sample photo, made with AI. It isn't a real person. The file name marks it as a sample.",
       actions: [{ label: "Save sample", value: "yes" }, { label: "Cancel", value: "", kind: "ghost" }] });
     if (!c) return false;
   }
@@ -2250,21 +2250,21 @@ async function saveEdit(opts) {
     const img = await loadImg(committed());
     out = { data: committed(), w: img.naturalWidth, h: img.naturalHeight, preview: true };
   }
-  // Free plan: the small Glow badge goes on the finished picture.
+  // Free plan: the small Glow Studio badge goes on the finished picture.
   const marked = await markForSave(out.data, isPng(out.data));
   if (!marked) { savingEdit = false; return false; }
   if (marked.marked) out = { ...out, data: marked.data, marked: true };
-  const stamp = Date.now(), items = [{ data: out.data, name: ed.demo ? `glow-ai-sample-${demoSaveTag()}${stamp}` : `glow-${stamp}` }];
+  const stamp = Date.now(), items = [{ data: out.data, name: ed.demo ? `glow-studio-ai-sample-${demoSaveTag()}${stamp}` : `glow-studio-${stamp}` }];
   const withOrig = !ed.demo && store.get("glowSaveOrig") === "on" && !ed.originalSaved && ed.original && ed.original.blob;
-  if (withOrig) items.unshift({ blob: ed.original.blob, name: `glow-${stamp}-original` });
+  if (withOrig) items.unshift({ blob: ed.original.blob, name: `glow-studio-${stamp}-original` });
   try {
     const where = await Platform.savePhotos(items, { share });
     track(share ? "share" : "save", { from: "editor", edits: ed.idx, demo: !!ed.demo, marked: !!out.marked, where: String(where || "") });
     ed.savedIdx = ed.idx; if (withOrig) ed.originalSaved = true;
     ed.lastExport = { w: out.w, h: out.h, original: ed.original ? [ed.original.w, ed.original.h] : null };
     saveDraft(); renderEditor();
-    // One quiet offer per session to make a Share Glow card; nothing happens unless it's tapped.
-    const offer = CONFIG.publicUrl && !shareOffered ? { label: "Share Glow", run: () => openShareCard(out.data) } : null;
+    // One quiet offer per session to make a Share Glow Studio card; nothing happens unless it's tapped.
+    const offer = CONFIG.publicUrl && !shareOffered ? { label: "Share Glow Studio", run: () => openShareCard(out.data) } : null;
     if (offer) shareOffered = true;
     say(savedText(where, items.length, exportNote(out)), false, offer);
     return true;
@@ -2276,11 +2276,11 @@ async function saveEdit(opts) {
 }
 $("saveBtn").addEventListener("click", saveEdit);
 
-// ---------- Glow badge on free saves ----------
-// Saves on the free plan get a small Glow badge in the bottom-right corner: the app icon and
-// "Glow" with the address under it, on a dark glass pill, like other camera apps sign their
+// ---------- Glow Studio badge on free saves ----------
+// Saves on the free plan get a small Glow Studio badge in the bottom-right corner: the app icon and
+// "Glow Studio" with the address under it, on a dark glass pill, like other camera apps sign their
 // photos. It is drawn on the final full-size picture (after crop, rotation and every edit), never
-// on the screen view. Glow Pro saves stay clean. The badge is part of saving only: no credit,
+// on the screen view. Glow Studio Pro saves stay clean. The badge is part of saving only: no credit,
 // request or allowance. Pro is remembered (until it expires) for when the server can't be reached
 // yet, such as right after opening the app offline, so a Pro save never gets the badge.
 const isPro = () => (account && account.plan ? account.plan === "pro" : new Date(store.get("glowPro") || 0) > new Date());
@@ -2298,10 +2298,12 @@ const loadBadgeIcon = () => badgeIcon || (badgeIcon = loadImg("icon-512.png").ca
 function markLayout(ctx, w, h) {
   const H = Math.max(26, Math.round(Math.min(w, h) * 0.05)), pad = Math.round(H * 0.16), icon = H - pad * 2, inset = Math.round(H * 0.5);
   const s = Math.round(H * 0.4), u = Math.round(H * 0.22);
-  ctx.font = MARK_SERIF(s); const gw = ctx.measureText("Glow").width;
+  ctx.font = MARK_SERIF(s); let gw = ctx.measureText("Glow Studio").width;
   let line = BADGE_LINE; ctx.font = MARK_SANS(u); let lw = line ? ctx.measureText(line).width : 0;
   const width = (tw) => Math.round(pad + icon + H * 0.22 + tw + H * 0.4);
   if (u < 9 || width(Math.max(gw, lw)) > w * 0.45) { line = ""; lw = 0; }
+  // Without the address line the name is drawn larger (see drawBadge), so measure it at that size.
+  if (!line) { ctx.font = MARK_SERIF(Math.round(H * 0.48)); gw = ctx.measureText("Glow Studio").width; }
   const bw = width(Math.max(gw, lw));
   return { H, pad, icon, s, u, gw, line, bw, x: w - inset - bw, y: h - inset - H };
 }
@@ -2323,10 +2325,10 @@ function drawBadge(ctx, m, icon) {
   const tx = ix + m.icon + H * 0.22;
   ctx.fillStyle = "#ffffff"; ctx.textBaseline = "alphabetic";
   if (m.line) {
-    ctx.font = MARK_SERIF(m.s); ctx.fillText("Glow", tx, y + H * 0.52);
+    ctx.font = MARK_SERIF(m.s); ctx.fillText("Glow Studio", tx, y + H * 0.52);
     ctx.font = MARK_SANS(m.u); ctx.fillStyle = "rgba(255, 255, 255, 0.8)"; ctx.fillText(m.line, tx, y + H * 0.81);
   } else {
-    ctx.font = MARK_SERIF(Math.round(H * 0.48)); ctx.fillText("Glow", tx, y + H * 0.66);
+    ctx.font = MARK_SERIF(Math.round(H * 0.48)); ctx.fillText("Glow Studio", tx, y + H * 0.66);
   }
   ctx.restore();
 }
@@ -2351,7 +2353,7 @@ async function markForSave(data, png) {
   let m; try { m = await addMark(data, png); } catch { m = null; }
   if (!m) return { data, marked: false };
   if (!store.get("glowBadgeSeen")) {
-    const c = await ask({ title: "Free saves include a small Glow badge", text: "It sits in the bottom-right corner, like this, so friends can see where your photo was made. Glow Pro saves don't have it.",
+    const c = await ask({ title: "Free saves include a small Glow Studio badge", text: "It sits in the bottom-right corner, like this, so friends can see where your photo was made. Glow Studio Pro saves don't have it.",
       image: m.preview, caption: "The corner of your saved photo", actions: [{ label: "Save", value: "yes" }, { label: "Cancel", value: "", kind: "ghost" }] });
     if (!c) return null;
     store.set("glowBadgeSeen", "1");
@@ -2359,8 +2361,8 @@ async function markForSave(data, png) {
   return { data: m.data, marked: true };
 }
 
-// ---------- Share Glow card (only when chosen) ----------
-// The saved photo with a footer under it: a QR code for Glow's public address and "Try Glow".
+// ---------- Share Glow Studio card (only when chosen) ----------
+// The saved photo with a footer under it: a QR code for Glow Studio's public address and "Try Glow Studio".
 // Nothing is shared or sent until the person picks Share or Save on the preview.
 function loadScript(src) {
   return new Promise((ok, bad) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = bad; document.head.append(s); });
@@ -2377,7 +2379,7 @@ async function makeShareCard(photo) {
   ctx.fillStyle = "#ffffff"; ctx.fillRect(qx, qy, qs, qs); ctx.fillStyle = "#1d1418";
   for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (q.isDark(r, col)) ctx.fillRect(qx + (col + 4) * cell, qy + (r + 4) * cell, cell, cell);
   const tx = qx + qs + 40;
-  ctx.fillStyle = "#813b59"; ctx.font = MARK_SERIF(76); ctx.fillText("Try Glow", tx, ph + F / 2 + 4);
+  ctx.fillStyle = "#813b59"; ctx.font = MARK_SERIF(76); ctx.fillText("Try Glow Studio", tx, ph + F / 2 + 4);
   ctx.fillStyle = "#72646f"; ctx.font = MARK_SANS(30); ctx.fillText(PUBLIC_HOST, tx, ph + F / 2 + 52);
   return c.toDataURL("image/jpeg", 0.92);
 }
@@ -2385,10 +2387,10 @@ async function openShareCard(photo) {
   track("share_card", {});
   let card;
   try { card = await makeShareCard(photo); } catch { say("Couldn't make the share card. Try again.", true); return; }
-  const c = await ask({ title: "Share Glow", text: "Your photo with a QR code to Glow underneath. Nothing is sent until you choose.", image: card, caption: "Share card preview",
+  const c = await ask({ title: "Share Glow Studio", text: "Your photo with a QR code to Glow Studio underneath. Nothing is sent until you choose.", image: card, caption: "Share card preview",
     actions: [{ label: "Share card", value: "share" }, { label: "Save card", value: "save", kind: "ghost" }, { label: "Close", value: "", kind: "ghost" }] });
   if (!c) return;
-  try { const where = await Platform.savePhotos([{ data: card, name: `glow-share-card-${Date.now()}` }], { download: c === "save" }); say(savedText(where, 1)); }
+  try { const where = await Platform.savePhotos([{ data: card, name: `glow-studio-share-card-${Date.now()}` }], { download: c === "save" }); say(savedText(where, 1)); }
   catch (err) { if (!(err && err.name === "AbortError")) say(saveFailText(), true); }
 }
 // Back keeps the session; it's waiting on the Editor landing under "Continue editing".
@@ -2415,9 +2417,9 @@ function renderCreditsSheet() {
   const card = (n, of, sub, note) => `<div class="cr-card"><div class="cr-num"><b>${n}</b><span>${of}</span></div>` +
     `<div class="cr-bar"><i style="width:${of ? Math.round(100 * Math.min(1, n / (+of.match(/\d+/)[0] || 1))) : 0}%"></i></div><p>${sub}</p>${note ? `<p class="cr-note">${note}</p>` : ""}</div>`;
   let html = "", facts = [];
-  if (!a) html = `<div class="cr-card"><p>Your balance will show once Glow can reach its server.</p></div>`;
+  if (!a) html = `<div class="cr-card"><p>Your balance will show once Glow Studio can reach its server.</p></div>`;
   else if (a.plan === "pro") {
-    html = card(a.remaining, `of ${a.quota} AI credits left`, "Glow Pro includes 40 AI credits each week. Each credit comes back 7 days after you use it.",
+    html = card(a.remaining, `of ${a.quota} AI credits left`, "Glow Studio Pro includes 40 AI credits each week. Each credit comes back 7 days after you use it.",
       "Unused credits don't carry over. The yearly plan also has a limit of 80 credits in any 30 days.");
   } else {
     const r = nextUtcMidnight(), mins = Math.max(1, Math.round((r - Date.now()) / 60000));
@@ -2431,7 +2433,7 @@ function renderCreditsSheet() {
   }
   if (a && a.bonus > 0) facts.unshift(fact("star", `${a.bonus} extra AI ${a.bonus === 1 ? "credit" : "credits"}, included above`,
     `They never expire and are used after your ${a.plan === "pro" ? "weekly" : "free"} credits${a.plan === "pro" ? "" : ", on every AI tool"}.`));
-  facts.push(fact("save", "Saving is free and unlimited", "On the free plan, saves carry a small Glow mark."),
+  facts.push(fact("save", "Saving is free and unlimited", "On the free plan, saves carry a small Glow Studio mark."),
     fact("sliders", "On-device tools are always free", "Camera, filters, face, makeup, backgrounds, light and color. Undo and redo never use credits."),
     fact("wand", `Most AI tools use 1 credit`, `Headshot, Fashion, Describe${CONFIG.pricingV2 ? ", Fill and AI scene" : " and AI scene"} use 2. Each tool shows its cost before you apply it.`),
     fact("revert", "Failed edits are refunded", "If the AI service reports an edit failed, its credit comes back automatically."));
@@ -2457,7 +2459,7 @@ function showUsage(u) {
   if (u && u.plan === "pro" && u.expires) store.set("glowPro", u.expires);
   else if (u && u.plan === "free") store.set("glowPro", "");
   $("planLine").textContent = account.plan === "pro"
-    ? `Glow Pro: ${account.remaining} of ${account.quota} AI credits left this week.`
+    ? `Glow Studio Pro: ${account.remaining} of ${account.quota} AI credits left this week.`
     : `Free plan: ${account.remaining} of ${account.quota} AI credits left today. On-device tools are always free.`;
   $("goProBtn").hidden = account.plan === "pro";
   renderCredits();
@@ -2479,10 +2481,10 @@ async function authCall(path, body) {
     res = await fetch(`${CONFIG.supabaseUrl}/auth/v1/${path}`, {
       method: "POST", headers: { apikey: CONFIG.supabaseKey, "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
-  } catch { const e = new Error("Couldn't connect to Glow. Check your internet and try again."); e.offline = true; throw e; }
+  } catch { const e = new Error("Couldn't connect to Glow Studio. Check your internet and try again."); e.offline = true; throw e; }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.access_token) {
-    const e = new Error("Couldn't connect to Glow. Check your internet and try again.");
+    const e = new Error("Couldn't connect to Glow Studio. Check your internet and try again.");
     e.offline = res.status >= 500 || res.status === 429; throw e;
   }
   session = { access_token: data.access_token, refresh_token: data.refresh_token, expires_at: data.expires_at, user_id: data.user && data.user.id };
@@ -2523,7 +2525,7 @@ async function call(path, opts = {}, retried) {
 
 // ---------- Diagnostics ----------
 // A few anonymous events (app opened, paywall seen, purchase, which AI tool ran) and app errors go to
-// Glow's own database (migration 009) so the owner can see what works and what breaks. Never
+// Glow Studio's own database (migration 009) so the owner can see what works and what breaks. Never
 // photos, prompts or personal details. Sent in small batches, and only once the app has its account.
 const PLATFORM = native ? (window.Capacitor.getPlatform && window.Capacitor.getPlatform()) || "app" : "web";
 // var, not const: say() and go() can run before this line, and track() must then just skip.
@@ -2563,7 +2565,7 @@ function reportError(message, detail) {
 }
 const FEATURES_SHORT = "web-" + location.host.split(".")[0].slice(0, 30);
 window.addEventListener("error", (e) => {
-  // Errors from other sites' scripts (fonts, ads) arrive without details; they aren't Glow's.
+  // Errors from other sites' scripts (fonts, ads) arrive without details; they aren't Glow Studio's.
   if (!e.message || e.message === "Script error.") return;
   reportError(e.message, (e.error && e.error.stack) || `${e.filename}:${e.lineno}:${e.colno}`);
 });
@@ -2767,12 +2769,12 @@ function camState(kind) {
   if (kind !== cam.state && ["live", "denied", "error", "unavailable"].includes(kind)) track("camera", { state: kind });
   cam.state = kind;
   const S = {
-    prompt: ["camera", "Take photos with Glow", "Glow needs your camera to show a live preview. Photos stay on your device until you save or edit them.", "Turn on camera"],
+    prompt: ["camera", "Take photos with Glow Studio", "Glow Studio needs your camera to show a live preview. Photos stay on your device until you save or edit them.", "Turn on camera"],
     denied: ["cameraoff", "Camera access is off", native
-      ? "To take photos, allow camera access for Glow in your phone's Settings, then come back."
+      ? "To take photos, allow camera access for Glow Studio in your phone's Settings, then come back."
       : "To take photos, allow camera access for this site in your browser's settings (usually the icon next to the address), then try again.", "Try again"],
     busy: ["cameraoff", "The camera is busy", "Another app may be using the camera. Close it and try again.", "Try again"],
-    none: ["cameraoff", "No camera found", "Glow couldn't find a camera on this device. You can still edit photos you already have.", "Try again"],
+    none: ["cameraoff", "No camera found", "Glow Studio couldn't find a camera on this device. You can still edit photos you already have.", "Try again"],
     unsupported: ["cameraoff", "Live camera isn't available here", "This browser can't show a live camera. You can still take a photo with your device's camera app.", "Use device camera"],
     starting: null, live: null,
   }[kind];
@@ -2891,13 +2893,13 @@ function followFace(c) {
   const pos = `50% ${(p * 100).toFixed(1)}%`;
   if (c.style.objectPosition !== pos) c.style.objectPosition = pos;
 }
-// The camera light goes off whenever Glow is in the background, and comes back once on return.
+// The camera light goes off whenever Glow Studio is in the background, and comes back once on return.
 document.addEventListener("visibilitychange", () => {
   if (screen !== "cameraScreen" || cam.shot) return;
   if (document.hidden) stopCamera(); else if (cam.state === "live" || cam.state === "starting") startCamera();
 });
 window.addEventListener("pagehide", stopCamera);
-// Permission changed in the browser's or phone's settings while Glow is open.
+// Permission changed in the browser's or phone's settings while Glow Studio is open.
 (async () => {
   try {
     const st = await navigator.permissions.query({ name: "camera" });
@@ -3020,13 +3022,13 @@ async function makeThumb(src) { const img = await loadImg(src), c = canvasFor(im
 // What a finished save means, in words that match what the platform confirmed.
 function savedText(where, n, extra = "") {
   const what = n > 1 ? "Photos" : "Photo";
-  if (where === "photos") return `${what} saved to your Glow album.${extra}`;
+  if (where === "photos") return `${what} saved to your Glow Studio album.${extra}`;
   if (where === "downloaded") return /Android/i.test(navigator.userAgent)
     ? `${what} saved to Downloads. ${n > 1 ? "They show" : "It shows"} in your Gallery.${extra}`
     : `Download started. Your browser keeps ${n > 1 ? "them" : "it"} in Downloads.${extra}`;
   return `Sent to the share sheet. Choose Save Image there to keep ${n > 1 ? "them" : "it"}.${extra}`;
 }
-const saveFailText = () => (native ? "Couldn't save. Allow photo access for Glow in your phone's Settings, then try Save again." : "Couldn't save the photo. Try again.");
+const saveFailText = () => (native ? "Couldn't save. Allow photo access for Glow Studio in your phone's Settings, then try Save again." : "Couldn't save the photo. Try again.");
 
 // Saves a camera photo once. Auto-save and the Save button share this, so a photo is never
 // saved twice; with "Also save the original", the untouched frame goes too (only when a look
@@ -3039,8 +3041,8 @@ function saveShot(s, auto, note = "") {
   if (s.saving) return s.saving;
   const items = [];
   const withOrig = store.get("glowSaveOrig") === "on" && !!s.processed && !s.originalSaved;
-  if (withOrig) items.push({ blob: s.rawBlob, name: `glow-${s.stamp}-original` });
-  items.push(s.processed ? { data: s.processed, name: `glow-${s.stamp}` } : { blob: s.rawBlob, name: `glow-${s.stamp}` });
+  if (withOrig) items.push({ blob: s.rawBlob, name: `glow-studio-${s.stamp}-original` });
+  items.push(s.processed ? { data: s.processed, name: `glow-studio-${s.stamp}` } : { blob: s.rawBlob, name: `glow-studio-${s.stamp}` });
   s.saving = (async () => {
     try {
       // Auto-save never opens a share sheet on its own; browsers get a download.
@@ -3114,12 +3116,12 @@ $("themeSeg").addEventListener("click", (e) => { const b = e.target.closest("but
 $("saveOrigToggle").addEventListener("change", (e) => { store.set("glowSaveOrig", e.target.checked ? "on" : "off"); track("setting", { save_original: e.target.checked }); });
 $("autoSaveToggle").addEventListener("change", (e) => { store.set("glowAutoSave", e.target.checked ? "on" : "off"); track("setting", { auto_save: e.target.checked }); });
 $("autoSaveHelp").textContent = native && plugins.Media
-  ? "Each photo goes to the Glow album as soon as you take it. You can still edit or retake it."
+  ? "Each photo goes to the Glow Studio album as soon as you take it. You can still edit or retake it."
   : "Each photo downloads as soon as you take it. Look in Downloads; browsers can't save to your photo library.";
 $("goProBtn").addEventListener("click", () => { $("settings").close(); openPaywall(); });
 $("deleteAccount").addEventListener("click", async (e) => {
   e.preventDefault();
-  const ok = await ask({ title: "Delete your account and data?", text: "This permanently deletes your Glow account and its data. It can't be undone. Cancel any subscription in your store settings too.",
+  const ok = await ask({ title: "Delete your account and data?", text: "This permanently deletes your Glow Studio account and its data. It can't be undone. Cancel any subscription in your store settings too.",
     actions: [{ label: "Delete everything", value: "yes" }, { label: "Keep my account", value: "", kind: "ghost" }] });
   if (!ok) return;
   try {
@@ -3165,7 +3167,7 @@ $("manageSubs").addEventListener("click", (e) => {
 
 // Subscriptions through RevenueCat (only inside the iPhone/Android app).
 let plan = "yearly", rcReady = null, rcUser = "";
-// RevenueCat must buy for the account Glow is signed in with now. If the account changes (it was
+// RevenueCat must buy for the account Glow Studio is signed in with now. If the account changes (it was
 // deleted, or its sign-in expired and a new one was made), a purchase made under the old id would
 // reach the server for an account that no longer exists, and Pro would never switch on.
 function followAccount() {
@@ -3206,7 +3208,7 @@ function renderPlanNote() {
   const price = $(plan === "yearly" ? "priceYearly" : "priceWeekly").textContent.replace("/", " per ");
   $("pwNote").textContent = native
     ? `${price}. Renews automatically every ${plan === "yearly" ? "year" : "week"} until you cancel. Cancel anytime in your App Store or Google Play settings at least 24 hours before renewal. Payment is charged to your store account.`
-    : "Glow Pro is available in the Glow app for iPhone and Android. The camera and on-device tools stay free here.";
+    : "Glow Studio Pro is available in the Glow Studio app for iPhone and Android. The camera and on-device tools stay free here.";
 }
 function openPaywall() {
   if (account && account.plan === "pro") { openCredits(); return; }
@@ -3246,7 +3248,7 @@ $("buyBtn").addEventListener("click", async () => {
     await purchases().purchasePackage({ aPackage: packages[plan] });
     track("purchase", { plan });
     $("paywall").close();
-    say((await afterPurchase()) ? "Welcome to Glow Pro. Your 40 weekly AI credits are ready." : "Purchase complete. Pro will switch on within a minute.");
+    say((await afterPurchase()) ? "Welcome to Glow Studio Pro. Your 40 weekly AI credits are ready." : "Purchase complete. Pro will switch on within a minute.");
   } catch (err) {
     track("purchase_fail", { plan, cancelled: !!(err && err.userCancelled) });
     if (!(err && err.userCancelled)) say((err && err.message) || "Purchase didn't go through.", true);
@@ -3254,11 +3256,11 @@ $("buyBtn").addEventListener("click", async () => {
 });
 async function restore() {
   try {
-    if (!(await setupPurchases())) throw new Error("Restore works in the Glow app for iPhone and Android.");
+    if (!(await setupPurchases())) throw new Error("Restore works in the Glow Studio app for iPhone and Android.");
     await purchases().restorePurchases();
     const back = await afterPurchase();
     track("restore", { found: back });
-    say(back ? "Glow Pro restored." : "No active subscription found for this store account.");
+    say(back ? "Glow Studio Pro restored." : "No active subscription found for this store account.");
     $("paywall").close(); $("settings").close();
   } catch (err) { say(err.message, true); }
 }
@@ -3283,8 +3285,8 @@ function renderPacks() {
       `${k.tag ? `<em>${k.tag}</em>` : ""}<b>${k.credits}</b><span class="unit">AI credits</span><span class="price">${sp ? sp.priceString : k.price}</span></button>`;
   }).join("");
   $("packsNote").textContent = native
-    ? "One-time purchase, charged to your store account. Credits are added to this Glow account and used after your free or weekly credits. Deleting the app or your account removes them."
-    : "Credit packs are available in the Glow app for iPhone and Android.";
+    ? "One-time purchase, charged to your store account. Credits are added to this Glow Studio account and used after your free or weekly credits. Deleting the app or your account removes them."
+    : "Credit packs are available in the Glow Studio app for iPhone and Android.";
   $("packsPro").hidden = !!(account && account.plan === "pro");
 }
 function openPacks(why) {
@@ -3398,7 +3400,7 @@ ensureSession().then(refreshAccount).catch((e) => say(e.message, true));
 setupPurchases();
 setupAds();
 restoreDraft();
-// Glow opens on Enhance, its main flow, unless Settings says otherwise. The Enhance screen is
+// Glow Studio opens on Enhance, its main flow, unless Settings says otherwise. The Enhance screen is
 // its own welcome (sample before/after, Choose a photo, Try the sample); Settings can still show
 // the welcome screen.
 function startApp() {

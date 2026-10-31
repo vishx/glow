@@ -1,7 +1,7 @@
 {
   "name": "glow",
   "private": true,
-  "description": "Glow web app. The app itself needs no build; these scripts run the browser checks.",
+  "description": "Glow Studio web app. The app itself needs no build; these scripts run the browser checks.",
   "scripts": {
     "test:setup": "bash tests/setup.sh",
     "test": "node tests/run.js",

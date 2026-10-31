@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Glow admin</title>
+<title>Glow Studio admin</title>
 <link rel="icon" href="/icon-192.png">
 <style>
   :root { --bg: #fbf7f5; --card: #fffdfc; --text: #1d181b; --muted: #75686e; --line: #eadfdb; --rose: #b04468; --blush: #f6d9df;
@@ -63,7 +63,7 @@
 </head>
 <body>
 <div id="login" hidden>
-  <h1 style="font: 600 26px/1.2 Fraunces, Georgia, serif; margin: 0 0 6px">Glow admin</h1>
+  <h1 style="font: 600 26px/1.2 Fraunces, Georgia, serif; margin: 0 0 6px">Glow Studio admin</h1>
   <p class="muted" style="margin:0">Enter the admin key (the ADMIN_KEY secret in Supabase).</p>
   <form id="loginForm">
     <input id="keyInput" type="password" autocomplete="current-password" placeholder="Admin key" required>
@@ -74,7 +74,7 @@
 
 <div id="app" hidden>
   <header>
-    <h1>Glow admin</h1>
+    <h1>Glow Studio admin</h1>
     <nav id="tabs">
       <button data-tab="overview" aria-current="page">Overview</button>
       <button data-tab="users">Users</button>
@@ -181,12 +181,12 @@ function chart(daily) {
 
 // Plain names for the events the app reports (anything not listed shows its raw name).
 const EVENT_NAMES = {
-  app_open: "Opened Glow", tab: "Switched tab", photo_open: "Opened a photo", sample_open: "Tried a sample photo",
+  app_open: "Opened Glow Studio", tab: "Switched tab", photo_open: "Opened a photo", sample_open: "Tried a sample photo",
   edit: "Used an editor tool", ai_start: "Started an AI edit", ai_done: "AI edit finished", ai_fail: "AI edit failed",
   enhance_to_editor: "Enhance → Editor", batch_open: "Picked photos for batch Enhance", batch_locked: "Tapped batch Enhance (free plan)",
   batch_start: "Started a batch Enhance", batch_done: "Batch Enhance finished", batch_save: "Saved a batch", save: "Saved a photo", share: "Shared a photo", share_card: "Opened share card",
   capture: "Took a camera photo", look: "Picked a camera look", camera: "Camera state", restore: "Restored last edit",
-  paywall_view: "Saw Glow Pro", purchase_start: "Tapped buy", purchase: "Bought Glow Pro", purchase_fail: "Purchase failed",
+  paywall_view: "Saw Glow Studio Pro", purchase_start: "Tapped buy", purchase: "Bought Glow Studio Pro", purchase_fail: "Purchase failed",
   packs_view: "Saw credit packs", pack_start: "Tapped a credit pack", pack_purchase: "Bought a credit pack", pack_fail: "Credit pack purchase failed",
   ad_watched: "Watched an ad", setting: "Changed a setting", support_sent: "Sent a support message", error_shown: "Saw an error message",
 };
@@ -233,9 +233,9 @@ const VIEWS = {
         ], o.daily)),
       h("div", { class: "grid2" },
         h("section", { class: "card" }, h("h2", {}, "Funnel, last 7 days"),
-          h("p", { class: "muted", style: "margin-top:0" }, "People who reached each step, out of everyone who used Glow."),
+          h("p", { class: "muted", style: "margin-top:0" }, "People who reached each step, out of everyone who used Glow Studio."),
           table([
-            { t: "Step", f: (r) => r.label }, { t: "People", n: 1, f: (r) => r.users },
+            { t: "Step", f: (r) => String(r.label).replace(/\bGlow\b(?! Studio)/, "Glow Studio") }, { t: "People", n: 1, f: (r) => r.users },
             { t: "", n: 1, cls: "muted", f: (r) => (o.funnel[0]?.users ? Math.round((r.users / o.funnel[0].users) * 100) + "%" : "") },
           ], o.funnel)),
         h("section", { class: "card" }, h("h2", {}, "AI quality, last 7 days"),
@@ -292,7 +292,7 @@ const VIEWS = {
     };
     q.addEventListener("keydown", (e) => { if (e.key === "Enter") load().catch((err) => toast(err.message, true)); });
     out.append(h("section", { class: "card" }, h("h2", {}, "Find an account"),
-      h("p", { class: "muted", style: "margin-top:0" }, "Customers find their account ID in Glow > Settings > Contact support. Support messages link here directly."),
+      h("p", { class: "muted", style: "margin-top:0" }, "Customers find their account ID in Glow Studio > Settings > Contact support. Support messages link here directly."),
       h("div", { class: "row" }, q, h("button", { class: "btn", onclick: () => load().catch((err) => toast(err.message, true)) }, "Search")), list));
     await load();
     return out;
@@ -307,7 +307,7 @@ const VIEWS = {
       table([
         { t: "When", f: (r) => when(r.created_at) }, { t: "Topic", f: (r) => r.topic },
         { t: "Message", f: (r) => h("div", { class: "msg" }, r.message, r.note ? h("div", { class: "muted" }, "Note: " + r.note) : "") },
-        { t: "From", f: (r) => [r.email ? h("a", { href: "mailto:" + r.email + "?subject=" + encodeURIComponent("Your Glow support message") }, r.email) : h("span", { class: "muted" }, "no email"), h("br"), r.user_id ? userLink(r.user_id) : ""] },
+        { t: "From", f: (r) => [r.email ? h("a", { href: "mailto:" + r.email + "?subject=" + encodeURIComponent("Your Glow Studio support message") }, r.email) : h("span", { class: "muted" }, "no email"), h("br"), r.user_id ? userLink(r.user_id) : ""] },
         { t: "App", cls: "muted", f: (r) => Object.entries(r.context || {}).map(([k, v]) => `${k}: ${v}`).join(", ") },
         { t: "", f: (r) => h("button", { class: "btn ghost", onclick: async () => {
             const note = r.status === "open" ? prompt("Optional note (what you did):", r.note || "") : null;

@@ -1,4 +1,4 @@
-// Runs Glow's AI tools on Replicate with the app owner's token, and enforces
+// Runs Glow Studio's AI tools on Replicate with the app owner's token, and enforces
 // each user's plan limits. POST starts an edit (counts against the limit);
 // GET ?id=... checks on one that is still running, and GET ?request=... finds an edit by the
 // app's own request id when the app never heard the job id. Neither GET ever charges.
@@ -56,7 +56,7 @@ async function jobStatus(row: { id: number; prediction_id: string | null; refund
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
-  if (!TOKEN) return json({ error: "Glow's AI isn't set up yet (missing Replicate token)." }, 503);
+  if (!TOKEN) return json({ error: "Glow Studio's AI isn't set up yet (missing Replicate token)." }, 503);
 
   const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer /, "");
   const { data: { user } } = await admin.auth.getUser(jwt);
@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     const status = e instanceof HttpError ? e.status : 500;
     console.error("enhance failed", status, (e as Error).message);
-    const msg = status === 402 ? "Glow's AI service is temporarily unavailable. Please try again later." : (e as Error).message;
+    const msg = status === 402 ? "Glow Studio's AI service is temporarily unavailable. Please try again later." : (e as Error).message;
     return json({ error: msg }, status >= 500 || status === 402 ? 502 : status);
   }
 });

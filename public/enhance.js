@@ -1,4 +1,4 @@
-// ---------- One-tap Enhance: Glow's main flow ----------
+// ---------- One-tap Enhance: Glow Studio's main flow ----------
 // Pick a photo, tap Enhance, compare before and after, switch enhancers on or off, save, share.
 // One AI request per photo (the server's "enhance" mode: faces restored, background sharpened,
 // 2x larger; an everyday AI tool, so it draws on the daily credits). Every toggle on the Result
@@ -77,7 +77,7 @@ function renderEnhCost() {
   if (enh.busy) return;
   go.textContent = enh.pending ? "Check again" : "Enhance";
   if (enh.demo) { c.textContent = "Free on the sample. No credits used."; return; }
-  if (enh.pending) { c.textContent = "Glow lost the connection while enhancing. Checking again is free and never charges twice."; return; }
+  if (enh.pending) { c.textContent = "Glow Studio lost the connection while enhancing. Checking again is free and never charges twice."; return; }
   if (!a) { c.textContent = "Uses 1 AI credit."; return; }
   if (a.remaining < 1) {
     go.textContent = "Get more credits";
@@ -90,7 +90,7 @@ function setSheetWorking(on, text) {
   enh.busy = on;
   $("enhSheet").classList.toggle("working", on);
   $("enhGo").classList.toggle("busy", on); $("enhGo").disabled = on; $("enhSheetClose").disabled = on;
-  if (on) { $("enhGoLbl").textContent = text || "Enhancing…"; $("enhCost").textContent = enh.demo ? "Showing a result prepared with Glow's Enhance." : "This usually takes 5 to 20 seconds."; }
+  if (on) { $("enhGoLbl").textContent = text || "Enhancing…"; $("enhCost").textContent = enh.demo ? "Showing a result prepared with Glow Studio's Enhance." : "This usually takes 5 to 20 seconds."; }
   else renderEnhCost();
 }
 $("enhSheetClose").addEventListener("click", () => $("enhSheet").close());
@@ -153,7 +153,7 @@ async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from =
   return followEnhance(h, null, onLabel, from);
 }
 const enhLabel = (t) => { $("enhGoLbl").textContent = t; };
-function lostConnection() { const e = new Error("Glow lost the connection. Tap Check again; it won't charge you twice."); e.lost = true; return e; }
+function lostConnection() { const e = new Error("Glow Studio lost the connection. Tap Check again; it won't charge you twice."); e.lost = true; return e; }
 async function followEnhance(h, first, onLabel, from) {
   const p = h.pending, started = Date.now();
   let res = first, misses = 0;
@@ -436,7 +436,7 @@ async function enhDownload() {
   const marked = await markForSave(data, false);
   if (!marked) return;
   data = marked.data;
-  const name = enh.demo ? `glow-ai-sample-enhanced-${Date.now()}` : `glow-enhanced-${Date.now()}`;
+  const name = enh.demo ? `glow-studio-ai-sample-enhanced-${Date.now()}` : `glow-studio-enhanced-${Date.now()}`;
   try {
     const where = await Platform.savePhotos([{ data, name }]);
     track("save", { from: "enhance", demo: !!enh.demo, marked: marked.marked, where: String(where || "") });
@@ -493,7 +493,7 @@ renderCamAI();
 $("camAI").addEventListener("click", async () => {
   Platform.haptic();
   if (!camAIOn() && !store.get("glowCamAISeen")) {
-    const c = await ask({ title: "AI Enhance every photo?", text: "Right after you take a photo, Glow runs the same AI Enhance as the Enhance tab: a sharper face and clearer details, with your look kept. Each photo uses 1 AI credit.",
+    const c = await ask({ title: "AI Enhance every photo?", text: "Right after you take a photo, Glow Studio runs the same AI Enhance as the Enhance tab: a sharper face and clearer details, with your look kept. Each photo uses 1 AI credit.",
       actions: [{ label: "Turn on", value: "on" }, { label: "Not now", value: "", kind: "ghost" }] });
     if (!c) return;
     store.set("glowCamAISeen", "1");
@@ -526,18 +526,18 @@ async function camEnhance(s, auto) {
   if (!ok) { plainSave(); return; }
   if (autoSave) enhAutoSave();
 }
-// Auto-save for an enhanced camera photo: saved quietly at full size (with the Glow mark on
+// Auto-save for an enhanced camera photo: saved quietly at full size (with the Glow Studio mark on
 // free saves), staying on the Result screen.
 async function enhAutoSave() {
   let data = enh.current === enh.ai && enh.full ? enh.full : enh.current;
   const marked = !isPro();
   if (marked) { try { const m = await addMark(data, false); if (m) data = m.data; } catch {} }
-  const name = `glow-enhanced-${Date.now()}`;
+  const name = `glow-studio-enhanced-${Date.now()}`;
   try {
     const where = await Platform.savePhotos([{ data, name }], { download: true });
     track("save", { from: "camera_enhance", auto: true, marked, where: String(where || "") });
     enh.saved = { data, where, name };
-    const note = marked && !store.get("glowBadgeSeen") ? " Free saves include a small Glow badge in the corner." : "";
+    const note = marked && !store.get("glowBadgeSeen") ? " Free saves include a small Glow Studio badge in the corner." : "";
     if (marked) store.set("glowBadgeSeen", "1");
     say(savedText(where, 1, note));
   } catch (err) {
@@ -545,7 +545,7 @@ async function enhAutoSave() {
   }
 }
 
-// ---------- Batch Enhance (Glow Pro) ----------
+// ---------- Batch Enhance (Glow Studio Pro) ----------
 // Up to 10 photos at once. Each photo is its own Enhance request (1 AI credit, refunded by the
 // server if it fails), three run at a time, and each tile shows its result as soon as it is
 // ready. The total cost shows before anything starts. Tapping a finished photo opens the usual
@@ -571,10 +571,10 @@ function renderBatchLink() {
 async function batchPick() {
   if (batch.running || batch.loading) return;
   const room = BATCH_MAX - batch.items.length;
-  if (room < 1) { say(`Glow enhances up to ${BATCH_MAX} photos at a time.`); return; }
+  if (room < 1) { say(`Glow Studio enhances up to ${BATCH_MAX} photos at a time.`); return; }
   const files = await Platform.pickPhotos("files");
   if (!files.length) return;
-  if (files.length > room) say(`Glow enhances up to ${BATCH_MAX} photos at a time, so ${room === BATCH_MAX ? "the first " + room : room + " more"} were added.`);
+  if (files.length > room) say(`Glow Studio enhances up to ${BATCH_MAX} photos at a time, so ${room === BATCH_MAX ? "the first " + room : room + " more"} were added.`);
   const take = files.slice(0, room);
   if (!batch.items.length) { batch.saved = ""; track("batch_open", { photos: take.length }); }
   batch.loading = take.length;
@@ -740,7 +740,7 @@ async function batchSave() {
   try {
     const stamp = Date.now(), pro = isPro(), files = [];
     for (const [k, it] of done.entries()) {
-      const name = `glow-enhanced-${stamp}-${k + 1}`;
+      const name = `glow-studio-enhanced-${stamp}-${k + 1}`;
       if (pro) { files.push({ blob: it.full, name }); continue; }
       let m; try { m = await addMark(await blobToData(it.full), false); } catch { m = null; }   // Pro lapsed meanwhile: free saves carry the badge
       files.push(m ? { data: m.data, name } : { blob: it.full, name });

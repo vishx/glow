@@ -1,4 +1,4 @@
-/* Glow design system: Blush & Ink (porcelain and blush, ink-black actions, champagne only for Pro and AI). Shared by Camera, Editor, onboarding and sheets. */
+/* Glow Studio design system: Blush & Ink (porcelain and blush, ink-black actions, champagne only for Pro and AI). Shared by Camera, Editor, onboarding and sheets. */
 
 /* Tokens. Dark is the default; light follows the system unless the user picks one in Settings.
    --line is for decorative dividers only; --control (3:1 or better on every surface) outlines
@@ -72,6 +72,9 @@ a { color: var(--accent); }
 .spacer { width: 44px; height: 44px; }
 .topbar.compact { height: 48px; grid-template-columns: auto 1fr auto; }
 .topbar.compact .wordmark { font-size: 1.5rem; color: var(--accent); }
+/* "Glow Studio" stays on one line: in the editor's busy top bar it shrinks on narrow phones. */
+.wordmark { white-space: nowrap; }
+.topbar.compact .wordmark { min-width: 0; font-size: clamp(1.0625rem, 5.6vw, 1.5rem); }
 .topbar.compact .pill { min-height: 44px; padding: 0 var(--s4); }
 
 /* Buttons */

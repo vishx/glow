@@ -1,14 +1,14 @@
 {
   "version": 2,
-  "note": "Prepared results for Try a sample, made once from this exact original with Glow's own AI pipeline (same models, prompts and settings users get). Each was put in the original's frame with a uniform scale only (never stretched); where the model trimmed the sides, the thin strips named in 'fit' come from the original. Only results whose eyes moved 4 px or less are listed. The app offers an entry only when status is ready, aligned is true and its file loads. Never put credentials or signed URLs here.",
+  "note": "Prepared results for Try a sample, made once from this exact original with Glow Studio's own AI pipeline (same models, prompts and settings users get). Each was put in the original's frame with a uniform scale only (never stretched); where the model trimmed the sides, the thin strips named in 'fit' come from the original. Only results whose eyes moved 4 px or less are listed. The app offers an entry only when status is ready, aligned is true and its file loads. Never put credentials or signed URLs here.",
   "original": {
     "file": "original.png",
     "width": 1086,
     "height": 1448,
     "label": "AI-generated sample",
     "sha256": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
-    "source": "AI-generated adult portrait approved by the Glow owner on 2026-10-30 (the approved mockup's portrait) for use as the in-app sample. Not a photo of a real person.",
-    "license": "Owner-supplied for use in Glow. The image generator and its terms were not stated; record them in SOURCE.md before release."
+    "source": "AI-generated adult portrait approved by the Glow Studio owner on 2026-10-30 (the approved mockup's portrait) for use as the in-app sample. Not a photo of a real person.",
+    "license": "Owner-supplied for use in Glow Studio. The image generator and its terms were not stated; record them in SOURCE.md before release."
   },
   "previews": [
     {

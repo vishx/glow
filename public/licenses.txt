@@ -1,4 +1,4 @@
-Glow uses icons from Lucide (https://lucide.dev).
+Glow Studio uses icons from Lucide (https://lucide.dev).
 
 ISC License
 

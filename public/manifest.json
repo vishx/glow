@@ -1,6 +1,6 @@
 {
-  "name": "Glow",
-  "short_name": "Glow",
+  "name": "Glow Studio",
+  "short_name": "Glow Studio",
   "description": "A beauty camera and photo editor.",
   "start_url": "/",
   "display": "standalone",

@@ -33,7 +33,7 @@ const Platform = {
 
   // Saves photos ({ blob } or { data: dataURL }, plus a name without extension). Resolves only
   // once the platform has finished, and says where they went: "photos" (the phone app saved them
-  // to the Glow album), "shared" (the share sheet closed; we can't tell what the user picked) or
+  // to the Glow Studio album), "shared" (the share sheet closed; we can't tell what the user picked) or
   // "downloaded" (the browser started a download). Throws AbortError if the user cancels.
   // { download: true } skips the share sheet, for saves the user didn't tap for (auto-save);
   // { share: true } asks for the share sheet on computers too (the editor's Share button).
@@ -50,7 +50,7 @@ const Platform = {
     if (native && plugins.Filesystem && plugins.Share && !opts.download) {
       const uris = [];
       for (const f of files) uris.push((await plugins.Filesystem.writeFile({ path: f.name, data: (await fileData(f)).split(",")[1], directory: "CACHE" })).uri);
-      await plugins.Share.share({ title: "Glow", files: uris });
+      await plugins.Share.share({ title: "Glow Studio", files: uris });
       return "shared";
     }
     // iPhone: the share sheet has "Save Image". Android's share sheet has no save option (only
@@ -58,7 +58,7 @@ const Platform = {
     // Downloads and shows up in the phone's Gallery and Google Photos.
     const touch = matchMedia("(pointer: coarse)").matches, android = /Android/i.test(navigator.userAgent);
     if (!opts.download && ((touch && !android) || opts.share) && navigator.canShare && navigator.canShare({ files })) {
-      await navigator.share({ files, title: "Glow" });
+      await navigator.share({ files, title: "Glow Studio" });
       return "shared";
     }
     for (const f of files) {
@@ -108,14 +108,14 @@ const Platform = {
 
 const fileData = (f) => new Promise((ok, fail) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => fail(fr.error); fr.readAsDataURL(f); });
 
-// Phone app: save straight into a "Glow" album.
+// Phone app: save straight into a "Glow Studio" album.
 async function saveToAlbum(dataUrl, name) {
   const media = plugins.Media;
   let album;
   if (window.Capacitor.getPlatform() === "android") {
-    const find = async () => ((await media.getAlbums()).albums || []).find((a) => a.name === "Glow");
+    const find = async () => ((await media.getAlbums()).albums || []).find((a) => a.name === "Glow Studio");
     album = await find();
-    if (!album) { await media.createAlbum({ name: "Glow" }); album = await find(); }
+    if (!album) { await media.createAlbum({ name: "Glow Studio" }); album = await find(); }
   }
   await media.savePhoto({ path: dataUrl, albumIdentifier: album && album.identifier, fileName: name });
 }

@@ -1,4 +1,4 @@
-// Glow's AI pipeline: which Replicate model and settings each tool uses, and how an edit is
+// Glow Studio's AI pipeline: which Replicate model and settings each tool uses, and how an edit is
 // started. Shared by the enhance function and tools/demo/generate.ts, so the sample's prepared
 // results are made with exactly the settings users get.
 

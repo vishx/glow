@@ -1,4 +1,4 @@
-// The Glow admin page (/admin) talks to this function. Every request must carry the owner's
+// The Glow Studio admin page (/admin) talks to this function. Every request must carry the owner's
 // admin key (the ADMIN_KEY secret) in the x-admin-key header; nothing else can reach it.
 // POST { action, ...args }. Needs migrations 009 and 010. Every change is written to admin_audit.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -32,7 +32,7 @@ const must = <T>(r: { data: T; error: { message: string } | null }) => {
 const audit = (action: string, target: string | null, detail: Record<string, unknown> = {}) =>
   admin.from("admin_audit").insert({ action, target, detail }).then(({ error }) => { if (error) console.error("audit", error.message); });
 const userId = (v: unknown) => {
-  if (typeof v !== "string" || !UUID.test(v)) throw new HttpError("That isn't a Glow account ID.");
+  if (typeof v !== "string" || !UUID.test(v)) throw new HttpError("That isn't a Glow Studio account ID.");
   return v.toLowerCase();
 };
 const text = (v: unknown, max = 500) => (typeof v === "string" ? v.trim().slice(0, max) : "");

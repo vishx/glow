@@ -1,4 +1,4 @@
-// Glow image engine: everything that changes pixels. Runs on the device
+// Glow Studio image engine: everything that changes pixels. Runs on the device
 // (canvas, WebGL, MediaPipe); AI edits are started from app.js.
 
 const BG_LABELS = { bgblur: "Blur background", bgremove: "Remove background", bgwhite: "White background",
@@ -319,7 +319,7 @@ function drawWith(ctx, f, draw) {
   softFilter(lx, f);
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(layer, 0, 0); ctx.restore();
 }
-// The CSS filter functions Glow uses, done on the pixels (premultiplied blur, as browsers do).
+// The CSS filter functions Glow Studio uses, done on the pixels (premultiplied blur, as browsers do).
 function softFilter(x, f) {
   const W = x.canvas.width, H = x.canvas.height, img = x.getImageData(0, 0, W, H), d = img.data;
   for (const [, name, arg] of f.matchAll(/([a-z-]+)\(([^)]*)\)/g)) {

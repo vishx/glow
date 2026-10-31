@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Glow</string>
+        <string>Glow Studio</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -69,11 +69,11 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Glow uses the camera so you can take photos and see live beauty effects.</string>
+	<string>Glow Studio uses the camera so you can take photos and see live beauty effects.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Glow opens photos you choose so you can edit them.</string>
+	<string>Glow Studio opens photos you choose so you can edit them.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Glow saves your original and enhanced photos to your library.</string>
+	<string>Glow Studio saves your original and enhanced photos to your library.</string>
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-3940256099942544~1458002511</string>
 	<key>SKAdNetworkItems</key>

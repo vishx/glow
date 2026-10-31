@@ -536,7 +536,7 @@ test('demo: saving exports the shown result and names it as an AI-generated samp
   await tool(p, 'foryou', null, 'pro'); await p.waitForFunction(() => ed.idx === 1); await p.click('#applyBtn');
   await p.click('#saveBtn'); assert(/AI-generated sample/.test(await p.textContent('#ask')), 'export flow says it is a sample');
   await p.click('#ask .btn:has-text("Save sample")'); await downloads(state, 1);
-  assert(/^glow-ai-sample-/.test(state.downloads[0].name), 'file name: ' + state.downloads[0].name);
+  assert(/^glow-studio-ai-sample-/.test(state.downloads[0].name), 'file name: ' + state.downloads[0].name);
   eq((({ w, h }) => [w, h])(imageSize(state.downloads[0].file)), [1086, 1448], 'shown result at its size');
   eq(state.posts.length, 0, 'no AI request');
 }, { files: demoFiles(), viewport: { width: 1280, height: 860 }, mobile: false, touch: false });
@@ -1139,7 +1139,7 @@ test('mark: free saves carry a small Glow mark bottom-right, shown once before t
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
   await p.click('#saveBtn'); await p.waitForSelector('#ask[open] #askImg');
-  eq(await p.textContent('#askTitle'), 'Free saves include a small Glow badge', 'disclosed before the first free save');
+  eq(await p.textContent('#askTitle'), 'Free saves include a small Glow Studio badge', 'disclosed before the first free save');
   assert(await p.evaluate(() => $('askImg').naturalWidth > 100), 'shows a preview of the marked corner');
   await p.click('#ask .btn:has-text("Save")'); const [d] = await downloads(state, 1);
   const clean = await p.evaluate(async () => (await renderExport()).data);
@@ -1188,7 +1188,7 @@ test('mark: Share and Download give the same marked file; Share Glow card only o
   const expected = await p.evaluate(async () => { const o = await renderExport(); return (await addMark(o.data, isPng(o.data))).data; });
   eq(shared.split(',')[1], expected.split(',')[1], 'share sheet gets the same marked file the download path makes');
   eq(await p.evaluate(() => document.querySelectorAll('#ask[open]').length), 0, 'no card or dialog opened by itself');
-  assert(await p.isVisible('.toast-act'), 'a quiet Share Glow offer after saving'); eq(await p.textContent('.toast-act'), 'Share Glow', 'offer label');
+  assert(await p.isVisible('.toast-act'), 'a quiet Share Glow offer after saving'); eq(await p.textContent('.toast-act'), 'Share Glow Studio', 'offer label');
   await p.click('.toast-act'); await p.waitForSelector('#ask[open] #askImg');
   eq(await p.evaluate(() => window.__shared.length), 1, 'nothing shared until chosen');
   await p.addScriptTag({ path: path.join(__dirname, 'vendor', 'jsQR.js') });
@@ -1196,7 +1196,7 @@ test('mark: Share and Download give the same marked file; Share Glow card only o
     const d = x.getImageData(0, c.height - 280, 340, 280); const r = jsQR(d.data, d.width, d.height); return r && r.data; });
   eq(qr, 'https://glow-photo-enhancer.vercel.app', 'the card QR scans to the public address');
   await p.click('#ask .btn:has-text("Save card")'); const [card] = await downloads(state, 1);
-  assert(/glow-share-card/.test(card.file), 'card saved only when chosen');
+  assert(/glow-studio-share-card/.test(card.file), 'card saved only when chosen');
   eq([state.posts.length, state.used], [0, 0], 'no AI request, no credit');
 }, { viewport: { width: 390, height: 844 } });
 test('view: full view keeps the preview, zoom and comparison, and Back closes it', async ({ p }) => {
@@ -1905,7 +1905,7 @@ test('enhance batch: cost first, three at a time, each result as it lands, Save 
   eq(state.posts.length, 5, 'opening a result costs nothing');
   await p.click('#batchGo'); await downloads(state, 5); await settle(400);
   eq(state.downloads.length, 5, 'five files saved');
-  assert(state.downloads.every((d) => /^glow-enhanced-\d+-\d\.\w+$/.test(d.name)), 'named in order: ' + state.downloads.map((d) => d.name));
+  assert(state.downloads.every((d) => /^glow-studio-enhanced-\d+-\d\.\w+$/.test(d.name)), 'named in order: ' + state.downloads.map((d) => d.name));
   const ai = imageSize(path.join(fixtures, 'ai-result.jpg'));
   assert(state.downloads.every((d) => imageSize(d.file).w === ai.w), 'saved at the AI result\'s full size');
   eq(await p.textContent('#batchGoLbl'), 'Done', 'Done after saving');
@@ -1962,7 +1962,7 @@ test('packs: web shows the packs with prices but sends buyers to the app', async
   await p.waitForSelector('#packsSheet[open]');
   eq(await p.evaluate(() => [...document.querySelectorAll('.pack')].map((b) => [b.querySelector('b').textContent, b.querySelector('.price').textContent, b.disabled])),
     [['10', '$1.99', true], ['30', '$4.99', true], ['80', '$11.99', true]], 'three packs, store prices, not buyable on the web');
-  assert(/available in the Glow app/.test(await p.textContent('#packsNote')), 'says where to buy');
+  assert(/available in the Glow Studio app/.test(await p.textContent('#packsNote')), 'says where to buy');
   eq(await p.evaluate(() => $('paywall').open), false, 'paywall closed behind it');
 });
 

@@ -7,7 +7,7 @@ drafts live in the browser's own storage and are never touched by a sample chang
 ## original.png
 
 - An AI-generated portrait of an adult. It is not a photo of a real person.
-- Approved by the Glow owner on 2026-10-30 as the sample (the portrait in the approved editor
+- Approved by the Glow Studio owner on 2026-10-30 as the sample (the portrait in the approved editor
   mockup), replacing the earlier sample.
 - Shipped byte-for-byte as received: 1086 × 1448 PNG, SHA-256
   `5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4`.
@@ -22,7 +22,7 @@ compares against `original.png` itself.
 
 ## Prepared AI previews
 
-On 2026-10-30, with the owner's approval (about $1.05 of Replicate credit), every Glow AI tool
+On 2026-10-30, with the owner's approval (about $1.05 of Replicate credit), every Glow Studio AI tool
 except Try on (it needs an outfit photo) was run once on this exact original by
 `tools/demo/all/all-tools.ts`, in a one-off GitHub Actions job (run 41081284106 on the
 `demo-gen` branch). It reached Replicate through a temporary Supabase function that checked the
@@ -46,4 +46,4 @@ with a different composition), Older and Younger (the model returns a square fac
 result filled the new area with unrelated pictures; see the run notes).
 
 The JPEGs under `tests/fixtures/demo-test-*.jpg` are tone changes made for the tests only.
-They are not Glow results and are never shipped.
+They are not Glow Studio results and are never shipped.
