@@ -1076,7 +1076,7 @@ test('mark: free saves carry a small Glow mark bottom-right, shown once before t
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
   await p.click('#saveBtn'); await p.waitForSelector('#ask[open] #askImg');
-  eq(await p.textContent('#askTitle'), 'Free saves include a small Glow mark', 'disclosed before the first free save');
+  eq(await p.textContent('#askTitle'), 'Free saves include a small Glow badge', 'disclosed before the first free save');
   assert(await p.evaluate(() => $('askImg').naturalWidth > 100), 'shows a preview of the marked corner');
   await p.click('#ask .btn:has-text("Save")'); const [d] = await downloads(state, 1);
   const clean = await p.evaluate(async () => (await renderExport()).data);

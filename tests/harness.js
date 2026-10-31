@@ -53,8 +53,8 @@ exports.launch = async (opts = {}) => {
     const q = navigator.permissions.query.bind(navigator.permissions);
     navigator.permissions.query = (d) => d.name === 'camera' ? Promise.resolve({ state: 'denied', addEventListener() {} }) : q(d);
   });
-  // The one-time "Free saves include a small Glow mark" note is assumed seen, except in the tests about it.
-  if (!opts.markIntro) await ctx.addInitScript(() => { localStorage.setItem('glowMarkSeen', '1'); });
+  // The one-time "Free saves include a small Glow badge" note is assumed seen, except in the tests about it.
+  if (!opts.markIntro) await ctx.addInitScript(() => { localStorage.setItem('glowBadgeSeen', '1'); });
   if (opts.init) await ctx.addInitScript(opts.init);
   // Glow opens on Enhance by default; most checks here start where they always did (Camera), and
   // the Enhance checks pass start: 'enhance'.

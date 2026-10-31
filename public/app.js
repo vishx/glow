@@ -10,10 +10,13 @@ const CONFIG = {
   // From AdMob > Apps > Ad units (rewarded). These are Google's test units until real ones are added.
   admobRewardIos: "ca-app-pub-3940256099942544/1712485313",
   admobRewardAndroid: "ca-app-pub-3940256099942544/5224354917",
-  // Glow's public address: printed in the mark on free saves and encoded in the Share Glow
-  // QR card. This is the project's production domain on Vercel. Leave it "" and free saves
-  // show "Glow" alone and Share Glow is not offered.
+  // Glow's public address: encoded in the Share Glow QR card, and printed under "Glow" in the
+  // badge on free saves unless badgeLine says otherwise. This is the project's production domain
+  // on Vercel. Leave it "" and Share Glow is not offered.
   publicUrl: "https://glow-photo-enhancer.vercel.app",
+  // The small second line of the badge on free saves, such as a real domain or "On the App Store".
+  // "" uses publicUrl's address; "none" shows "Glow" alone.
+  badgeLine: "",
   // Fill sends mode "fill" with a short prompt. Live since enhance v9 (2026-10-30, after migration 006).
   aiFill: true,
   // AI scene, HD cutout and Describe need the "bgscene", "bgcut" and "custom" modes on the
@@ -2247,21 +2250,10 @@ async function saveEdit(opts) {
     const img = await loadImg(committed());
     out = { data: committed(), w: img.naturalWidth, h: img.naturalHeight, preview: true };
   }
-  // Free plan: the small Glow mark goes on the finished picture. The first time, the person
-  // sees exactly where it sits before anything is saved.
-  if (!isPro()) {
-    let m;
-    try { m = await addMark(out.data, isPng(out.data)); } catch { m = null; }
-    if (m) {
-      if (!store.get("glowMarkSeen")) {
-        const c = await ask({ title: "Free saves include a small Glow mark", text: "It sits in the bottom-right corner, like this. Glow Pro saves don't have it.",
-          image: m.preview, caption: "The corner of your saved photo", actions: [{ label: "Save", value: "yes" }, { label: "Cancel", value: "", kind: "ghost" }] });
-        if (!c) { savingEdit = false; return false; }
-        store.set("glowMarkSeen", "1");
-      }
-      out = { ...out, data: m.data, marked: true };
-    }
-  }
+  // Free plan: the small Glow badge goes on the finished picture.
+  const marked = await markForSave(out.data, isPng(out.data));
+  if (!marked) { savingEdit = false; return false; }
+  if (marked.marked) out = { ...out, data: marked.data, marked: true };
   const stamp = Date.now(), items = [{ data: out.data, name: ed.demo ? `glow-ai-sample-${demoSaveTag()}${stamp}` : `glow-${stamp}` }];
   const withOrig = !ed.demo && store.get("glowSaveOrig") === "on" && !ed.originalSaved && ed.original && ed.original.blob;
   if (withOrig) items.unshift({ blob: ed.original.blob, name: `glow-${stamp}-original` });
@@ -2284,57 +2276,87 @@ async function saveEdit(opts) {
 }
 $("saveBtn").addEventListener("click", saveEdit);
 
-// ---------- Glow mark on free saves ----------
-// Saves on the free plan get a small "Glow · address" mark in the bottom-right corner, drawn on
-// the final full-size picture (after crop, rotation and every edit), never on the screen view.
-// Glow Pro saves stay clean. The mark is part of saving only: no credit, request or allowance.
-// Pro is remembered (until it expires) for when the server can't be reached yet, such as right
-// after opening the app offline, so a Pro save never gets the free-plan mark.
+// ---------- Glow badge on free saves ----------
+// Saves on the free plan get a small Glow badge in the bottom-right corner: the app icon and
+// "Glow" with the address under it, on a dark glass pill, like other camera apps sign their
+// photos. It is drawn on the final full-size picture (after crop, rotation and every edit), never
+// on the screen view. Glow Pro saves stay clean. The badge is part of saving only: no credit,
+// request or allowance. Pro is remembered (until it expires) for when the server can't be reached
+// yet, such as right after opening the app offline, so a Pro save never gets the badge.
 const isPro = () => (account && account.plan ? account.plan === "pro" : new Date(store.get("glowPro") || 0) > new Date());
 let shareOffered = false;
+const BADGE_LINE = CONFIG.badgeLine === "none" ? "" : CONFIG.badgeLine || PUBLIC_HOST;
 async function markFonts() {
   try { await Promise.all([document.fonts.load('500 40px Fraunces'), document.fonts.load("600 20px Figtree")]); } catch {}
 }
 const MARK_SERIF = (px) => `500 ${px}px Fraunces, Georgia, serif`, MARK_SANS = (px) => `600 ${px}px Figtree, system-ui, sans-serif`;
-// Sized from the picture's shorter side, with an inset of most of a letter height. The address
-// is left out when it would be too small to read or take more than half the width.
+let badgeIcon = null;
+const loadBadgeIcon = () => badgeIcon || (badgeIcon = loadImg("icon-512.png").catch(() => { badgeIcon = null; return null; }));
+// Sized from the picture's shorter side: the pill is 5% of it tall (at least 26px), inset by
+// half its height. The address line is left out when it would be too small to read or make the
+// badge wider than 45% of the picture.
 function markLayout(ctx, w, h) {
-  const s = Math.max(12, Math.round(Math.min(w, h) * 0.026)), u = Math.max(9, Math.round(s * 0.6)), inset = Math.round(s * 0.8);
+  const H = Math.max(26, Math.round(Math.min(w, h) * 0.05)), pad = Math.round(H * 0.16), icon = H - pad * 2, inset = Math.round(H * 0.5);
+  const s = Math.round(H * 0.4), u = Math.round(H * 0.22);
   ctx.font = MARK_SERIF(s); const gw = ctx.measureText("Glow").width;
-  let host = PUBLIC_HOST ? ` · ${PUBLIC_HOST}` : "";
-  ctx.font = MARK_SANS(u); let hw = host ? ctx.measureText(host).width : 0;
-  if (u < 11 || gw + hw > w * 0.5) { host = ""; hw = 0; }   // too small to read: "Glow" alone
-  return { s, u, gw, hw, host, x: Math.round(w - inset - gw - hw), y: h - inset };
+  let line = BADGE_LINE; ctx.font = MARK_SANS(u); let lw = line ? ctx.measureText(line).width : 0;
+  const width = (tw) => Math.round(pad + icon + H * 0.22 + tw + H * 0.4);
+  if (u < 9 || width(Math.max(gw, lw)) > w * 0.45) { line = ""; lw = 0; }
+  const bw = width(Math.max(gw, lw));
+  return { H, pad, icon, s, u, gw, line, bw, x: w - inset - bw, y: h - inset - H };
 }
-// Mean luminance (0–1) of the area the mark covers; true when it is bright.
-function markLight(ctx, m, w, h) {
-  const x = Math.max(0, Math.floor(m.x)), y = Math.max(0, Math.floor(m.y - m.s)), bw = Math.min(w - x, Math.ceil(m.gw + m.hw)), bh = Math.min(h - y, Math.ceil(m.s * 1.3));
-  if (bw < 1 || bh < 1) return false;
-  const d = ctx.getImageData(x, y, bw, bh).data, step = Math.max(1, Math.floor((bw * bh) / 4000)) * 4;
-  let sum = 0, n = 0;
-  for (let i = 0; i < d.length; i += step) { sum += (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255; n++; }
-  return n > 0 && sum / n > 0.62;
+function pill(ctx, x, y, w, h) { const r = h / 2; ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function drawBadge(ctx, m, icon) {
+  const { x, y, H, pad } = m;
+  ctx.save();
+  // The pill: ink glass with a soft shadow and a hairline edge, so the white lettering reads on
+  // white walls and skies as well as on dark or busy backgrounds.
+  ctx.shadowColor = "rgba(0, 0, 0, 0.22)"; ctx.shadowBlur = H * 0.3; ctx.shadowOffsetY = H * 0.04;
+  pill(ctx, x, y, m.bw, H); ctx.fillStyle = "rgba(29, 24, 27, 0.56)"; ctx.fill();
+  ctx.shadowColor = "transparent"; ctx.lineWidth = Math.max(1, H * 0.025); ctx.strokeStyle = "rgba(255, 255, 255, 0.22)"; ctx.stroke();
+  // The app icon, rounded like on a home screen.
+  const ix = x + pad, iy = y + pad;
+  if (icon) {
+    ctx.save(); pill(ctx, ix, iy, m.icon, m.icon); ctx.clip();
+    ctx.drawImage(icon, ix, iy, m.icon, m.icon); ctx.restore();
+  }
+  const tx = ix + m.icon + H * 0.22;
+  ctx.fillStyle = "#ffffff"; ctx.textBaseline = "alphabetic";
+  if (m.line) {
+    ctx.font = MARK_SERIF(m.s); ctx.fillText("Glow", tx, y + H * 0.52);
+    ctx.font = MARK_SANS(m.u); ctx.fillStyle = "rgba(255, 255, 255, 0.8)"; ctx.fillText(m.line, tx, y + H * 0.81);
+  } else {
+    ctx.font = MARK_SERIF(Math.round(H * 0.48)); ctx.fillText("Glow", tx, y + H * 0.66);
+  }
+  ctx.restore();
 }
 async function addMark(data, png) {
   await markFonts();
-  const img = await loadImg(data), w = img.naturalWidth, h = img.naturalHeight, c = newCanvas(w, h), ctx = c.getContext("2d");
+  const [img, icon] = await Promise.all([loadImg(data), loadBadgeIcon()]);
+  const w = img.naturalWidth, h = img.naturalHeight, c = newCanvas(w, h), ctx = c.getContext("2d");
   ctx.drawImage(img, 0, 0);
   const m = markLayout(ctx, w, h);
-  ctx.save();
-  // The mark's color follows the picture under it: white with a dark shadow on dark or busy
-  // areas, deep plum with a light glow on bright ones (a white sky, a white wall), so it stays legible.
-  const light = markLight(ctx, m, w, h);
-  ctx.fillStyle = light ? "rgba(52, 26, 42, 0.9)" : "rgba(255, 255, 255, 0.94)"; ctx.shadowColor = light ? "rgba(255, 255, 255, 0.7)" : "rgba(0, 0, 0, 0.6)";
-  ctx.shadowBlur = Math.max(2, m.s * 0.3); ctx.shadowOffsetY = Math.max(1, Math.round(m.s * 0.04));
-  ctx.font = MARK_SERIF(m.s); ctx.fillText("Glow", m.x, m.y);
-  if (m.host) { ctx.font = MARK_SANS(m.u); ctx.fillText(m.host, m.x + m.gw, m.y); }
-  ctx.restore();
-  // The disclosure preview: the corner of this exact picture, around the mark.
-  const bw = m.gw + m.hw, pw = Math.min(w, Math.round(bw * 1.3 + m.s * 1.6)), ph = Math.min(h, Math.round(pw * 0.36));
+  drawBadge(ctx, m, icon);
+  // The disclosure preview: the corner of this exact picture, around the badge.
+  const pw = Math.min(w, Math.round(m.bw * 1.5 + m.H)), ph = Math.min(h, Math.round(Math.max(m.H * 3, pw * 0.4)));
   const pc = canvasFor({ naturalWidth: pw, naturalHeight: ph }, 640), sc = pc.width / pw;
   pc.getContext("2d").drawImage(c, w - pw, h - ph, pw, ph, 0, 0, pw * sc, ph * sc);
   return { data: png ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", 0.95), preview: pc.toDataURL("image/jpeg", 0.9),
-    box: { x: m.x, y: m.y - m.s, w: bw, h: Math.round(m.s * 1.3) }, host: m.host };
+    box: { x: m.x, y: m.y, w: m.bw, h: m.H }, line: m.line };
+}
+// The badged picture for a free save. The first time, the person sees exactly where the badge
+// sits before anything is saved; null when they cancel. Pro saves come back unchanged.
+async function markForSave(data, png) {
+  if (isPro()) return { data, marked: false };
+  let m; try { m = await addMark(data, png); } catch { m = null; }
+  if (!m) return { data, marked: false };
+  if (!store.get("glowBadgeSeen")) {
+    const c = await ask({ title: "Free saves include a small Glow badge", text: "It sits in the bottom-right corner, like this, so friends can see where your photo was made. Glow Pro saves don't have it.",
+      image: m.preview, caption: "The corner of your saved photo", actions: [{ label: "Save", value: "yes" }, { label: "Cancel", value: "", kind: "ghost" }] });
+    if (!c) return null;
+    store.set("glowBadgeSeen", "1");
+  }
+  return { data: m.data, marked: true };
 }
 
 // ---------- Share Glow card (only when chosen) ----------

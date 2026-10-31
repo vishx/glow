@@ -426,22 +426,13 @@ async function enhDownload() {
   // With only the AI enhancers on, the photo saved is the AI's own full-size result (up to twice
   // the uploaded size) rather than the 2048px working copy.
   let data = enh.current === enh.ai && enh.full ? enh.full : enh.current;
-  if (!isPro()) {
-    let m; try { m = await addMark(data, false); } catch { m = null; }
-    if (m) {
-      if (!store.get("glowMarkSeen")) {
-        const c = await ask({ title: "Free saves include a small Glow mark", text: "It sits in the bottom-right corner, like this. Glow Pro saves don't have it.",
-          image: m.preview, caption: "The corner of your saved photo", actions: [{ label: "Save", value: "yes" }, { label: "Cancel", value: "", kind: "ghost" }] });
-        if (!c) return;
-        store.set("glowMarkSeen", "1");
-      }
-      data = m.data;
-    }
-  }
+  const marked = await markForSave(data, false);
+  if (!marked) return;
+  data = marked.data;
   const name = enh.demo ? `glow-ai-sample-enhanced-${Date.now()}` : `glow-enhanced-${Date.now()}`;
   try {
     const where = await Platform.savePhotos([{ data, name }]);
-    track("save", { from: "enhance", demo: !!enh.demo, marked: !isPro(), where: String(where || "") });
+    track("save", { from: "enhance", demo: !!enh.demo, marked: marked.marked, where: String(where || "") });
     enh.saved = { data, where, name };
     if (enh.fromBatch) enh.fromBatch.saved = true;
     showEnhShare();
@@ -677,7 +668,7 @@ async function batchSave() {
     for (const [k, it] of done.entries()) {
       const name = `glow-enhanced-${stamp}-${k + 1}`;
       if (pro) { files.push({ blob: it.full, name }); continue; }
-      let m; try { m = await addMark(await blobToData(it.full), false); } catch { m = null; }   // Pro lapsed meanwhile: free saves carry the mark
+      let m; try { m = await addMark(await blobToData(it.full), false); } catch { m = null; }   // Pro lapsed meanwhile: free saves carry the badge
       files.push(m ? { data: m.data, name } : { blob: it.full, name });
     }
     const where = await Platform.savePhotos(files);
