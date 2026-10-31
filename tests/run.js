@@ -2241,7 +2241,7 @@ test('features: Glow Up never offers a switched-off AI step, and a saved routine
 test('features: Camera and Editor tabs off open Enhance, hide every way in, and Enhance still runs', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   await p.waitForFunction(() => Features.checkedAt > 0, null, { timeout: 10000 }); await settle(200);
-  eq(await p.evaluate(() => [...document.querySelectorAll('#nav button')].filter((b) => !b.hidden).map((b) => b.dataset.dest)), ['enhance'], 'only Enhance in the bar');
+  eq(await p.evaluate(() => [$('nav').hidden, [...document.querySelectorAll('#nav button')].filter((b) => !b.hidden).map((b) => b.dataset.dest)]), [true, ['enhance']], 'no tab bar with Enhance the only tab');
   await p.evaluate(() => go('editor')); eq(await p.evaluate(() => screen), 'enhanceHome', 'Editor never shows');
   const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
   await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');

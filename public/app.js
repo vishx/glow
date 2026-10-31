@@ -209,6 +209,9 @@ applyTheme();
 
 // ---------- Screens and navigation ----------
 let screen = "";
+// The tab bar: only on the three main screens, never over a photo just taken, and not at all when
+// Enhance is the only tab left (Camera and Editor both switched off).
+const navHidden = (id) => !["cameraScreen", "editorHome", "enhanceHome"].includes(id) || (id === "cameraScreen" && !!cam.shot) || (!featureOn("screen:camera") && !featureOn("screen:editor"));
 // A main screen switched off from the admin page (features.js) is never shown; Enhance has no switch.
 const screenOff = (id) => (id === "cameraScreen" && !featureOn("screen:camera")) || ((id === "editorHome" || id === "editorScreen") && !featureOn("screen:editor"));
 function showScreen(id) {
@@ -217,7 +220,7 @@ function showScreen(id) {
   screen = id;
   ["onboarding", "enhanceHome", "enhanceResult", "enhanceBatch", "enhanceShare", "cameraScreen", "editorHome", "editorScreen"].forEach((s) => { $(s).hidden = s !== id; });
   const dest = id === "cameraScreen" ? "camera" : id === "editorHome" ? "editor" : id === "enhanceHome" ? "enhance" : "";
-  $("nav").hidden = !dest || (id === "cameraScreen" && !!cam.shot);
+  $("nav").hidden = navHidden(id);
   $("nav").classList.toggle("dark", id === "cameraScreen");
   document.querySelectorAll("#nav button").forEach((b) => { if (b.dataset.dest === dest) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
   if (dest) store.set("glowLastDest", dest);
@@ -3146,6 +3149,7 @@ function refreshFeatures(force) {
 function applyFeatures() {
   const camOn = featureOn("screen:camera"), editorOn = featureOn("screen:editor");
   document.querySelectorAll("#nav button[data-dest]").forEach((b) => { b.hidden = b.dataset.dest === "camera" ? !camOn : b.dataset.dest === "editor" ? !editorOn : false; });
+  if (screen) $("nav").hidden = navHidden(screen);
   // Every way into the Editor, and into the Camera.
   ["enhEdit", "editShotBtn", "camStateAlt"].forEach((id) => { $(id).hidden = !editorOn; });
   $("camGallery").style.visibility = editorOn ? "" : "hidden";   // keeps the shutter centred
