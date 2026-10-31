@@ -2680,7 +2680,51 @@ SLIDERS.forEach(([id, k]) => $(id).addEventListener("input", (e) => {
   saveBeauty();
 }));
 
-// Adjust has four tabs; only one group of controls shows at a time, to keep the photo large.
+// Adjust is one row of setting chips and the one slider (or the shades, or the filters) for the
+// chosen setting, see-through over the photo so the face stays in view. The four groups (Skin,
+// Face, Makeup, Filter) are still there underneath; a chip opens its group and shows its slider.
+// Reset puts every setting back to the Natural look; ↺ puts back just the chosen one.
+const ADJ_SETTINGS = [["smooth", "Smooth", "skin", "sSmooth"], ["bright", "Brighten", "skin", "sBright"], ["warm", "Warmth", "skin", "sWarm"],
+  ["eyes", "Eyes", "face", "sEyes"], ["slim", "Slim", "face", "sSlim"], ["nose", "Nose", "face", "sNose"],
+  ["lips", "Lips", "makeup"], ["blush", "Blush", "makeup"], ["brows", "Brows", "makeup"], ["filter", "Filter", "filter"]];
+const DEFAULT_LOOK = PRESET_LOOKS[1];
+let adjSel = "smooth";
+function selectAdj(key) {
+  adjSel = key;
+  const [, name, group, sid] = ADJ_SETTINGS.find((a) => a[0] === key);
+  if (group === "makeup") makeupPart = key;
+  showAdjTab(group);
+  document.querySelectorAll("#adjSkin .slider, #adjFace .slider").forEach((l) => { l.hidden = !!sid && !l.contains($(sid)); });
+  document.querySelectorAll("#adjChips [role=radio]").forEach((c) => { const on = c.dataset.set === key; c.setAttribute("aria-checked", String(on)); c.tabIndex = on ? 0 : -1; });
+  $("adjReset1").setAttribute("aria-label", `Reset ${name}`);
+  renderLooks();
+}
+(function adjChips() {
+  const row = $("adjChips");
+  const chips = ADJ_SETTINGS.map(([k, name], i) => {
+    const b = document.createElement("button"); b.setAttribute("role", "radio"); b.dataset.set = k; b.textContent = name;
+    b.addEventListener("click", () => { Platform.haptic(); selectAdj(k); });
+    b.addEventListener("keydown", (e) => {
+      const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0; if (!d) return;
+      e.preventDefault(); const n = ADJ_SETTINGS[(i + d + ADJ_SETTINGS.length) % ADJ_SETTINGS.length][0]; selectAdj(n); row.querySelector(`[data-set="${n}"]`).focus();
+    });
+    return b;
+  });
+  const reset = document.createElement("button"); reset.className = "adj-reset-all"; reset.id = "adjResetAll"; reset.innerHTML = icon("undo") + "Reset";
+  reset.setAttribute("aria-label", "Reset all settings to the Natural look");
+  reset.addEventListener("click", () => { Platform.haptic(); useLook(DEFAULT_LOOK); say("Back to the Natural look"); });
+  row.replaceChildren(...chips, reset);
+  setIcon($("adjReset1"), "undo");
+  $("adjReset1").addEventListener("click", () => {
+    Platform.haptic();
+    beauty[adjSel] = DEFAULT_LOOK[adjSel] ?? (adjSel === "filter" ? "none" : 0);
+    lookId = LOOK_KEYS.every((k) => DEFAULT_LOOK[k] === beauty[k]) ? DEFAULT_LOOK.id : "custom";
+    saveBeauty(); renderLooks();
+  });
+  selectAdj(adjSel);
+})();
+
+// Adjust has four groups; only one shows at a time, to keep the photo large.
 function showAdjTab(name, focus) {
   document.querySelectorAll("#adjustPanel [role=tab]").forEach((t) => {
     const on = t.dataset.adj === name;

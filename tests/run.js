@@ -1655,13 +1655,21 @@ if (faceVideo) test('camera live: follows the face, puts the look on it, and hol
   eq(await p.evaluate(() => [liveFace.pts, __liveTracks()]), [null, 0], 'camera and tracking stop while reviewing');
 }, liveOpts());
 
-if (faceVideo) test('camera live: Adjust tabs, one makeup part at a time, and looks remember face settings', async ({ p }) => {
+if (faceVideo) test('camera live: Adjust chips show one slider at a time, Reset works, and looks remember face settings', async ({ p }) => {
   await faceLive(p);
-  await p.click('.look.adjust'); await p.click('[data-adj="face"]');
+  await p.click('.look.adjust'); await p.click('[data-set="eyes"]');
   eq(await p.evaluate(() => ['adjSkin', 'adjFace', 'adjMakeup', 'adjFilter'].map((id) => $(id).hidden)), [true, false, true, true], 'only Face shows');
+  eq(await p.evaluate(() => [...document.querySelectorAll('#adjFace .slider')].map((l) => !l.hidden)), [true, false, false], 'only the Eyes slider');
   await p.locator('#sEyes').fill('60');
   eq(await p.evaluate(() => [beauty.eyes, lookId]), [60, 'custom'], 'Eye size changes the look');
-  await p.click('[data-adj="makeup"]'); await p.click('[data-part="blush"]');
+  // ↺ resets just this setting; Reset puts the whole Natural look back.
+  await p.click('#adjReset1'); eq(await p.evaluate(() => [beauty.eyes, lookId]), [0, 'natural'], 'reset one setting');
+  await p.click('[data-set="smooth"]'); await p.locator('#sSmooth').fill('90'); await p.click('[data-set="nose"]'); await p.locator('#sNose').fill('70');
+  await p.click('#adjResetAll'); eq(await p.evaluate(() => [beauty.smooth, beauty.nose, lookId]), [25, 0, 'natural'], 'reset all');
+  // The panel is see-through: no dark box over the face.
+  eq(await p.evaluate(() => getComputedStyle($('adjustPanel')).backgroundColor), 'rgba(0, 0, 0, 0)', 'no panel background');
+  await p.click('[data-set="eyes"]'); await p.locator('#sEyes').fill('60');
+  await p.click('[data-set="blush"]');
   eq(await p.textContent('#sMakeupName'), 'Blush', 'blush slider');
   eq(await p.locator('#swMakeup .cam-swatch').count(), 4, 'blush shades');
   await p.click('#swMakeup .cam-swatch:nth-child(2)');
@@ -1701,7 +1709,7 @@ if (faceVideo) test('camera live: no flicker: a missed frame fades, never cuts, 
     drawLive(g, $('camVideo'), $('camVideo').videoWidth, $('camVideo').videoHeight, true, b, false); g.gl.uniform1f = real; liveFace.ready = r; return on; }), 1, 'smoothing waits for the face');
   // Adjust open: the preview fills the space above the panel (cropped, not shrunk), with the face in it.
   const before = await p.evaluate(() => { const c = $('camCanvas'), k = Math.min(c.clientWidth / c.width, c.clientHeight / c.height); return c.height * k; });
-  await p.click('.look.adjust'); await p.click('[data-adj="face"]'); await settle(1500);
+  await p.click('.look.adjust'); await p.click('[data-set="eyes"]'); await settle(1500);
   const r = await p.evaluate(() => {
     const c = $('camCanvas'), cs = getComputedStyle(c), k = Math.max(c.clientWidth / c.width, c.clientHeight / c.height), hs = c.height * k;
     const p = parseFloat(cs.objectPosition.split(' ')[1]) / 100, top = (c.clientHeight - hs) * p;

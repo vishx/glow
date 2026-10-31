@@ -880,3 +880,25 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
 .vf-ai[hidden] { display: none; }
 .vf-ai svg { width: 18px; height: 18px; }
 .vf-ai .cost { margin-left: 4px; padding: 2px 8px; border-radius: 10px; background: #ffffff26; font-size: 0.75rem; font-weight: 600; }
+
+/* ---------- Compact Adjust ----------
+   One row of setting chips and one slider, see-through over the photo (no dark box), so the face
+   stays in view while it changes. The group tabs and makeup part buttons are replaced by chips. */
+#cameraScreen .adjust-panel { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: var(--s2); row-gap: 2px;
+  margin: 0 0 var(--s1); padding: 0 var(--gutter); border-radius: 0; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+#cameraScreen .adjust-panel > * { grid-column: 1; }
+#cameraScreen .adj-chips, #cameraScreen .adj-note { grid-column: 1 / -1; }
+#cameraScreen .adj-tabs, #cameraScreen .adj-parts { display: none; }
+.adj-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--gutter)); padding: 0 var(--gutter) 2px; }
+.adj-chips::-webkit-scrollbar { display: none; }
+.adj-chips button { flex: none; min-height: 34px; padding: 0 12px; border: 0; border-radius: 17px; background: #0000004d; color: #ffffffd9;
+  font-size: 0.8125rem; font-weight: 600; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.adj-chips button[aria-checked="true"] { background: #fff; color: #000; }
+.adj-chips .adj-reset-all { display: inline-flex; align-items: center; gap: 4px; background: transparent; box-shadow: inset 0 0 0 1px #ffffff80; color: #fff; }
+.adj-chips .adj-reset-all svg, .adj-reset1 svg { width: 16px; height: 16px; }
+#cameraScreen .adj-reset1 { grid-column: 2; grid-row: 2; align-self: start; width: 40px; height: 40px; border: 0; border-radius: 50%; padding: 0; display: grid; place-items: center;
+  background: #0000004d; color: #fff; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+#cameraScreen .adjust-panel .slider { grid-template-columns: 4.5rem 1fr 2rem; min-height: 40px; font-size: 0.875rem; text-shadow: 0 1px 3px #000c; }
+#cameraScreen .adjust-panel .slider output { color: #fff; }
+#cameraScreen .swatches { padding: 0 0 2px calc(4.5rem + var(--s2)); }
+#cameraScreen #adjFilter .looks { padding-top: 0 !important; }
