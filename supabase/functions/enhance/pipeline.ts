@@ -16,6 +16,14 @@ function edit(prompt: string, model: string | string[] = EDIT_MODELS) {
 const hair = (style: string) => edit(`Change only the person's hairstyle to ${style}. Keep the same hair color, clothes, pose and background.`);
 const outfit = (clothes: string) => edit(`Change only the person's clothes to ${clothes}. Keep the same body shape, pose, hair and background.`);
 
+const PRO_PROMPT = "Edit this photo the way a professional photographer and photo retoucher would finish it for delivery. " +
+  "Correct the white balance so whites look neutral and skin tones look natural and true. " +
+  "Fix the exposure: brighten and evenly light the faces and people, recover highlights and shadows, add gentle contrast and a clean, polished, natural color grade. " +
+  "Retouch skin lightly: reduce blemishes, shine and under-eye shadows while keeping real skin texture. Remove noise and sharpen the eyes and fine detail. " +
+  "Tidy the background: reduce small distractions and give it a subtle, natural depth of field so the people stand out. " +
+  "Keep every person exactly as they are: the same face, identity, facial features, face shape, expression, age, skin tone, hair, body, pose and clothes. " +
+  "Keep the same framing, composition and place. Photorealistic. Do not add objects or text.";
+
 export type Mode = { model: string | string[]; input: Record<string, unknown>; needsMask?: boolean; needsExtra?: boolean; userPrompt?: string };
 export const MODES: Record<string, Mode> = {
   // Enhance (the app's one-tap flow and the Restore tool): Real-ESRGAN sharpens and doubles the
@@ -37,12 +45,14 @@ export const MODES: Record<string, Mode> = {
   older: { model: "yuval-alaluf/sam", input: { target_age: "75" } },
   younger: { model: "yuval-alaluf/sam", input: { target_age: "20" } },
   erase: { model: ["allenhooo/lama", "zylim0702/remove-object"], input: {}, needsMask: true },
-  // Enhance: a full professional retouch of color, light, skin and background.
-  pro: edit("Edit this photo the way a professional photographer and retoucher would. Correct the white balance and color so skin tones look natural and true. " +
-    "Fix the exposure and lighting: brighten and evenly light the face, recover shadows and highlights, add gentle contrast and depth. " +
-    "Retouch the skin naturally: soften blemishes and under-eye shadows while keeping real skin texture. Sharpen the eyes and fine detail, and remove noise and blur. " +
-    "Clean up the background: remove small distracting clutter, stains and stray objects, even out the color and light, and add a subtle, natural depth of field. " +
-    "Do not change the face shape, features, expression, body, clothes or the place."),
+  // Pro Edit (Enhance's second choice and the editor's Pro edit): the photo finished the way a
+  // photographer and retoucher would. Chosen 2026-10-31 after a side-by-side test of 7 edit models on
+  // the owner's event photo (tools/pro-edit-test): Nano Banana 2 gave the most natural pro look and,
+  // with the phone's face-true finish (engine.js proFinish), kept faces at ArcFace 0.96-0.98.
+  // 1K is enough: the phone puts the photo's own fine detail back. Falls back to Nano Banana, then
+  // FLUX Kontext, on the same credit.
+  pro: { model: ["google/nano-banana-2", "google/nano-banana", "black-forest-labs/flux-kontext-pro"],
+    input: { prompt: PRO_PROMPT, output_format: "jpg", resolution: "1K", aspect_ratio: "match_input_image" } },
   smile: edit("Make the person smile naturally and warmly, with a relaxed, genuine smile that shows a little of the teeth. Change only the mouth and the smile lines around the eyes."),
   relight: edit("Relight the photo with soft, flattering professional studio light on the face: even skin, gentle shadows, a soft catchlight in the eyes. Keep the same pose, clothes and background."),
   golden: edit("Relight the photo with warm golden-hour sunlight coming from the side, with a soft warm glow on the skin and hair. Keep the same pose, clothes and background."),
@@ -170,6 +180,7 @@ type ModelInfo = { model: string; version: string | null; imageKey: string; mask
 // Official models run through the model's own endpoint, not a version id.
 const KNOWN: Record<string, { image: string; list?: boolean; official?: boolean }> = {
   "google/nano-banana": { image: "image_input", list: true, official: true },
+  "google/nano-banana-2": { image: "image_input", list: true, official: true },
   "black-forest-labs/flux-kontext-pro": { image: "input_image", official: true },
   "cuuupid/idm-vton": { image: "human_img" },
   "topazlabs/image-upscale": { image: "image", official: true },

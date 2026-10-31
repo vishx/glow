@@ -9,9 +9,9 @@ const ENH_MODE = "enhance";
 const ENH_SAMPLE = { original: DEMO_DIR + "original.png", result: DEMO_DIR + "enhance.jpg", pro: DEMO_DIR + "pro.jpg" };
 // Pro Edit (2026-10-31): the photo finished the way a photographer and retoucher would (white
 // balance, exposure, color grade, light skin retouch, a tidier background) by an image-edit model
-// (the server's "pro" mode: a premium tool, 1 credit), then proFinish() on the phone puts each
+// (the server's "pro" mode: a premium tool, 2 credits from migration 013), then proFinish() on the phone puts each
 // person's own features and the photo's fine detail back, so faces stay true.
-const PRO_MODE = "pro";
+const PRO_MODE = "pro", PRO_COST = 2;
 const enhStyle = () => (store.get("glow.enhStyle") === PRO_MODE ? PRO_MODE : ENH_MODE);
 // [key, label, icon, on by default]. Face and Background Enhancer choose, per area, between the
 // AI result and the original; the rest are free on-device steps on top.
@@ -93,12 +93,12 @@ function renderEnhCost() {
   if (pro) {
     // A premium tool: Pro uses its weekly credits; free uses the one-time premium tries and any credit packs.
     const left = !a ? null : a.plan === "pro" ? a.remaining : (a.trialLeft || 0) + (a.bonus || 0);
-    if (left !== null && left < 1) {
+    if (left !== null && left < PRO_COST) {
       go.textContent = "Get more credits";
       c.textContent = a.plan === "pro" ? "You've used this week's AI credits. Each one comes back 7 days after you used it." : "Pro Edit is a premium tool. Go Pro or get a credit pack to use it.";
       return;
     }
-    c.innerHTML = "A photographer's color, light, skin and background. 1 premium credit" + (left === null ? "." : ` · <b>${left}</b> left`);
+    c.innerHTML = `A photographer's color, light, skin and background. ${PRO_COST} premium credits` + (left === null ? "." : ` · <b>${left}</b> left`);
     return;
   }
   if (!a) { c.textContent = "Uses 1 AI credit."; return; }
@@ -130,7 +130,7 @@ $("enhStyle").addEventListener("click", (e) => {
 $("enhSheetClose").addEventListener("click", () => $("enhSheet").close());
 $("enhSheet").addEventListener("cancel", (e) => { if (enh.busy) e.preventDefault(); });
 $("enhGo").addEventListener("click", () => {
-  if (!enh.demo && !enh.pending && account && proLeft(account) < 1) { if (isPro() || enhStyle() !== PRO_MODE) openPaywall(); else openPacks(); return; }
+  if (!enh.demo && !enh.pending && account && proLeft(account) < (enhStyle() === PRO_MODE ? PRO_COST : 1)) { if (isPro() || enhStyle() !== PRO_MODE) openPaywall(); else openPacks(); return; }
   runEnhance();
 });
 

@@ -105,7 +105,7 @@ FILTERS.filter((f) => f.id !== "none").forEach((f) => tool("filter:" + f.id, f.n
 const TOOL = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
 
 // AI cost per tool. Must match ai_edit_cost() on the server, which is what actually charges.
-const TWO_CREDITS = ["headshot", "anime", "watercolor", "fashion", "bgscene", "custom"];
+const TWO_CREDITS = ["headshot", "anime", "watercolor", "fashion", "bgscene", "custom", "pro"];
 // Free plan (pricing v2): these AI tools cost Glow Studio under a cent and get 3 free credits a day; every
 // other AI tool is premium, with 3 one-time trial credits. The server (migration 007) has the same list.
 const CHEAP_AI = ["erase", "enhance", "upscale", "faces", "colorize", "retouch", "toon3d", "clay", "older", "younger", "bgcut"];
