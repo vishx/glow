@@ -157,7 +157,7 @@ async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from =
     h.pending = { requestId, id: null, layout: plus.layout || null };
     try {
       track("ai_start", { mode: ENH_MODE, from, hd: !!plus.hd, tiles: plus.tiles ? plus.tiles.length : 0 });
-      const res = await call("enhance-hd", { method: "POST", body: JSON.stringify({ image, mode: ENH_MODE, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined, hd: plus.hd, tiles: plus.tiles }) });
+      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: ENH_MODE, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined, hd: plus.hd, tiles: plus.tiles }) });
       h.pending.id = res.id || null;
       return await followEnhance(h, res, onLabel, from);
     } catch (err) {
@@ -201,7 +201,7 @@ async function followEnhance(h, first, onLabel, from) {
     else if (res) onLabel("Enhancing…");
     await sleep(1500);
     const q = p.id ? "id=" + encodeURIComponent(p.id) : "request=" + encodeURIComponent(p.requestId);
-    try { res = await call("enhance-hd?" + q, { method: "GET" }); if (res.id) p.id = res.id; misses = 0; }
+    try { res = await call("enhance?" + q, { method: "GET" }); if (res.id) p.id = res.id; misses = 0; }
     catch (err) {
       if (err.status === 404 && !p.id) { h.pending = null; throw new Error("Enhance never started, so no AI credit was used. Tap Enhance to try again."); }
       if (err.status && err.status !== 429 && err.status < 500) { throw lostConnection(); }
