@@ -220,7 +220,7 @@ async function followEnhance(h, first, onLabel, from) {
 // stitched back here. Results come back at twice the working size (up to ~12 MP).
 const ENH_PLUS = { hdPixels: 3_200_000, hdSide: 2560, srcPixels: 3_200_000, tilePixels: 820_000, overlap: 48 };
 async function enhancePlus(src) {
-  const a = account, pro = isPro(), packs = !!(a && a.bonus > 0);
+  const a = account, pro = isPro() || /[?&]hd\b/.test(location.search), packs = !!(a && a.bonus > 0);   // PREVIEW ONLY: ?hd tries Topaz
   const img = await loadImg(src), W0 = img.naturalWidth, H0 = img.naturalHeight, out = {};
   if (pro || packs) out.hd = await uploadable(src, ENH_PLUS.hdSide, ENH_PLUS.hdPixels);
   if (!pro && W0 * H0 > aiMaxPixels(ENH_MODE)) {
