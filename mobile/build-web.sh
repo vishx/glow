@@ -12,6 +12,8 @@ curl -fsSL -o www/vendor/selfie_segmenter.tflite \
   https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite
 curl -fsSL -o www/vendor/face_landmarker.task \
   https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
+curl -fsSL -o www/vendor/blaze_face_short_range.tflite \
+  https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite
 curl -fsSL -o www/vendor/pose_landmarker_lite.task \
   https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task
 curl -fsSL -o www/vendor/hair_segmenter.tflite \

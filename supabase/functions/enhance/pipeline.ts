@@ -92,6 +92,37 @@ export const MODES: Record<string, Mode> = {
   bgcut: { model: ["men1scus/birefnet", "851-labs/background-remover", "lucataco/remove-bg"], input: {} },
 };
 
+// Enhance's second pass for group photos and small faces (2026-10-31). The phone finds every face
+// on the full-size photo, cuts each one out at its real resolution and lays them out on one sheet;
+// GFPGAN restores every face on the sheet in a single run, and the phone puts them back. GFPGAN
+// only restores faces it is very sure of (score 0.97 or more), so the small, soft faces of a wide
+// shot are skipped in the main pass; enlarged on the sheet they are found. No extra credit.
+export const FACE_SHEET: Mode = { model: "tencentarc/gfpgan", input: { version: "v1.4", scale: 2 } };
+export const FACE_SHEET_MAX = { bytes: 2_400_000, side: 1536, pixels: 1_600_000 };
+
+// Width and height of a JPEG or PNG data URL, read from its header (no decoding).
+export function imageSize(dataUrl: string): [number, number] | null {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) return null;
+  let bin: string;
+  try { bin = atob(dataUrl.slice(comma + 1, comma + 1 + 65536 - (65536 % 4))); } catch { return null; }
+  const b = (i: number) => bin.charCodeAt(i);
+  if (b(0) === 0x89 && bin.slice(1, 4) === "PNG") return [(b(16) << 24 | b(17) << 16 | b(18) << 8 | b(19)) >>> 0, (b(20) << 24 | b(21) << 16 | b(22) << 8 | b(23)) >>> 0];
+  if (b(0) !== 0xff || b(1) !== 0xd8) return null;
+  for (let i = 2; i + 9 < bin.length;) {
+    if (b(i) !== 0xff) { i++; continue; }
+    const m = b(i + 1), len = b(i + 2) << 8 | b(i + 3);
+    if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return [b(i + 7) << 8 | b(i + 8), b(i + 5) << 8 | b(i + 6)];
+    i += 2 + len;
+  }
+  return null;
+}
+export function okFaceSheet(v: unknown): v is string {
+  if (typeof v !== "string" || !/^data:image\/(jpeg|png);base64,/.test(v) || v.length > FACE_SHEET_MAX.bytes * 1.37) return false;
+  const wh = imageSize(v);
+  return !!wh && wh[0] >= 64 && wh[1] >= 64 && Math.max(...wh) <= FACE_SHEET_MAX.side && wh[0] * wh[1] <= FACE_SHEET_MAX.pixels;
+}
+
 // A user prompt is plain text: one line, at most 200 characters, no control characters.
 export function cleanPrompt(v: unknown): string {
   if (typeof v !== "string") return "";
@@ -149,7 +180,7 @@ export async function modelInfo(model: string | string[]): Promise<ModelInfo> {
 export const lastOutput = (o: unknown) => (Array.isArray(o) ? o[o.length - 1] : o) ?? null;
 
 // Starts one edit on Replicate and waits up to a minute for it. Charging is the caller's job.
-export async function startPrediction(cfg: Mode, { image, mask, extra, prompt }: { image: string; mask?: string; extra?: string; prompt?: string }) {
+export async function startPrediction(cfg: Mode, { image, mask, extra, prompt }: { image: string; mask?: string; extra?: string; prompt?: string }, wait = true) {
   const info = await modelInfo(cfg.model);
   const images = cfg.needsExtra ? [image, extra] : [image];
   const input: Record<string, unknown> = { [info.imageKey]: info.imageList ? images : image };
@@ -164,7 +195,7 @@ export async function startPrediction(cfg: Mode, { image, mask, extra, prompt }:
   // Wait up to a minute so most edits finish in one request.
   const p = await rep(info.version ? "/predictions" : `/models/${info.model}/predictions`, {
     method: "POST",
-    headers: { Prefer: "wait=55" },
+    headers: wait ? { Prefer: "wait=55" } : {},
     body: JSON.stringify(info.version ? { version: info.version, input } : { input }),
   });
   return { p, info };

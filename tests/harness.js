@@ -63,7 +63,7 @@ exports.launch = async (opts = {}) => {
   if (opts.onboarded !== false) await ctx.addInitScript((start) => { localStorage.setItem('glowOnboarded', '1'); localStorage.setItem('glowStart', start); if (!localStorage.getItem('glowLastDest')) localStorage.setItem('glowLastDest', start); }, opts.start || 'camera');
   const p = await ctx.newPage();
   const state = { used: 0, plan: opts.plan || 'free', quota: opts.quota || 3, posts: [], polls: 0, lookups: 0, refunds: 0, errs: [], downloads: [],
-    ai: { ...defaultAi(), ...(opts.ai || {}) }, jobs: {}, flaked: {}, authFail: !!opts.authFail, events: [], appErrors: [], support: [] };
+    ai: { ...defaultAi(), ...(opts.ai || {}) }, jobs: {}, flaked: {}, authFail: !!opts.authFail, events: [], appErrors: [], support: [], sheets: [] };
   p.on('pageerror', (e) => state.errs.push('pageerror: ' + e.message));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|^INFO:|^W\d{4}|XNNPACK/.test(m.text())) state.errs.push('console: ' + m.text()); });
   p.on('download', async (d) => {
@@ -98,6 +98,8 @@ exports.launch = async (opts = {}) => {
           const st = job.failWith ? 'failed' : ai.polls[job.n];
           if (st === 'failed' && !job.refunded) { job.refunded = true; state.used -= job.cost; state.refunds++; }
           const body = { id: job.id, status: st, output: st === 'succeeded' ? 'https://app.test/__ai.jpg' : null, error: st === 'failed' ? (job.failWith || "The model couldn't process this photo.") : undefined };
+          // Enhance's face sheet (group photos): the mock "restores" it by sending the sheet back.
+          if (st === 'succeeded' && job.sheet && ai.faces !== false) body.faces = 'https://app.test/__faces.jpg?' + job.id;
           if (ai.server === 'patched') body.refunded = !!job.refunded;
           return r.fulfill({ headers: cors, json: body });
         };
@@ -123,7 +125,8 @@ exports.launch = async (opts = {}) => {
         if (state.used + cost > state.quota) return r.fulfill({ status: 429, headers: cors, json: { error: "You've used today's 3 free AI credits.", limit: true, usage: usage() } });
         if (ai.post === 'error') return r.fulfill({ status: 502, headers: cors, json: { error: "Glow's AI service is temporarily unavailable. Please try again later." } });
         state.used += cost;
-        const job = { id: 'job' + (Object.keys(state.jobs).length + 1), cost, n: -1, refunded: false };
+        const job = { id: 'job' + (Object.keys(state.jobs).length + 1), cost, n: -1, refunded: false, sheet: body.faces || null };
+        if (body.faces) state.sheets.push(body.faces);
         if (ai.failFirst && (ai.failCount || 0) > 0) { ai.failCount--; job.failWith = ai.failFirst; }
         state.sizes = state.sizes || []; state.sizes.push(body.image);
         state.jobs[body.request_id || job.id] = job;
@@ -137,7 +140,7 @@ exports.launch = async (opts = {}) => {
     }
     if (u.host === 'cdn.jsdelivr.net' && mp) { const f = path.join(mp, u.pathname.replace(/^.*tasks-vision@[^/]+\//, '')); return r.fulfill({ path: f, headers: { ...cors, 'content-type': f.endsWith('.mjs') ? 'text/javascript' : f.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream' } }); }
     if (u.host === 'storage.googleapis.com') {
-      const n = u.pathname.includes('face_landmarker') ? 'face_landmarker.task' : u.pathname.includes('pose') ? 'pose_landmarker_lite.task' : u.pathname.includes('hair') ? 'hair_segmenter.tflite' : 'selfie_segmenter.tflite';
+      const n = u.pathname.includes('face_landmarker') ? 'face_landmarker.task' : u.pathname.includes('blaze_face') ? 'blaze_face_short_range.tflite' : u.pathname.includes('pose') ? 'pose_landmarker_lite.task' : u.pathname.includes('hair') ? 'hair_segmenter.tflite' : 'selfie_segmenter.tflite';
       return r.fulfill({ path: path.join(assets, n), headers: cors });
     }
     if (u.host === 'app.test') {
@@ -147,6 +150,11 @@ exports.launch = async (opts = {}) => {
       if (o && o.delay) await new Promise((ok) => setTimeout(ok, o.delay));   // a slow connection
       if (o && o.json) return r.fulfill({ json: o.json });
       if (o) return r.fulfill({ path: o.path || o });
+      if (u.pathname === '/__faces.jpg') {
+        const job = Object.values(state.jobs).find((j) => j.id === u.search.slice(1));
+        if (!job || !job.sheet) return r.fulfill({ status: 404, body: '' });
+        return r.fulfill({ headers: { ...cors, 'content-type': 'image/jpeg' }, body: Buffer.from(job.sheet.split(',')[1], 'base64') });
+      }
       if (u.pathname === '/__ai.jpg') return r.fulfill({ path: path.join(fixtures, 'ai-result.jpg'), headers: cors });
       const f = path.join(root, u.pathname === '/' ? 'index.html' : u.pathname); if (fs.existsSync(f)) return r.fulfill({ path: f }); return r.fulfill({ status: 404, body: '' });
     }

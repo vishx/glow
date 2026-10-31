@@ -624,6 +624,49 @@ test('enhance: when the AI fails, the sheet says so plainly (no model jargon, no
   eq([state.posts.length, state.refunds, state.used], [2, 2, 0], 'retried once smaller, both refunded');
 }, { start: 'enhance', camera: false, ai: { server: 'patched', failFirst: OOM, failCount: 2 } });
 
+// ---------- Every face (group photos) ----------
+// Pixel at a 0–1 point of an image, averaged over a small square.
+const pixelAt = (p, src, x, y) => p.evaluate(async ([src, x, y]) => {
+  const i = await loadImg(src), c = newCanvas(i.naturalWidth, i.naturalHeight), g = c.getContext('2d'); g.drawImage(i, 0, 0);
+  const d = g.getImageData(Math.round(x * c.width) - 2, Math.round(y * c.height) - 2, 5, 5).data; let r = 0, gg = 0, b = 0;
+  for (let k = 0; k < d.length; k += 4) { r += d[k]; gg += d[k + 1]; b += d[k + 2]; } return [r / 25, gg / 25, b / 25];
+}, [src, x, y]);
+test('enhance: a one-person photo finds its face; the AI request still goes out once', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 60000 });
+  eq(state.posts.length, 1, 'one AI request');
+  eq(await p.evaluate(() => enh.faces.length), 1, 'one face found');
+  // A big, clear face is already well served by the main pass, so it isn't put on a face sheet.
+  eq(state.sheets.length, 0, 'no face sheet for a large single face');
+  eq(await p.evaluate(() => document.querySelector('.enh-t[data-k=face]').disabled), false, 'Face Enhancer available');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false });
+const GROUP = process.env.GLOW_TEST_GROUP, GROUP_FACES = +(process.env.GLOW_TEST_GROUP_FACES || 2);
+if (GROUP) test('enhance: group photo, every face found, sent on one face sheet and put back', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(GROUP);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 90000 });
+  eq(state.posts.length, 1, 'still one AI request (one credit)');
+  const r = await p.evaluate(() => ({ faces: enh.faces.length, cells: enh.sheet ? enh.sheet.cells.length : 0, cell: enh.sheet && enh.sheet.cells[0],
+    faceBtn: document.querySelector('.enh-t[data-k=face]').disabled }));
+  assert(r.faces >= GROUP_FACES, `found ${r.faces} faces, want at least ${GROUP_FACES}`);
+  assert(r.cells >= Math.min(GROUP_FACES, 12), `face sheet holds ${r.cells} faces`);
+  eq(state.sheets.length, 1, 'face sheet sent with the request');
+  const wh = await p.evaluate(async (d) => { const i = await loadImg(d); return [i.naturalWidth, i.naturalHeight]; }, state.sheets[0]);
+  assert(Math.max(...wh) <= 1536 && wh[0] * wh[1] <= 1600000, 'sheet within the server limit: ' + wh);
+  eq(r.faceBtn, false, 'Face Enhancer available on a group photo');
+  // The mock sends the sheet back unchanged, so a put-back face carries the photo's own pixels.
+  const [a, o, raw] = await Promise.all([pixelAt(p, await p.evaluate(() => enh.full), r.cell.cx, r.cell.cy), pixelAt(p, await p.evaluate(() => enh.src), r.cell.cx, r.cell.cy),
+    pixelAt(p, 'https://app.test/__ai.jpg', r.cell.cx, r.cell.cy)]);
+  const d = (x, y) => Math.max(...x.map((v, i) => Math.abs(v - y[i])));
+  assert(d(a, o) < 24 && d(a, o) < d(raw, o), `face put back: result ${a} photo ${o} main pass ${raw}`);
+  eq(state.errs, [], 'no page errors');
+  state.report = { faces: r.faces, cells: r.cells, sheet: wh };
+}, { start: 'enhance', camera: false });
+
 test('enhance: the sample is free and never calls the AI', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]');

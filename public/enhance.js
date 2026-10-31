@@ -104,6 +104,9 @@ $("enhGo").addEventListener("click", () => {
 async function runEnhance() {
   if (enh.busy) return;
   const mine = enh.src;
+  // Faces are cut from the untouched file at full size; a camera shot's file is the raw frame
+  // (before its look), so its faces come from the picture itself.
+  enh.cropFrom = enh.fromCamera ? null : enh.original;
   setSheetWorking(true);
   $("alertLive").textContent = "Enhancing your photo.";
   try {
@@ -113,8 +116,10 @@ async function runEnhance() {
     if (!url || enh.src !== mine) return;
     setSheetWorking(true, "Almost there…");
     let full;
+    const facesUrl = enh.pending && enh.pending.faces;
     try { const r = await fetch(url); if (!r.ok) throw new Error(); full = await blobToData(await r.blob()); }
     catch { enh.pending = enh.pending || { done: url }; throw new Error("The result is ready but couldn't be downloaded yet. Tap Check again."); }
+    full = await putFacesBack(full, enh.sheet, facesUrl);
     // The toggles work on a 2048px copy; the untouched result is kept for saving at full size.
     enh.ai = await shrinkData(full, 2048); enh.full = full; enh.pending = null;
     if (!enh.demo) refreshAccount();
@@ -144,10 +149,11 @@ async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from =
   if (h.pending && h.pending.done) return h.pending.done;
   if (!h.pending) {
     const image = await uploadable(src, maxSide, maxPixels), requestId = rid();
+    h.sheet = await faceSheet(src, h.cropFrom).catch(() => null);
     h.pending = { requestId, id: null };
     try {
       track("ai_start", { mode: ENH_MODE, from });
-      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: ENH_MODE, request_id: requestId }) });
+      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: ENH_MODE, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined }) });
       h.pending.id = res.id || null;
       return await followEnhance(h, res, onLabel, from);
     } catch (err) {
@@ -169,7 +175,8 @@ async function followEnhance(h, first, onLabel, from) {
   let res = first, misses = 0;
   while (Date.now() - started < 240000) {
     if (res && res.status === "succeeded" && res.output) {
-      track("ai_done", { mode: ENH_MODE, from, secs: Math.round((Date.now() - started) / 1000) });
+      track("ai_done", { mode: ENH_MODE, from, secs: Math.round((Date.now() - started) / 1000), faces: h.sheet ? h.sheet.cells.length : 0, sheet: !!res.faces });
+      p.faces = res.faces || null;
       p.done = Array.isArray(res.output) ? res.output[0] : res.output; return p.done; }
     if (res && ["failed", "canceled"].includes(res.status)) {
       track("ai_fail", { mode: ENH_MODE, from, refunded: res.refunded === true, oom: isOutOfMemory(res.error) });
@@ -193,6 +200,72 @@ async function followEnhance(h, first, onLabel, from) {
   throw lostConnection();
 }
 
+// ---------- Every face, group photos included ----------
+// The main AI pass gets a shrunk photo, so in a group photo or wide shot each face is only a few
+// dozen pixels and the face model skips or smudges it. So the phone finds every face itself, cuts
+// each one from the full-size file, enlarges it into one cell of a "face sheet", and sends that
+// sheet with the photo: the server restores every face on it in the same request (no extra credit),
+// and putFacesBack() puts each restored face back over the result through a soft oval.
+const SHEET = { cell: 320, max: 12, minPx: 16, bigPx: 240, room: 2.1 };
+async function enhFaces(src, img) {
+  const o = img || await loadImg(src), c = newCanvas(o.naturalWidth, o.naturalHeight);
+  c.getContext("2d").drawImage(o, 0, 0);
+  return findFaces(src + "|enhance", c);
+}
+// `src` is the working copy (faces are found on it); `from` is the untouched file, if any.
+async function faceSheet(src, from) {
+  const work = await loadImg(src), faces = await enhFaces(src, work);
+  if (!faces.length) return null;
+  let pic = work, url = null;
+  if (from && from.blob && Math.max(from.w || 0, from.h || 0) > Math.max(work.naturalWidth, work.naturalHeight) * 1.2) {
+    try { url = URL.createObjectURL(from.blob); pic = await loadImg(url); } catch { pic = work; }
+  }
+  try {
+    const W = pic.naturalWidth, H = pic.naturalHeight;
+    // How big each face reaches the AI in the main pass, to leave out faces it already sees well.
+    const maxPx = typeof aiMaxPixels === "function" ? aiMaxPixels(ENH_MODE) : Infinity;
+    const sent = Math.min(1, (typeof aiMaxSide === "function" ? aiMaxSide(ENH_MODE) : 1600) / Math.max(W, H), Math.sqrt(maxPx / (W * H)));
+    const cells = faces.map((f) => { const b = faceBox(f); return { cx: b.cx, cy: b.cy, px: Math.max(b.w * W, b.h * H) }; })
+      .filter((f) => f.px >= SHEET.minPx && f.px * sent < SHEET.bigPx)
+      .sort((a, b) => b.px - a.px).slice(0, SHEET.max);
+    if (!cells.length) return null;
+    const cols = Math.ceil(Math.sqrt(cells.length)), rows = Math.ceil(cells.length / cols), C = SHEET.cell;
+    const sheet = newCanvas(cols * C, rows * C), x = sheet.getContext("2d");
+    x.imageSmoothingQuality = "high";
+    cells.forEach((f, i) => {
+      const side = f.px * SHEET.room;
+      f.side = side / W;   // the cell's width as a share of the photo's width
+      x.drawImage(pic, f.cx * W - side / 2, f.cy * H - side / 2, side, side, (i % cols) * C, Math.floor(i / cols) * C, C, C);
+    });
+    return { data: sheet.toDataURL("image/jpeg", 0.92), cells, cols, w: sheet.width };
+  } finally { if (url) URL.revokeObjectURL(url); }
+}
+// Puts each restored face from the sheet back over the AI result. Anything going wrong leaves the
+// result as it was.
+async function putFacesBack(full, sheet, facesUrl) {
+  if (!sheet || !facesUrl) return full;
+  try {
+    const [r, o] = await Promise.all([loadImg(full), loadImg(facesUrl)]);
+    const W = r.naturalWidth, H = r.naturalHeight, k = o.naturalWidth / sheet.w, C = SHEET.cell * k;
+    const c = newCanvas(W, H), x = c.getContext("2d");
+    x.drawImage(r, 0, 0);
+    for (const [i, f] of sheet.cells.entries()) {
+      const S = Math.max(2, Math.round(f.side * W));
+      const t = newCanvas(S, S), tx = t.getContext("2d");
+      tx.imageSmoothingQuality = "high";
+      tx.drawImage(o, (i % sheet.cols) * C, Math.floor(i / sheet.cols) * C, C, C, 0, 0, S, S);
+      // A soft oval over the face (the face fills about the middle half of its cell).
+      tx.globalCompositeOperation = "destination-in";
+      tx.save(); tx.translate(S / 2, S / 2); tx.scale(1, 1.22);
+      const g = tx.createRadialGradient(0, 0, 0, 0, 0, S * 0.33);
+      g.addColorStop(0, "#000"); g.addColorStop(0.72, "#000"); g.addColorStop(1, "rgba(0,0,0,0)");
+      tx.fillStyle = g; tx.fillRect(-S, -S, 2 * S, 2 * S); tx.restore();
+      x.drawImage(t, Math.round(f.cx * W - S / 2), Math.round(f.cy * H - S / 2));
+    }
+    return c.toDataURL("image/jpeg", 0.95);
+  } catch { return full; }
+}
+
 // ---------- Result ----------
 // The photo at the AI result's size, and where the faces are, so each area can come from
 // either picture.
@@ -201,11 +274,7 @@ async function prepareResult() {
   const W = a.naturalWidth, H = a.naturalHeight, c = newCanvas(W, H), x = c.getContext("2d");
   x.imageSmoothingQuality = "high"; x.drawImage(o, 0, 0, W, H);
   enh.base = c.toDataURL("image/jpeg", 0.94); enh.size = [W, H];
-  try {
-    const k = Math.min(1, 1024 / Math.max(o.naturalWidth, o.naturalHeight)), s = newCanvas(Math.round(o.naturalWidth * k), Math.round(o.naturalHeight * k));
-    s.getContext("2d").drawImage(o, 0, 0, s.width, s.height);
-    enh.faces = await findFaces(enh.src + "|enhance", s);
-  } catch { enh.faces = []; }
+  try { enh.faces = await enhFaces(enh.src, o); } catch { enh.faces = []; }
 }
 function showEnhResult() {
   enh.on = Object.fromEntries(ENH_TOGGLES.map(([k, , , d]) => [k, d]));
@@ -722,10 +791,13 @@ async function batchRun(list) {
 // One photo: the same request as the single flow, kept on the photo so a lost connection is
 // checked again for free.
 async function batchOne(it) {
+  it.cropFrom = it.original;
   const url = await enhanceRequest(it, it.src, (t) => { if (it.label !== t) { it.label = t; renderTile(it); } }, "batch");
+  const facesUrl = it.pending && it.pending.faces;
   let blob;
   try { const r = await fetch(url); if (!r.ok) throw new Error(); blob = await r.blob(); }
   catch { throw new Error("The result is ready but couldn't be downloaded yet."); }
+  if (facesUrl && it.sheet) { try { blob = await (await fetch(await putFacesBack(await blobToData(blob), it.sheet, facesUrl))).blob(); } catch { /* keep the main result */ } }
   it.full = blob; it.pending = null;
   it.after = await shrinkData(await blobToData(blob), 480);
 }
