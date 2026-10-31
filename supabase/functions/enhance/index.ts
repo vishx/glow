@@ -31,6 +31,9 @@ async function finish(id: number, status: string, error: unknown = null) {
   if (e) console.error("ai_usage outcome", e.message);
 }
 const DONE = new Set(["succeeded", "failed", "canceled"]);
+// The model's own error (kept as it is for the admin page) in words for the app.
+const told = (p: { status: string; error?: unknown }) =>
+  p.status === "failed" ? "The AI couldn't edit this photo. Please try again, or try another photo." : p.error ?? null;
 // How long a finished Enhance waits for its face sheet (group photos) before it's answered without it.
 const FACES_WAIT_MS = 90_000;
 
@@ -65,7 +68,7 @@ async function jobStatus(row: { id: number; prediction_id: string | null; refund
     if ((p.status === "failed" || p.status === "canceled") && !refunded) { await admin.rpc("refund_ai_edit", { p_usage: row.id }); refunded = true; }
     if (DONE.has(p.status) && !row.status) await finish(row.id, p.status, p.error);
     const w = await withFaces(p, facesId);
-    return { id: row.prediction_id, status: w.status, output: lastOutput(p.output), faces: w.faces, error: p.error ?? null, refunded };
+    return { id: row.prediction_id, status: w.status, output: lastOutput(p.output), faces: w.faces, error: told(p), refunded };
   } catch (e) {
     // A brand-new prediction can briefly 404 before Replicate can read it back.
     if (e instanceof HttpError && e.status === 404) return { id: row.prediction_id, status: "starting", output: null, error: null, refunded: row.refunded };
@@ -163,7 +166,7 @@ Deno.serve(async (req) => {
       if (failed) await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
       if (DONE.has(p.status)) await finish(quota.usage_id, p.status, p.error);
       const w = await withFaces(p, facesId);
-      return json({ id: pid, status: w.status, output: lastOutput(p.output), faces: w.faces, error: p.error ?? null, refunded: failed, usage });
+      return json({ id: pid, status: w.status, output: lastOutput(p.output), faces: w.faces, error: told(p), refunded: failed, usage });
     } catch (e) {
       dropFaces();
       await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
