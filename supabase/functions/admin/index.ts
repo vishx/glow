@@ -212,7 +212,7 @@ Deno.serve(async (req) => {
     const msg = (e as Error).message;
     console.error("admin", body.action, msg);
     // Before migrations 009 and 010 the report functions and tables don't exist yet.
-    if (/admin_\w+|subscription_events|account_deletions|function .* does not exist|relation .* does not exist|column .* does not exist|schema cache/i.test(msg)) {
+    if (/function .* does not exist|relation .* does not exist|column .* does not exist|schema cache/i.test(msg)) {
       return json({ error: "Run migration 010 (and 009 before it) in the Supabase SQL editor first.", detail: msg }, 409);
     }
     return json({ error: msg }, e instanceof HttpError ? 400 : 500);
