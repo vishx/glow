@@ -2069,7 +2069,7 @@ async function startAiEdit(t) {
       // The server answered, so the edit didn't start. It returns the credit itself if it had taken one.
       job = null; saveJob();
       // Switched off from the admin page since this tool was opened: nothing was charged.
-      if (err.featureOff) { if (sel === t.id) selectTool(null, { discard: true }); say(err.message, true); refreshFeatures(true); return; }
+      if (err.featureOff) { if (sel === t.id) selectTool(null, { discard: true }); say(err.message, true); featureOffSaidAt = Date.now(); refreshFeatures(true); return; }
       // A premium tool on the free plan draws on the one-time trial, which never resets, so say that
       // rather than the server's "come back tomorrow".
       if (err.limit && trialTool(t)) err.message = "You've used your free premium credits. Go Pro or buy a credit pack to keep using premium AI tools, or use the everyday AI tools with your daily credits.";
@@ -3374,9 +3374,11 @@ function applyFeatures() {
   }
   // Editor: a tool switched off while open closes (keeping nothing it hadn't applied).
   if (glow.ai && !toolOn(glow.ai)) glow.ai = null;
-  if (sel && TOOL[sel] && !toolOn(sel) && !(job && job.tool === sel)) { const t = TOOL[sel]; selectTool(null, { discard: true }); say(`${t.title} isn't available right now.`); }
+  // The server's own "nothing was charged" message, shown a moment ago, already explains; keep it.
+  if (sel && TOOL[sel] && !toolOn(sel) && !(job && job.tool === sel)) { const t = TOOL[sel]; selectTool(null, { discard: true }); if (Date.now() - featureOffSaidAt > 8000) say(`${t.title} isn't available right now.`); }
   if (screen === "editorScreen") { renderTabs(); renderTools(); renderPanel(); }
 }
+var featureOffSaidAt = 0;   // var: applyFeatures may run before this line on start-up
 Features.onChange(applyFeatures);
 // Checked again when the app comes back to the front (at most once a minute) and every 15 minutes
 // while it's open, so a switch flipped on the admin page reaches everyone within minutes.
