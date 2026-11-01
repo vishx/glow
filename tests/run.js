@@ -141,6 +141,7 @@ test('camera: full-screen preview, and the photo is cropped to what the screen s
 
 test('camera: held sideways, the web camera keeps the people in view (controls in a side column)', async ({ p }) => {
   await p.goto('https://app.test/'); await camLive(p);
+  await p.waitForFunction(() => !$('splash'), null, { timeout: 5000 });   // the launch animation is over
   const r = await p.evaluate(() => {
     const b = (id) => $(id).getBoundingClientRect(), vf = b('viewfinder'), cc = b('camControls');
     const clickable = ['camTimer', 'camAI', 'camSettingsBtn', 'shutter', 'camGallery'].filter((id) => $(id) && !$(id).hidden).every((id) => {
