@@ -2970,6 +2970,7 @@ async function startCamera() {
 }
 function stopCamera() {
   cam.gen++;
+  if (cam.counting) cam.counting.stop();
   cancelAnimationFrame(cam.raf);
   if (cam.nativeOn) {
     cam.nativeOn = false; cam.native = null;
@@ -3156,6 +3157,37 @@ async function screenFlashOn(v) {
   await sleep(800);   // time for the camera's exposure to settle on the lit face
   return el;
 }
+// Shutter timer: Off, 3 or 10 seconds, remembered. A second tap on the shutter cancels the countdown.
+const TIMERS = [0, 3, 10];
+const timerSecs = () => { const n = Number(store.get("glowTimer")); return TIMERS.includes(n) ? n : 0; };
+function renderTimerBtn() {
+  const n = timerSecs(), b = $("camTimer");
+  b.innerHTML = icon("timer") + (n ? `<span class="fa" aria-hidden="true">${n}</span>` : "");
+  b.setAttribute("aria-pressed", String(!!n)); b.setAttribute("aria-label", n ? `Timer ${n} seconds` : "Timer off");
+}
+renderTimerBtn();
+$("camTimer").addEventListener("click", () => {
+  const n = TIMERS[(TIMERS.indexOf(timerSecs()) + 1) % TIMERS.length];
+  store.set("glowTimer", String(n)); Platform.haptic(); renderTimerBtn();
+  say(n ? `Timer: ${n} seconds` : "Timer off"); track("setting", { timer: n });
+});
+// Counts down on the photo before the shot. Resolves true to take it, false if cancelled or the camera stopped.
+async function camCountdown() {
+  const n = timerSecs();
+  if (!n) return true;
+  if (cam.counting) { cam.counting.stop(); return false; }
+  const job = (cam.counting = { cancel: false }), gen = cam.gen, el = $("camCount");
+  const stopped = new Promise((r) => { job.stop = () => { job.cancel = true; r(); }; });
+  el.hidden = false;
+  try {
+    for (let i = n; i > 0; i--) {
+      el.textContent = String(i); $("alertLive").textContent = String(i); Platform.haptic();
+      await Promise.race([sleep(1000), stopped]);
+      if (job.cancel || gen !== cam.gen || cam.state !== "live" || cam.shot) { $("alertLive").textContent = "Timer cancelled"; return false; }
+    }
+    return true;
+  } finally { el.hidden = true; el.textContent = ""; cam.counting = null; }
+}
 $("flashBtn").addEventListener("click", async () => {
   if (cam.screenFlash) {
     const next = { auto: "on", on: "off", off: "auto" }[screenFlashMode()];
@@ -3173,6 +3205,8 @@ $("flashBtn").addEventListener("click", async () => {
 const canvasBlob = (c, type = "image/jpeg", q = 0.95) => new Promise((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error("Couldn't take the photo."))), type, q));
 $("shutter").addEventListener("click", async () => {
   const v = $("camVideo"); if ((!cam.native && !v.videoWidth) || cam.state !== "live" || cam.shot || cam.shooting) return;
+  if (!(await camCountdown())) return;
+  if ((!cam.native && !v.videoWidth) || cam.state !== "live" || cam.shot || cam.shooting) return;
   track("capture", { look: lookId });
   Platform.haptic("heavy");
   cam.shooting = true;

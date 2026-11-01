@@ -96,6 +96,7 @@ const ICONS = {
   "info": "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 16v-4\"/><path d=\"M12 8h.01\"/>",
   "compare": "<rect x=\"3.5\" y=\"4\" width=\"17\" height=\"16\" rx=\"4.5\"/><path d=\"M12 4v16\"/><path d=\"M12 4h4a4.5 4.5 0 0 1 4.5 4.5v7A4.5 4.5 0 0 1 16 20h-4Z\" fill=\"currentColor\" fill-opacity=\".22\" stroke=\"none\"/>",
   "rotate": "<rect x=\"4\" y=\"9\" width=\"11\" height=\"11\" rx=\"3\" fill=\"currentColor\" fill-opacity=\".22\" stroke=\"none\"/><rect x=\"4\" y=\"9\" width=\"11\" height=\"11\" rx=\"3\"/><path d=\"M11 4h3a6 6 0 0 1 6 6v1.5m0 0-2-2m2 2 2-2\"/><path d=\"m11 4 2-2m-2 2 2 2\"/>",
+  "timer": "<circle cx=\"12\" cy=\"13.5\" r=\"7.5\" fill=\"currentColor\" fill-opacity=\".22\" stroke=\"none\"/><circle cx=\"12\" cy=\"13.5\" r=\"7.5\"/><path d=\"M12 13.5V10\"/><path d=\"M10 2.5h4\"/><path d=\"M12 2.5V6\"/><path d=\"m18.5 6.5 1.5-1.5\"/>",
   "flash": "<path d=\"M13 2.5 5 13.5h6l-1 8 8-11h-6Z\" fill=\"currentColor\" fill-opacity=\".22\" stroke=\"none\"/><path d=\"M13 2.5 5 13.5h6l-1 8 8-11h-6Z\"/>",
   "flashoff": "<path d=\"M10.513 4.856 13.12 2.17a.5.5 0 0 1 .86.46l-1.377 4.317\"/><path d=\"M15.656 10H20a1 1 0 0 1 .78 1.63l-1.72 1.773\"/><path d=\"M16.273 16.273 10.88 21.83a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14H4a1 1 0 0 1-.78-1.63l4.507-4.643\"/><path d=\"m2 2 20 20\"/>",
   "cameraoff": "<line x1=\"2\" x2=\"22\" y1=\"2\" y2=\"22\"/><path d=\"M7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16\"/><path d=\"M9.5 4h5L17 7h3a2 2 0 0 1 2 2v7.5\"/><path d=\"M14.121 15.121A3 3 0 1 1 9.88 10.88\"/>",

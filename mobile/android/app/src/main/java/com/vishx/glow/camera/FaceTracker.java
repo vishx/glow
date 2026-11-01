@@ -31,6 +31,8 @@ final class FaceTracker {
     private final ExecutorService exec = Executors.newSingleThreadExecutor();
     private FaceLandmarker video, still;
     volatile boolean started, ready, failed;
+    /** The phone is warm (thermal status moderate or worse): track less often. */
+    static volatile boolean hot;
     volatile String error = "";
     private volatile boolean busy;
     private volatile long sentAt;
@@ -65,7 +67,7 @@ final class FaceTracker {
         if (busy && now - sentAt > 4000) busy = false;   // an answer that never came must not stop tracking
         float s;
         synchronized (lock) { s = seen; }
-        return ready && !busy && now - sentAt >= (s > 0 ? 30 : 200);
+        return ready && !busy && now - sentAt >= (s > 0 ? (hot ? 90 : 30) : (hot ? 400 : 200));
     }
 
     /** Finds the face in a small upright copy of a W×H frame; the bitmap is recycled here. */

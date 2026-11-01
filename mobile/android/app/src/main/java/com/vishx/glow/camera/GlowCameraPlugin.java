@@ -10,10 +10,16 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
+import android.hardware.camera2.CaptureRequest;
+import android.os.Build;
+import android.os.PowerManager;
+import android.util.Range;
 import android.util.Size;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import androidx.annotation.NonNull;
+import androidx.camera.camera2.interop.Camera2Interop;
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop;
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageAnalysis;
@@ -91,6 +97,14 @@ public class GlowCameraPlugin extends Plugin {
 
     @Override public void load() {
         tracker = new FaceTracker(getContext());
+        // When the phone gets warm, face tracking runs less often so it cools down instead of slowing to a crawl.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                PowerManager pm = (PowerManager) getContext().getSystemService(android.content.Context.POWER_SERVICE);
+                pm.addThermalStatusListener(ContextCompat.getMainExecutor(getContext()),
+                    (status) -> FaceTracker.hot = status >= PowerManager.THERMAL_STATUS_MODERATE);
+            } catch (Throwable t) { Log.w(TAG, "thermal", t); }
+        }
         analysisExec = Executors.newSingleThreadExecutor();
         captureExec = Executors.newSingleThreadExecutor();
     }
@@ -107,6 +121,7 @@ public class GlowCameraPlugin extends Plugin {
         else call.reject("Camera access is off", "denied");
     }
 
+    @androidx.annotation.OptIn(markerClass = ExperimentalCamera2Interop.class)
     private void begin(PluginCall call) {
         final boolean wantFront = !"environment".equals(call.getString("facing", "user"));
         look = Look.from(call.getData());
@@ -137,11 +152,13 @@ public class GlowCameraPlugin extends Plugin {
                         .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
                         .setResolutionStrategy(new ResolutionStrategy(new Size(1280, 720), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
                         .build();
-                    ImageAnalysis analysis = new ImageAnalysis.Builder()
+                    ImageAnalysis.Builder ab = new ImageAnalysis.Builder()
                         .setResolutionSelector(previewRes)
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-                        .build();
+                        .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888);
+                    // A steady 30 frames a second at most (60 only heats the phone); it may slow down in the dark for a brighter picture.
+                    new Camera2Interop.Extender<>(ab).setCaptureRequestOption(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(15, 30));
+                    ImageAnalysis analysis = ab.build();
                     analysis.setAnalyzer(analysisExec, this::onFrame);
                     ResolutionSelector stillRes = new ResolutionSelector.Builder()
                         .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
