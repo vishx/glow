@@ -7,6 +7,9 @@ const CONFIG = {
   // From RevenueCat > Project settings > API keys (public app-specific keys).
   revenuecatIos: "REVENUECAT_IOS_PUBLIC_KEY",
   revenuecatAndroid: "REVENUECAT_ANDROID_PUBLIC_KEY",
+  // Web checkout (card, Apple Pay, Google Pay through Stripe): RevenueCat > Web Billing public key (rcb_...).
+  // Until it is set, the website keeps saying Pro is in the phone app.
+  revenuecatWeb: "REVENUECAT_WEB_BILLING_KEY",
   // From AdMob > Apps > Ad units (rewarded). These are Google's test units until real ones are added.
   admobRewardIos: "ca-app-pub-3940256099942544/1712485313",
   admobRewardAndroid: "ca-app-pub-3940256099942544/5224354917",
@@ -237,12 +240,30 @@ $("retakeBtn").innerHTML = icon("retake") + "<span>Retake</span>";
 const fmtTime = (d) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
 // ---------- Theme ----------
+// Dark is the default (Golden Hour's gold reads best on dark); System and Light are in Settings.
+const themeChoice = () => store.get("glowTheme") || "dark";
 function applyTheme() {
-  const t = store.get("glowTheme") || "system";
+  const t = themeChoice();
   if (t === "system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme = t;
   document.querySelectorAll("#themeSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.theme === t)));
+  // The browser bar follows the app's look, not just the phone's.
+  const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => { m.content = dark ? "#0d0d10" : "#faf7f0"; });
 }
+try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme); } catch {}
 applyTheme();
+
+// Golden Hour moment: a gold light sweeps across `host` and a few sparkles pop (Enhance done, joining
+// Pro). Decorative only: pointer-events off, removed after it plays, skipped with reduced motion.
+function glowBurst(host = document.body) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches || !host) return;
+  const b = document.createElement("div");
+  b.className = "glow-burst" + (host === document.body ? " page" : ""); b.setAttribute("aria-hidden", "true");
+  for (const [x, y, d, s] of [[18, 26, 120, 1], [78, 18, 260, 0.8], [64, 70, 380, 1.1], [28, 78, 500, 0.7], [86, 52, 620, 0.9]]) {
+    const i = document.createElement("i"); i.style.cssText = `left:${x}%;top:${y}%;animation-delay:${d}ms;--s:${s}`; b.append(i);
+  }
+  host.append(b); setTimeout(() => b.remove(), 1600);
+}
 
 // ---------- Screens and navigation ----------
 let screen = "";
@@ -387,14 +408,54 @@ async function openFile(f, name, opts = {}) {
   const r = await readPhoto(f, name || f.name);
   await openPhoto(r.work, r.original, { name: name || f.name, ...opts });
 }
-async function pickAndOpen() {
+async function pickAndOpen(toolId) {
   if (!(await confirmReplace())) return;
   const f = await Platform.pickPhoto("file");
   if (!f) return;
-  try { await openFile(f); } catch (err) { say(err.message, true); }
+  try { await openFile(f); } catch (err) { say(err.message, true); return; }
+  if (toolId) openToolAfterPick(toolId);
 }
-$("pickBtn").addEventListener("click", pickAndOpen);
+$("pickBtn").addEventListener("click", () => pickAndOpen());
 $("sampleBtn").addEventListener("click", openSample);
+$("qaSampleBtn").addEventListener("click", openSample);
+
+// ---------- Quick actions (Editor home) ----------
+// Photo tiles for the most wanted edits (as Photoshop Express, Meitu and Hypic show on their home):
+// a tap picks a photo and opens the editor straight in that tool, on its own tab. Six at most, so the
+// home stays calm. "tools" lists fallbacks: the first one that is switched on and can run is used.
+const QUICK_ACTIONS = [
+  { key: "smooth", label: "Smooth skin", icon: "fsmooth", tools: ["fsmooth"] },
+  { key: "looks", label: "Looks", icon: "looks", tools: ["filter:glow", "filter:film"] },
+  { key: "tryon", label: "Try on", icon: "outfit", tools: ["outfit"], ai: true },
+  { key: "newbg", label: "New background", icon: "bgscene", tools: ["bgscene", "bgphoto"], ai: true },
+  { key: "remove", label: "Remove", icon: "erase", tools: ["erase"], ai: true },
+  { key: "oldphoto", label: "Fix old photo", icon: "enhance", tools: ["enhance", "colorize"], ai: true },
+];
+const qaTool = (q) => q.tools.find((id) => TOOL[id] && toolOn(id) && (TOOL[id].kind !== "ai" || aiLive(id)));
+function renderQuickActions() {
+  const list = featureOn("editor:quick") ? QUICK_ACTIONS.filter(qaTool) : [];
+  $("quickActions").hidden = !list.length;
+  $("sampleBtn").hidden = !!list.length;   // the sample link moves next to the Quick actions title
+  $("editorHome").classList.toggle("has-qa", !!list.length);
+  const sig = list.map((q) => q.key + qaTool(q)).join();
+  const grid = $("qaGrid"); if (grid.dataset.sig === sig) return;
+  grid.dataset.sig = sig; grid.textContent = "";
+  list.forEach((q) => {
+    const id = qaTool(q), t = TOOL[id], ai = q.ai && TOOL[id].kind === "ai";
+    const b = document.createElement("button");
+    b.className = "qa"; b.dataset.qa = q.key;
+    b.setAttribute("aria-label", `${q.label}: choose a photo${ai ? ", AI, uses credits" : ""}`);
+    b.innerHTML = `<span class="qa-ph"><img src="/samples/demo-v2/quick/${q.key}.webp" alt="" loading="lazy" decoding="async">${ai ? "<em>AI</em>" : ""}<i>${icon(q.icon)}</i></span><span class="qa-name">${q.label}</span>`;
+    b.addEventListener("click", () => { try { track("quick_action", { action: q.key, tool: id }); } catch {} pickAndOpen(id); });
+    grid.append(b);
+  });
+}
+// Opens the editor on its own photo, then the tool on its tab.
+function openToolAfterPick(id) {
+  if (!id || !TOOL[id] || screen !== "editorScreen") return;
+  const home = tabFor(id); if (home) { cat = home[0]; store.set("glowCat", cat); }
+  selectTool(id);
+}
 
 // ---------- Try a sample: a free demo ----------
 // The sample is an AI-generated portrait. On-device tools work on it normally. AI tools show
@@ -566,6 +627,35 @@ $("recoveredDiscard").addEventListener("click", async () => {
   recovered = null; await Drafts.clearRecovered(); renderHome();
 });
 
+// ---------- Recent: the last photos saved, on both home screens (Recents in platform.js) ----------
+async function renderRecents() {
+  const list = await Recents.list().catch(() => []);
+  document.querySelectorAll(".recents").forEach((box) => {
+    box.hidden = !list.length;
+    const row = box.querySelector(".recents-row"); row.textContent = "";
+    for (const r of list) {
+      const b = document.createElement("button"); b.className = "recent"; b.setAttribute("role", "listitem");
+      b.setAttribute("aria-label", `Open ${r.name} in the editor`);
+      const img = document.createElement("img"); img.src = r.thumb; img.alt = ""; img.loading = "lazy"; b.append(img);
+      b.addEventListener("click", () => openRecent(r));
+      row.append(b);
+    }
+  });
+}
+async function openRecent(r) {
+  Platform.haptic();
+  if (!(await confirmReplace())) return;
+  try { setEditorReturn(null); await openFile(new File([r.blob], r.name, { type: r.blob.type || "image/jpeg" }), r.name); track("recent_open"); }
+  catch { say("Couldn't open that photo. It may have been cleared.", true); Recents.remove(r.id); }
+}
+document.querySelectorAll(".recents-clear").forEach((b) => b.addEventListener("click", async () => {
+  const c = await ask({ title: "Clear recent photos?", text: "This only clears the Recent row in Glow Studio. Photos you saved stay in your photo library.",
+    actions: [{ label: "Clear", value: "yes" }, { label: "Keep them", value: "", kind: "ghost" }] });
+  if (c) { await Recents.clear(); say("Recent cleared."); }
+}));
+document.addEventListener("recents-changed", renderRecents);
+renderRecents();
+
 function renderHome() {
   $("resumeCard").hidden = !hasPhoto();
   if (hasPhoto()) {
@@ -579,6 +669,7 @@ function renderHome() {
     $("recoveredTitle").textContent = `Your ${recovered.title} result is ready`;
   }
   renderCredits();
+  renderQuickActions();
 }
 
 // ---------- Editor rendering ----------
@@ -1925,6 +2016,9 @@ function setBusy(on, text, note) {
 }
 
 $("applyBtn").addEventListener("click", applyCurrent);
+// Golden Hour: Apply glows gold when it runs an AI edit or leads to Pro (its label then names credits or Pro).
+{ const a = $("applyBtn"); const tint = () => a.classList.toggle("glow", /credit|Go Pro/i.test(a.textContent));
+  new MutationObserver(tint).observe(a, { childList: true, characterData: true, subtree: true }); tint(); }
 async function applyCurrent() {
   const t = sel && TOOL[sel]; if (!t || busyNow) return;
   // Sample: prepared previews are already showing. Nothing is generated or charged.
@@ -2707,15 +2801,15 @@ async function makeShareCard(photo) {
   await markFonts();
   const img = await loadImg(photo), W = 1080, F = 280, k = Math.min(W / img.naturalWidth, 1350 / img.naturalHeight);
   const pw = Math.round(img.naturalWidth * k), ph = Math.round(img.naturalHeight * k), c = newCanvas(W, ph + F), ctx = c.getContext("2d");
-  ctx.fillStyle = "#f5f4f2"; ctx.fillRect(0, 0, W, ph + F);
+  ctx.fillStyle = "#f7f3ea"; ctx.fillRect(0, 0, W, ph + F);
   ctx.drawImage(img, Math.round((W - pw) / 2), 0, pw, ph);
   const q = window.qrcode(0, "M"); q.addData(CONFIG.publicUrl); q.make();
   const n = q.getModuleCount(), cell = Math.floor(200 / (n + 8)), qs = cell * (n + 8), qx = 48, qy = ph + Math.round((F - qs) / 2);
-  ctx.fillStyle = "#ffffff"; ctx.fillRect(qx, qy, qs, qs); ctx.fillStyle = "#17171a";
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(qx, qy, qs, qs); ctx.fillStyle = "#15140f";
   for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (q.isDark(r, col)) ctx.fillRect(qx + (col + 4) * cell, qy + (r + 4) * cell, cell, cell);
   const tx = qx + qs + 40;
-  ctx.fillStyle = "#17171a"; ctx.font = MARK_SERIF(76); ctx.fillText("Try Glow Studio", tx, ph + F / 2 + 4);
-  ctx.fillStyle = "#5f5d59"; ctx.font = MARK_SANS(30); ctx.fillText(PUBLIC_HOST, tx, ph + F / 2 + 52);
+  ctx.fillStyle = "#15140f"; ctx.font = MARK_SERIF(76); ctx.fillText("Try Glow Studio", tx, ph + F / 2 + 4);
+  ctx.fillStyle = "#625d52"; ctx.font = MARK_SANS(30); ctx.fillText(PUBLIC_HOST, tx, ph + F / 2 + 52);
   return c.toDataURL("image/jpeg", 0.92);
 }
 async function openShareCard(photo) {
@@ -3705,6 +3799,7 @@ function applyFeatures() {
   // The server's own "nothing was charged" message, shown a moment ago, already explains; keep it.
   if (sel && TOOL[sel] && !toolOn(sel) && !(job && job.tool === sel)) { const t = TOOL[sel]; selectTool(null, { discard: true }); if (Date.now() - featureOffSaidAt > 8000) say(`${t.title} isn't available right now.`); }
   if (screen === "editorScreen") { renderTabs(); renderTools(); renderPanel(); }
+  if (screen === "editorHome") renderQuickActions();
 }
 var featureOffSaidAt = 0;   // var: applyFeatures may run before this line on start-up
 Features.onChange(applyFeatures);
@@ -3732,7 +3827,7 @@ function openSettings() {
   renderMarkSetting();
   $("autoSaveToggle").checked = autoSaveOn();
   applyTheme(); showBuild();
-  $("settings").showModal();
+  $("settings").showModal(); showWebManage();
 }
 // Which build this is, so a test on a phone can be matched to a commit. The fingerprint is a
 // hash of the app's own files as served (tools/fingerprint.js computes the same from a checkout),
@@ -3846,7 +3941,7 @@ $("docFrame").addEventListener("load", () => {
   let doc;
   try { doc = $("docFrame").contentDocument; } catch { return; }
   if (!doc || !doc.documentElement) return;
-  const t = store.get("glowTheme") || "system";
+  const t = themeChoice();
   const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
   doc.documentElement.dataset.theme = dark ? "dark" : "light";
   doc.documentElement.dataset.embed = "1";
@@ -3903,8 +3998,14 @@ $("supportForm").addEventListener("submit", async (e) => {
   finally { $("supportSend").disabled = false; $("supportSend").textContent = "Send"; }
 });
 $("manageSubs").hidden = !native;
+// On the website, a web subscriber manages it on RevenueCat's page (cancel, card, receipts).
+async function showWebManage() {
+  if (!webCheckout() || !account || account.plan !== "pro" || !(await setupPurchases())) return;
+  const url = await WebRC.managementURL(); if (url) { $("manageSubs").hidden = false; $("manageSubs").dataset.url = url; }
+}
 $("manageSubs").addEventListener("click", (e) => {
   e.preventDefault();
+  if (!native && $("manageSubs").dataset.url) { window.open($("manageSubs").dataset.url, "_blank", "noopener"); return; }
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
   window.open(ios ? "https://apps.apple.com/account/subscriptions" : "https://play.google.com/store/account/subscriptions", "_blank");
 });
@@ -3915,18 +4016,66 @@ let plan = "yearly", rcReady = null, rcUser = "";
 // deleted, or its sign-in expired and a new one was made), a purchase made under the old id would
 // reach the server for an account that no longer exists, and Pro would never switch on.
 function followAccount() {
-  if (!rcUser || !session || !session.user_id || session.user_id === rcUser) return;
+  if (!rcUser || !session || !session.user_id || session.user_id === rcUser || !purchases()) return;
   const id = session.user_id;
   purchases().logIn({ appUserID: id }).then(() => { rcUser = id; }).catch((e) => reportError("RevenueCat logIn failed", e && e.message));
 }
 const packages = {};
-const purchases = () => plugins.Purchases;
+// On the website, RevenueCat Web Billing (Stripe) sells the same glow_pro entitlement, so Pro bought on the
+// web and in the app is one plan and the same webhook switches it on. WebRC speaks the few calls this file
+// makes to the phone plugin, so the paywall and credit packs work the same on both.
+const webCheckout = () => !native && featureOn("money:web") && !CONFIG.revenuecatWeb.startsWith("REVENUECAT_");
+const canBuy = () => native || webCheckout();
+const WebRC = {
+  sdk: null, rc: null,
+  async load() {
+    if (!this.sdk) this.sdk = new Promise((ok, fail) => {
+      if (window.Purchases && window.Purchases.Purchases) return ok(window.Purchases);
+      const s = document.createElement("script"); s.src = "/vendor/purchases-js/Purchases.umd.js";
+      s.onload = () => (window.Purchases && window.Purchases.Purchases ? ok(window.Purchases) : fail(new Error("checkout didn't load")));
+      s.onerror = () => { this.sdk = null; fail(new Error("Couldn't load checkout. Check your connection.")); };
+      document.head.append(s);
+    });
+    return this.sdk;
+  },
+  async configure({ apiKey, appUserID }) { const P = await this.load(); this.rc = P.Purchases.configure({ apiKey, appUserId: appUserID }); },
+  async logIn({ appUserID }) { if (this.rc) await this.rc.changeUser(appUserID); },
+  wrap(p) {
+    const pr = p.product, ft = pr.freeTrialPhase && pr.freeTrialPhase.period;
+    let perMonth = "";
+    try { if (pr.period && pr.period.unit === "year" && pr.price) perMonth = new Intl.NumberFormat(undefined, { style: "currency", currency: pr.price.currency }).format(pr.price.amountMicros / 1e6 / 12 / (pr.period.number || 1)); } catch {}
+    return { _pkg: p, identifier: pr.identifier, priceString: pr.price ? pr.price.formattedPrice : "",
+      pricePerMonthString: perMonth, introPrice: ft ? { price: 0, periodUnit: String(ft.unit).toUpperCase(), periodNumberOfUnits: ft.number } : null };
+  },
+  async getOfferings() {
+    const o = await this.rc.getOfferings(), cur = o.current;
+    const list = [];
+    if (cur && cur.weekly) list.push({ packageType: "WEEKLY", product: this.wrap(cur.weekly) });
+    if (cur && cur.annual) list.push({ packageType: "ANNUAL", product: this.wrap(cur.annual) });
+    return { current: { availablePackages: list } };
+  },
+  async buy(pkg) {
+    try { return await this.rc.purchase({ rcPackage: pkg }); }
+    catch (e) { if (e && e.errorCode === 1) e.userCancelled = true; throw e; }
+  },
+  purchasePackage({ aPackage }) { return this.buy(aPackage.product._pkg); },
+  // Credit packs: one-time products in an offering called "credit_packs", matched by product id.
+  async getProducts({ productIdentifiers }) {
+    const o = await this.rc.getOfferings(), packs = (o.all && o.all.credit_packs && o.all.credit_packs.availablePackages) || [];
+    return { products: packs.map((p) => this.wrap(p)).filter((p) => productIdentifiers.includes(p.identifier)) };
+  },
+  purchaseStoreProduct({ product }) { return this.buy(product._pkg); },
+  // Web purchases belong to this Glow Studio account already; there is no store account to restore from.
+  async restorePurchases() { if (this.rc) await this.rc.getCustomerInfo(); },
+  async managementURL() { try { return this.rc ? (await this.rc.getCustomerInfo()).managementURL : null; } catch { return null; } },
+};
+const purchases = () => plugins.Purchases || (webCheckout() ? WebRC : null);
 function setupPurchases() {
-  if (!native || !purchases()) return Promise.resolve(false);
+  if (!purchases()) return Promise.resolve(false);
   if (!rcReady) rcReady = (async () => {
     const s = await ensureSession();
-    const ios = window.Capacitor.getPlatform() === "ios";
-    const apiKey = ios ? CONFIG.revenuecatIos : CONFIG.revenuecatAndroid;
+    const ios = native && window.Capacitor.getPlatform() === "ios";
+    const apiKey = !native ? CONFIG.revenuecatWeb : ios ? CONFIG.revenuecatIos : CONFIG.revenuecatAndroid;
     if (apiKey.startsWith("REVENUECAT_")) return false; // store not set up yet
     await purchases().configure({ apiKey, appUserID: s.user_id });
     rcUser = s.user_id; followAccount();   // the account may have changed while configuring
@@ -3960,7 +4109,7 @@ async function trialDays(product) {
   if (!intro || intro.price !== 0) return 0;
   const unit = { DAY: 1, WEEK: 7, MONTH: 30 }[intro.periodUnit] || 0, days = unit * (intro.periodNumberOfUnits || 0);
   if (!days) return 0;
-  if (window.Capacitor.getPlatform() === "ios") {
+  if (native && window.Capacitor.getPlatform() === "ios") {
     try {
       const e = await purchases().checkTrialOrIntroductoryPriceEligibility({ productIdentifiers: [product.identifier] });
       const st = e && e[product.identifier] && e[product.identifier].status;
@@ -3972,13 +4121,15 @@ async function trialDays(product) {
 function renderPlanNote() {
   const price = $(plan === "yearly" ? "priceYearly" : "priceWeekly").textContent.replace("/", " per ");
   const trial = plan === "yearly" && yearlyTrial;
-  $("pwNote").textContent = native
+  $("pwNote").textContent = webCheckout()
+    ? `${trial ? `Free for ${yearlyTrial} days, with 10 AI credits to try. Then ${price}` : price}. Renews automatically every ${plan === "yearly" ? "year" : "week"} until you cancel. Cancel anytime from Settings > Manage subscription or the link in your receipt email. Secure card payment by Stripe.`
+    : native
     ? `${trial ? `Free for ${yearlyTrial} days, with 10 AI credits to try. Then ${price}` : price}. Renews automatically every ${plan === "yearly" ? "year" : "week"} until you cancel. Cancel anytime in your App Store or Google Play settings at least 24 hours before renewal. Payment is charged to your store account.`
     : "Glow Studio Pro is available in the Glow Studio app for iPhone and Android. The camera and on-device tools stay free here.";
 }
 function openPaywall() {
   if (account && account.plan === "pro") { openCredits(); return; }
-  $("buyBtn").disabled = !native; $("buyBtn").textContent = buyLabel();
+  $("buyBtn").disabled = !canBuy(); $("buyBtn").textContent = buyLabel();
   $("adBtn").hidden = !(featureOn("money:ads") && native && plugins.AdMob && account && account.plan !== "pro" && account.remaining < 2 && account.adsLeft > 0);
   renderPlanNote();
   setupPurchases();
@@ -3989,7 +4140,7 @@ function openPaywall() {
 // from the editor), show the Pro screen. It closes like any sheet and nothing is locked. Only in the
 // phone app, where Pro can be bought, and never on top of another sheet or after the person moved on.
 function introOffer(where) {
-  if (!native || store.get("glowIntroOffer") || !featureOn("money:intro") || (account && account.plan === "pro")) return;
+  if (!canBuy() || store.get("glowIntroOffer") || !featureOn("money:intro") || (account && account.plan === "pro")) return;
   const from = screen;
   setTimeout(async () => {
     if (!(await setupPurchases())) return;   // the store isn't set up yet: nothing could be bought
@@ -4023,21 +4174,23 @@ async function afterPurchase() {
 $("buyBtn").addEventListener("click", async () => {
   try {
     if (!(await setupPurchases()) || !packages[plan]) throw new Error("The store isn't available right now. Try again in a moment.");
-    $("buyBtn").disabled = true; $("buyBtn").textContent = "Opening store…";
+    $("buyBtn").disabled = true; $("buyBtn").textContent = native ? "Opening store…" : "Opening checkout…";
     track("purchase_start", { plan });
     await purchases().purchasePackage({ aPackage: packages[plan] });
     track("purchase", { plan });
     $("paywall").close();
+    Platform.haptic("success"); glowBurst();
     say((await afterPurchase()) ? (account.inTrial ? "Your free trial has started. You have 10 AI credits to try every Pro tool."
       : "Welcome to Glow Studio Pro. Your 40 weekly AI credits are ready.") : "Purchase complete. Pro will switch on within a minute.");
   } catch (err) {
     track("purchase_fail", { plan, cancelled: !!(err && err.userCancelled) });
     if (!(err && err.userCancelled)) say((err && err.message) || "Purchase didn't go through.", true);
-  } finally { $("buyBtn").disabled = !native; $("buyBtn").textContent = buyLabel(); }
+  } finally { $("buyBtn").disabled = !canBuy(); $("buyBtn").textContent = buyLabel(); }
 });
 async function restore() {
   try {
     if (!(await setupPurchases())) throw new Error("Restore works in the Glow Studio app for iPhone and Android.");
+    if (!native) { const back = await afterPurchase(); say(back ? "Glow Studio Pro is active." : "No web subscription found for this browser. If you bought Pro in the app, use Restore there."); $("paywall").close(); $("settings").close(); return; }
     await purchases().restorePurchases();
     const back = await afterPurchase();
     track("restore", { found: back });
@@ -4062,10 +4215,12 @@ async function loadPacks() {
 function renderPacks() {
   $("packs").innerHTML = CONFIG.creditPacks.map((k) => {
     const sp = packProducts[k.id];
-    return `<button class="pack" data-pack="${k.id}"${native ? "" : " disabled"} aria-label="${k.credits} AI credits for ${sp ? sp.priceString : k.price}">` +
+    return `<button class="pack" data-pack="${k.id}"${canBuy() ? "" : " disabled"} aria-label="${k.credits} AI credits for ${sp ? sp.priceString : k.price}">` +
       `${k.tag ? `<em>${k.tag}</em>` : ""}<b>${k.credits}</b><span class="unit">AI credits</span><span class="price">${sp ? sp.priceString : k.price}</span></button>`;
   }).join("");
-  $("packsNote").textContent = native
+  $("packsNote").textContent = webCheckout()
+    ? "One-time card payment through Stripe. Credits are added to this Glow Studio account and used after your free or weekly credits. They stay with this browser's account."
+    : native
     ? "One-time purchase, charged to your store account. Credits are added to this Glow Studio account and used after your free or weekly credits. Deleting the app or your account removes them."
     : "Credit packs are available in the Glow Studio app for iPhone and Android.";
   $("packsPro").hidden = !!(account && account.plan === "pro");

@@ -47,3 +47,11 @@ result filled the new area with unrelated pictures; see the run notes).
 
 The JPEGs under `tests/fixtures/demo-test-*.jpg` are tone changes made for the tests only.
 They are not Glow Studio results and are never shipped.
+
+## Quick actions tiles (`quick/*.webp`)
+
+320px tiles for the Editor home's Quick actions, cut from the files in `home/`. Try on is the real
+suit result. Smooth skin shows the original beside the Retouch result. Looks is the original with
+the Glow filter's settings applied. New background, Remove and Fix old photo are illustrations made
+for the tiles (a plain gradient behind the person, a brush circle drawn on the photo, a sepia half),
+not results from those tools.

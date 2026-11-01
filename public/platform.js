@@ -43,6 +43,7 @@ const Platform = {
       const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
       return new File([blob], `${it.name}.${ext}`, { type: blob.type || "image/jpeg" });
     }));
+    if (!opts.share) Recents.add(files).catch(() => {});   // the home screens' "Recent" row (kept on this device only)
     if (native && plugins.Media) {
       for (const f of files) await saveToAlbum(await fileData(f), f.name.replace(/\.\w+$/, ""));
       return "photos";
@@ -69,10 +70,25 @@ const Platform = {
     return "downloaded";
   },
 
+  // A short video (the before/after reveal): the share sheet where there is one, otherwise a download.
+  async shareVideo(blob, name) {
+    const ext = /mp4/.test(blob.type) ? "mp4" : "webm", f = new File([blob], `${name}.${ext}`, { type: blob.type });
+    if (native && plugins.Filesystem && plugins.Share) {
+      const uri = (await plugins.Filesystem.writeFile({ path: f.name, data: (await fileData(f)).split(",")[1], directory: "CACHE" })).uri;
+      await plugins.Share.share({ title: "Glow Studio", files: [uri] });
+      return "shared";
+    }
+    if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: "Glow Studio" }); return "shared"; }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name;
+    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    return "downloaded";
+  },
+
   haptic(kind = "light") {
     try {
-      if (native && plugins.Haptics) plugins.Haptics.impact({ style: kind === "heavy" ? "HEAVY" : "LIGHT" }).catch(() => {});
-      else if (navigator.vibrate && matchMedia("(pointer: coarse)").matches) navigator.vibrate(kind === "heavy" ? 18 : 8);
+      // "success": a two-beat buzz for the big moments (Enhance done, joining Pro).
+      if (native && plugins.Haptics) (kind === "success" ? plugins.Haptics.notification({ type: "SUCCESS" }) : plugins.Haptics.impact({ style: kind === "heavy" ? "HEAVY" : "LIGHT" })).catch(() => {});
+      else if (navigator.vibrate && matchMedia("(pointer: coarse)").matches) navigator.vibrate(kind === "success" ? [12, 70, 22] : kind === "heavy" ? 18 : 8);
     } catch {}
   },
 
@@ -152,4 +168,29 @@ const Drafts = {
   getRecovered() { return this.read("recovered"); },
   putRecovered(r) { return this.write("recovered", r); },
   clearRecovered() { return this.remove("recovered"); },
+};
+
+// The last photos saved from Glow Studio, for the "Recent" row on the home screens. Kept on this device
+// only (IndexedDB, next to the draft), newest first. Share cards and "also save the original" copies are left out.
+const Recents = {
+  MAX: 12,
+  async list() { const r = await Drafts.read("recents"); return Array.isArray(r) ? r : []; },
+  async thumb(blob) {
+    const bm = await createImageBitmap(blob);
+    const s = 240 / Math.min(bm.width, bm.height), c = document.createElement("canvas");
+    c.width = Math.round(bm.width * s); c.height = Math.round(bm.height * s);
+    c.getContext("2d").drawImage(bm, 0, 0, c.width, c.height); if (bm.close) bm.close();
+    return c.toDataURL("image/jpeg", 0.8);
+  },
+  async add(files) {
+    const keep = files.filter((f) => /^image\//.test(f.type || "image/") && !/share-card|original/i.test(f.name));
+    if (!keep.length) return;
+    const fresh = [];
+    for (const f of keep) fresh.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, ts: Date.now(), name: f.name.replace(/\.\w+$/, ""), thumb: await this.thumb(f), blob: f });
+    const all = fresh.reverse().concat(await this.list()).slice(0, this.MAX);
+    await Drafts.write("recents", all);
+    document.dispatchEvent(new CustomEvent("recents-changed"));
+  },
+  async remove(id) { await Drafts.write("recents", (await this.list()).filter((r) => r.id !== id)); document.dispatchEvent(new CustomEvent("recents-changed")); },
+  async clear() { await Drafts.remove("recents"); document.dispatchEvent(new CustomEvent("recents-changed")); },
 };

@@ -476,7 +476,7 @@ const demoManifest = (() => {
 const demoFiles = (extra = {}) => ({ '/samples/demo-v2/manifest.json': { json: demoManifest }, '/samples/demo-v2/test-pro.jpg': fx('demo-test-a.jpg'),
   '/samples/demo-v2/test-golden.jpg': fx('demo-test-b.jpg'), ...extra });
 async function openDemo(p) {
-  await p.goto('https://app.test/'); await p.click('#sampleBtn');
+  await p.goto('https://app.test/'); await p.click('#sampleBtn:visible, #qaSampleBtn:visible');
   await p.waitForFunction(() => screen === 'editorScreen' && ed.demo && $('before').naturalWidth > 0, null, { timeout: 15000 });
   await p.waitForFunction(() => demo && !demo.loading); await settle(300);
 }
@@ -842,7 +842,7 @@ test('settings: Help, Privacy, Terms and Licenses open inside the app, readable 
     const r = await p.evaluate(() => { const d = $('docFrame').contentDocument, cs = d.defaultView.getComputedStyle(d.body);
       return [location.pathname, screen, $('docTitle').textContent, cs.color, cs.backgroundColor, d.documentElement.dataset.theme, d.defaultView.getComputedStyle(d.querySelector('.brand')).display]; });
     eq(r[0], '/', `${row}: the app stays on its page`); eq(r[1], 'enhanceHome', `${row}: no restart`); eq(r[2], h1, `${row}: sheet title`);
-    eq([r[3], r[4], r[5], r[6]], ['rgb(245, 244, 242)', 'rgb(18, 18, 20)', 'dark', 'none'], `${row}: light text on dark, app header hidden`);
+    eq([r[3], r[4], r[5], r[6]], ['rgb(247, 243, 234)', 'rgb(13, 13, 16)', 'dark', 'none'], `${row}: light text on dark, app header hidden`);
     await p.click('#docSheet [data-close]');
   }
   // A link to another help page stays in the sheet; the Glow Studio home link closes it.
@@ -1077,7 +1077,7 @@ async function stageBox(p) { return p.evaluate(() => { const r = $('stage').getB
 for (const [w, h] of [[390, 844], [320, 640], [412, 915]]) test(`layout: categories never resize the photo at ${w}×${h} (photo and sample)`, async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, fx('transparent.png'));
   for (const run of ['photo', 'sample']) {
-    if (run === 'sample') { await p.click('#backBtn'); await p.click('#sampleBtn'); await p.waitForFunction(() => ed.demo && $('before').naturalWidth > 0); }
+    if (run === 'sample') { await p.click('#backBtn'); await p.click('#sampleBtn:visible, #qaSampleBtn:visible'); await p.waitForFunction(() => ed.demo && $('before').naturalWidth > 0); }
     const boxes = {};
     for (const c of ['retouch', 'looks', 'edit', 'bg', 'ai']) { await p.click(`.tab[data-cat="${c}"]`); await settle(120); boxes[c] = await stageBox(p); }
     const first = JSON.stringify(boxes.retouch);
@@ -1089,8 +1089,8 @@ for (const [w, h] of [[390, 844], [320, 640], [412, 915]]) test(`layout: categor
 test('layout: stone (light) and ink (dark) surround, photo contained, edited view first, compare only after an edit', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   const bg = () => p.evaluate(() => getComputedStyle($('stage')).backgroundColor);
-  eq(await bg(), 'rgb(18, 18, 20)', 'dark: ink');
-  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(247, 246, 243)', 'light: stone');
+  eq(await bg(), 'rgb(13, 13, 16)', 'dark: ink');
+  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(250, 247, 240)', 'light: ivory');
   const st = await p.evaluate(() => ({ view: $('stage').dataset.view, disabled: [$('compareBtn').disabled, $('revertBtn').disabled], radius: getComputedStyle($('stage')).borderTopLeftRadius,
     fit: getComputedStyle($('before')).objectFit, frame: (() => { const f = $('view').getBoundingClientRect(), s = $('stage').getBoundingClientRect(); return f.width <= s.width + 0.5 && f.height <= s.height + 0.5 && Math.abs(f.width / f.height - ed.original.w / ed.original.h) < 0.02; })() }));
   eq(st, { view: 'edited', disabled: [true, true], radius: '16px', fit: 'contain', frame: true }, 'before any edit (rounded, with a small margin)');
@@ -2985,6 +2985,106 @@ test('features: Enhance Batch off hides its link; switching it back on brings ev
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false, features: { 'enhance:batch': false } });
 
+
+// Quick actions on the Editor home: six photo tiles; each picks a photo and opens that tool on its tab.
+test('quick actions: six tiles on the Editor home, the sample link moves beside the title, a tile opens its tool on its tab', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => typeof go === 'function' && !!screen, null, { timeout: 15000 });
+  await p.evaluate(() => go('editor')); await p.waitForFunction(() => screen === 'editorHome'); await settle(300);
+  eq(await p.evaluate(() => [...document.querySelectorAll('#qaGrid .qa')].map((b) => b.dataset.qa)), ['smooth', 'looks', 'tryon', 'newbg', 'remove', 'oldphoto'], 'tiles');
+  eq(await p.evaluate(() => [$('quickActions').hidden, $('sampleBtn').hidden, $('qaSampleBtn').offsetParent !== null]), [false, true, true], 'sample link beside the title');
+  eq(await p.evaluate(() => [...document.querySelectorAll('#qaGrid .qa-ph em')].length), 4, 'four AI chips');
+  assert(await p.evaluate(() => [...document.querySelectorAll('#qaGrid img')].every((i) => i.complete && i.naturalWidth > 0)), 'tile images load');
+  // On a phone the whole grid fits above the tab bar without scrolling.
+  const fit = await p.evaluate(() => { const g = $('qaGrid').getBoundingClientRect(), n = $('nav').getBoundingClientRect(); return [Math.round(g.bottom), Math.round(n.top)]; });
+  assert(fit[0] <= fit[1], `grid ends above the tab bar (${fit})`);
+  for (const [qa, toolId, tab] of [['tryon', 'outfit', 'looks'], ['smooth', 'fsmooth', 'retouch'], ['remove', 'erase', 'ai']]) {
+    if (qa !== 'tryon') { await p.evaluate(() => { selectTool(null, { discard: true }); showScreen('editorHome'); }); await settle(200); }
+    const fc = p.waitForEvent('filechooser'); await p.click(`#qaGrid .qa[data-qa="${qa}"]`); await (await fc).setFiles(fx('tall-916.jpg'));
+    await p.waitForFunction((x) => screen === 'editorScreen' && sel === x, toolId, { timeout: 30000 });
+    eq(await p.evaluate(() => cat), tab, `${qa} opens on its tab`);
+    await idle(p);
+  }
+  eq(state.errs, [], 'no page errors');
+});
+
+test('quick actions: switched off, the tiles go and the sample button comes back; a tool switched off drops its tile', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => typeof go === 'function' && !!screen, null, { timeout: 15000 });
+  await p.evaluate(() => go('editor')); await p.waitForFunction(() => screen === 'editorHome' && Features.checkedAt > 0, null, { timeout: 10000 }); await settle(300);
+  eq(await p.evaluate(() => [$('quickActions').hidden, $('sampleBtn').hidden]), [true, false], 'all off');
+  state.features = { 'tool:outfit': false }; await p.evaluate(() => refreshFeatures(true)); await settle(300);
+  eq(await p.evaluate(() => [$('quickActions').hidden, [...document.querySelectorAll('#qaGrid .qa')].map((b) => b.dataset.qa).join()]), [false, 'smooth,looks,newbg,remove,oldphoto'], 'Try on tile gone');
+  eq(state.errs, [], 'no page errors');
+}, { features: { 'editor:quick': false } });
+// ---------- Golden Hour: dark by default, gold moment, Recent row, before/after video ----------
+test('golden hour: dark by default on a light phone; System follows the phone; Light stays light', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const look = () => p.evaluate(() => [getComputedStyle(document.body).backgroundColor, document.querySelector('meta[name="theme-color"]').content]);
+  eq(await look(), ['rgb(13, 13, 16)', '#0d0d10'], 'dark on first open, browser bar too');
+  await p.evaluate(() => { store.set('glowTheme', 'system'); applyTheme(); }); eq((await look())[0], 'rgb(250, 247, 240)', 'System follows the light phone');
+  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await look(), ['rgb(250, 247, 240)', '#faf7f0'], 'Light');
+  await p.reload(); await p.waitForFunction(() => screen === 'enhanceHome'); eq((await look())[0], 'rgb(250, 247, 240)', 'choice kept after a reload');
+}, { start: 'enhance', camera: false, scheme: 'light' });
+
+test('golden hour: Enhance result plays the gold moment; saving adds it to Recent on both homes; Recent reopens it in the editor', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  eq(await p.isVisible('#enhanceHome .recents'), false, 'no Recent row before any save');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult', null, { timeout: 30000 });
+  eq(await p.evaluate(() => !!document.querySelector('#enhFrame .glow-burst')), true, 'gold moment on the result');
+  await p.click('#enhDownload'); await downloads(state, 1); await p.waitForFunction(() => screen === 'enhanceShare');
+  await p.waitForFunction(() => document.querySelectorAll('#enhanceHome .recent').length === 1);
+  eq(await p.evaluate(() => document.querySelectorAll('#editorHome .recent').length), 1, 'Recent on Editor home too');
+  await p.click('#enhShareDone'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhanceHome .recent'); await p.waitForFunction(() => screen === 'editorScreen' && hasPhoto());
+  await p.evaluate(() => go('enhance')); await p.click('#enhanceHome .recents-clear'); await p.waitForSelector('#ask[open]');
+  await p.click('#askActions button:has-text("Clear")'); await p.waitForFunction(() => document.querySelector('#enhanceHome .recents').hidden);
+}, { start: 'enhance', camera: false });
+
+test('golden hour: before & after video is made and shared (downloaded on a computer)', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult', null, { timeout: 30000 });
+  await p.click('#enhDownload'); await downloads(state, 1); await p.waitForFunction(() => screen === 'enhanceShare');
+  assert(await p.isVisible('#enhVideo'), 'video button shown');
+  await p.click('#enhVideo'); const d = await downloads(state, 2, 30000);
+  assert(/glow-studio-before-after-\d+\.(mp4|webm)$/.test(d[1].name), 'video file: ' + d[1].name);
+  assert(require('fs').statSync(d[1].file).size > 20000, 'video has content');
+  eq(await p.evaluate(() => document.querySelectorAll('#enhanceHome .recent').length), 1, 'the video is not added to Recent');
+}, { start: 'enhance', camera: false, mobile: false, touch: false });
+
+test('web checkout: with a Web Billing key the website sells Pro by card (RevenueCat purchases-js), cancel is quiet, Pro switches on', async ({ p, state }) => {
+  // A stand-in for RevenueCat's purchases-js, so no real checkout or network is touched.
+  await p.addInitScript(() => {
+    const price = (n) => ({ amountMicros: n * 1e6, currency: 'USD', formattedPrice: '$' + n.toFixed(2) });
+    const pkg = (id, n, unit, trial) => ({ identifier: id, product: { identifier: id, price: price(n), period: { number: 1, unit }, freeTrialPhase: trial ? { period: { number: 3, unit: 'day' } } : null } });
+    window.__rc = { bought: [], cancelNext: false, user: '' };
+    window.Purchases = { Purchases: { configure: ({ appUserId }) => { window.__rc.user = appUserId; return {
+      getOfferings: async () => ({ current: { weekly: pkg('glow_pro_weekly_web', 4.99, 'week'), annual: pkg('glow_pro_yearly_web', 49.99, 'year', true) }, all: { credit_packs: { availablePackages: [pkg('glow_credits_10', 1.99, null)] } } }),
+      purchase: async ({ rcPackage }) => { if (window.__rc.cancelNext) { window.__rc.cancelNext = false; const e = new Error('cancelled'); e.errorCode = 1; throw e; } window.__rc.bought.push(rcPackage.identifier); return {}; },
+      getCustomerInfo: async () => ({ managementURL: 'https://pay.rev.cat/manage' }), changeUser: async () => ({}),
+    }; } } };
+  });
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => { CONFIG.revenuecatWeb = 'rcb_test'; openPaywall(); });
+  await p.waitForFunction(() => /\$49\.99/.test($('priceYearly').textContent));
+  eq(await p.evaluate(() => [$('buyBtn').disabled, $('buyBtn').textContent, $('yearlyNote').textContent]), [false, 'Start 3-day free trial', '3 days free, then $49.99 a year'], 'web prices, trial and an enabled button');
+  assert(/Stripe/.test(await p.textContent('#pwNote')), 'web terms note');
+  await p.evaluate(() => { window.__rc.cancelNext = true; }); await p.click('#buyBtn'); await settle(500);
+  eq(await p.evaluate(() => [window.__rc.bought.length, $('paywall').open, $('toast').classList.contains('on') && /didn't go through/.test($('toast').textContent)]), [0, true, false], 'cancel: nothing bought, no error');
+  state.plan = 'pro'; await p.click('#buyBtn');
+  await p.waitForFunction(() => !$('paywall').open);
+  eq(await p.evaluate(() => [window.__rc.bought, window.__rc.user === session.user_id]), [['glow_pro_yearly_web'], true], 'bought yearly for this Glow Studio account');
+  await p.waitForFunction(() => account && account.plan === 'pro');
+  await p.evaluate(() => openSettings()); await p.waitForFunction(() => !$('manageSubs').hidden);
+}, { start: 'enhance', camera: false });
+
+test('web checkout: without a Web Billing key (or switched off) the website still points to the app', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => openPaywall());
+  eq(await p.evaluate(() => [$('buyBtn').disabled, /available in the Glow Studio app/.test($('pwNote').textContent), !!document.querySelector('script[src*="purchases-js"]')]), [true, true, false], 'no key: disabled, app note, checkout not loaded');
+}, { start: 'enhance', camera: false });
 
 (async () => {
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
