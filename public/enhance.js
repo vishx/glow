@@ -851,7 +851,7 @@ async function composeEnhanced(lv) {
   if (lv.colors) {
     // Auto evens out the light and takes out most of a color cast; each look then goes on gently.
     out = await autoLight(out, { balance: true });
-    if (lv.colors > 1) out = await applyFilter(out, FILTERS.find((f) => f.id === ENH_COLORS[lv.colors - 2]), ENH_COLORS[lv.colors - 2] === "mono" ? 1 : 0.45);
+    if (lv.colors > 1) out = await applyFilter(out, { ...FILTERS.find((f) => f.id === ENH_COLORS[lv.colors - 2]), fx: null }, ENH_COLORS[lv.colors - 2] === "mono" ? 1 : 0.45);
   }
   if (lv.blur) out = await portraitBlur(out, lv.blur);
   return out;

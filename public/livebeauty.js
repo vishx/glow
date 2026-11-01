@@ -352,6 +352,6 @@ function filterMatrix(flt) {
 }
 // What the native camera needs to draw look `l` (the camera's current look by default).
 function nativeCamState(extra = {}, l = camLook()) {
-  const flt = FILTERS.find((f) => f.id === l.filter) || FILTERS[0];
+  const flt = scaleFilter(FILTERS.find((f) => f.id === l.filter) || FILTERS[0], (l.filterAmt ?? 100) / 100);
   return { look: Object.fromEntries(NATIVE_LOOK_KEYS.map((k) => [k, l[k]])), ...filterMatrix(flt), ...extra };
 }
