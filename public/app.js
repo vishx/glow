@@ -16,7 +16,7 @@ const CONFIG = {
   publicUrl: "https://glow-photo-enhancer.vercel.app",
   // The small second line of the badge on free saves, such as a real domain or "On the App Store".
   // "" uses publicUrl's address; "none" shows "Glow Studio" alone.
-  badgeLine: "",
+  badgeLine: "AI Photo Enhancer",   // 2026-11-01: the web address looked unpolished; the store subtitle reads cleaner
   // Fill sends mode "fill" with a short prompt. Live since enhance v9 (2026-10-30, after migration 006).
   aiFill: true,
   // AI scene, HD cutout and Describe need the "bgscene", "bgcut" and "custom" modes on the
@@ -2416,7 +2416,9 @@ const loadBadgeIcon = () => badgeIcon || (badgeIcon = loadImg("icon-512.png").ca
 // half its height. The address line is left out when it would be too small to read or make the
 // badge wider than 45% of the picture.
 function markLayout(ctx, w, h) {
-  const H = Math.max(26, Math.round(Math.min(w, h) * 0.05)), pad = Math.round(H * 0.16), icon = H - pad * 2, inset = Math.round(H * 0.5);
+  // At least 44px tall, so the name and the second line keep enough pixels to stay crisp on small
+  // photos (the badge can't be sharper than the photo it's drawn into).
+  const H = Math.max(44, Math.round(Math.min(w, h) * 0.05)), pad = Math.round(H * 0.16), icon = H - pad * 2, inset = Math.round(H * 0.5);
   const s = Math.round(H * 0.4), u = Math.round(H * 0.22);
   ctx.font = MARK_SERIF(s); let gw = ctx.measureText("Glow Studio").width;
   let line = BADGE_LINE; ctx.font = MARK_SANS(u); let lw = line ? ctx.measureText(line).width : 0;
@@ -2428,6 +2430,17 @@ function markLayout(ctx, w, h) {
   return { H, pad, icon, s, u, gw, line, bw, x: w - inset - bw, y: h - inset - H };
 }
 function pill(ctx, x, y, w, h) { const r = h / 2; ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+// The 512px icon shrunk to the badge's size in halving steps, so its fine rings stay smooth instead
+// of shimmering (one big jump from 512px to 30px skips most of the pixels).
+function iconAt(icon, size) {
+  let src = icon, w = icon.naturalWidth || icon.width;
+  while (w / 2 >= size) {
+    const c = newCanvas(Math.round(w / 2), Math.round(w / 2)), x = c.getContext("2d");
+    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high"; x.drawImage(src, 0, 0, c.width, c.height);
+    src = c; w = c.width;
+  }
+  return src;
+}
 function drawBadge(ctx, m, icon) {
   const { x, y, H, pad } = m;
   ctx.save();
@@ -2440,7 +2453,8 @@ function drawBadge(ctx, m, icon) {
   const ix = x + pad, iy = y + pad;
   if (icon) {
     ctx.save(); pill(ctx, ix, iy, m.icon, m.icon); ctx.clip();
-    ctx.drawImage(icon, ix, iy, m.icon, m.icon); ctx.restore();
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(iconAt(icon, Math.round(m.icon)), ix, iy, m.icon, m.icon); ctx.restore();
   }
   const tx = ix + m.icon + H * 0.22;
   ctx.fillStyle = "#ffffff"; ctx.textBaseline = "alphabetic";

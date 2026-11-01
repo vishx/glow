@@ -1560,7 +1560,7 @@ test('mark: placed after crop and rotation, at small and large sizes; paid saves
   await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); const [d] = await downloads(state, 1);
   const clean = await p.evaluate(async () => (await renderExport()).data);
   const r = await diffBox(p, `data:${mime(d.file)};base64,${fileB64(d.file)}`, clean);
-  assert(r.box && r.box[0] > r.w * 0.4 && r.box[1] > r.h * 0.85, `small cropped and rotated save: mark bottom-right ${r.box} of ${r.w}x${r.h}`);
+  assert(r.box && r.box[0] > r.w * 0.4 && r.box[1] > r.h * 0.8, `small cropped and rotated save: mark bottom-right ${r.box} of ${r.w}x${r.h}`);
   eq(r.w, r.h, 'square crop kept');
   await p.click('#backBtn'); await pick(p, fx('large-24mp.jpg'));
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); const d2 = (await downloads(state, 2, 60000))[1];
