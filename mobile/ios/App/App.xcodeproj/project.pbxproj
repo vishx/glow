@@ -16,6 +16,12 @@
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
+		A1C0DE000000000000B00000 /* GlowBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE000000000000F00000 /* GlowBridgeViewController.swift */; };
+		A1C0DE010000000000B00001 /* GlowCameraPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE010000000000F00001 /* GlowCameraPlugin.swift */; };
+		A1C0DE020000000000B00002 /* BeautyRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE020000000000F00002 /* BeautyRenderer.swift */; };
+		A1C0DE030000000000B00003 /* FaceTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE030000000000F00003 /* FaceTracker.swift */; };
+		A1C0DE040000000000B00004 /* FaceGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE040000000000F00004 /* FaceGeometry.swift */; };
+		A1C0DE050000000000B00005 /* Look.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE050000000000F00005 /* Look.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +36,12 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		A1C0DE000000000000F00000 /* GlowBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlowBridgeViewController.swift; sourceTree = "<group>"; };
+		A1C0DE010000000000F00001 /* GlowCameraPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlowCameraPlugin.swift; sourceTree = "<group>"; };
+		A1C0DE020000000000F00002 /* BeautyRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeautyRenderer.swift; sourceTree = "<group>"; };
+		A1C0DE030000000000F00003 /* FaceTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceTracker.swift; sourceTree = "<group>"; };
+		A1C0DE040000000000F00004 /* FaceGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceGeometry.swift; sourceTree = "<group>"; };
+		A1C0DE050000000000F00005 /* Look.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Look.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -65,6 +77,8 @@
 			isa = PBXGroup;
 			children = (
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
+				A1C0DE000000000000F00000 /* GlowBridgeViewController.swift */,
+				A1C0DE990000000000000001 /* GlowCamera */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -75,6 +89,18 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		A1C0DE990000000000000001 /* GlowCamera */ = {
+			isa = PBXGroup;
+			children = (
+				A1C0DE010000000000F00001 /* GlowCameraPlugin.swift */,
+				A1C0DE020000000000F00002 /* BeautyRenderer.swift */,
+				A1C0DE030000000000F00003 /* FaceTracker.swift */,
+				A1C0DE040000000000F00004 /* FaceGeometry.swift */,
+				A1C0DE050000000000F00005 /* Look.swift */,
+			);
+			path = GlowCamera;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -160,6 +186,12 @@
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
+				A1C0DE000000000000B00000 /* GlowBridgeViewController.swift in Sources */,
+				A1C0DE010000000000B00001 /* GlowCameraPlugin.swift in Sources */,
+				A1C0DE020000000000B00002 /* BeautyRenderer.swift in Sources */,
+				A1C0DE030000000000B00003 /* FaceTracker.swift in Sources */,
+				A1C0DE040000000000B00004 /* FaceGeometry.swift in Sources */,
+				A1C0DE050000000000B00005 /* Look.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

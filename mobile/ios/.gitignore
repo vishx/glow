@@ -11,3 +11,8 @@ capacitor-cordova-ios-plugins
 # Generated Config files
 App/App/capacitor.config.json
 App/App/config.xml
+
+# CocoaPods (MediaPipe for the native camera)
+pods/Pods
+pods/Podfile.lock
+App/App.xcworkspace

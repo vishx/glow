@@ -1,0 +1,12 @@
+# MediaPipe's face landmarker for the native camera (App/App/GlowCamera). It ships only through
+# CocoaPods; Capacitor's own plugins stay on Swift Package Manager. This Podfile lives outside
+# ios/App so Capacitor keeps treating the project as SPM. Run `pod install` here, then open
+# App/App.xcworkspace.
+platform :ios, '15.0'
+workspace '../App/App.xcworkspace'
+project '../App/App.xcodeproj'
+
+target 'App' do
+  use_frameworks!
+  pod 'MediaPipeTasksVision', '0.10.14'
+end

@@ -1,0 +1,44 @@
+# Compiles the iPhone app with the native camera on a cloud Mac (for the simulator, unsigned),
+# so build errors show up before anyone needs Xcode. Installing on an iPhone needs signing
+# with an Apple developer account, which this workflow doesn't do.
+name: iOS native camera build
+
+on:
+  push:
+    branches: [claude/project-thread-bnuul9]
+    paths: [mobile/ios/**, public/**, .github/workflows/ios-native-camera.yml]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build web assets and sync Capacitor
+        working-directory: mobile
+        run: |
+          npm ci
+          bash build-web.sh
+          npx cap sync ios
+
+      - name: Install MediaPipe (CocoaPods)
+        working-directory: mobile/ios/pods
+        run: pod install
+
+      - name: List schemes
+        working-directory: mobile/ios/App
+        run: xcodebuild -list -workspace App.xcworkspace || true
+
+      - name: Compile for the simulator
+        working-directory: mobile/ios/App
+        run: |
+          set -o pipefail
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee /tmp/build.log | grep -E "error:|warning: .*GlowCamera|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" /tmp/build.log

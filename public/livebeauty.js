@@ -312,11 +312,11 @@ function setShape(g, P, amt) {
 }
 
 // ---------- Native camera (phone app) ----------
-// In the Android app the camera picture is drawn natively (the GlowCamera plugin in
-// mobile/android/.../camera), with this same look, behind the see-through page; the camera
-// screen's buttons, looks and sliders stay the web ones. Elsewhere (browsers, iPhone for now)
+// In the phone apps the camera picture is drawn natively (the GlowCamera plugin in
+// mobile/android/.../camera, mobile/ios/App/App/GlowCamera), with this same look, behind the see-through page; the camera
+// screen's buttons, looks and sliders stay the web ones. In browsers
 // the web camera above is used.
-const NativeCam = native && plugins.GlowCamera && window.Capacitor.getPlatform() === "android" ? plugins.GlowCamera : null;
+const NativeCam = native && plugins.GlowCamera && ["android", "ios"].includes(window.Capacitor.getPlatform()) ? plugins.GlowCamera : null;
 const NATIVE_GL = { live: true, native: true };
 const NATIVE_LOOK_KEYS = ["smooth", "bright", "warm", "eyes", "slim", "nose", "lips", "blush", "brows", "lipShade", "blushShade", "browShade"];
 
