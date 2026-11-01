@@ -204,7 +204,10 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
           <div class="cam-lenses" id="camLenses"></div>
         </div>
         <div class="adjust-panel" id="adjustPanel" hidden>
-          <div class="adj-chips" id="adjChips" role="radiogroup" aria-label="Setting"></div>
+          <div class="adj-bar">
+            <button class="adj-done" id="adjDone" aria-label="Done adjusting, back to looks" aria-controls="adjustPanel" aria-expanded="true"></button>
+            <div class="adj-chips" id="adjChips" role="radiogroup" aria-label="Setting"></div>
+          </div>
           <button class="adj-reset1" id="adjReset1" aria-label="Reset this setting"></button>
           <div class="adj-tabs" role="tablist" aria-label="Adjust">
             <button role="tab" id="adjTabSkin" data-adj="skin" aria-selected="true" aria-controls="adjSkin">Skin</button>

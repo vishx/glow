@@ -3147,13 +3147,12 @@ function renderLooks() {
     if (on != null) b.setAttribute("aria-pressed", String(on));
     b.addEventListener("click", fn); return b;
   };
-  const adjustBtn = chip("Adjust", null, "adjust", () => {
-    const open = $("adjustPanel").hidden; $("adjustPanel").hidden = !open; adjustBtn.setAttribute("aria-expanded", String(open));
-    $("cameraScreen").classList.toggle("adjusting", open); cam.focusY = null; cam.posY = null; $("camCanvas").style.objectPosition = "";
-  });
+  const adjustBtn = chip("Adjust", null, "adjust", () => setAdjustOpen($("adjustPanel").hidden));
   adjustBtn.insertAdjacentHTML("afterbegin", icon("sliders"));
   adjustBtn.setAttribute("aria-expanded", String(!$("adjustPanel").hidden)); adjustBtn.setAttribute("aria-controls", "adjustPanel");
+  // Adjust comes first, so it's always in reach (it used to be pushed off the end by Custom and Save look).
   $("camLooks").replaceChildren(
+    adjustBtn,
     ...allLooks().map((l) => chip(l.name, l.id === lookId, "", async () => {
       if (l.id === lookId && l.id.startsWith("my")) {
         if (await ask({ title: `Delete "${l.name}"?`, actions: [{ label: "Delete look", value: "yes" }, { label: "Keep it", value: "", kind: "ghost" }] })) {
@@ -3163,17 +3162,40 @@ function renderLooks() {
       }
       Platform.haptic(); useLook(l);
     })),
-    ...(lookId === "custom" ? [chip("Custom", true, "", () => {}), chip("Save look", null, "add", () => {
-      const n = myLooks.length ? `My Look ${myLooks.length + 1}` : "My Look";
-      const l = { id: "my" + Date.now(), name: n, ...Object.fromEntries(LOOK_KEYS.map((k) => [k, beauty[k]])) };
-      myLooks = [...myLooks, l].slice(-4); useLook(l); say(`Saved as "${n}". It's also in Editor under My Look.`);
-    })] : []),
-    adjustBtn,
+    ...(lookId === "custom" ? [chip("Custom", true, "", () => {}), chip("Save look", null, "add", saveMyLook)] : []),
   );
+  $("adjSave").hidden = lookId !== "custom";
+  paintCamRanges(); renderAdjReset1();
   $("camFilters").replaceChildren(...FILTERS.map((f) => chip(f.name, f.id === beauty.filter, "", () => {
-    beauty.filter = f.id; lookId = "custom"; saveBeauty(); renderLooks();
+    Platform.haptic(); beauty.filter = f.id; lookId = "custom"; saveBeauty(); renderLooks();
   })));
+  keepInView($("camLooks"), $("camLooks").querySelector('[aria-pressed="true"]'));
+  keepInView($("camFilters"), $("camFilters").querySelector('[aria-pressed="true"]'));
 }
+function saveMyLook() {
+  const n = myLooks.length ? `My Look ${myLooks.length + 1}` : "My Look";
+  const l = { id: "my" + Date.now(), name: n, ...Object.fromEntries(LOOK_KEYS.map((k) => [k, beauty[k]])) };
+  myLooks = [...myLooks, l].slice(-4); useLook(l); say(`Saved as "${n}". It's also in Editor under My Look.`);
+}
+// Adjust open replaces the Looks row with the settings row (Done on its left), so the controls take
+// two rows over the picture instead of three, like the phone cameras and beauty apps do.
+function setAdjustOpen(open) {
+  $("adjustPanel").hidden = !open;
+  $("cameraScreen").classList.toggle("adjusting", open); cam.focusY = null; cam.posY = null; $("camCanvas").style.objectPosition = "";
+  const b = document.querySelector("#camLooks .look.adjust"); if (b) b.setAttribute("aria-expanded", String(open));
+  if (open) { const c = document.querySelector('#adjChips [aria-checked="true"]'); keepInView($("adjChips"), c); }
+  else if (b && document.activeElement && $("adjustPanel").contains(document.activeElement)) b.focus();
+}
+// Scrolls a chip row sideways (never the page) just enough that the chosen chip is fully in view.
+function keepInView(row, el) {
+  if (!row || !el || row.scrollWidth <= row.clientWidth + 1) return;
+  const r = row.getBoundingClientRect(), e = el.getBoundingClientRect(), pad = 24;
+  if (e.left < r.left + pad) row.scrollLeft -= r.left + pad - e.left;
+  else if (e.right > r.right - pad) row.scrollLeft += e.right - (r.right - pad);
+}
+// Camera sliders fill in gold up to the value (--p), like the iPhone and Galaxy cameras.
+function paintRange(el) { const lo = +el.min || 0, hi = +el.max || 100; el.style.setProperty("--p", `${((+el.value - lo) / (hi - lo)) * 100}%`); }
+function paintCamRanges() { document.querySelectorAll("#adjustPanel input[type=range]").forEach(paintRange); }
 document.querySelectorAll("#makeupParts [role=radio]").forEach((r, i, all) => {
   r.addEventListener("click", () => { makeupPart = r.dataset.part; renderLooks(); });
   r.addEventListener("keydown", (e) => {
@@ -3203,6 +3225,13 @@ const ADJ_SETTINGS = [["smooth", "Smooth", "skin", "sSmooth"], ["bright", "Brigh
   ["lips", "Lips", "makeup"], ["blush", "Blush", "makeup"], ["brows", "Brows", "makeup"], ["filter", "Filter", "filter"]];
 const DEFAULT_LOOK = PRESET_LOOKS[1];
 let adjSel = "smooth";
+// ↺ only shows when the chosen setting differs from the Natural look, so it never sits next to an
+// unchanged value (where it did nothing) and crowds it.
+function renderAdjReset1() {
+  const def = DEFAULT_LOOK[adjSel] ?? (adjSel === "filter" ? "none" : 0);
+  const changed = (beauty[adjSel] ?? def) !== def || (adjSel === "filter" && (beauty.filterAmt ?? 100) !== 100 && beauty.filter !== "none");
+  $("adjReset1").classList.toggle("off", !changed); $("adjReset1").tabIndex = changed ? 0 : -1; $("adjReset1").setAttribute("aria-hidden", String(!changed));
+}
 function selectAdj(key) {
   adjSel = key;
   const [, name, group, sid] = ADJ_SETTINGS.find((a) => a[0] === key);
@@ -3212,6 +3241,7 @@ function selectAdj(key) {
   document.querySelectorAll("#adjChips [role=radio]").forEach((c) => { const on = c.dataset.set === key; c.setAttribute("aria-checked", String(on)); c.tabIndex = on ? 0 : -1; });
   $("adjReset1").setAttribute("aria-label", `Reset ${name}`);
   renderLooks();
+  keepInView($("adjChips"), $("adjChips").querySelector(`[data-set="${key}"]`));
 }
 (function adjChips() {
   const row = $("adjChips");
@@ -3227,7 +3257,13 @@ function selectAdj(key) {
   const reset = document.createElement("button"); reset.className = "adj-reset-all"; reset.id = "adjResetAll"; reset.innerHTML = icon("undo") + "Reset";
   reset.setAttribute("aria-label", "Reset all settings to the Natural look");
   reset.addEventListener("click", () => { Platform.haptic(); useLook(DEFAULT_LOOK); say("Back to the Natural look"); });
-  row.replaceChildren(...chips, reset);
+  const save = document.createElement("button"); save.className = "adj-save"; save.id = "adjSave"; save.textContent = "Save look"; save.hidden = true;
+  save.addEventListener("click", () => { Platform.haptic(); saveMyLook(); });
+  row.replaceChildren(...chips, reset, save);
+  setIcon($("adjDone"), "check");
+  $("adjDone").addEventListener("click", () => { Platform.haptic(); setAdjustOpen(false); });
+  // Dragging a slider repaints its gold fill and shows ↺ once the setting differs from Natural.
+  $("adjustPanel").addEventListener("input", (e) => { if (e.target.type === "range") { paintRange(e.target); renderAdjReset1(); } });
   setIcon($("adjReset1"), "undo");
   $("adjReset1").addEventListener("click", () => {
     Platform.haptic();
@@ -4407,6 +4443,7 @@ function goBack() {
     if (!$("backBtn").disabled) $("backBtn").click(); return true;
   }
   if (screen === "cameraScreen" && cam.shot) { $("retakeBtn").click(); return true; }
+  if (screen === "cameraScreen" && !$("adjustPanel").hidden) { setAdjustOpen(false); return true; }
   // Phone app: Back on the Editor or Camera tab goes to Enhance (home) first, like other Android
   // apps; Back on Enhance leaves the app.
   if (native && (screen === "editorHome" || screen === "cameraScreen")) { go("enhance"); return true; }

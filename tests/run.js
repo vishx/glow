@@ -2546,13 +2546,35 @@ if (faceVideo) test('camera live: Adjust chips show one slider at a time, Reset 
   eq(await p.locator('#swMakeup .cam-swatch').count(), 4, 'blush shades');
   await p.click('#swMakeup .cam-swatch:nth-child(2)');
   eq(await p.evaluate(() => beauty.blushShade), '#ff7f98', 'shade picked');
-  await p.click('.look.add');
+  await p.click('#adjSave');
   const saved = await p.evaluate(() => myLooks[myLooks.length - 1]);
   eq([saved.eyes, saved.blushShade], [60, '#ff7f98'], 'saved look keeps face and makeup settings');
   // A look saved before these settings existed starts them at zero.
   await p.evaluate(() => { myLooks.push({ id: 'myold', name: 'Old look', smooth: 40, bright: 10, warm: 0, filter: 'none' }); useLook(myLooks[myLooks.length - 1]); });
   eq(await p.evaluate(() => [beauty.smooth, beauty.eyes, beauty.lips, beauty.blushShade]), [40, 0, 0, '#f4a28c'], 'old look: face settings off');
   eq(await p.evaluate(() => $('adjNote').hidden), true, 'no note while a face is in view');
+}, liveOpts());
+
+// Camera controls polish: Adjust swaps the Looks row for the settings row (two rows, not three),
+// Adjust is always first, ↺ shows only after a change, sliders fill in gold, chosen chips are gold.
+if (faceVideo) test('camera live: Adjust replaces the Looks row, Done closes it, ↺ only after a change, gold fill', async ({ p }) => {
+  await faceLive(p);
+  eq(await p.evaluate(() => $('camLooks').firstElementChild.classList.contains('adjust')), true, 'Adjust is the first chip');
+  await p.click('.look.adjust'); await p.click('[data-set="smooth"]');
+  eq(await p.evaluate(() => [getComputedStyle($('camLooks')).display, $('adjDone').offsetWidth > 0]), ['none', true], 'Looks row hidden, Done shown');
+  eq(await p.evaluate(() => getComputedStyle($('adjReset1')).opacity), '0', 'no ↺ at the Natural value');
+  await p.locator('#sSmooth').fill('80'); await settle(300);
+  eq(await p.evaluate(() => [$('adjReset1').classList.contains('off'), $('sSmooth').style.getPropertyValue('--p')]), [false, '80%'], '↺ shows, slider filled to 80%');
+  const sel = await p.evaluate(() => getComputedStyle(document.querySelector('#adjChips [aria-checked="true"]')).color);
+  eq(sel, 'rgb(255, 227, 163)', 'chosen setting is gold');
+  // The value and ↺ never overlap.
+  const gap = await p.evaluate(() => $('adjReset1').getBoundingClientRect().left - $('sSmooth').nextElementSibling.getBoundingClientRect().right);
+  assert(gap >= 4, 'gap between value and ↺: ' + gap);
+  await p.click('[data-set="filter"]'); await p.click('#camFilters .look:text-is("Golden")'); await settle(300);
+  const f = await p.evaluate(() => { const r = $('adjReset1').getBoundingClientRect(), c = document.querySelector('#camFilters [aria-pressed="true"]').getBoundingClientRect(); return r.top >= c.bottom - 1 || r.bottom <= c.top + 1; });
+  eq(f, true, '↺ never covers the filter chips');
+  await p.click('#adjDone');
+  eq(await p.evaluate(() => [$('adjustPanel').hidden, getComputedStyle($('camLooks')).display !== 'none']), [true, true], 'Done brings the Looks back');
 }, liveOpts());
 
 // A phone GPU that returns NaN face points (seen on Android Chrome): the worker moves to the CPU,
@@ -2593,7 +2615,7 @@ if (faceVideo) test('camera live: no flicker: a missed frame fades, never cuts, 
   const open = await p.evaluate(() => $('camControls').getBoundingClientRect().top - $('camCanvas').getBoundingClientRect().top);
   assert(r.chin <= open + 2, `face above the Adjust panel: chin ${r.chin}, panel ${open}`);
   assert(r.scale >= before - 1, `picture not smaller than before Adjust: ${r.scale} vs ${before}`);
-  await p.click('.look.adjust');
+  await p.click('#adjDone');
   eq(await p.evaluate(() => [getComputedStyle($('camCanvas')).objectFit, $('camCanvas').style.objectPosition]), ['cover', ''], 'closing Adjust keeps the full-screen preview, centred again');
 }, liveOpts());
 
