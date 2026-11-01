@@ -937,11 +937,11 @@ for (const [w, h] of [[390, 844], [320, 640], [412, 915]]) test(`layout: categor
   }
 }, { viewport: { width: w, height: h } });
 
-test('layout: porcelain (light) and ink (dark) surround, photo contained, edited view first, compare only after an edit', async ({ p, state }) => {
+test('layout: stone (light) and ink (dark) surround, photo contained, edited view first, compare only after an edit', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   const bg = () => p.evaluate(() => getComputedStyle($('stage')).backgroundColor);
-  eq(await bg(), 'rgb(20, 16, 19)', 'dark: ink');
-  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(251, 247, 245)', 'light: porcelain');
+  eq(await bg(), 'rgb(18, 18, 20)', 'dark: ink');
+  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(247, 246, 243)', 'light: stone');
   const st = await p.evaluate(() => ({ view: $('stage').dataset.view, disabled: [$('compareBtn').disabled, $('revertBtn').disabled], radius: getComputedStyle($('stage')).borderTopLeftRadius,
     fit: getComputedStyle($('before')).objectFit, frame: (() => { const f = $('view').getBoundingClientRect(), s = $('stage').getBoundingClientRect(); return f.width <= s.width + 0.5 && f.height <= s.height + 0.5 && Math.abs(f.width / f.height - ed.original.w / ed.original.h) < 0.02; })() }));
   eq(st, { view: 'edited', disabled: [true, true], radius: '16px', fit: 'contain', frame: true }, 'before any edit (rounded, with a small margin)');
