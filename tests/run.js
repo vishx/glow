@@ -1081,6 +1081,8 @@ test('demo: canceling Try your own photo keeps the sample; reduced motion turns 
 
 // ---------- Face reshape (the owner's sample portrait, opened as an ordinary photo) ----------
 const PORTRAIT = path.join(__dirname, '../public/samples/demo-v2/original.png');
+// A standing, full-length person in a room (set GLOW_TEST_BODY to use your own); else the sample portrait.
+const AREA_PHOTO = process.env.GLOW_TEST_BODY || PORTRAIT;
 const pixelsOf = (p, src) => p.evaluate(async (s) => { const i = await loadImg(s), c = newCanvas(i.naturalWidth, i.naturalHeight), x = c.getContext('2d'); x.drawImage(i, 0, 0); return Array.from(x.getImageData(0, 0, c.width, c.height).data.filter((_, k) => k % 997 === 0)); }, src);
 test('retouch: reshape at 0 is untouched, previews come from the baseline, tools combine, all on-device', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
@@ -1642,7 +1644,7 @@ test('nav: group chips jump to their group, follow the row as it scrolls, and dr
   await p.evaluate(() => { const g = document.querySelector('#tools .group[data-group="skin"]'); $('tools').scrollTo({ left: g.offsetLeft - 16 }); }); await settle(400);
   eq(await on(), 'skin', 'scrolling back marks Skin');
   await p.click('.tab[data-cat="edit"]');
-  eq(await p.$$eval('#subchips .subchip', (x) => x.map((c) => c.textContent)), ['Crop', 'Light', 'Color', 'Effects'], 'Adjust chips');
+  eq(await p.$$eval('#subchips .subchip', (x) => x.map((c) => c.textContent)), ['Crop', 'Light', 'Color', 'Detail', 'Effects'], 'Adjust chips');
   await p.click('.tab[data-cat="bg"]');
   eq(await p.$$eval('#subchips .subchip', (x) => x.map((c) => [c.textContent, c.getAttribute('aria-pressed')])), [['Background', 'true']], 'one group: its name, so the photo keeps its size');
   // A group whose tools are all switched off (Hair color, from the admin page) loses its chip.
@@ -1989,10 +1991,13 @@ test('describe: a reframed AI result is lined up with the photo and her face goe
 
 test('adjust: the full Adjust set changes the photo, and grain is the same every time', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
-  eq(await p.evaluate(() => CATS.edit.flatMap((g) => g[2])), ['crop', 'light', 'contrast', 'highlights', 'shadows', 'color', 'vibrance', 'warmth', 'tint', 'detail', 'fade', 'vignette', 'grain'], 'Adjust tools');
+  eq(await p.evaluate(() => CATS.edit.flatMap((g) => g[2])), ['crop', 'exposure', 'light', 'contrast', 'highlights', 'shadows', 'whites', 'blacks', 'warmth', 'tint', 'vibrance', 'color',
+    'texture', 'clarity', 'dehaze', 'detail', 'lnoise', 'cnoise', 'fade', 'grain', 'vignette'], 'Adjust tools');
   const r = await p.evaluate(async () => {
     const base = committed(), out = {};
-    for (const k of ['contrast', 'highlights', 'shadows', 'vibrance', 'tint', 'fade', 'vignette', 'grain']) out[k] = [(await adjust(base, k, 40)) !== base, (await adjust(base, k, -40)) !== base];
+    for (const k of ['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks', 'vibrance', 'tint', 'texture', 'clarity', 'dehaze', 'fade', 'vignette', 'grain'])
+      out[k] = [(await adjust(base, k, 40)) !== base, (await adjust(base, k, -40)) !== base];
+    for (const k of ['lnoise', 'cnoise']) out[k] = [(await adjust(base, k, 60)) !== base, (await adjust(base, k, 100)) !== base];
     out.same = (await adjust(base, 'grain', 30)) === (await adjust(base, 'grain', 30));
     return out;
   });
@@ -2001,6 +2006,55 @@ test('adjust: the full Adjust set changes the photo, and grain is the same every
   await tool(p, 'edit', null, 'vignette');
   await p.fill('#panelBody input[type=range]', '30'); await p.dispatchEvent('#panelBody input[type=range]', 'change');
   await p.waitForFunction(() => ed.pending && ed.pending.op.value === 30); await idle(p);
+});
+
+// Full / Person / Background: a slider can change only the person or only the background.
+test('adjust: Person and Background change only their part of the photo', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, AREA_PHOTO);
+  await tool(p, 'edit', null, 'exposure');
+  eq(await p.$$eval('#areaRow .area span', (x) => x.map((e) => e.textContent)), ['Full', 'Person', 'Background'], 'area chips');
+  await p.waitForSelector('#areaRow .area[data-area="person"]:not(:disabled)', { timeout: 60000 });
+  const r = await p.evaluate(async () => {
+    const base = committed(), img = await loadImg(base), c = canvasFor(img); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const alpha = await personAlpha(base, c), W = c.width, H = c.height;
+    const read = async (src) => { const i = await loadImg(src), k = newCanvas(W, H), x = k.getContext('2d'); x.drawImage(i, 0, 0, W, H); return x.getImageData(0, 0, W, H).data; };
+    const o = await read(base), res = {};
+    for (const area of ['full', 'person', 'bg']) {
+      const d = await read(await adjust(base, 'exposure', 50, area));
+      let inP = 0, nP = 0, inB = 0, nB = 0;
+      for (let i = 0; i < alpha.length; i += 7) {
+        const dv = Math.abs(d[i * 4] - o[i * 4]) + Math.abs(d[i * 4 + 1] - o[i * 4 + 1]) + Math.abs(d[i * 4 + 2] - o[i * 4 + 2]);
+        if (alpha[i] > 0.95) { inP += dv; nP++; } else if (alpha[i] < 0.05) { inB += dv; nB++; }
+      }
+      res[area] = [inP / nP, inB / nB];
+    }
+    res.share = alpha.reduce((a, b) => a + b, 0) / alpha.length;
+    return res;
+  });
+  assert(r.share > 0.08 && r.share < 0.7, 'the person is a sensible part of the photo: ' + r.share);
+  assert(r.full[0] > 15 && r.full[1] > 15, 'Full changes both: ' + r.full);
+  assert(r.person[0] > 15 && r.person[1] < 1, 'Person changes only the person: ' + r.person);
+  assert(r.bg[1] > 15 && r.bg[0] < 1, 'Background changes only the background: ' + r.bg);
+  // Picking a chip previews with that area, and Apply keeps it as one step that replays at full size.
+  await p.fill('#panelBody input[type=range]', '30'); await p.dispatchEvent('#panelBody input[type=range]', 'change');
+  await p.waitForFunction(() => ed.pending && ed.pending.op.value === 30); await idle(p);
+  await p.click('#areaRow .area[data-area="bg"]');
+  await p.waitForFunction(() => ed.pending && ed.pending.op.area === 'bg', null, { timeout: 60000 }); await idle(p);
+  eq(await p.$eval('#areaRow .area[aria-pressed="true"]', (e) => e.dataset.area), 'bg', 'Background chosen');
+  await p.click('#applyBtn'); await p.waitForFunction(() => ed.idx === 1 && !ed.pending); await idle(p);
+  eq(await p.evaluate(() => ed.hist[1].op), { tool: 'exposure', value: 30, area: 'bg' }, 'the step records its area');
+  // The choice stays for the next Adjust tool.
+  await tool(p, 'edit', null, 'clarity');
+  await p.waitForSelector('#areaRow .area[data-area="bg"][aria-pressed="true"]', { timeout: 60000 });
+});
+
+test('adjust: a photo without a person keeps Full and explains why', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('coords-600x400.png'));
+  await tool(p, 'edit', null, 'contrast');
+  await p.waitForSelector('#areaRow .area-note', { timeout: 60000 });
+  assert(await p.isDisabled('#areaRow .area[data-area="person"]'), 'Person disabled');
+  assert(await p.isDisabled('#areaRow .area[data-area="bg"]'), 'Background disabled');
+  eq(await p.$eval('#areaRow .area[aria-pressed="true"]', (e) => e.dataset.area), 'full', 'Full stays chosen');
 });
 
 test('looks: a second filter replaces the first instead of stacking on it', async ({ p }) => {

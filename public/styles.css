@@ -447,6 +447,21 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .opt { flex: none; min-height: 44px; padding: 0 var(--s4); border: 0; border-radius: 22px; background: var(--surface-2); color: var(--text); font-size: 0.875rem; font-weight: 600; }
 .opt[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 .opt.save-look { background: none; box-shadow: inset 0 0 0 1px var(--control); color: var(--accent); }
+/* Full / Person / Background: which part the Adjust slider changes. A small picture of the photo
+   (the chosen part tinted red) and a name; one row, same height whether or not the pictures are ready. */
+.areas-wrap { display: grid; gap: 4px; }
+.areas { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-width: none; }
+.areas::-webkit-scrollbar { display: none; }
+.area { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 4px 12px 4px 4px; border: 0; border-radius: 22px;
+  background: var(--surface-2); color: var(--text); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+.area i { width: 34px; height: 34px; border-radius: 17px; background: var(--control) center / cover no-repeat; flex: none; }
+@media (max-width: 380px) { .area i { width: 28px; height: 28px; } .area { padding-right: 10px; gap: 5px; } }
+.area[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.area:disabled { opacity: 0.45; }
+.area.loading i { animation: area-pulse 1.1s ease-in-out infinite alternate; }
+@keyframes area-pulse { from { opacity: 0.35; } to { opacity: 0.9; } }
+.area-note { margin: 0; font-size: 0.8125rem; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .area.loading i { animation: none; } }
 /* One scrolling row of colors: "+" (any color), the dropper, the curated shades, then her own. */
 .color-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: var(--s1); }
 .color-row::-webkit-scrollbar, .opts::-webkit-scrollbar { display: none; }

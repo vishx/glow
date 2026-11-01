@@ -89,10 +89,20 @@ tool("erase", "Remove", "Remove", "ai", "ai", { hint: "Paint over what to remove
 tool("fill", "Fill", "Fill", "ai", "ai", { hint: "Paint the area to fill and, if you like, say what to put there.", mask: true });
 tool("expand", "Expand", "Expand", "ai", "ai", { hint: "Choose a bigger shape and place the photo. Only the new area is generated." });
 tool("crop", "Crop", "Crop and rotate", "crop", "edit");
-tool("light", "Light", "Light", "adjust", "edit");
-tool("color", "Color", "Color", "adjust", "edit");
-tool("warmth", "Warmth", "Warmth", "adjust", "edit");
-tool("detail", "Detail", "Detail", "adjust", "edit");
+// The Adjust sliders cover Photoshop Express's full Adjustments list. Each can change the whole
+// photo, only the people in it, or only the background (the Full / Person / Background chips).
+tool("exposure", "Exposure", "Exposure", "adjust", "edit", { hint: "Like a camera: up to one stop brighter or darker." });
+tool("light", "Brightness", "Brightness", "adjust", "edit");
+tool("whites", "Whites", "Whites", "adjust", "edit", { hint: "Moves the brightest parts of the photo." });
+tool("blacks", "Blacks", "Blacks", "adjust", "edit", { hint: "Moves the darkest parts of the photo." });
+tool("color", "Saturation", "Saturation", "adjust", "edit");
+tool("warmth", "Temperature", "Temperature", "adjust", "edit");
+tool("detail", "Sharpen", "Sharpen", "adjust", "edit", { hint: "Right sharpens, left softens." });
+tool("texture", "Texture", "Texture", "adjust", "edit", { hint: "Right brings out fine texture, left smooths it." });
+tool("clarity", "Clarity", "Clarity", "adjust", "edit", { hint: "Right adds depth and punch, left gives a soft glow." });
+tool("dehaze", "Dehaze", "Dehaze", "adjust", "edit", { hint: "Right clears haze and glare, left adds a soft haze." });
+tool("lnoise", "Noise", "Reduce noise", "adjust", "edit", { range: [0, 100], hint: "Smooths grainy speckles in dark or low-light photos. Edges stay sharp." });
+tool("cnoise", "Color noise", "Reduce color noise", "adjust", "edit", { range: [0, 100], hint: "Clears colored speckles while keeping detail." });
 tool("contrast", "Contrast", "Contrast", "adjust", "edit");
 tool("highlights", "Highlights", "Highlights", "adjust", "edit");
 tool("shadows", "Shadows", "Shadows", "adjust", "edit");
@@ -137,9 +147,10 @@ const CATS = {
     ["styles", "Styles", ["headshot", "fashion", "golden"]],
     ["filters", "Filters", FILTER_IDS]],
   edit: [["crop", "Crop", ["crop"]],
-    ["light", "Light", ["light", "contrast", "highlights", "shadows"]],
-    ["color", "Color", ["color", "vibrance", "warmth", "tint"]],
-    ["effects", "Effects", ["detail", "fade", "vignette", "grain"]]],
+    ["light", "Light", ["exposure", "light", "contrast", "highlights", "shadows", "whites", "blacks"]],
+    ["color", "Color", ["warmth", "tint", "vibrance", "color"]],
+    ["detail", "Detail", ["texture", "clarity", "dehaze", "detail", "lnoise", "cnoise"]],
+    ["effects", "Effects", ["fade", "grain", "vignette"]]],
   bg: [["bg", "Background", ["bgblur", "bgremove", "bgcolor", "bgphoto", "bgscene"]]],
   ai: [["improve", "Improve", ["pro", "enhance", "colorize"]],
     ["change", "Change", ["erase", "fill", "custom"]]],
@@ -152,7 +163,9 @@ const SEARCH_WORDS = {
   fglam: "makeup preset", hcolor: "hair dye", bgremove: "cut out transparent remove background", bgblur: "bokeh portrait",
   bgscene: "new background", bgphoto: "replace background", erase: "eraser object people delete", custom: "prompt text describe ask",
   pro: "auto fix photographer", enhance: "sharpen blurry hd quality upscale", colorize: "black white old photo",
-  crop: "rotate straighten resize", light: "brightness exposure", warmth: "temperature", detail: "sharpen noise",
+  crop: "rotate straighten resize", light: "brightness light", exposure: "exposure brighter darker", warmth: "warmth warm cool",
+  detail: "detail sharp", color: "color saturate", lnoise: "denoise grainy luminance", cnoise: "denoise color speckles",
+  dehaze: "haze fog glare", clarity: "punch depth local contrast", texture: "skin texture fine detail",
   golden: "sunset warm glow", headshot: "linkedin professional",
 };
 // Try on holds the outfit presets (suit, summer dress, ...) inside its own panel; their old tool
@@ -305,7 +318,7 @@ const unsaved = () => hasPhoto() && ed.idx > 0 && ed.savedIdx !== ed.idx;
 const newSession = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 // Tool settings. Reshaping tools start at 0, so nothing is reshaped unless the user asks.
-const toolAmt = { light: 0, color: 0, warmth: 0, detail: 0, contrast: 0, highlights: 0, shadows: 0, vibrance: 0, tint: 0, fade: 0, vignette: 0, grain: 0 };
+const toolAmt = { exposure: 0, whites: 0, blacks: 0, texture: 0, clarity: 0, dehaze: 0, lnoise: 0, cnoise: 0, light: 0, color: 0, warmth: 0, detail: 0, contrast: 0, highlights: 0, shadows: 0, vibrance: 0, tint: 0, fade: 0, vignette: 0, grain: 0 };
 for (const t of TOOLS) if (t.reshape) faceSet.amt[t.id] = 0;
 try {
   const s = JSON.parse(store.get("glowFace2") || "null") || { shade: (JSON.parse(store.get("glowFace") || "{}").shade) || {} };
@@ -339,7 +352,7 @@ async function openPhoto(work, original, opts = {}) {
   ed.demo = !!opts.demo;
   ed.hist = [{ data: work, op: null }]; ed.idx = 0; ed.floor = 0; ed.pending = null; ed.savedIdx = 0;
   ed.original = original; ed.originalSaved = !!opts.originalSaved; ed.session = newSession();
-  ed.name = opts.name || "Photo"; ed.shotStamp = opts.shotStamp || 0; lastCommitTool = null; cutoutCache = {}; matteCache.clear(); strokes = [];
+  ed.name = opts.name || "Photo"; ed.shotStamp = opts.shotStamp || 0; lastCommitTool = null; cutoutCache = {}; matteCache.clear(); strokes = []; adjArea = "full"; areaInfo = null;
   if (opts.processed) { ed.hist.push({ data: opts.processed.data, full: opts.processed.full, op: { tool: "camlook", fixed: true, label: opts.processed.label } }); ed.idx = 1; }
   if (opts.savedAlready) ed.savedIdx = ed.idx;
   sel = null; ed.view = "edited"; ed.split = 50; toolsOpen = false; setEditorReturn(null);
@@ -1467,6 +1480,51 @@ function options(list, isOn, onPick) {
   return box;
 }
 const signed = (v) => (v > 0 ? "+" + v : String(v));
+// Full / Person / Background (as in Photoshop Express): which part of the photo the Adjust sliders
+// change. The person is found on the phone with the same cutout as Background Blur, once per
+// photo state; the chips show small pictures with the chosen part tinted red. The choice stays
+// while you move between Adjust tools and goes back to Full for a new photo.
+let adjArea = "full", areaInfo = null;   // areaInfo: { src, thumbs, err, busy }
+const AREAS = [["Full", "full"], ["Person", "person"], ["Background", "bg"]];
+const areasOn = () => featureOn("edit:areas");
+const areaReady = () => !!(areaInfo && areaInfo.src === committed() && areaInfo.thumbs);
+function loadAreas() {
+  const src = committed();
+  if (areaInfo && areaInfo.src === src) return;
+  const info = areaInfo = { src, thumbs: null, err: null, busy: true };
+  areaThumbs(src).then((th) => { info.thumbs = th; }, (e) => { info.err = e.unavailable ? e.message : "Couldn't find the person in this photo. Full still works."; })
+    .finally(() => {
+      info.busy = false;
+      if (areaInfo !== info) return;
+      if (info.err && adjArea !== "full") { adjArea = "full"; if (sel && TOOL[sel].kind === "adjust") preview(); }
+      const row = $("areaRow"); if (row) row.replaceWith(areaRow());
+      fitDock();
+    });
+}
+function areaRow() {
+  loadAreas();
+  const wrap = document.createElement("div"); wrap.className = "areas-wrap"; wrap.id = "areaRow";
+  const box = document.createElement("div"); box.className = "areas"; wrap.append(box);
+  box.setAttribute("role", "group"); box.setAttribute("aria-label", "Part of the photo to change");
+  const info = areaInfo, thumbs = info && info.thumbs;
+  for (const [label, v] of AREAS) {
+    const b = document.createElement("button"); b.className = "area"; b.dataset.area = v;
+    b.setAttribute("aria-pressed", String(adjArea === v));
+    if (v !== "full" && !thumbs) { b.disabled = true; if (info && info.busy) b.classList.add("loading"); }
+    const im = document.createElement("i"); if (thumbs) im.style.backgroundImage = `url(${thumbs[v]})`;
+    const sp = document.createElement("span"); sp.textContent = label;
+    b.append(im, sp);
+    b.addEventListener("click", () => {
+      if (adjArea === v) return;
+      adjArea = v; box.querySelectorAll(".area").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.area === v)));
+      $("alertLive").textContent = v === "full" ? "Changes the whole photo." : v === "person" ? "Changes only the person." : "Changes only the background.";
+      if (sel && toolAmt[sel]) preview();
+    });
+    box.append(b);
+  }
+  if (info && info.err) { const n = document.createElement("p"); n.className = "area-note"; n.textContent = info.err; wrap.append(n); }
+  return wrap;
+}
 let adjustTimer = 0, filterAmt = 100;
 
 // The panel's controls are built once per tool (so a slider isn't replaced mid-drag);
@@ -1520,9 +1578,11 @@ function buildPanel(t) {
       filterAmt = v; clearTimeout(adjustTimer); adjustTimer = setTimeout(preview, 120);
     }, (v) => { filterAmt = v; clearTimeout(adjustTimer); preview(); }));
   } else if (t.kind === "adjust") {
-    body.append(slider("Amount", -50, 50, toolAmt[t.id], (v) => {
+    if (areasOn()) body.append(areaRow());
+    const [lo, hi] = t.range || [-50, 50];
+    body.append(slider("Amount", lo, hi, toolAmt[t.id], (v) => {
       toolAmt[t.id] = v; clearTimeout(adjustTimer); adjustTimer = setTimeout(preview, 120);
-    }, (v) => { toolAmt[t.id] = v; clearTimeout(adjustTimer); preview(); }, signed));
+    }, (v) => { toolAmt[t.id] = v; clearTimeout(adjustTimer); preview(); }, lo < 0 ? signed : String));
   } else if (t.kind === "crop") {
     if (!cr) return;
     const shapes = options(CROPS, (v) => v === cr.aspect, (v) => setCropAspect(v));
@@ -1668,7 +1728,7 @@ function opFor(t) {
   if (t.kind === "face" || t.kind === "body" || t.kind === "hair") { op.amt = (faceSet.amt[t.id] ?? 50) / 100; op.shades = { ...faceSet.shade }; op.styles = { ...faceSet.style }; }
   if (t.id === "fglam" && faceSet.style.fglam === "mine") op.mine = (faceSet.mine || []).map((x) => [...x]);
   if (t.kind === "face" && faceSel.boxes.length > 1) { const b = faceSel.boxes[faceSel.i]; op.face = [b.cx, b.cy]; }
-  if (t.kind === "adjust") op.value = toolAmt[t.id];
+  if (t.kind === "adjust") { op.value = toolAmt[t.id]; if (adjArea !== "full" && areasOn()) op.area = adjArea; }
   if (t.kind === "filter" && filterAmt < 100) op.amt = filterAmt / 100;
   if (t.kind === "look") op.look = { ...(editorLooks().find((l) => l.id === lookPick) || PRESET_LOOKS[1]) };
   if (t.id === "bgphoto") { op.bg = bgPhoto; op.bgBlur = bgBlur; }
@@ -1696,7 +1756,7 @@ async function computeOp(op, base) {
     try { return await glowUp(base, op.glow, op.face); } finally { Object.assign(faceSet.shade, keep); Object.assign(faceSet.style, keepStyle); }
   }
   if (t.kind === "filter") return applyFilter(base, t.filter, op.amt ?? 1);
-  if (t.kind === "adjust") return op.value ? adjust(base, t.id, op.value) : null;
+  if (t.kind === "adjust") return op.value ? adjust(base, t.id, op.value, op.area || "full") : null;
   if (t.kind === "crop") {
     if (op.rect) return cropRect(base, op.turns, op.rect, op.aspect);
     return op.ratio || op.turns % 4 ? cropRotate(base, op.ratio, op.turns) : null; // steps saved before interactive crop
@@ -1716,7 +1776,7 @@ async function preview() {
   const token = ++previewToken, base = committed();
   if (t.kind === "face" || t.kind === "glowup") { await ensureFaces(); if (token !== previewToken || sel !== t.id) return; }
   const op = opFor(t);
-  const slow = setTimeout(() => { if (token === previewToken) setBusy(true, t.kind === "face" || t.kind === "body" || t.kind === "hair" || t.kind === "bg" ? "Finding the details…" : "Working…"); }, 250);
+  const slow = setTimeout(() => { if (token === previewToken) setBusy(true, t.kind === "face" || t.kind === "body" || t.kind === "hair" || t.kind === "bg" ? "Finding the details…" : op.area && !areaReady() ? "Finding the person…" : "Working…"); }, 250);
   try {
     const out = await computeOp(op, base);
     if (token !== previewToken || sel !== t.id) return;

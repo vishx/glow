@@ -1823,8 +1823,93 @@ async function applyFilter(src, flt, amt = 1) {
   o.drawImage(img, 0, 0, c.width, c.height); o.globalAlpha = Math.max(0, amt); o.drawImage(c, 0, 0);
   return encode(out, src);
 }
-// v runs from -50 to 50, with 0 meaning no change.
-async function adjust(src, kind, v) {
+// ---------- Full / Person / Background for Adjust ----------
+// Where the people are (0–1 per pixel of c): the same cutout Background Blur uses (the person
+// segmenter on squares around each main face and down their body), or the whole-picture cutout when
+// no face is found. Kept for the last two pictures, so dragging a slider doesn't cut them out again.
+const personCache = [];
+async function personAlpha(src, c) {
+  const W = c.width, H = c.height, hit = personCache.find((e) => e.src === src && e.w === W && e.h === H);
+  if (hit) return hit.alpha;
+  let faces = [];
+  try { faces = await findFaces(src, c); } catch { /* no face model: the whole-picture cutout */ }
+  const bx = faces.map(boxOf).map(([x, y, w, h]) => [x * W, y * H, w * W, h * H]);
+  const big = Math.max(0, ...bx.map((b) => b[2])), main = bx.filter((b) => b[2] >= 0.55 * big);
+  const alpha = main.length ? await peopleMatte(c, main) : await matte(src, c);
+  if (main.length === 1) await clipToBody(c, alpha);
+  let on = 0, n = 0; for (let i = 0; i < alpha.length; i += 17) { on += alpha[i]; n++; }
+  if (on / n < 0.01 || (!main.length && on / n > 0.97)) throw unavailable("No person found in this photo, so Person and Background can't be used. Full still works.");
+  personCache.unshift({ src, w: W, h: H, alpha }); personCache.length = Math.min(personCache.length, 2);
+  return alpha;
+}
+// One person: the body model's own outline (made for full-length shots) trims what the selfie
+// segmenter wrongly joined to them, such as a pale floor or sofa beside a pale top. Its outline is
+// coarse, so it is grown a little and only ever takes away, never adds.
+async function clipToBody(c, alpha) {
+  let res;
+  try { res = (await poseFinder()).detect(detectCopy(c)); } catch { return; }
+  const m = res && res.segmentationMasks && res.segmentationMasks[0];
+  if (!m) { if (res && res.close) res.close(); return; }
+  const conf = m.getAsFloat32Array(), mc = newCanvas(m.width, m.height), mx = mc.getContext("2d"), px = mx.createImageData(m.width, m.height);
+  let on = 0;
+  for (let i = 0; i < conf.length; i++) { const v = clamp01((conf[i] - 0.2) / 0.4); if (v > 0.5) on++; px.data[i * 4] = px.data[i * 4 + 1] = px.data[i * 4 + 2] = 255; px.data[i * 4 + 3] = v * 255; }
+  if (res.close) res.close();
+  if (on < conf.length * 0.02) return;   // the body model missed them: keep the cutout as it is
+  mx.putImageData(px, 0, 0);
+  const W = c.width, H = c.height, k = Math.min(1, 900 / Math.max(W, H)), w = Math.round(W * k), h = Math.round(H * k);
+  const g = newCanvas(w, h), gx = g.getContext("2d", { willReadFrequently: true });
+  gx.imageSmoothingQuality = "high"; gx.drawImage(mc, 0, 0, w, h);
+  // Grow: a blur, then anything a quarter covered counts as inside.
+  const grown = filtered(g, `blur(${Math.max(2, Math.round(w / 90))}px)`).getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  for (let y = 0; y < H; y++) {
+    const gy = Math.min(h - 1, Math.floor(y * k)) * w;
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x; if (alpha[i] <= 0) continue;
+      alpha[i] *= smoothstep(0.08, 0.35, grown[(gy + Math.min(w - 1, Math.floor(x * k))) * 4 + 3] / 255);
+    }
+  }
+}
+// Small pictures for the Full / Person / Background chips, the chosen area tinted red
+// (as Photoshop Express shows it). Throws (unavailable) when there's no person in the photo.
+async function areaThumbs(src, size = 96) {
+  const img = await loadImg(src), c = canvasFor(img); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  const alpha = await personAlpha(src, c), W = c.width, H = c.height;
+  const k = size / Math.max(W, H), w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
+  const t = newCanvas(w, h), tx = t.getContext("2d", { willReadFrequently: true });
+  tx.imageSmoothingQuality = "high"; tx.drawImage(c, 0, 0, w, h);
+  const base = tx.getImageData(0, 0, w, h), shot = (pick) => {
+    const d = new ImageData(new Uint8ClampedArray(base.data), w, h), D = d.data;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const a = alpha[Math.min(H - 1, Math.floor((y + 0.5) / k)) * W + Math.min(W - 1, Math.floor((x + 0.5) / k))];
+      const m = (pick === "person" ? a : 1 - a) * 0.72, j = (y * w + x) * 4;
+      D[j] += (235 - D[j]) * m; D[j + 1] += (40 - D[j + 1]) * m; D[j + 2] += (55 - D[j + 2]) * m; D[j + 3] = 255;
+    }
+    tx.putImageData(d, 0, 0); return t.toDataURL("image/jpeg", 0.85);
+  };
+  const full = (tx.putImageData(base, 0, 0), t.toDataURL("image/jpeg", 0.85));
+  return { full, person: shot("person"), bg: shot("bg") };
+}
+// v runs from -50 to 50, with 0 meaning no change (the noise tools run from 0 to 100).
+// area: "full" (the whole photo), "person" (only the people) or "bg" (everything but them).
+async function adjust(src, kind, v, area = "full") {
+  const { c, img } = await adjustCanvas(src, kind, v);
+  if (area !== "person" && area !== "bg") return encode(c, src);
+  const o = newCanvas(c.width, c.height), ox = o.getContext("2d", { willReadFrequently: true });
+  ox.drawImage(img, 0, 0, c.width, c.height);
+  const alpha = await personAlpha(src, o), od = ox.getImageData(0, 0, o.width, o.height), D = od.data;
+  const A = c.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, c.width, c.height).data, bg = area === "bg";
+  for (let i = 0, j = 0; i < alpha.length; i++, j += 4) {
+    const a = bg ? 1 - alpha[i] : alpha[i]; if (a <= 0) continue;
+    D[j] += (A[j] - D[j]) * a; D[j + 1] += (A[j + 1] - D[j + 1]) * a; D[j + 2] += (A[j + 2] - D[j + 2]) * a;
+  }
+  ox.putImageData(od, 0, 0);
+  return encode(o, src);
+}
+const toLin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const toSrgb = (v) => 255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055);
+// A blurred copy's pixels (Gaussian-like, via the canvas filter or a box blur where that's missing).
+function blurData(c, r) { return filtered(c, `blur(${Math.max(1, Math.round(r))}px)`).getContext("2d", { willReadFrequently: true }).getImageData(0, 0, c.width, c.height).data; }
+async function adjustCanvas(src, kind, v) {
   const img = await loadImg(src), c = canvasFor(img), ctx = c.getContext("2d", { willReadFrequently: kind !== "light" && kind !== "color" });
   const t = v / 50;
   const f = kind === "light" ? `brightness(${1 + t * 0.35}) contrast(${1 + t * 0.08})` : kind === "color" ? `saturate(${1 + t * 0.6})` : kind === "contrast" && t ? `contrast(${1 + t * 0.3})` : "none";
@@ -1878,7 +1963,81 @@ async function adjust(src, kind, v) {
     for (let i = 0; i < d.length; i += 4) for (let ch = 0; ch < 3; ch++) d[i + ch] += (d[i + ch] - b[i + ch]) * k;
     ctx.putImageData(a, 0, 0);
   }
-  return encode(c, src);
+  if (["exposure", "whites", "blacks"].includes(kind) && t) {
+    // One lookup table per tool. Exposure works in linear light, like a camera's stops (±1 stop),
+    // with a soft shoulder so bright skies don't clip at once. Whites and Blacks move the ends of
+    // the tone curve and leave the middle alone.
+    const lut = new Float32Array(256);
+    for (let i = 0; i < 256; i++) {
+      const x = i / 255;
+      if (kind === "exposure") { const l = toLin(i) * 2 ** t, s = l > 0.8 ? 0.8 + (1 - Math.exp(-(l - 0.8) / 0.2)) * 0.2 : l; lut[i] = toSrgb(Math.min(1, s)); }
+      if (kind === "whites") lut[i] = i + t * 50 * x ** 3 * (t > 0 ? 1 - x * 0.35 : 1);
+      if (kind === "blacks") lut[i] = i + t * 45 * (1 - x) ** 3;
+    }
+    const a = ctx.getImageData(0, 0, c.width, c.height), d = a.data;
+    for (let i = 0; i < d.length; i += 4) { d[i] = lut[d[i]]; d[i + 1] = lut[d[i + 1]]; d[i + 2] = lut[d[i + 2]]; }
+    ctx.putImageData(a, 0, 0);
+  }
+  if (kind === "texture" && t) {
+    // Medium-fine detail only (a band between two blurs): right brings out fabric, hair and
+    // skin texture, left softens it. Edges and big shapes are left as they are.
+    const W = c.width, f = blurData(c, W / 1400), g = blurData(c, W / 350);
+    const a = ctx.getImageData(0, 0, W, c.height), d = a.data, k = t > 0 ? t * 1.6 : t * 0.9;
+    for (let i = 0; i < d.length; i += 4) for (let ch = 0; ch < 3; ch++) d[i + ch] += (f[i + ch] - g[i + ch]) * k;
+    ctx.putImageData(a, 0, 0);
+  }
+  if (kind === "clarity" && t) {
+    // Local contrast over a wide radius, strongest in the midtones (Lightroom's Clarity idea).
+    // Left gives a soft, dreamy glow.
+    const W = c.width, g = blurData(c, W / 60), a = ctx.getImageData(0, 0, W, c.height), d = a.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const l = lum(d[i], d[i + 1], d[i + 2]) / 255, w = 1 - (2 * l - 1) ** 2, k = (t > 0 ? t * 0.9 : t * 0.35) * w;
+      const dl = (l * 255 - lum(g[i], g[i + 1], g[i + 2])) * k;
+      d[i] += dl; d[i + 1] += dl; d[i + 2] += dl;
+    }
+    ctx.putImageData(a, 0, 0);
+  }
+  if (kind === "dehaze" && t) {
+    // A light version of the dark-channel method: haze lifts the darkest channel everywhere, so
+    // the blurred darkest channel estimates the haze, and the haze colour is taken from the
+    // haziest pixels. Right removes it; left adds a soft haze.
+    const W = c.width, H = c.height, a = ctx.getImageData(0, 0, W, H), d = a.data;
+    const dc = newCanvas(W, H), dx = dc.getContext("2d", { willReadFrequently: true }), dd = dx.createImageData(W, H);
+    for (let i = 0; i < d.length; i += 4) { const m = Math.min(d[i], d[i + 1], d[i + 2]); dd.data[i] = dd.data[i + 1] = dd.data[i + 2] = m; dd.data[i + 3] = 255; }
+    dx.putImageData(dd, 0, 0);
+    const dark = blurData(dc, Math.max(W, H) / 80);
+    const hist = new Uint32Array(256); for (let i = 0; i < dark.length; i += 4) hist[dark[i]]++;
+    let cut = 255; for (let n = 0, top = d.length / 4 * 0.002; cut > 0 && n < top; cut--) n += hist[cut];
+    let ar = 0, ag = 0, ab = 0, an = 0;
+    for (let i = 0; i < d.length; i += 4) if (dark[i] >= cut) { ar += d[i]; ag += d[i + 1]; ab += d[i + 2]; an++; }
+    const air = an ? [ar / an, ag / an, ab / an] : [255, 255, 255], am = Math.max(1, Math.min(...air));
+    for (let i = 0; i < d.length; i += 4) {
+      if (t > 0) {
+        const tr = Math.max(0.6, 1 - 0.6 * t * (dark[i] / am)), mix = Math.min(1, t);
+        for (let ch = 0; ch < 3; ch++) { const v0 = d[i + ch], j = (v0 - air[ch]) / tr + air[ch]; d[i + ch] = v0 + (j - v0) * mix; }
+      } else for (let ch = 0; ch < 3; ch++) d[i + ch] += (air[ch] - d[i + ch]) * -t * 0.35;
+    }
+    ctx.putImageData(a, 0, 0);
+  }
+  if ((kind === "lnoise" || kind === "cnoise") && v > 0) {
+    // Luminance noise: an edge-aware smoothing of brightness only (the guided filter the cutout
+    // uses), so edges stay sharp. Colour noise: the colour is taken from a blurred copy while
+    // the brightness stays as it was, which clears coloured speckles without softening detail.
+    const W = c.width, H = c.height, a = ctx.getImageData(0, 0, W, H), d = a.data, k = Math.min(1, v / 100);
+    if (kind === "lnoise") {
+      const I = new Float32Array(W * H); for (let i = 0; i < I.length; i++) I[i] = lum(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]) / 255;
+      const q = guided(I, I, W, H, Math.max(2, Math.round(W / 700 * (0.6 + k))), 0.0002 + 0.0012 * k * k);
+      for (let i = 0; i < I.length; i++) { const dl = (q[i] - I[i]) * 255 * k; d[i * 4] += dl; d[i * 4 + 1] += dl; d[i * 4 + 2] += dl; }
+    } else {
+      const g = blurData(c, W / 300 * (0.5 + k));
+      for (let i = 0; i < d.length; i += 4) {
+        const dl = lum(d[i], d[i + 1], d[i + 2]) - lum(g[i], g[i + 1], g[i + 2]);
+        for (let ch = 0; ch < 3; ch++) d[i + ch] += (g[i + ch] + dl - d[i + ch]) * k;
+      }
+    }
+    ctx.putImageData(a, 0, 0);
+  }
+  return { c, img };
 }
 // Rotates by quarter turns, then cuts out `r`, given as fractions of the rotated picture, so
 // the same crop fits the working copy and the full-size original. A fixed shape (`aspect`,
