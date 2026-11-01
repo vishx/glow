@@ -1369,4 +1369,6 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
     background: linear-gradient(#0000, #0000009e); grid-template-columns: auto minmax(0, 200px) minmax(0, 200px); justify-content: center; }
   #cameraScreen .vf-ai { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); width: auto; padding: 0 var(--s5); margin: 0 !important; }
   #cameraScreen .vf-note { right: calc(var(--rail) + var(--s3)); }
+  /* The lens pill floats just above the Looks row, centred on the picture (not the rail). */
+  #cameraScreen #camZoom { position: absolute; left: 0; right: var(--rail); bottom: 60px; padding: 0; }
 }
