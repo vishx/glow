@@ -34,7 +34,7 @@ const icons = {};
 for (const [k, n] of Object.entries(MAP)) icons[k] = inner(n);
 for (const k of CUSTOM) icons[k] = prev[k];
 const body = Object.entries(icons).map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)},`).join("\n");
-fs.writeFileSync(out, `// Line icons: Lucide (ISC license, see licenses.txt) plus custom face and makeup icons drawn on the same 24px grid.
+fs.writeFileSync(out, `// Line icons: Lucide (ISC license, see licenses.html) plus custom face and makeup icons drawn on the same 24px grid.
 const ICONS = {
 ${body}
 };

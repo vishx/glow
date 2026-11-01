@@ -167,7 +167,7 @@ test('camera: shutter timer counts down before the shot, and a second tap cancel
 test('camera filters: 13 filters, film effects over the preview and in the photo, Strength scales them', async ({ p }) => {
   await p.goto('https://app.test/'); await camLive(p);
   eq(await p.evaluate(() => FILTERS.map((f) => f.id)), ['none', 'glow', 'film', 'warm', 'soft', 'matte', 'clear', 'vivid', 'cool', 'digicam', 'disposable', 'instant', 'mono', 'noir'], 'the filter list');
-  eq(await p.evaluate(() => FILTERS.every((f) => f.f === 'none' || f.f.match(/\(/g).length <= FILTER_STEPS)), true, 'every chain fits the native camera');
+  eq(await p.evaluate(() => FILTERS.every((f) => f.f === 'none' || f.f.match(/\(/g).length <= 4)), true, 'every chain fits the native camera');
   await p.evaluate(() => { $('adjustPanel').hidden = false; selectAdj('filter'); });
   eq(await p.evaluate(() => [$('camFx').hidden, $('sFilterAmt').closest('.slider').hidden]), [true, true], 'no filter: no effects, no Strength');
   await p.evaluate(() => [...$('camFilters').children].find((b) => b.textContent === 'Disposable').click());
@@ -555,6 +555,12 @@ test('demo: the shipped prepared previews are all there, match the manifest, and
     await tool(p, 'foryou', null, e.tool); await p.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x && $('after').naturalWidth > 0, e.tool, { timeout: 15000 });
     eq(await p.evaluate(() => [ed.hist.length, $('after').naturalWidth, $('after').naturalHeight]), [2, e.width, e.height], `${e.tool}: shown alone, at its size`);
   }
+  // The outfit previews live inside Try on.
+  for (const id of ['suit', 'sundress'].filter((x) => ready.some((e) => e.tool === x))) {
+    await tool(p, 'looks', null, 'outfit'); await p.click(`.try-card[data-idea="${id}"]`);
+    await p.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x && sel === 'outfit' && $('after').naturalWidth > 0, id, { timeout: 15000 });
+    eq(await p.textContent('#applyBtn'), 'Done', `${id}: shown in Try on as a prepared preview`);
+  }
   eq(credit(state), before, 'no AI requests, credits unchanged');
   if (ready.length) { await p.click('#compareBtn'); await settle(300); }
   await p.screenshot({ path: path.join(__dirname, 'out', 'demo-shipped.png') });
@@ -663,7 +669,7 @@ test('enhance: pick, one AI request, before/after, toggles on the phone, save, s
     await p.waitForFunction(() => !$('enhWorking').classList.contains('on'), null, { timeout: 60000 });
     await p.click(done ? '#enhLvDone' : '#enhLvBack'); await p.waitForSelector('#enhToggles:not([hidden])');
   };
-  eq(await p.evaluate(() => [...$('enhLvRow').children].length), 0, 'no levels open at first');
+  eq(await p.evaluate(() => $('enhLevels').hidden), true, 'no levels open at first');
   await level('colors', 2); await level('bg', 0);
   eq(await p.evaluate(() => [enh.lv.colors, enh.lv.bg, document.querySelector('.enh-t[data-k=colors]').getAttribute('aria-pressed')]), [2, 0, 'true'], 'levels kept');
   const blur0 = await p.evaluate(() => enh.lv.blur);
@@ -681,6 +687,44 @@ test('enhance: pick, one AI request, before/after, toggles on the phone, save, s
   await p.click('#enhEdit'); await p.waitForFunction(() => screen === 'editorScreen' && ed.hist.length === 2 && ed.idx === 1);
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false });
+
+// 2026-10-31 (user's screenshots): the photo shrank when a tool's levels opened, levels 1-3 looked
+// alike, and some Colors looks barely differed. The frame keeps one size; each level and look differs.
+test('enhance result: the photo keeps its size when levels open, each level is stronger, every look differs, defaults round-trip', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0 && enh.faces.length > 0, null, { timeout: 30000 });
+  const size = () => p.evaluate(() => { const r = $('enhFrame').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+  const first = await size();
+  for (const k of ['face', 'colors']) {
+    await p.click(`.enh-t[data-k=${k}]`); await p.waitForSelector('#enhLevels:not([hidden])'); await p.waitForTimeout(100);
+    eq(await size(), first, k + ' levels open: same photo size');
+    await p.click('#enhLvBack'); await p.waitForTimeout(100); eq(await size(), first, 'closed: same size');
+  }
+  const r = await p.evaluate(async () => {
+    const px = async (s) => { const im = await loadImg(s), c = newCanvas(160, Math.round(160 * im.naturalHeight / im.naturalWidth)), x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0, c.width, c.height); return x.getImageData(0, 0, c.width, c.height).data; };
+    const d = (a, b) => { let s = 0; for (let i = 0; i < a.length; i += 4) s += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]); return s / (a.length / 4) / 3; };
+    const std = { face: 2, bg: 2, retouch: 0, colors: 0, blur: 0 }, out = {};
+    for (const k of ['retouch', 'colors']) {
+      const n = ENH_TOGGLES.find((t) => t[0] === k)[3].length, ims = [];
+      for (let i = 0; i < n; i++) ims.push(await px(await composeEnhanced({ ...std, [k]: i })));
+      out[k] = ims.map((a) => ims.map((b) => +d(a, b).toFixed(2)));
+    }
+    return { out, def: ENH_TOGGLES.map((t) => t[4]), key: enhAIKey() };
+  });
+  eq(r.def.slice(0, 2), [2, 2], 'Face and Background Enhancer start at 2, the AI result as it came');
+  const rt = r.out.retouch[0]; assert(rt[1] > 0 && rt[2] > rt[1] && rt[3] > rt[2], 'retouch grows with each level: ' + rt);
+  const c = r.out.colors;
+  for (let i = 2; i < c.length; i++) for (let j = 1; j < c.length; j++) if (i !== j) assert(c[i][j] > 1.5, `look ${i} vs ${j} differ: ${c[i][j]}`);
+  // Set as default on Retouch 2, then a new result opens with it.
+  await p.click('.enh-t[data-k=retouch]'); await p.click('#enhLvRow .enh-lv[data-i="2"]');
+  await p.click('#enhDefault'); await p.click('#enhLvDone');
+  eq(await p.evaluate(() => JSON.parse(store.get('glow.enhDefaults'))), { retouch: 2 }, 'saved');
+  await p.evaluate(() => showEnhResult()); eq(await p.evaluate(() => enh.lv.retouch), 2, 'loaded for the next result');
+  await p.click('.enh-t[data-k=retouch]'); eq(await p.evaluate(() => $('enhDefault').checked), true, 'switch shows it is the default');
+  eq(state.posts.length, 1, 'levels never call the AI again'); eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, viewport: { width: 412, height: 892 } });
 
 // 2026-10-31: More tools / Edit more opened the editor with no way back to the Enhance result
 // (its Back went to Editor home, and the browser's Back left the app).
@@ -734,18 +778,88 @@ test('settings: Enhance defaults, subscription details, share the app, and sugge
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   await p.evaluate(() => store.set('glow.enhDefaults', JSON.stringify({ blur: 2 })));
   await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
-  eq(await p.$$eval('#enhPrefsList select', (s) => s.map((x) => x.dataset.k + '=' + x.value)), ['face=3', 'bg=3', 'retouch=0', 'colors=0', 'blur=2'], 'each tool shows its default');
-  await p.selectOption('#enhPrefsList select[data-k=face]', '2'); await p.selectOption('#enhPrefsList select[data-k=blur]', '0');
-  eq(await p.evaluate(() => JSON.parse(store.get('glow.enhDefaults'))), { face: 2 }, 'changes saved; the standard level needs no entry');
+  eq(await p.$$eval('#enhPrefsList select', (s) => s.map((x) => x.dataset.k + '=' + x.value)), ['face=2', 'bg=2', 'retouch=0', 'colors=0', 'blur=2'], 'each tool shows its default');
+  await p.selectOption('#enhPrefsList select[data-k=face]', '3'); await p.selectOption('#enhPrefsList select[data-k=blur]', '0');
+  eq(await p.evaluate(() => JSON.parse(store.get('glow.enhDefaults'))), { face: 3 }, 'changes saved; the standard level needs no entry');
   await p.click('#enhPrefsReset'); eq(await p.evaluate(() => store.get('glow.enhDefaults')), '{}', 'reset');
   await p.evaluate(() => { window.__shared = null; navigator.share = async (d) => { window.__shared = d; }; });
   await p.click('#shareApp'); eq(await p.evaluate(() => window.__shared && window.__shared.url), 'https://glow-photo-enhancer.vercel.app', 'share sheet gets the app link');
   await p.click('#suggestFeature'); await p.waitForSelector('#supportSheet[open]');
   eq([await p.textContent('#supportTitle'), await p.isVisible('#supportTopic')], ['Suggest a feature', false], 'idea form');
   await p.click('#supportSheet [data-close]');
-  await p.click('#enhSettingsBtn'); await p.click('#subsInfo'); await p.waitForSelector('#creditsSheet[open]');
+  await p.click('#subsInfo'); await p.waitForSelector('#creditsSheet[open]');
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false });
+
+// 2026-11-01: in the phone app Help restarted the app (/support has no file there) and Licenses
+// was black text on the dark background. Every page now opens in an in-app sheet that follows the
+// app's theme; Share never adds a "Link copied" toast once a share sheet opened; the credits sheet
+// names the real 2-credit tools.
+test('settings: Help, Privacy, Terms and Licenses open inside the app, readable in dark mode; share and credits text', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => { store.set('glowTheme', 'dark'); applyTheme(); });
+  const docs = [['Help and FAQ', 'Help and support', 'support'], ['Privacy policy', 'Privacy Policy', 'privacy'], ['Terms of use', 'Terms of Use', 'terms'], ['Licenses', 'Licenses', 'licenses']];
+  for (const [row, h1] of docs) {
+    if (!(await p.evaluate(() => $('settings').open))) await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
+    await p.click(`#settings [data-doc="${row}"]`); await p.waitForSelector('#docSheet[open]');
+    await p.waitForFunction((h1) => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.theme && d.querySelector('h1') && d.querySelector('h1').textContent === h1; }, h1);
+    const r = await p.evaluate(() => { const d = $('docFrame').contentDocument, cs = d.defaultView.getComputedStyle(d.body);
+      return [location.pathname, screen, $('docTitle').textContent, cs.color, cs.backgroundColor, d.documentElement.dataset.theme, d.defaultView.getComputedStyle(d.querySelector('.brand')).display]; });
+    eq(r[0], '/', `${row}: the app stays on its page`); eq(r[1], 'enhanceHome', `${row}: no restart`); eq(r[2], h1, `${row}: sheet title`);
+    eq([r[3], r[4], r[5], r[6]], ['rgb(245, 244, 242)', 'rgb(18, 18, 20)', 'dark', 'none'], `${row}: light text on dark, app header hidden`);
+    await p.click('#docSheet [data-close]');
+  }
+  // A link to another help page stays in the sheet; the Glow Studio home link closes it.
+  await p.click('#settings [data-doc="Privacy policy"]');
+  await p.waitForFunction(() => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.embed; });
+  await p.evaluate(() => $('docFrame').contentDocument.querySelector('footer a[href="/support.html"]').click());
+  await p.waitForFunction(() => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.embed && /support/.test(d.location.pathname); });
+  eq(await p.textContent('#docTitle'), 'Help and support', 'footer link opens Help in the sheet');
+  await p.evaluate(() => { const a = $('docFrame').contentDocument.createElement('a'); a.href = '/'; $('docFrame').contentDocument.body.append(a); a.click(); });
+  await p.waitForFunction(() => !$('docSheet').open); eq(await p.evaluate(() => [location.pathname, $('settings').open]), ['/', true], 'home link closes the sheet, back to Settings');
+  // Credits sheet: the 2-credit tools are the real ones, and retired tools aren't named.
+  await p.evaluate(() => { account = { plan: 'free', remaining: 3, quota: 3, trialLeft: 3 }; renderCreditsSheet(); });
+  const txt = await p.textContent('#creditsBody');
+  assert(/Pro edit, portrait styles, Describe, AI scene and Fill use 2\./.test(txt), 'real 2-credit tools: ' + txt);
+  assert(/Golden hour, Try on, portrait styles/.test(txt) && !/Headshot|Fashion|outfits|Expand/.test(txt), 'no stale names: ' + txt);
+  assert(/Daily credits work with Enhance, AI retouch, Colorize and Remove\./.test(txt), 'daily tools: ' + txt);
+  eq(await p.evaluate(() => $('manageSubs').hidden), true, 'no store subscriptions on the web');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false });
+
+// 2026-11-01: closing a page opened from Settings (Help, credits, Contact support...) closed Settings too.
+test('settings: pages opened from Settings close back to Settings, where you were', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const open = async () => { if (!(await p.evaluate(() => $('settings').open))) await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]'); await p.evaluate(() => { $('settings').scrollTop = 9999; }); };
+  const back = (how) => how === 'x' ? null : p.evaluate(() => goBack());
+  for (const [sel, sheet] of [['[data-doc="Help and FAQ"]', 'docSheet'], ['[data-doc="Licenses"]', 'docSheet'], ['#subsInfo', 'creditsSheet'], ['#contactSupport', 'supportSheet'], ['#suggestFeature', 'supportSheet']]) {
+    for (const how of ['x', 'back']) {
+      await open(); const top = await p.evaluate(() => $('settings').scrollTop);
+      await p.click('#settings ' + sel); await p.waitForSelector(`#${sheet}[open]`);
+      if (how === 'x') await p.click(`#${sheet} [data-close]`); else await back(how);
+      await p.waitForFunction((id) => !$(id).open, sheet);
+      eq(await p.evaluate(() => [$('settings').open, $('settings').scrollTop > 0]), [true, top > 0], `${sel} closed with ${how}: Settings still open where it was`);
+    }
+  }
+  // Back from Settings itself still closes it.
+  await p.evaluate(() => goBack()); eq(await p.evaluate(() => $('settings').open), false, 'Back on Settings closes it');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false });
+
+test('settings in the Android app: share sheet without a "Link copied" toast, build line names the app, Manage subscription shown', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => { $('toast').textContent = ''; });
+  await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
+  await p.click('#shareApp'); await settle(300);
+  eq(await p.evaluate(() => window.__shared && window.__shared.url), 'https://glow-photo-enhancer.vercel.app', 'the phone share sheet gets the link');
+  eq(await p.textContent('#toast'), '', 'no "Link copied" toast when the sheet reports it was closed');
+  await p.waitForFunction(() => /Version/.test($('buildId').textContent) && !/checking/.test($('buildId').textContent));
+  assert(/ · Android app/.test(await p.textContent('#buildId')) && !/localhost/.test(await p.textContent('#buildId')), 'names the app: ' + await p.textContent('#buildId'));
+  eq(await p.isVisible('#manageSubs'), true, 'Manage subscription in the phone app');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, init: () => {
+  window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: { Share: { share: async (d) => { window.__shared = d; throw new Error('Share canceled'); } } } };
+} });
 
 // 2026-10-31: a 1200x1600 photo ran Real-ESRGAN out of GPU memory; the credit came back but the
 // error toast sat behind the sheet and said "lost the connection", so nothing seemed to happen.
@@ -936,11 +1050,11 @@ for (const [w, h] of [[390, 844], [320, 640], [412, 915]]) test(`layout: categor
   }
 }, { viewport: { width: w, height: h } });
 
-test('layout: porcelain (light) and ink (dark) surround, photo contained, edited view first, compare only after an edit', async ({ p, state }) => {
+test('layout: stone (light) and ink (dark) surround, photo contained, edited view first, compare only after an edit', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   const bg = () => p.evaluate(() => getComputedStyle($('stage')).backgroundColor);
-  eq(await bg(), 'rgb(20, 16, 19)', 'dark: ink');
-  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(251, 247, 245)', 'light: porcelain');
+  eq(await bg(), 'rgb(18, 18, 20)', 'dark: ink');
+  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(247, 246, 243)', 'light: stone');
   const st = await p.evaluate(() => ({ view: $('stage').dataset.view, disabled: [$('compareBtn').disabled, $('revertBtn').disabled], radius: getComputedStyle($('stage')).borderTopLeftRadius,
     fit: getComputedStyle($('before')).objectFit, frame: (() => { const f = $('view').getBoundingClientRect(), s = $('stage').getBoundingClientRect(); return f.width <= s.width + 0.5 && f.height <= s.height + 0.5 && Math.abs(f.width / f.height - ed.original.w / ed.original.h) < 0.02; })() }));
   eq(st, { view: 'edited', disabled: [true, true], radius: '16px', fit: 'contain', frame: true }, 'before any edit (rounded, with a small margin)');
@@ -1047,8 +1161,10 @@ test('retouch: Compare puts the divider on the face; Settings shows which build 
     return { x: d.left + d.width / 2, nose: f.left + P[1][0] * f.width, f: [f.left, f.right] }; });
   near(r.x, r.nose, 2, 'divider runs down the nose'); assert(r.x > r.f[0] && r.x < r.f[1], 'divider is on the photo');
   await p.click('#cancelBtn'); await p.click('#settingsBtn').catch(() => p.evaluate(() => openSettings()));
-  await p.waitForFunction(() => /Build/.test($('buildId').textContent) && !/checking/.test($('buildId').textContent));
-  assert(/reshape-v2 · crop-v2/.test(await p.textContent('#buildId')), 'build line names the features: ' + await p.textContent('#buildId'));
+  await p.waitForFunction(() => /Version/.test($('buildId').textContent) && !/checking/.test($('buildId').textContent));
+  const line = await p.textContent('#buildId');
+  assert(new RegExp(`^Version ${await p.evaluate(() => APP_BUILD)} \\([0-9a-f]{8}\\) · Web`).test(line), 'build line names the version and fingerprint: ' + line);
+  assert(/reshape-v2 · crop-v2/.test(await p.getAttribute('#buildId', 'title')), 'features kept in the tooltip');
 });
 test('retouch: no trustworthy face shows an unavailable note instead of a guessed warp', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('coords-600x400.png'));
@@ -1444,15 +1560,45 @@ test('mark: placed after crop and rotation, at small and large sizes; paid saves
   assert(r2.box && r2.box[0] > r2.w * 0.5 && r2.box[1] > r2.h * 0.9 && (r2.box[2] - r2.box[0]) > r2.w * 0.1, `large save: proportional mark ${r2.box} of ${r2.w}x${r2.h}`);
   eq([state.posts.length, state.used], [0, 0], 'no AI request, no credit');
 }, { viewport: { width: 390, height: 844 } });
-test('mark: Glow Pro saves have no mark', async ({ p, state }) => {
+// 2026-11-01 (owner's choice): Pro saves carry the mark by default; Pro can turn it off in Settings
+// or on the first save's note. Free saves always carry it.
+test('mark: Pro saves carry the mark by default; the first save offers to turn it off, and Settings switches it', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
+  await p.waitForFunction(() => account && account.plan === 'pro');
+  await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
+  await p.click('#saveBtn'); await p.waitForSelector('#ask[open] #askImg');
+  eq(await p.textContent('#askTitle'), 'Your saves include a small Glow Studio badge', 'Pro is told once, with a preview');
+  await p.click('#ask .btn:has-text("Turn it off and save")'); const [d] = await downloads(state, 1);
+  const clean = await p.evaluate(async () => (await renderExport()).data);
+  eq(fileB64(d.file), clean.split(',')[1], 'turned off: saved file is exactly the clean export');
+  eq(await p.evaluate(() => store.get('glowMark')), 'off', 'remembered');
+  // Settings: the switch is off; turning it on marks the next save, with no note again.
+  await p.evaluate(() => openSettings());
+  eq(await p.evaluate(() => [$('markToggle').checked, $('markToggle').closest('.setting').classList.contains('locked')]), [false, false], 'Pro switch shows off, unlocked');
+  await p.click('#markToggle'); await p.evaluate(() => $('settings').close());
+  await tool(p, 'looks', 'filters', 'filter:warm'); await p.click('#applyBtn'); await idle(p);
+  await p.click('#saveBtn'); const d2 = (await downloads(state, 2))[1];
+  eq(await p.evaluate(() => $('ask').open), false, 'no note the second time');
+  const clean2 = await p.evaluate(async () => (await renderExport()).data);
+  const r = await diffBox(p, `data:${mime(d2.file)};base64,${fileB64(d2.file)}`, clean2);
+  assert(r.box && r.box[0] > r.w * 0.5 && r.box[1] > r.h * 0.9, 'switched back on: marked bottom-right ' + r.box);
+}, { viewport: { width: 390, height: 844 }, plan: 'pro', markIntro: true });
+test('mark: Pro with the mark switched off saves clean', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   await p.waitForFunction(() => account && account.plan === 'pro');
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
   await p.click('#saveBtn'); const [d] = await downloads(state, 1);
-  eq(await p.evaluate(() => $('ask').open), false, 'no mark note for Pro');
   const clean = await p.evaluate(async () => (await renderExport()).data);
-  eq(fileB64(d.file), clean.split(',')[1], 'saved file is exactly the clean export');
-}, { viewport: { width: 390, height: 844 }, plan: 'pro', markIntro: true });
+  eq(fileB64(d.file), clean.split(',')[1], 'clean');
+}, { viewport: { width: 390, height: 844 }, plan: 'pro', mark: 'off' });
+test('mark: free users can\'t switch the mark off; the switch offers Pro', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && account && account.plan === 'free');
+  await p.evaluate(() => store.set('glowMark', 'off')); await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
+  eq(await p.evaluate(() => [$('markToggle').checked, $('markToggle').closest('.setting').classList.contains('locked')]), [true, true], 'free: on and locked');
+  await p.click('#markToggle'); await p.waitForSelector('#paywall[open]');
+  eq(await p.evaluate(() => $('markToggle').checked), true, 'still on; the paywall opened instead');
+  eq(await p.evaluate(() => wantMark()), true, 'free saves are marked even with the old off setting');
+}, { start: 'enhance', camera: false });
 test('mark: Share and Download give the same marked file; Share Glow card only on request, and its QR scans', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
@@ -1813,6 +1959,75 @@ test('ai: AI scene costs 2 credits, sends the background mask and the scene, and
   const base = await p.evaluate(() => committed()), shown = await p.evaluate(() => job.result.data);
   assert(nearPx(await pxAt(p, shown, 0.5, 0.3), await pxAt(p, base, 0.5, 0.3), 4), 'her face is her own pixels');
   eq([state.used, await p.evaluate(() => ed.idx)], [1, 0], 'one request, waiting for Apply');
+});
+
+test('try on: one tool with ideas, your photo or words; sends the part; keeps every look to flip back to free', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'looks', null, 'outfit');
+  eq(await p.evaluate(() => [tryOn.src, !!$('panelBody').querySelector('.try-card[data-idea="casual"][aria-pressed="true"]')]), ['ideas', true], 'opens on Ideas with one picked');
+  eq(state.posts.length, 0, 'opening it sends nothing');
+  await p.waitForFunction(() => tryOn.check !== null, null, { timeout: 30000 });
+  assert(/Little of your outfit/.test(await p.textContent('#panelNote')), 'the free photo check says a head-and-shoulders photo makes the AI guess: ' + await p.textContent('#panelNote'));
+  await p.click('.try-card[data-idea="suit"]'); await p.click('.try-color[aria-label="Navy"]');
+  let req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
+  await p.click('#applyBtn'); let body = JSON.parse((await req).postData());
+  eq([body.mode, body.part, /business suit/.test(body.prompt), /navy blue/.test(body.prompt), body.extra], ['outfit', 'full', true, true, undefined], 'an idea sends words, color and part');
+  await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
+  await p.waitForFunction(() => tryLooksNow().length === 1);
+  eq(await p.evaluate(() => [job.look, tryLooksNow()[0].label]), ['Navy suit', 'Navy suit'], 'the look is named');
+  // While a look shows, the panel is just Your looks and the buttons, so the photo is big; the face is the model's own.
+  eq(await p.evaluate(() => [!!$('panelBody').querySelector('.try-card'), $('cancelBtn').textContent, $('panelNote').textContent, $('panel').classList.contains('try-compact'), !!job.keepFace]),
+    [false, 'Change', '', true, false], 'the result view is compact, without notes, and no face pasting');
+  // Change: the look closes (kept in Your looks), the pickers come back, nothing is applied.
+  await p.click('#cancelBtn'); await settle(200);
+  await p.click('.try-card[data-idea="gown"]'); await settle(200);
+  eq(await p.evaluate(() => [job, ed.idx, tryLooksNow().length, $('applyBtn').textContent]), [null, 0, 1, 'Try on · 1 credit'], 'Change closes the look and offers a new try-on');
+  await p.click('.try-look'); await settle(200);
+  eq(await p.evaluate(() => [job && job.look, reviewing()]), ['Navy suit', true], 'and the look is one tap away');
+  // Discard keeps it in Your looks, without the "credit isn't returned" question.
+  await p.click('#cancelBtn'); await settle(200);
+  eq(await p.evaluate(() => [job, tryLooksNow().length]), [null, 1], 'discarded but kept');
+  // Your photo: any outfit picture, kept in the closet for next time, with the part to change.
+  if (!(await p.evaluate(() => sel === 'outfit'))) await tool(p, 'looks', null, 'outfit');
+  await p.click('.try-seg .opt:has-text("Your photo")');
+  eq(await p.evaluate(() => $('applyBtn').disabled), true, 'nothing to send before a photo is picked');
+  const fc = p.waitForEvent('filechooser'); await p.click('.try-add[aria-label^="Add"]'); await (await fc).setFiles(fx('coords-600x400.png'));
+  await p.waitForFunction(() => !!outfitData && tryOn.closet.length === 1);
+  await p.click('.try-parts .opt:has-text("Top")');
+  req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
+  await p.click('#applyBtn'); body = JSON.parse((await req).postData());
+  eq([body.mode, body.part, body.extra.startsWith('data:image/'), body.prompt], ['outfit', 'top', true, undefined], 'a photo sends the picture and the part');
+  await p.waitForFunction(() => job && job.status === 'done' && tryLooksNow().length === 2, null, { timeout: 30000 });
+  // Flip back to the first look: free, nothing sent.
+  const posts = state.posts.length;
+  await p.click('.try-look[aria-label^="Navy suit"]'); await settle(200);
+  eq(await p.evaluate(() => [job.look, job.status, reviewing()]), ['Navy suit', 'done', true], 'the earlier look is back for review');
+  eq(state.posts.length, posts, 'looking again sends nothing');
+  await p.click('#applyBtn'); await settle(200);
+  eq(await p.evaluate(() => [ed.idx, ed.hist[1].op.tool]), [1, 'outfit'], 'applied as one step');
+  // Words: her own description.
+  await tool(p, 'looks', null, 'outfit'); await p.click('.try-seg .opt:has-text("Describe")');
+  await p.fill('#tryWords', 'a red satin slip dress');
+  req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
+  await p.click('#applyBtn'); body = JSON.parse((await req).postData());
+  eq([body.prompt, body.part], ['a red satin slip dress', 'top'], 'words are sent as written, with the part picked before');
+});
+
+test('describe: a reframed AI result is lined up with the photo and her face goes on her new face (no double face)', async ({ p }) => {
+  await p.goto('https://app.test/');
+  const data = (f) => 'data:image/' + (f.endsWith('png') ? 'png' : 'jpeg') + ';base64,' + fs.readFileSync(f).toString('base64');
+  // The fixture is the portrait as an edit model answers it: 2:3 instead of 3:4, shifted, new top color.
+  const r = await p.evaluate(async ([a, b]) => {
+    const x = await restoreFace(a, b), im = await loadImg(x.data), o = await loadImg(a);
+    const fa = await faceBoxes(a), fr = await faceBoxes(x.data);
+    return { aligned: x.aligned, size: [im.naturalWidth, im.naturalHeight], osize: [o.naturalWidth, o.naturalHeight], fa: fa[0], fr: fr[0], n: fr.length };
+  }, [data(PORTRAIT), data(fx('reframed-ai.jpg'))]);
+  eq(r.size, r.osize, 'the result has the photo\'s size');
+  assert(r.aligned, 'lined up by the face');
+  eq(r.n, 1, 'one face, not two');
+  assert(Math.abs(r.fa.cx - r.fr.cx) < 0.02 && Math.abs(r.fa.cy - r.fr.cy) < 0.02 && Math.abs(r.fa.w - r.fr.w) < 0.03, 'her face stays where it was: ' + JSON.stringify([r.fa, r.fr]));
+  const top = await p.evaluate(async (a) => (await restoreFace(a, a)).data, data(PORTRAIT));
+  assert(nearPx(await pxAt(p, top, 0.5, 0.3), await pxAt(p, data(PORTRAIT), 0.5, 0.3), 10), 'an unchanged result keeps her face as it was');
 });
 
 test('adjust: the full Adjust set changes the photo, and grain is the same every time', async ({ p }) => {
@@ -2298,6 +2513,81 @@ test('packs: in the phone app a pack is bought through the store and its credits
   } } };
 } });
 
+
+// ---------- Pricing 2026-11-01: yearly free trial, Pro screen at the first result (migration 015) ----------
+// RevenueCat stand-in for the phone app. window.__rc picks the platform and the trial answers.
+const rcInit = () => {
+  const o = window.__rcOpts || {};
+  window.Capacitor = { isNativePlatform: () => true, getPlatform: () => o.ios ? 'ios' : 'android', Plugins: { Purchases: {
+    configure: async () => {}, logIn: async () => {}, getProducts: async () => ({ products: [] }),
+    checkTrialOrIntroductoryPriceEligibility: async ({ productIdentifiers }) => Object.fromEntries(productIdentifiers.map((id) => [id, { status: o.iosStatus ?? 2 }])),
+    getOfferings: async () => ({ current: { availablePackages: [
+      { packageType: 'WEEKLY', product: { identifier: 'glow_pro_weekly', priceString: '$4.99' } },
+      { packageType: 'ANNUAL', product: { identifier: 'glow_pro_yearly', priceString: '$49.99', pricePerMonthString: '$4.17',
+        introPrice: o.noTrial ? null : { price: 0, priceString: '$0.00', periodUnit: 'DAY', periodNumberOfUnits: 3 } } }] } }),
+  } } };
+};
+const openPw = async (p) => { eq(await p.evaluate(async () => { CONFIG.revenuecatAndroid = 'goog_test'; CONFIG.revenuecatIos = 'appl_test'; rcReady = null; openPaywall(); return await rcReady; }), true, 'store set up'); };
+
+test('pricing: the yearly free trial shows its terms when the store offers it; weekly has none; the yearly cap reads 60', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
+  await openPw(p);
+  eq(await p.evaluate(() => [$('yearlyNote').textContent, $('buyBtn').textContent, $('pwNote').textContent.split('.')[0]]),
+    ['3 days free, then $49.99 a year', 'Start 3-day free trial', 'Free for 3 days, with 10 AI credits to try'], 'trial terms on yearly');
+  assert(/Then \$49\.99 per year\. Renews automatically every year/.test(await p.textContent('#pwNote')), 'price after the trial: ' + await p.textContent('#pwNote'));
+  await p.click('.plan[data-plan="weekly"]');
+  eq(await p.evaluate(() => [$('buyBtn').textContent, /Free for/.test($('pwNote').textContent)]), ['Continue with weekly', false], 'weekly: no trial');
+  assert((await p.textContent('.pw-free')).includes('up to 60 credits a month'), 'yearly cap 60');
+  eq(state.errs, [], 'no page errors');
+}, { init: rcInit });
+
+test('pricing: no trial wording when Apple says this person can\'t have it, or the store has no trial', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
+  await openPw(p);
+  eq(await p.evaluate(() => [$('yearlyNote').textContent, $('buyBtn').textContent, /Free for/.test($('pwNote').textContent)]),
+    ['About $4.17 a month, billed yearly', 'Continue with yearly', false], 'iPhone, used the trial before');
+}, { init: `window.__rcOpts = { ios: true, iosStatus: 1 }; (${rcInit})();` });
+
+test('pricing: a Pro trial account shows its 10 trial credits, not 40 a week', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
+  await p.evaluate(() => { account = { plan: 'pro', used: 2, quota: 10, remaining: 8, bonus: 0, inTrial: true }; renderCreditsSheet(); });
+  const t = await p.textContent('#creditsBody');
+  assert(/of 10 AI credits left/.test(t) && /free trial includes 10 AI credits/.test(t) && !/80 credits/.test(t), t);
+});
+
+test('pricing: the Pro screen opens once, by itself, after the first Enhance result in the phone app (store set up)', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => { CONFIG.revenuecatAndroid = 'goog_test'; rcReady = null; });
+  const sample = async () => {
+    await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+    await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  };
+  await sample();
+  eq(await p.evaluate(() => $('paywall').open), false, 'not on top of the reveal');
+  await p.waitForSelector('#paywall[open]', { timeout: 6000 });
+  await p.evaluate(() => $('paywall').close());
+  await p.evaluate(() => closeEnhResult()); await p.waitForFunction(() => screen === 'enhanceHome');
+  await sample(); await settle(3500);
+  eq(await p.evaluate(() => $('paywall').open), false, 'only once');
+  await p.evaluate(() => flushTelemetry()); await settle(500);
+  eq(state.events.filter((e) => e.name === 'intro_offer').length, 1, 'tracked once');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, files: demoFiles(), init: rcInit });
+
+test('pricing: no Pro screen by itself on the web', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  await settle(3500);
+  eq(await p.evaluate(() => $('paywall').open), false, 'web: no paywall');
+}, { start: 'enhance', camera: false, files: demoFiles() });
+test('pricing: no Pro screen by itself in the phone app before the store keys are added', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  await settle(3500);
+  eq(await p.evaluate(() => [$('paywall').open, localStorage.getItem('glowIntroOffer')]), [false, null], 'no paywall, offer still pending');
+}, { start: 'enhance', camera: false, files: demoFiles(), init: rcInit });
 
 // ---------- Feature switches (features.js, migration 013) ----------
 const shownTools = (p) => p.evaluate(() => [...document.querySelectorAll('#tools .tool[data-tool]')].map((b) => b.dataset.tool));

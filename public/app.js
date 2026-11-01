@@ -66,7 +66,7 @@ tool("hcolor", "Color", "Hair color", "hair", "hair");
 [["bwaist", "Waist", "Waist"], ["bhips", "Hips", "Hips"], ["barms", "Arms", "Arms"], ["bslimlegs", "Slim legs", "Slim legs"], ["blegs", "Longer legs", "Longer legs"]]
   .forEach(([id, label, title]) => tool(id, label, title, "body", "body", { reshape: true, hint: "Works best on a photo that shows your whole body." }));
 const SELFIE_HINT = "Works best on a clear, front-facing selfie.";
-tool("outfit", "Try on", "Try on an outfit", "ai", "styles", { hint: "Pick a photo or screenshot of the outfit you want to try on." });
+tool("outfit", "Try on", "Try on", "ai", "styles", { hint: "Pick an idea, your own outfit photo, or describe one." });
 [["gown", "Gown", "Evening gown"], ["suit", "Suit", "Business suit"], ["sundress", "Sundress", "Summer dress"], ["street", "Street", "Streetwear"],
   ["headshot", "Headshot", "Headshot"], ["fashion", "Fashion", "Fashion shoot"], ["anime", "Anime", "Anime"], ["watercolor", "Watercolor", "Watercolor"],
   ["toon3d", "3D Toon", "3D Toon"], ["clay", "Clay", "Clay"], ["older", "Older", "Make older"], ["younger", "Younger", "Make younger"]]
@@ -391,7 +391,7 @@ $("sampleBtn").addEventListener("click", openSample);
 const DEMO_DIR = "/samples/demo-v2/";   // versioned: a new sample gets a new folder, so no stale cache
 const DEMO_FREE = ["fblemish", "fsmooth", "fauto", "light", "filter:glow", "bgblur"];
 let demo = null; // { manifest, ready: [toolId], entry: {toolId: entry}, cache: {toolId: dataURL}, failed: {toolId: true}, saved }
-const demoOffers = (id) => !ed.demo || TOOL[id].kind !== "ai" || (!!demo && demo.ready.includes(id));
+const demoOffers = (id) => !ed.demo || TOOL[id].kind !== "ai" || (!!demo && demo.ready.includes(id)) || (id === "outfit" && tryDemoReady().length > 0);
 
 async function openSample() {
   track("sample_open", { from: screen });
@@ -436,13 +436,13 @@ function demoReset(msg) {
   ed.hist = ed.hist.slice(0, 1); ed.idx = 0; ed.floor = 0; ed.savedIdx = 0; ed.pending = null;
   if (msg) say(msg);
 }
-async function showDemoPreview(id) {
-  const t = TOOL[id], mine = ++previewToken;
-  demoReset(); sel = id; delete demo.failed[id]; demo.loading = id;
+async function showDemoPreview(id, asTool) {
+  const t = TOOL[id], mine = ++previewToken, at = asTool || id;
+  demoReset(); sel = at; delete demo.failed[id]; demo.loading = id;
   renderEditor();
   try {
     const data = await demoAsset(id);
-    if (mine !== previewToken || sel !== id || !ed.demo) return;
+    if (mine !== previewToken || sel !== at || !ed.demo) return;
     ed.hist.push({ data, full: data, op: { tool: id, fixed: true, demo: true } }); ed.idx = 1;
     $("alertLive").textContent = `${t.title} prepared preview shown. Use Compare to see it next to the original.`;
   } catch {
@@ -1022,7 +1022,7 @@ function renderTabs() {
 const toolOn = (id) => featureOn(toolKey(id));
 const toolShown = (id) => toolOn(id) && (demoOffers(id) || (ed.demo && DEMO_LISTED.includes(id)));
 function toolBadge(t) {
-  if (ed.demo && t.kind === "ai") return demo && demo.ready.includes(t.id) ? ["Preview", ", prepared preview, no credits"] : [null, ", needs your own photo"];   // the panel explains; a badge on every tile was noise
+  if (ed.demo && t.kind === "ai") return demo && (demo.ready.includes(t.id) || (t.id === "outfit" && tryDemoReady().length)) ? ["Preview", ", prepared preview, no credits"] : [null, ", needs your own photo"];   // the panel explains; a badge on every tile was noise
   if (!aiLive(t.id)) return ["Soon", ", not available yet"];
   const cost = costOf(t);
   return cost ? [`AI · ${cost}`, `, uses ${credits(cost)}`] : [null, ", free"];
@@ -1041,7 +1041,8 @@ function toolButton(t) {
   } else {
     // Every other tool shows the face it will change, with the tool's icon on a small badge;
     // the sample's AI tools show their prepared result.
-    const pic = ed.demo && demo && demo.ready.includes(t.id) ? `${DEMO_DIR}thumbs/${t.id}.jpg` : faceThumb;
+    const shown = t.id === "outfit" && ed.demo ? tryDemoReady()[0] : t.id;
+    const pic = ed.demo && demo && demo.ready.includes(shown) ? `${DEMO_DIR}thumbs/${shown}.jpg` : faceThumb;
     if (pic) {
       b.classList.add("photo"); well.style.backgroundImage = `url(${pic})`;
       const g = document.createElement("span"); g.className = "glyph"; g.setAttribute("aria-hidden", "true"); g.innerHTML = icon(t.id); well.append(g);
@@ -1208,7 +1209,7 @@ function selectTool(id, opts = {}) {
   if (cr) closeCrop();
   if (id !== sel) { panelCollapsed = false; filterAmt = 100; }   // a newly opened tool always shows its controls
   if (searching && id) { searching = false; $("searchInput").value = ""; $("editorScreen").classList.remove("tools-open"); const home = tabFor(id); if (home) cat = home[0]; }
-  sel = id; strokes = []; outfitData = null; toolsOpen = false; panelBuilt = null; reshapeNote = null; picking = null;
+  sel = id; strokes = []; toolsOpen = false; panelBuilt = null; reshapeNote = null; picking = null;
   dropper = false; $("stage").classList.remove("dropping");
   lookPick = editorLooks().some((l) => l.id === lookId) ? lookId : "natural";
   if (id in toolAmt) toolAmt[id] = 0; // adjustments start from the committed photo
@@ -1238,6 +1239,8 @@ $("cancelBtn").addEventListener("click", () => (reviewing() ? discardResult() : 
 async function discardResult() {
   if (!job || job.status !== "done") return;
   const t = TOOL[job.tool];
+  // A look from the Try on row was already paid for and stays in the row: just close it.
+  if (tryIsKept()) { job = null; saveJob(); renderEditor(); say("Back to your photo. The look stays in Your looks."); return; }
   const c = await ask({ title: `Discard this ${t.title} result?`, text: "The AI credit it used isn't returned. Your marks stay, so you can adjust them and try again.",
     actions: [{ label: "Discard", value: "yes" }, { label: "Keep reviewing", value: "", kind: "ghost" }] });
   if (!c || !job || job.status !== "done") return;
@@ -1473,7 +1476,8 @@ function renderPanel(rebuild) {
   const t = sel && TOOL[sel];
   $("panel").hidden = !t;
   if (!t) { panelBuilt = null; fitDock(); return; }
-  if (rebuild || panelBuilt !== t.id) { buildPanel(t); panelBuilt = t.id; }
+  const key = t.id + (t.id === "outfit" && tryCompact() ? ":compact" : "");
+  if (rebuild || panelBuilt !== key) { buildPanel(t); panelBuilt = key; }
   panelState(t); fitDock();
 }
 // On phones the controls under the photo keep one fixed height (the dock), so the photo never
@@ -1483,6 +1487,9 @@ const dockFixed = () => matchMedia("(max-width: 959px)").matches && !matchMedia(
 function fitDock() {
   const es = $("editorScreen"), p = $("panel");
   es.classList.remove("no-tools");
+  p.classList.toggle("try-compact", sel === "outfit" && tryCompact());
+  // Try on has its own pickers, so the row of other tools steps aside and the photo gets the room.
+  if (sel === "outfit" && !ed.demo && !panelCollapsed && !p.hidden && dockFixed()) { es.classList.add("no-tools"); return; }
   if (!sel || panelCollapsed || p.hidden || !dockFixed()) return;
   if (p.scrollHeight > p.clientHeight + 1) es.classList.add("no-tools");
 }
@@ -1564,14 +1571,7 @@ function buildPanel(t) {
     inp.addEventListener("input", () => { sceneText = inp.value; });
     l.append(Object.assign(document.createElement("span"), { className: "sr-only", textContent: "Describe a background (optional)" }), inp); body.append(l);
   } else if (t.id === "outfit") {
-    const row = document.createElement("div"); row.className = "outfit-pick";
-    if (outfitData) { const im = document.createElement("img"); im.src = outfitData; im.alt = "Outfit you picked"; row.append(im); }
-    const b = document.createElement("button"); b.className = "btn quiet small"; b.textContent = outfitData ? "Change outfit photo" : "Choose outfit photo";
-    b.addEventListener("click", async () => {
-      const f = await Platform.pickPhoto("outfitFile");
-      if (f) { try { outfitData = await loadAndShrink(f); } catch (err) { say(err.message, true); } renderPanel(true); }
-    });
-    row.append(b); body.append(row);
+    tryOnPanel(body);
   } else if (MASK_TOOLS.includes(t.id) && !ed.demo) {
     // Paint marks the area; Erase takes marks away. Reset (in the title row) clears them all.
     const modes = options([["Paint", "paint"], ["Erase marks", "erase"]], (v) => v === brushMode, (v) => { brushMode = v; renderPanel(true); });
@@ -1595,7 +1595,8 @@ function buildPanel(t) {
   }
 }
 function panelState(t) {
-  $("cancelBtn").textContent = reviewing() ? "Discard" : "Cancel";
+  $("cancelBtn").textContent = reviewing() ? (t.id === "outfit" && !ed.demo ? "Change" : "Discard") : "Cancel";
+  if (ed.demo && t.id === "outfit") return tryDemoState();
   if (ed.demo && t.kind === "ai") return demoPanelState(t);
   const cost = costOf(t), chip = $("cost"), apply = $("applyBtn");
   const gen = MASK_TOOLS.includes(t.id) || t.id === "expand" || t.id === "bgscene";
@@ -1626,6 +1627,7 @@ function panelState(t) {
     apply.textContent = "Apply"; apply.disabled = false;
     note = job.unblended ? "This device couldn't blend the result into your full-size photo, so the whole picture is at the size the AI returned. Discard to keep your photo as it was."
       : MASK_TOOLS.includes(t.id) ? "Only the marked area changed. It is blended into your full-size photo; the marked area itself is at the AI's size and may look softer up close."
+      : t.id === "outfit" ? ""
       : "Tap Compare to see the original. Apply keeps it; Discard drops it, and the credit isn't returned.";
   } else if (!aiLive(t.id)) {
     chip.textContent = "Not available yet"; chip.className = "chip";
@@ -1648,7 +1650,8 @@ function panelState(t) {
     }
     if (jobActive()) { apply.disabled = true; note = `Wait for ${job.title} to finish, or check its status above. Glow Studio runs one AI edit at a time so nothing is charged twice.`; }
     else if (resultReady()) { apply.disabled = true; note = `Apply or discard the ${job.title} result first (in the bar above).`; }
-    if (t.id === "outfit" && !outfitData && !short) apply.disabled = true;
+    if (t.id === "outfit" && tryCompact()) note = "";
+    else if (t.id === "outfit") { if (!short) { apply.textContent = apply.textContent.replace(/^Apply/, "Try on"); if (!tryRequest()) apply.disabled = true; } const tn = tryOnNote(); if (tn) note = tn; }
     if (t.id === "custom" && !customText.trim()) apply.disabled = true;
     if (t.id === "glowup" && !short) { apply.textContent = apply.textContent.replace(/^(Apply|Run again)/, "Glow Up"); if (glow.ai === "custom" && !glow.words.trim()) apply.disabled = true; }
     if (t.id === "colorize" && photoColorful) { apply.disabled = true; note = "Colorize is for black-and-white photos. This photo already has color."; }
@@ -1745,6 +1748,7 @@ $("applyBtn").addEventListener("click", applyCurrent);
 async function applyCurrent() {
   const t = sel && TOOL[sel]; if (!t || busyNow) return;
   // Sample: prepared previews are already showing. Nothing is generated or charged.
+  if (ed.demo && t.id === "outfit") { tryDemoApply(); return; }
   if (ed.demo && t.kind === "ai") {
     if (!demo || !demo.ready.includes(t.id)) { pickAndOpen(); return; }
     if (demo.failed[t.id]) showDemoPreview(t.id); else { sel = null; renderEditor(); } return;
@@ -2039,9 +2043,14 @@ async function startAiEdit(t) {
       const up = await uploadable(base), mask = await sceneMask(up);
       body = { image: up, mode: "bgscene", mask, prompt: scenePrompt() };
       keep = { mask };
+    } else if (t.id === "outfit") {
+      // Try on: an outfit photo, or words for one, and which part to change. Her face stays hers.
+      const r = tryRequest(); if (!r) throw new Error("Pick an outfit first.");
+      body = { image: await uploadable(base, aiMaxSide(t.id), aiMaxPixels(t.id)), mode: "outfit", extra: r.extra, prompt: r.prompt, part: r.part };
+      keep = { look: r.label };
     } else if (t.id === "expand") {
       const x = await expandInputs(base); body = { image: x.image, mode: "expand", mask: x.mask };
-    } else body = { image: await uploadable(base, aiMaxSide(t.id), aiMaxPixels(t.id)), mode: t.id, extra: t.id === "outfit" ? outfitData : undefined };
+    } else body = { image: await uploadable(base, aiMaxSide(t.id), aiMaxPixels(t.id)), mode: t.id };
   } catch (err) { setBusy(false); say(err.message, true); return; }
   job = { requestId: rid(), id: null, tool: t.id, title: t.title, session: ed.session, baseIdx: ed.idx, status: "starting", startedAt: Date.now(), before, ...keep };
   saveJob();
@@ -2141,7 +2150,7 @@ async function settleJob(res) {
   }
   // Her face stays hers: if the AI moved or redrew it, her own face goes back in.
   if (mineHere && mine.keepFace) {
-    try { const fb = await renderExport(mine.baseIdx), r = await restoreFace(fb.data, full); full = r.data; mine.faceKept = r.moved; } catch {}
+    try { const fb = await renderExport(mine.baseIdx), r = await restoreFace(await shrinkData(fb.data, 2560), full); full = r.data; mine.faceKept = r.moved; } catch {}
   }
   // Pro edit: the model's light and color, each person's own features and fine detail (engine.js proFinish).
   if (mineHere && mine.tool === "pro") {
@@ -2155,7 +2164,7 @@ async function settleJob(res) {
   if (mineHere) {
     // Every AI result waits for Apply. It is kept with the job, so it survives leaving the tool,
     // the editor, or a reload, and nothing is charged again to look at it.
-    mine.status = "done"; mine.result = { data, full }; saveJob();
+    mine.status = "done"; mine.result = { data, full }; saveJob(); tryKeepLook(mine);
     renderEditor(); Platform.haptic();
     say(sel === mine.tool ? `${mine.title} is ready. Apply to keep it.` : `${mine.title} is ready to review.`);
   } else {
@@ -2203,7 +2212,7 @@ function drawStrokes() {
   const ctx = cv.getContext("2d"), r = imageRect();
   ctx.scale(dpr, dpr);
   // Marks are drawn solid on their own layer and shown at one opacity, so overlaps don't darken.
-  ctx.strokeStyle = "rgb(214 70 128)"; ctx.lineCap = ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgb(64 132 230)"; ctx.lineCap = ctx.lineJoin = "round";
   for (const s of strokes) {
     ctx.globalCompositeOperation = s.erase ? "destination-out" : "source-over";
     ctx.lineWidth = s.w * r.s; ctx.beginPath();
@@ -2367,6 +2376,7 @@ async function saveEdit(opts) {
     const offer = CONFIG.publicUrl && !shareOffered && featureOn("share:app") ? { label: "Share Glow Studio", run: () => openShareCard(out.data) } : null;
     if (offer) shareOffered = true;
     say(savedText(where, items.length, exportNote(out)), false, offer);
+    if (!share && !ed.demo) introOffer("editor");
     return true;
   } catch (err) {
     if (err && err.name === "AbortError") return false;
@@ -2384,6 +2394,12 @@ $("saveBtn").addEventListener("click", saveEdit);
 // request or allowance. Pro is remembered (until it expires) for when the server can't be reached
 // yet, such as right after opening the app offline, so a Pro save never gets the badge.
 const isPro = () => (account && account.plan ? account.plan === "pro" : new Date(store.get("glowPro") || 0) > new Date());
+// 2026-11-01 (owner's choice): Pro saves carry the mark too, every save is a chance for friends to see
+// where the photo was made, but Pro can switch it off in Settings (glowMark = "off"). Free saves
+// always carry it. The first Pro save with the mark says where to switch it off.
+const PRO_MARK_DEFAULT = "on";
+const proMarkOn = () => (store.get("glowMark") || PRO_MARK_DEFAULT) !== "off";
+const wantMark = () => !isPro() || proMarkOn();
 let shareOffered = false;
 const BADGE_LINE = CONFIG.badgeLine === "none" ? "" : CONFIG.badgeLine || PUBLIC_HOST;
 async function markFonts() {
@@ -2414,7 +2430,7 @@ function drawBadge(ctx, m, icon) {
   // The pill: ink glass with a soft shadow and a hairline edge, so the white lettering reads on
   // white walls and skies as well as on dark or busy backgrounds.
   ctx.shadowColor = "rgba(0, 0, 0, 0.22)"; ctx.shadowBlur = H * 0.3; ctx.shadowOffsetY = H * 0.04;
-  pill(ctx, x, y, m.bw, H); ctx.fillStyle = "rgba(29, 24, 27, 0.56)"; ctx.fill();
+  pill(ctx, x, y, m.bw, H); ctx.fillStyle = "rgba(23, 23, 26, 0.56)"; ctx.fill();
   ctx.shadowColor = "transparent"; ctx.lineWidth = Math.max(1, H * 0.025); ctx.strokeStyle = "rgba(255, 255, 255, 0.22)"; ctx.stroke();
   // The app icon, rounded like on a home screen.
   const ix = x + pad, iy = y + pad;
@@ -2449,11 +2465,22 @@ async function addMark(data, png) {
 // The badged picture for a free save. The first time, the person sees exactly where the badge
 // sits before anything is saved; null when they cancel. Pro saves come back unchanged.
 async function markForSave(data, png) {
-  if (isPro()) return { data, marked: false };
+  if (!wantMark()) return { data, marked: false };
   let m; try { m = await addMark(data, png); } catch { m = null; }
   if (!m) return { data, marked: false };
+  if (isPro()) {
+    // Pro: shown once, with a one-tap way to save this photo (and every later one) without it.
+    if (!store.get("glowProBadgeSeen")) {
+      const c = await ask({ title: "Your saves include a small Glow Studio badge", text: "It sits in the bottom-right corner, like this, so friends can see where your photo was made. With Glow Studio Pro you can turn it off any time in Settings.",
+        image: m.preview, caption: "The corner of your saved photo", actions: [{ label: "Keep it and save", value: "keep" }, { label: "Turn it off and save", value: "off", kind: "ghost" }] });
+      if (!c) return null;
+      store.set("glowProBadgeSeen", "1");
+      if (c === "off") { store.set("glowMark", "off"); track("setting", { mark: false, from: "first_save" }); return { data, marked: false }; }
+    }
+    return { data: m.data, marked: true };
+  }
   if (!store.get("glowBadgeSeen")) {
-    const c = await ask({ title: "Free saves include a small Glow Studio badge", text: "It sits in the bottom-right corner, like this, so friends can see where your photo was made. Glow Studio Pro saves don't have it.",
+    const c = await ask({ title: "Free saves include a small Glow Studio badge", text: "It sits in the bottom-right corner, like this, so friends can see where your photo was made. Glow Studio Pro lets you turn it off.",
       image: m.preview, caption: "The corner of your saved photo", actions: [{ label: "Save", value: "yes" }, { label: "Cancel", value: "", kind: "ghost" }] });
     if (!c) return null;
     store.set("glowBadgeSeen", "1");
@@ -2472,15 +2499,15 @@ async function makeShareCard(photo) {
   await markFonts();
   const img = await loadImg(photo), W = 1080, F = 280, k = Math.min(W / img.naturalWidth, 1350 / img.naturalHeight);
   const pw = Math.round(img.naturalWidth * k), ph = Math.round(img.naturalHeight * k), c = newCanvas(W, ph + F), ctx = c.getContext("2d");
-  ctx.fillStyle = "#f6f0ea"; ctx.fillRect(0, 0, W, ph + F);
+  ctx.fillStyle = "#f5f4f2"; ctx.fillRect(0, 0, W, ph + F);
   ctx.drawImage(img, Math.round((W - pw) / 2), 0, pw, ph);
   const q = window.qrcode(0, "M"); q.addData(CONFIG.publicUrl); q.make();
   const n = q.getModuleCount(), cell = Math.floor(200 / (n + 8)), qs = cell * (n + 8), qx = 48, qy = ph + Math.round((F - qs) / 2);
-  ctx.fillStyle = "#ffffff"; ctx.fillRect(qx, qy, qs, qs); ctx.fillStyle = "#1d1418";
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(qx, qy, qs, qs); ctx.fillStyle = "#17171a";
   for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (q.isDark(r, col)) ctx.fillRect(qx + (col + 4) * cell, qy + (r + 4) * cell, cell, cell);
   const tx = qx + qs + 40;
-  ctx.fillStyle = "#813b59"; ctx.font = MARK_SERIF(76); ctx.fillText("Try Glow Studio", tx, ph + F / 2 + 4);
-  ctx.fillStyle = "#72646f"; ctx.font = MARK_SANS(30); ctx.fillText(PUBLIC_HOST, tx, ph + F / 2 + 52);
+  ctx.fillStyle = "#17171a"; ctx.font = MARK_SERIF(76); ctx.fillText("Try Glow Studio", tx, ph + F / 2 + 4);
+  ctx.fillStyle = "#5f5d59"; ctx.font = MARK_SANS(30); ctx.fillText(PUBLIC_HOST, tx, ph + F / 2 + 52);
   return c.toDataURL("image/jpeg", 0.92);
 }
 async function openShareCard(photo) {
@@ -2524,6 +2551,19 @@ function renderCredits() {
   chip.setAttribute("aria-label", `${balanceText(a)}. Details`);
   $("homeCredits").innerHTML = icon("sparkle") + `<span>${balanceText(a)}</span>`;
 }
+// The AI tools people can use right now (switched on, and in the menu or the Enhance tab), by name,
+// so the credits sheet always matches the real prices and tools. Hair and portrait styles are named
+// as a group rather than one by one.
+const andList = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+function aiNames(keep) {
+  const inMenu = new Set(Object.values(CATS).flatMap((groups) => groups.flatMap((g) => g[2])));
+  const names = [];
+  TOOLS.filter((t) => t.kind === "ai" && keep(t) && toolOn(t.id) && (inMenu.has(t.id) || t.id === "enhance")).forEach((t) => {
+    const n = t.cat === "hair" ? "hairstyles" : t.cat === "styles" && t.id !== "outfit" ? "portrait styles" : ({ retouch: "AI retouch", faces: "Face repair", golden: "Golden hour" })[t.id] || t.label;
+    if (!names.includes(n)) names.push(n);
+  });
+  return names;
+}
 function renderCreditsSheet() {
   // A balance card on top, then a few short facts. The rules are unchanged; only the layout is.
   const a = account;
@@ -2531,10 +2571,14 @@ function renderCreditsSheet() {
   const card = (n, of, sub, note) => `<div class="cr-card"><div class="cr-num"><b>${n}</b><span>${of}</span></div>` +
     `<div class="cr-bar"><i style="width:${of ? Math.round(100 * Math.min(1, n / (+of.match(/\d+/)[0] || 1))) : 0}%"></i></div><p>${sub}</p>${note ? `<p class="cr-note">${note}</p>` : ""}</div>`;
   let html = "", facts = [];
+  const twoCredit = andList(aiNames((t) => costOf(t) === 2));
   if (!a) html = `<div class="cr-card"><p>Your balance will show once Glow Studio can reach its server.</p></div>`;
   else if (a.plan === "pro") {
-    html = card(a.remaining, `of ${a.quota} AI credits left`, "Glow Studio Pro includes 40 AI credits each week. Each credit comes back 7 days after you use it.",
-      "Unused credits don't carry over. The yearly plan also has a limit of 80 credits in any 30 days.");
+    html = a.inTrial
+      ? card(a.remaining, `of ${a.quota} AI credits left`, "Your free trial includes 10 AI credits. When your paid plan starts, you get 40 each week.",
+        "Every Pro tool works during the trial. Cancel in your App Store or Google Play subscriptions before it ends and you won't be charged.")
+      : card(a.remaining, `of ${a.quota} AI credits left`, "Glow Studio Pro includes 40 AI credits each week. Each credit comes back 7 days after you use it.",
+        "Unused credits don't carry over. The yearly plan also has a limit of 60 credits in any 30 days.");
     const until = store.get("glowPro"), d = until ? new Date(until) : null;
     if (d && !isNaN(d)) facts.push(fact("star", `Your plan renews or ends on ${d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}`,
       "Change or cancel it any time in your App Store or Google Play subscriptions."));
@@ -2542,17 +2586,17 @@ function renderCreditsSheet() {
     const r = nextUtcMidnight(), mins = Math.max(1, Math.round((r - Date.now()) / 60000));
     const left = mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
     html = card(a.remaining, `of ${a.quota} AI credits left today`, `Resets at ${fmtTime(r)} (in ${left}). Unused credits don't carry over.`,
-      a.trialLeft !== undefined ? "Daily credits work with Enhance, AI retouch, Remove and Colorize." : "");
+      a.trialLeft !== undefined ? `Daily credits work with ${andList(aiNames((t) => CHEAP_AI.includes(t.id)))}.` : "");
     if (a.trialLeft !== undefined) facts.push(fact("sparkle", `${a.trialLeft} free premium ${a.trialLeft === 1 ? "try" : "tries"} left`,
-      "Pro edit, Golden hour, outfits, Describe, Fill, AI scene and portrait styles share 3 free premium credits, once, not each day. Fill, AI scene, Describe and the portrait styles use 2."));
+      `${andList(aiNames((t) => !CHEAP_AI.includes(t.id)))} share 3 free premium credits, once, not each day.${twoCredit ? ` ${twoCredit} use 2.` : ""}`));
     if (native && plugins.AdMob && a.adsLeft > 0) facts.push(fact("star", "Out of credits?",
       `Watch a short ad for 1 more credit${a.trialLeft !== undefined ? " for the daily tools" : ""}, up to ${a.adsLeft} more today. Ads are always optional.`));
   }
   if (a && a.bonus > 0) facts.unshift(fact("star", `${a.bonus} extra AI ${a.bonus === 1 ? "credit" : "credits"}, included above`,
     `They never expire and are used after your ${a.plan === "pro" ? "weekly" : "free"} credits${a.plan === "pro" ? "" : ", on every AI tool"}.`));
-  facts.push(fact("save", "Saving is free and unlimited", "On the free plan, saves carry a small Glow Studio mark."),
+  facts.push(fact("save", "Saving is free and unlimited", a && a.plan === "pro" ? "Saves carry a small Glow Studio mark unless you turn it off in Settings." : "On the free plan, saves carry a small Glow Studio mark."),
     fact("sliders", "On-device tools are always free", "Camera, filters, face, makeup, backgrounds, light and color. Undo and redo never use credits."),
-    fact("wand", `Most AI tools use 1 credit`, `Headshot, Fashion, Describe${CONFIG.pricingV2 ? ", Fill and AI scene" : " and AI scene"} use 2. Each tool shows its cost before you apply it.`),
+    fact("wand", twoCredit ? "Most AI tools use 1 credit" : "Each AI tool uses 1 credit", `${twoCredit ? `${twoCredit} use 2. ` : ""}Each tool shows its cost before you apply it.`),
     fact("revert", "Failed edits are refunded", "If the AI service reports an edit failed, its credit comes back automatically."));
   $("creditsBody").innerHTML = html + `<ul class="cr-facts">${facts.join("")}</ul>`;
   $("creditsPro").hidden = !!(a && a.plan === "pro");
@@ -2579,6 +2623,7 @@ function showUsage(u) {
     ? `Glow Studio Pro: ${account.remaining} of ${account.quota} AI credits left this week.`
     : `Free plan: ${account.remaining} of ${account.quota} AI credits left today. On-device tools are always free.`;
   $("goProBtn").hidden = account.plan === "pro";
+  if ($("settings").open) renderMarkSetting();
   renderCredits();
   if (screen === "editorScreen") { renderPanel(); }
   if (screen === "enhanceHome" && typeof renderEnhanceHome === "function") renderEnhanceHome();
@@ -3446,6 +3491,13 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 setInterval(() => { if (document.visibilityState === "visible") refreshFeatures(true); }, 15 * 60000);
 
 // ---------- Settings ----------
+// Pages opened from Settings (credits, Pro, Help, Privacy, Terms, Licenses, Contact support) open on top
+// of it, so closing them lands back in Settings where you were, not on the home screen.
+// Back and Escape close the sheet on top first: each dialog remembers when it was opened.
+let dialogSeq = 0;
+const showModal0 = HTMLDialogElement.prototype.showModal;
+HTMLDialogElement.prototype.showModal = function () { this.dataset.openSeq = String(++dialogSeq); return showModal0.call(this); };
+const topDialog = () => [...document.querySelectorAll("dialog[open]")].sort((a, b) => (+a.dataset.openSeq || 0) - (+b.dataset.openSeq || 0)).pop() || null;
 // Tapping the build line copies the full account ID (to add a phone as a tester on the admin page).
 $("buildId").addEventListener("click", async () => {
   const id = session && session.user_id; if (!id) return;
@@ -3454,6 +3506,7 @@ $("buildId").addEventListener("click", async () => {
 function openSettings() {
   refreshAccount(); renderEnhPrefs();
   $("saveOrigToggle").checked = store.get("glowSaveOrig") === "on";
+  renderMarkSetting();
   $("autoSaveToggle").checked = autoSaveOn();
   applyTheme(); showBuild();
   $("settings").showModal();
@@ -3472,17 +3525,36 @@ async function showBuild() {
   } catch {}
   buildFp = fp || buildFp;
   const id = session && session.user_id;
-  $("buildId").textContent = `Build ${fp || "unknown"} · ${FEATURES} · ${location.host || "app"}${id ? ` · ID ${id.slice(0, 8)}` : ""}${Features.tester ? " · Tester" : ""}`;
+  // The phone app is served from its own files (host "localhost"), so name the platform instead.
+  const where = { android: "Android app", ios: "iPhone app" }[PLATFORM] || (native ? "Phone app" : "Web");
+  $("buildId").textContent = `Version ${APP_BUILD} (${fp || "unknown"}) · ${where}${id ? ` · ID ${id.slice(0, 8)}` : ""}${Features.tester ? " · Tester" : ""}`;
+  $("buildId").title = `${FEATURES}. Tap to copy your account ID.`;
 }
 $("camSettingsBtn").addEventListener("click", openSettings);
 $("homeSettingsBtn").addEventListener("click", openSettings);
 $("themeSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { store.set("glowTheme", b.dataset.theme); applyTheme(); track("setting", { theme: b.dataset.theme }); } });
+// The Glow Studio mark: always on for free saves (the switch shows it, and tapping it offers Pro);
+// Pro can turn it off.
+function renderMarkSetting() {
+  const pro = isPro();
+  $("markToggle").checked = wantMark();
+  $("markToggle").closest(".setting").classList.toggle("locked", !pro);
+  $("markHelp").textContent = pro
+    ? "A small badge in the corner of each saved photo shows friends where it was made."
+    : "Free saves include a small badge in the corner. Glow Studio Pro lets you turn it off.";
+}
+$("markToggle").addEventListener("change", (e) => {
+  if (!isPro()) { e.target.checked = true; track("mark_locked", {}); openPaywall(); return; }
+  store.set("glowMark", e.target.checked ? "on" : "off"); store.set("glowProBadgeSeen", "1");
+  track("setting", { mark: e.target.checked });
+  say(e.target.checked ? "Saved photos will include the Glow Studio badge." : "Saved photos won't include the Glow Studio badge.");
+});
 $("saveOrigToggle").addEventListener("change", (e) => { store.set("glowSaveOrig", e.target.checked ? "on" : "off"); track("setting", { save_original: e.target.checked }); });
 $("autoSaveToggle").addEventListener("change", (e) => { store.set("glowAutoSave", e.target.checked ? "on" : "off"); track("setting", { auto_save: e.target.checked }); });
 $("autoSaveHelp").textContent = native && plugins.Media
   ? "Each photo goes to the Glow Studio album as soon as you take it. You can still edit or retake it."
   : "Each photo downloads as soon as you take it. Look in Downloads; browsers can't save to your photo library.";
-$("goProBtn").addEventListener("click", () => { $("settings").close(); openPaywall(); });
+$("goProBtn").addEventListener("click", () => openPaywall());
 $("deleteAccount").addEventListener("click", async (e) => {
   e.preventDefault();
   const ok = await ask({ title: "Delete your account and data?", text: "This permanently deletes your Glow Studio account and its data. It can't be undone. Cancel any subscription in your store settings too.",
@@ -3511,24 +3583,66 @@ function openSupport(idea) {
   $("supportTitle").textContent = idea ? "Suggest a feature" : "Contact support";
   $("supportTopic").closest("label").hidden = idea;
   $("supportMessage").placeholder = idea ? "What would make Glow Studio better for you?" : "Tell us what happened.";
-  $("settings").close(); $("supportSheet").showModal();
+  $("supportSheet").showModal();
 }
 $("contactSupport").addEventListener("click", (e) => { e.preventDefault(); openSupport(false); });
 $("suggestFeature").addEventListener("click", (e) => { e.preventDefault(); openSupport(true); });
-$("subsInfo").addEventListener("click", (e) => { e.preventDefault(); $("settings").close(); openCredits(); });
+$("subsInfo").addEventListener("click", (e) => { e.preventDefault(); openCredits(); });
 // Share Glow Studio: the app's address through the phone's share sheet, or copied where there is none.
 $("shareApp").hidden = !CONFIG.publicUrl;
 $("shareApp").addEventListener("click", async (e) => {
   e.preventDefault();
   const data = { title: "Glow Studio", text: "I've been enhancing my photos with Glow Studio. Try it:", url: CONFIG.publicUrl };
   track("share_app");
-  try {
-    if (native && plugins.Share) { await plugins.Share.share(data); return; }
-    if (navigator.share) { await navigator.share(data); return; }
-  } catch (err) { if (err && err.name === "AbortError") return; }
+  // Once a share sheet has opened, it is the answer: Android reports a closed or cancelled sheet as an
+  // error (sometimes while the sheet is still showing), which used to put a "Link copied" toast on top of it.
+  // The link is copied only where no share sheet exists or it couldn't open at all.
+  if (native && plugins.Share) {
+    try { await plugins.Share.share(data); } catch (err) { if (!/cancel/i.test((err && err.message) || "")) console.warn("share", err); }
+    return;
+  }
+  if (navigator.share && (!navigator.canShare || navigator.canShare(data))) {
+    try { await navigator.share(data); return; } catch (err) { if (err && (err.name === "AbortError" || err.name === "InvalidStateError")) return; }
+  }
   try { await navigator.clipboard.writeText(CONFIG.publicUrl); say("Link copied. Paste it anywhere to share Glow Studio."); }
   catch { say(CONFIG.publicUrl); }
 });
+// Help, Privacy, Terms and Licenses open inside the app. In the phone app these pages are the
+// app's own files, so leaving the app's page for them (as plain links did) reloaded Glow Studio:
+// /support has no file of its own there (only the website maps it), so Help restarted the app, and
+// a plain-text page showed black text on the app's dark background. Here they open in a sheet that
+// follows the app's Light or Dark choice, and links to other sites open in the browser.
+function openDoc(href, title) {
+  const frame = $("docFrame");
+  $("docTitle").textContent = title;
+  frame.src = href;
+  $("docSheet").showModal();
+  track("open_doc", { page: href.replace(/^\/|\.html$/g, "") });
+}
+$("docFrame").addEventListener("load", () => {
+  let doc;
+  try { doc = $("docFrame").contentDocument; } catch { return; }
+  if (!doc || !doc.documentElement) return;
+  const t = store.get("glowTheme") || "system";
+  const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+  doc.documentElement.dataset.theme = dark ? "dark" : "light";
+  doc.documentElement.dataset.embed = "1";
+  const h1 = doc.querySelector("h1"); if (h1) $("docTitle").textContent = h1.textContent;
+  doc.addEventListener("click", (e) => {
+    const a = e.target.closest("a[href]"); if (!a) return;
+    const url = new URL(a.getAttribute("href"), doc.baseURI);
+    if (url.origin === location.origin && url.pathname !== "/" && url.pathname !== "/index.html") return;   // another help page: stays in the sheet
+    e.preventDefault();
+    if (url.origin === location.origin) { $("docSheet").close(); return; }   // "Glow Studio" home link: back to the app
+    if (url.protocol === "mailto:") { location.href = url.href; return; }
+    window.open(url.href, "_blank", "noopener");
+  });
+});
+$("docSheet").addEventListener("close", () => { $("docFrame").src = "about:blank"; });
+document.querySelectorAll("#settings [data-doc]").forEach((a) => a.addEventListener("click", (e) => {
+  if (e.ctrlKey || e.metaKey || e.shiftKey) return;   // the website: open in a new tab as asked
+  e.preventDefault(); openDoc(a.getAttribute("href"), a.dataset.doc);
+}));
 // Enhance defaults: each Result tool's starting level (enhance.js keeps them in glow.enhDefaults).
 function renderEnhPrefs() {
   const box = $("enhPrefs");
@@ -3565,6 +3679,7 @@ $("supportForm").addEventListener("submit", async (e) => {
   } catch (err) { say(err.message, true); }
   finally { $("supportSend").disabled = false; $("supportSend").textContent = "Send"; }
 });
+$("manageSubs").hidden = !native;
 $("manageSubs").addEventListener("click", (e) => {
   e.preventDefault();
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
@@ -3603,17 +3718,39 @@ function setupPurchases() {
     if (packages.yearly) {
       const y = packages.yearly.product;
       $("priceYearly").textContent = `${y.priceString}/year`;
-      $("yearlyNote").textContent = y.pricePerMonthString ? `About ${y.pricePerMonthString} a month, billed yearly` : "Billed once a year";
+      yearlyTrial = await trialDays(y);
+      $("yearlyNote").textContent = yearlyTrial ? `${yearlyTrial} days free, then ${y.priceString} a year`
+        : y.pricePerMonthString ? `About ${y.pricePerMonthString} a month, billed yearly` : "Billed once a year";
     }
+    $("buyBtn").textContent = buyLabel();
     renderPlanNote();
     return true;
   })().catch((e) => { rcReady = null; console.warn(e); return false; });
   return rcReady;
 }
+// The yearly plan's free trial is set up in the stores (an introductory offer), not here: the app
+// only shows it when the store offers it to this person. Google only offers it to people who can
+// use it; Apple says so through the eligibility check. Returns the trial's length in days, or 0.
+let yearlyTrial = 0;
+async function trialDays(product) {
+  const intro = product && product.introPrice;
+  if (!intro || intro.price !== 0) return 0;
+  const unit = { DAY: 1, WEEK: 7, MONTH: 30 }[intro.periodUnit] || 0, days = unit * (intro.periodNumberOfUnits || 0);
+  if (!days) return 0;
+  if (window.Capacitor.getPlatform() === "ios") {
+    try {
+      const e = await purchases().checkTrialOrIntroductoryPriceEligibility({ productIdentifiers: [product.identifier] });
+      const st = e && e[product.identifier] && e[product.identifier].status;
+      if (st === 1 || st === 3 || st === "INTRO_ELIGIBILITY_STATUS_INELIGIBLE" || st === "INTRO_ELIGIBILITY_STATUS_NO_INTRO_OFFER_EXISTS") return 0;
+    } catch { return 0; }
+  }
+  return days;
+}
 function renderPlanNote() {
   const price = $(plan === "yearly" ? "priceYearly" : "priceWeekly").textContent.replace("/", " per ");
+  const trial = plan === "yearly" && yearlyTrial;
   $("pwNote").textContent = native
-    ? `${price}. Renews automatically every ${plan === "yearly" ? "year" : "week"} until you cancel. Cancel anytime in your App Store or Google Play settings at least 24 hours before renewal. Payment is charged to your store account.`
+    ? `${trial ? `Free for ${yearlyTrial} days, with 10 AI credits to try. Then ${price}` : price}. Renews automatically every ${plan === "yearly" ? "year" : "week"} until you cancel. Cancel anytime in your App Store or Google Play settings at least 24 hours before renewal. Payment is charged to your store account.`
     : "Glow Studio Pro is available in the Glow Studio app for iPhone and Android. The camera and on-device tools stay free here.";
 }
 function openPaywall() {
@@ -3624,6 +3761,20 @@ function openPaywall() {
   setupPurchases();
   track("paywall_view", { plan: account ? account.plan : "", screen });
   $("paywall").showModal();
+}
+// Once per install, at the first "wow" moment (the first Enhance result, or the first photo saved
+// from the editor), show the Pro screen. It closes like any sheet and nothing is locked. Only in the
+// phone app, where Pro can be bought, and never on top of another sheet or after the person moved on.
+function introOffer(where) {
+  if (!native || store.get("glowIntroOffer") || !featureOn("money:intro") || (account && account.plan === "pro")) return;
+  const from = screen;
+  setTimeout(async () => {
+    if (!(await setupPurchases())) return;   // the store isn't set up yet: nothing could be bought
+    if (store.get("glowIntroOffer") || screen !== from || topDialog() || (account && account.plan === "pro")) return;
+    store.set("glowIntroOffer", "1");
+    track("intro_offer", { where });
+    openPaywall();
+  }, where === "enhance" ? 2400 : 2800);
 }
 $("plans").addEventListener("click", (e) => {
   const b = e.target.closest(".plan"); if (!b) return;
@@ -3636,7 +3787,7 @@ $("plans").addEventListener("keydown", (e) => {
   e.preventDefault(); const other = document.querySelector(`.plan:not([data-plan="${plan}"])`); other.click(); other.focus();
 });
 $("pwPacks").addEventListener("click", () => { $("paywall").close(); openPacks(); });
-const buyLabel = () => (plan === "yearly" ? "Continue with yearly" : "Continue with weekly");
+const buyLabel = () => (plan === "yearly" ? (yearlyTrial ? `Start ${yearlyTrial}-day free trial` : "Continue with yearly") : "Continue with weekly");
 // The store tells our server through RevenueCat; check a few times until Pro shows up.
 async function afterPurchase() {
   for (let i = 0; i < 6; i++) {
@@ -3654,7 +3805,8 @@ $("buyBtn").addEventListener("click", async () => {
     await purchases().purchasePackage({ aPackage: packages[plan] });
     track("purchase", { plan });
     $("paywall").close();
-    say((await afterPurchase()) ? "Welcome to Glow Studio Pro. Your 40 weekly AI credits are ready." : "Purchase complete. Pro will switch on within a minute.");
+    say((await afterPurchase()) ? (account.inTrial ? "Your free trial has started. You have 10 AI credits to try every Pro tool."
+      : "Welcome to Glow Studio Pro. Your 40 weekly AI credits are ready.") : "Purchase complete. Pro will switch on within a minute.");
   } catch (err) {
     track("purchase_fail", { plan, cancelled: !!(err && err.userCancelled) });
     if (!(err && err.userCancelled)) say((err && err.message) || "Purchase didn't go through.", true);
@@ -3793,7 +3945,7 @@ $("adBtn").addEventListener("click", async () => {
 // back through Enhance, leave the editor (to where the photo came from) or the photo review.
 // Returns false on the main tabs, where Back leaves the app.
 function goBack() {
-  const open = document.querySelector("dialog[open]");
+  const open = topDialog();
   if (open) { if (!(open.id === "enhSheet" && enh.busy)) open.close(); return true; }
   if (expanded) { setExpanded(false); return true; }
   if (typeof enhanceBack === "function" && enhanceBack()) return true;
