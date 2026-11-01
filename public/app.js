@@ -3186,6 +3186,16 @@ function setAdjustOpen(open) {
   if (open) { const c = document.querySelector('#adjChips [aria-checked="true"]'); keepInView($("adjChips"), c); }
   else if (b && document.activeElement && $("adjustPanel").contains(document.activeElement)) b.focus();
 }
+// Hide controls: the lens pill and the Looks / Adjust rows fold away so the whole picture shows,
+// leaving just the shutter row and a small chevron to bring them back. Remembered between visits.
+function setCamMin(min) {
+  $("cameraScreen").classList.toggle("cam-min", min);
+  const b = $("camHide"); setIcon(b, min ? "chevup" : "chevdown");
+  b.setAttribute("aria-pressed", String(min)); b.setAttribute("aria-label", min ? "Show the controls" : "Hide the controls to see the full picture");
+  store.set("glowCamMin", min ? "1" : "");
+}
+$("camHide").addEventListener("click", () => { Platform.haptic(); setCamMin(!$("cameraScreen").classList.contains("cam-min")); });
+setCamMin(store.get("glowCamMin") === "1");
 // Scrolls a chip row sideways (never the page) just enough that the chosen chip is fully in view.
 function keepInView(row, el) {
   if (!row || !el || row.scrollWidth <= row.clientWidth + 1) return;

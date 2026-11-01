@@ -2577,6 +2577,11 @@ if (faceVideo) test('camera live: Adjust replaces the Looks row, Done closes it,
   eq(f, true, '↺ never covers the filter chips');
   await p.click('#adjDone');
   eq(await p.evaluate(() => [$('adjustPanel').hidden, getComputedStyle($('camLooks')).display !== 'none']), [true, true], 'Done brings the Looks back');
+  // Hide controls folds the rows away for the full picture (shutter stays), remembered, and comes back.
+  await p.click('#camHide');
+  eq(await p.evaluate(() => [getComputedStyle($('camLooks')).display, $('shutter').offsetWidth > 0, localStorage.getItem('glowCamMin'), $('camHide').getAttribute('aria-pressed')]), ['none', true, '1', 'true'], 'rows hidden, shutter kept');
+  await p.click('#camHide');
+  eq(await p.evaluate(() => [getComputedStyle($('camLooks')).display !== 'none', localStorage.getItem('glowCamMin')]), [true, ''], 'rows back');
 }, liveOpts());
 
 // A phone GPU that returns NaN face points (seen on Android Chrome): the worker moves to the CPU,

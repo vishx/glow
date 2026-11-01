@@ -199,6 +199,7 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
     </div>
     <div class="cam-controls" id="camControls">
       <div id="liveControls">
+        <button class="cam-hide" id="camHide" aria-pressed="false" aria-label="Hide the controls to see the full picture"></button>
         <div class="cam-zoom" id="camZoom" role="group" aria-label="Zoom. Drag sideways for the zoom dial" hidden>
           <div class="cam-dial" id="camDial" hidden><div class="cam-dial-track" id="camDialTrack"></div><b class="cam-dial-val" id="camDialVal"></b></div>
           <div class="cam-lenses" id="camLenses"></div>
