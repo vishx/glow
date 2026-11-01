@@ -1847,7 +1847,10 @@ async function personAlpha(src, c) {
 // coarse, so it is grown a little and only ever takes away, never adds.
 async function clipToBody(c, alpha) {
   let res;
-  try { res = (await poseFinder()).detect(detectCopy(c)); } catch { return; }
+  // A small copy with sides a multiple of 4 (odd sizes crash MediaPipe's mask output).
+  const sc = Math.min(1, 640 / Math.max(c.width, c.height)), small = newCanvas(Math.max(4, Math.round((c.width * sc) / 4) * 4), Math.max(4, Math.round((c.height * sc) / 4) * 4));
+  small.getContext("2d").drawImage(c, 0, 0, small.width, small.height);
+  try { res = (await poseFinder()).detect(small); } catch { return; }
   const m = res && res.segmentationMasks && res.segmentationMasks[0];
   if (!m) { if (res && res.close) res.close(); return; }
   const conf = m.getAsFloat32Array(), mc = newCanvas(m.width, m.height), mx = mc.getContext("2d"), px = mx.createImageData(m.width, m.height);

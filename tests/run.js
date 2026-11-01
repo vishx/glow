@@ -333,7 +333,7 @@ test('ai: a result that finishes after the photo was replaced waits on Editor ho
 // ---------- Accessibility ----------
 test('a11y: 200% text has no horizontal scroll on Camera, Editor home, the editor with a tool open, and Settings', async ({ p }) => {
   await p.goto('https://app.test/'); await p.addStyleTag({ content: 'html { font-size: 200% !important; }' });
-  const over = () => p.evaluate(() => [document.documentElement.scrollWidth > innerWidth, [...document.querySelectorAll('#app *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && e.offsetParent && r.right > innerWidth + 1 && getComputedStyle(e).overflowX === 'visible' && !e.closest('.looks,.tools,.tabs,.chips,.opts,.subchips'); }).map((e) => e.id || e.className).slice(0, 5)]);
+  const over = () => p.evaluate(() => [document.documentElement.scrollWidth > innerWidth, [...document.querySelectorAll('#app *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && e.offsetParent && r.right > innerWidth + 1 && getComputedStyle(e).overflowX === 'visible' && !e.closest('.looks,.tools,.tabs,.chips,.opts,.subchips,.areas'); }).map((e) => e.id || e.className).slice(0, 5)]);
   await camLive(p);
   let o = await over(); eq(o[0], false, 'camera page scroll'); eq(o[1], [], 'camera clipped elements');
   await p.click('#nav button[data-dest="editor"]'); o = await over(); eq(o[0], false, 'home scroll'); eq(o[1], [], 'home clipped');
@@ -348,7 +348,7 @@ test('a11y: keyboard focus is visible, sliders have names and spoken values', as
   await p.goto('https://app.test/'); await pick(p, fx('transparent.png'));
   await tool(p, 'edit', 'light', 'light');
   const r = await p.evaluate(() => { const s = document.querySelector('.panel input[type=range]'); return { label: s.getAttribute('aria-label'), text: s.getAttribute('aria-valuetext') }; });
-  eq(r, { label: 'Light amount', text: 'No change' }, 'slider name and value');
+  eq(r, { label: 'Brightness amount', text: 'No change' }, 'slider name and value');
   await p.fill('.panel input[type=range]', '12'); eq(await p.getAttribute('.panel input[type=range]', 'aria-valuetext'), 'Plus 12', 'value updates');
   // Tab through the editor; every focused control shows an outline or ring.
   await p.keyboard.press('Escape').catch(() => {});
@@ -1610,11 +1610,11 @@ test('nav: five tabs file every tool still offered once, retired tools nowhere, 
   eq(c, { missing: [], twice: [], unknown: [], tabs: ['Beauty', 'Looks', 'Adjust', 'Background', 'AI'], bodyOnlyInSearch: true }, 'every tool filed once, five tabs, body tools advanced');
   for (const cat of ['retouch', 'looks', 'edit', 'bg', 'ai']) {
     await p.click(`.tab[data-cat="${cat}"]`);
-    const r = await p.evaluate(() => [[...document.querySelectorAll('#tools .tool')].pop().id, document.querySelectorAll('#tools .tool[data-tool^="b"][data-tool$="s"], #tools .tool[data-tool="bwaist"]').length]);
+    const r = await p.evaluate(() => [[...document.querySelectorAll('#tools .tool')].pop().id, document.querySelectorAll(['bwaist', 'bhips', 'barms', 'bslimlegs', 'blegs'].map((x) => `#tools .tool[data-tool="${x}"]`).join(',')).length]);
     eq(r, ['searchBtn', 0], `${cat}: Search is the last tile and no body tools are listed`);
   }
   await p.click('.tab[data-cat="edit"]');
-  eq((await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => b.dataset.tool))).slice(0, 5), ['crop', 'light', 'contrast', 'highlights', 'shadows'], 'Crop, Light, Contrast, Highlights, Shadows first');
+  eq((await p.$$eval('#tools .tool[data-tool]', (x) => x.map((b) => b.dataset.tool))).slice(0, 5), ['crop', 'exposure', 'light', 'contrast', 'highlights'], 'Crop, Exposure, Brightness, Contrast, Highlights first');
   await p.click('.tool[data-tool="crop"]'); await p.waitForFunction(() => !!cr);
   eq(await p.evaluate(() => [sel, $('panelBody').querySelectorAll('.tool').length]), ['crop', 0], 'one tap from Edit to the crop controls');
   await p.click('#cancelBtn');
@@ -2009,7 +2009,7 @@ test('adjust: the full Adjust set changes the photo, and grain is the same every
 });
 
 // Full / Person / Background: a slider can change only the person or only the background.
-test('adjust: Person and Background change only their part of the photo', async ({ p }) => {
+test('adjust: Person and Background change only their part of the photo', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, AREA_PHOTO);
   await tool(p, 'edit', null, 'exposure');
   eq(await p.$$eval('#areaRow .area span', (x) => x.map((e) => e.textContent)), ['Full', 'Person', 'Background'], 'area chips');
@@ -2046,6 +2046,7 @@ test('adjust: Person and Background change only their part of the photo', async 
   // The choice stays for the next Adjust tool.
   await tool(p, 'edit', null, 'clarity');
   await p.waitForSelector('#areaRow .area[data-area="bg"][aria-pressed="true"]', { timeout: 60000 });
+  eq(state.errs, [], 'no page errors (the body model once crashed on odd-sized pictures)');
 });
 
 test('adjust: a photo without a person keeps Full and explains why', async ({ p }) => {
