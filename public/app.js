@@ -2748,8 +2748,8 @@ const PRESET_LOOKS = [
     lips: 40, blush: 35, brows: 30, lipShade: "#b5485d", blushShade: "#e86a8a" },
   { id: "glam", name: "Glam", smooth: 75, bright: 40, warm: 35, filter: "warm", eyes: 30, slim: 30, nose: 20,
     lips: 60, blush: 40, brows: 45, lipShade: "#c0392b", blushShade: "#ff7f98", browShade: "#3b2a20" },
-].map((l) => ({ ...LIVE_DEFAULTS, ...l }));
-const LOOK_KEYS = ["smooth", "bright", "warm", "filter", ...Object.keys(LIVE_DEFAULTS)];
+].map((l) => ({ ...LIVE_DEFAULTS, filterAmt: 100, ...l }));
+const LOOK_KEYS = ["smooth", "bright", "warm", "filter", "filterAmt", ...Object.keys(LIVE_DEFAULTS)];
 const beauty = { ...PRESET_LOOKS[1] };
 let myLooks = [];
 try { myLooks = JSON.parse(store.get("glowLooks") || "[]"); } catch {}
@@ -2762,10 +2762,11 @@ try {
   const l = allLooks().find((x) => x.id === lookId);
   Object.assign(beauty, l || JSON.parse(store.get("glowBeauty") || "{}"));
 } catch {}
+if (beauty.filterAmt == null) beauty.filterAmt = 100;   // looks saved before filter strength existed
 const lookName = () => (allLooks().find((l) => l.id === lookId) || { name: "Custom look" }).name;
 function saveBeauty() { store.set("glowBeauty", JSON.stringify(beauty)); store.set("glowLook", lookId); store.set("glowLooks", JSON.stringify(myLooks)); }
 // Looks saved before the face settings existed have none of them, so those start at zero.
-function useLook(l) { track("look", { id: String(l.id).startsWith("my") ? "my_look" : l.id }); lookId = l.id; Object.assign(beauty, LIVE_DEFAULTS, Object.fromEntries(LOOK_KEYS.filter((k) => k in l).map((k) => [k, l[k]]))); saveBeauty(); renderLooks(); }
+function useLook(l) { track("look", { id: String(l.id).startsWith("my") ? "my_look" : l.id }); lookId = l.id; Object.assign(beauty, LIVE_DEFAULTS, { filterAmt: 100 }, Object.fromEntries(LOOK_KEYS.filter((k) => k in l).map((k) => [k, l[k]]))); saveBeauty(); renderLooks(); }
 
 const cam = { stream: null, facing: store.get("glowFacing") || "user", gl: null, raf: 0, state: "", torch: false, shot: null, thumb: "", gen: 0, opened: 0 };
 const isOriginalLook = () => { const l = camLook(); return !l.smooth && !l.bright && !l.warm && l.filter === "none" && LIVE_KEYS.every((k) => !l[k]); };
@@ -2780,7 +2781,7 @@ function camLook() {
   if (noFilter) l.filter = "none";
   return l;
 }
-const SLIDERS = [["sSmooth", "smooth"], ["sBright", "bright"], ["sWarm", "warm"], ["sEyes", "eyes"], ["sSlim", "slim"], ["sNose", "nose"]];
+const SLIDERS = [["sSmooth", "smooth"], ["sBright", "bright"], ["sWarm", "warm"], ["sEyes", "eyes"], ["sSlim", "slim"], ["sNose", "nose"], ["sFilterAmt", "filterAmt"]];
 // Makeup shows one part at a time (one slider and its shades), so the preview stays large.
 const MAKEUP_PARTS = { lips: ["Lips", "lipShade"], blush: ["Blush", "blushShade"], brows: ["Brows", "browShade"] };
 let makeupPart = "lips";
@@ -2802,8 +2803,8 @@ function renderLooks() {
     return b;
   }));
   renderAdjNote();
-  const flt = FILTERS.find((f) => f.id === camLook().filter) || FILTERS[0];
-  $("camCanvas").style.filter = flt.f === "none" ? "" : flt.f;
+  $("sFilterAmt").closest(".slider").hidden = (beauty.filter || "none") === "none";
+  renderCamFx();
   const chip = (text, on, cls, fn) => {
     const b = document.createElement("button"); b.className = "look" + (cls ? " " + cls : ""); b.textContent = text;
     if (on != null) b.setAttribute("aria-pressed", String(on));
@@ -2852,6 +2853,7 @@ $("sMakeup").addEventListener("input", (e) => {
 SLIDERS.forEach(([id, k]) => $(id).addEventListener("input", (e) => {
   beauty[k] = +e.target.value; e.target.nextElementSibling.textContent = e.target.value; e.target.setAttribute("aria-valuetext", `${e.target.value} percent`);
   if (lookId !== "custom") { lookId = "custom"; renderLooks(); }
+  else if (k === "filterAmt") renderCamFx();
   saveBeauty();
 }));
 
@@ -2893,6 +2895,7 @@ function selectAdj(key) {
   $("adjReset1").addEventListener("click", () => {
     Platform.haptic();
     beauty[adjSel] = DEFAULT_LOOK[adjSel] ?? (adjSel === "filter" ? "none" : 0);
+    if (adjSel === "filter") beauty.filterAmt = 100;
     lookId = LOOK_KEYS.every((k) => DEFAULT_LOOK[k] === beauty[k]) ? DEFAULT_LOOK.id : "custom";
     saveBeauty(); renderLooks();
   });
@@ -2928,12 +2931,50 @@ function renderAdjNote() {
   if ($("adjNote").textContent !== msg) $("adjNote").textContent = msg;
   $("adjNote").hidden = !msg;
 }
+// The camera's filter at its strength, and its film effects drawn over the live preview with the
+// same numbers paintFx() uses for the photo. The native camera draws the color and wash itself.
+function camFilter(l = camLook()) { return scaleFilter(FILTERS.find((f) => f.id === l.filter) || FILTERS[0], (l.filterAmt ?? 100) / 100); }
+var grainURLs = null;   // var: renderCamFx() can run before this line during start-up
+function grainURL(native) {
+  if (!grainURLs) {
+    // The native preview sits behind the page, so blend modes can't reach it: there the grain is
+    // see-through specks (light and dark) instead of an overlay; the photo uses the real overlay.
+    const t = grainTile(), a = newCanvas(t.width, t.height), x = a.getContext("2d");
+    const d = t.getContext("2d").getImageData(0, 0, t.width, t.height), o = x.createImageData(t.width, t.height);
+    for (let i = 0; i < d.data.length; i += 4) {
+      const v = d.data[i], up = v > 128;
+      o.data[i] = o.data[i + 1] = o.data[i + 2] = up ? 255 : 0; o.data[i + 3] = Math.round(Math.abs(v - 128) * 0.9);
+    }
+    x.putImageData(o, 0, 0);
+    grainURLs = { web: t.toDataURL(), native: a.toDataURL() };
+  }
+  return native ? grainURLs.native : grainURLs.web;
+}
+function renderCamFx() {
+  const box = $("camFx"), l = camLook(), flt = camFilter(l);
+  const on = flt.id !== "none" && !cam.compare && !cam.shot && !!((cam.stream && cam.gl) || cam.native);
+  $("camCanvas").style.filter = on && flt.f !== "none" ? flt.f : "";
+  box.hidden = !on;
+  if (!on) return;
+  const fx = flt.fx || {}, vf = $("viewfinder").getBoundingClientRect(), short = Math.min(vf.width, vf.height) || 1;
+  const [wash, fade, leak, vig, grain, date] = box.children;
+  wash.style.background = flt.wash && !cam.native ? flt.wash : "transparent";
+  fade.style.background = fx.fade ? `rgba(255,255,255,${fx.fade})` : "transparent";
+  leak.style.background = fx.leak ? `radial-gradient(circle ${Math.round(Math.max(vf.width, vf.height) * 0.7)}px at 102% 18%, rgba(255,120,40,${fx.leak}), rgba(255,70,90,${fx.leak * 0.45}) 45%, rgba(255,70,90,0) 100%)` : "none";
+  vig.style.background = fx.vignette ? `radial-gradient(ellipse farthest-corner at center, rgba(0,0,0,0) 55%, rgba(0,0,0,${fx.vignette}) 100%)` : "none";
+  grain.style.backgroundImage = fx.grain ? `url(${grainURL(!!cam.native)})` : "none";
+  grain.style.opacity = String(Math.min(1, fx.grain || 0));
+  grain.style.backgroundSize = `${Math.max(1 / (devicePixelRatio || 1), short * GRAIN_CELL) * 128}px`;
+  date.textContent = fx.date ? filterDate() : "";
+  date.style.fontSize = `${short * 0.042}px`; date.style.right = `${short * 0.05}px`; date.style.bottom = `${short * 0.05 - short * 0.042 * 0.22}px`;
+}
+window.addEventListener("resize", () => { if (!$("camFx").hidden) renderCamFx(); });
 // Press and hold the preview to see the camera without the look.
 let compareTimer = 0;
-const endCompare = () => { clearTimeout(compareTimer); cam.compare = false; $("camCompare").hidden = true; };
+const endCompare = () => { clearTimeout(compareTimer); cam.compare = false; $("camCompare").hidden = true; renderCamFx(); };
 $("viewfinder").addEventListener("pointerdown", (e) => {
   if (cam.state !== "live" || cam.shot || !cam.gl || e.target.closest(".vf-state")) return;
-  compareTimer = setTimeout(() => { cam.compare = true; $("camCompare").hidden = false; }, 150);
+  compareTimer = setTimeout(() => { cam.compare = true; $("camCompare").hidden = false; renderCamFx(); }, 150);
 });
 ["pointerup", "pointercancel", "pointerleave"].forEach((n) => $("viewfinder").addEventListener(n, endCompare));
 
@@ -3010,7 +3051,7 @@ async function startCamera() {
   if (torch && cam.torch) Platform.camera.setTorch(cam.stream, true).catch(() => {});
   renderFlashBtn();
   $("camFlip").hidden = (await Platform.camera.count()) < 2;
-  drawFrame();
+  drawFrame(); renderCamFx();
 }
 function stopCamera() {
   cam.gen++;
@@ -3148,7 +3189,7 @@ $("shutter").addEventListener("click", async () => {
     }
     // The photo is what the screen showed: the full-screen preview's crop of the frame.
     const r = visibleRect(o.width, o.height), raw = cropTo(o, r);
-    const processed = looked ? cropTo(withFilterCanvas($("camCanvas"), camLook().filter, o.width, o.height), r).toDataURL("image/jpeg", 0.92) : null;
+    const processed = looked ? withFilterCanvas(cropTo($("camCanvas"), r), camLook().filter, r.w, r.h, (camLook().filterAmt ?? 100) / 100).toDataURL("image/jpeg", 0.92) : null;
     const stamp = Date.now();
     shot = { raw: raw.toDataURL("image/jpeg", 0.92), rawBlob: await canvasBlob(raw), processed, w: raw.width, h: raw.height,
       look: looked ? lookName() : null, stamp, saved: false, originalSaved: false, saving: null };
@@ -3179,7 +3220,7 @@ function cropTo(src, r) {
 }
 function renderReview() {
   const s = cam.shot;
-  $("reviewImg").hidden = !s; $("camCanvas").hidden = !!s;
+  $("reviewImg").hidden = !s; $("camCanvas").hidden = !!s; renderCamFx();
   $("liveControls").hidden = !!s; $("reviewControls").hidden = !s;
   $("camAI").hidden = !!s || !featureOn("camera:ai"); $("shotAIBtn").hidden = !s || !featureOn("camera:ai");
   $("nav").hidden = screen !== "cameraScreen" ? $("nav").hidden : !!s;

@@ -155,6 +155,7 @@
     </header>
     <div class="viewfinder" id="viewfinder">
       <canvas id="camCanvas" aria-label="Camera preview" role="img"></canvas>
+      <div class="cam-fx" id="camFx" aria-hidden="true" hidden><i class="fx-wash"></i><i></i><i class="fx-leak"></i><i></i><i class="fx-grain"></i><span class="fx-date"></span></div>
       <img id="reviewImg" alt="The photo you just took" hidden>
       <video id="camVideo" playsinline muted hidden></video>
       <div class="vf-state" id="camState" hidden>
@@ -201,6 +202,7 @@
           </div>
           <div class="adj-group" id="adjFilter" role="tabpanel" aria-labelledby="adjTabFilter" hidden>
             <div class="looks" id="camFilters" style="padding:4px 0 0;justify-content:flex-start" aria-label="Filters"></div>
+            <label class="slider">Strength <input type="range" min="0" max="100" id="sFilterAmt"><output for="sFilterAmt" aria-hidden="true"></output></label>
           </div>
           <p class="adj-note" id="adjNote" hidden></p>
         </div>

@@ -991,3 +991,13 @@ dialog.doc-sheet .sheet-head { padding: 0 var(--gutter); }
 #docFrame { width: 100%; height: 100%; border: 0; background: var(--surface); }
 @media (min-width: 600px) { dialog.doc-sheet { width: min(92vw, 640px); max-width: 640px; } }
 .setting.locked input[type=checkbox] { opacity: 0.55; }
+
+/* A camera filter's film effects over the live preview (renderCamFx); the photo gets the same in paintFx. */
+.cam-fx { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.cam-fx > i { position: absolute; inset: 0; }
+.cam-fx .fx-wash { mix-blend-mode: soft-light; }
+.cam-fx .fx-leak { mix-blend-mode: screen; }
+.cam-fx .fx-grain { mix-blend-mode: overlay; background-repeat: repeat; }
+html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-mode: normal; }
+.cam-fx .fx-date { position: absolute; font: bold 16px/1 "Courier New", ui-monospace, monospace; color: rgba(255,160,70,0.95);
+  text-shadow: 0 0 0.35em rgba(255,70,0,0.85); letter-spacing: 0; }

@@ -145,6 +145,30 @@ test('camera: selfie screen flash defaults to Auto, cycles On/Off, and lights th
   await p.click('#flashBtn'); eq(await p.evaluate(() => screenFlashMode()), 'auto', 'back to Auto');
 }, { start: 'camera' });
 
+test('camera filters: 13 filters, film effects over the preview and in the photo, Strength scales them', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  eq(await p.evaluate(() => FILTERS.map((f) => f.id)), ['none', 'glow', 'film', 'warm', 'soft', 'matte', 'clear', 'vivid', 'cool', 'digicam', 'disposable', 'instant', 'mono', 'noir'], 'the filter list');
+  eq(await p.evaluate(() => FILTERS.every((f) => f.f === 'none' || f.f.match(/\(/g).length <= FILTER_STEPS)), true, 'every chain fits the native camera');
+  await p.evaluate(() => { $('adjustPanel').hidden = false; selectAdj('filter'); });
+  eq(await p.evaluate(() => [$('camFx').hidden, $('sFilterAmt').closest('.slider').hidden]), [true, true], 'no filter: no effects, no Strength');
+  await p.evaluate(() => [...$('camFilters').children].find((b) => b.textContent === 'Disposable').click());
+  const fx = await p.evaluate(() => { const c = $('camFx').children; return { hidden: $('camFx').hidden, date: c[5].textContent, grain: c[4].style.backgroundImage.startsWith('url('),
+    vig: c[3].style.background.includes('radial-gradient'), canvas: $('camCanvas').style.filter, amt: $('sFilterAmt').value, slider: $('sFilterAmt').closest('.slider').hidden }; });
+  eq([fx.hidden, /^'\d\d \d\d \d\d$/.test(fx.date), fx.grain, fx.vig, fx.canvas.includes('saturate(1.18)'), fx.amt, fx.slider], [false, true, true, true, true, '100', false], 'Disposable over the preview');
+  await p.evaluate(() => { $('sFilterAmt').value = 50; $('sFilterAmt').dispatchEvent(new Event('input')); });
+  eq(await p.evaluate(() => [beauty.filterAmt, $('camCanvas').style.filter.includes('saturate(1.09)'), $('camFx').children[3].style.background.includes('0.14)')]), [50, true, true], 'Strength 50 halves the filter and its effects');
+  await p.evaluate(() => { $('sFilterAmt').value = 100; $('sFilterAmt').dispatchEvent(new Event('input')); });
+  await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot && !!cam.shot.processed, null, { timeout: 15000 });
+  eq(await p.evaluate(() => $('camFx').hidden), true, 'effects leave with the live preview');
+  // The orange date stamp is in the photo's bottom-right corner.
+  const orange = await p.evaluate(async () => { const i = await loadImg(cam.shot.processed), c = newCanvas(i.naturalWidth, i.naturalHeight), x = c.getContext('2d'); x.drawImage(i, 0, 0);
+    const w = Math.round(c.width * 0.3), h = Math.round(Math.min(c.width, c.height) * 0.1), d = x.getImageData(c.width - w, c.height - h, w, h).data; let n = 0;
+    for (let k = 0; k < d.length; k += 4) if (d[k] > 200 && d[k + 1] > 90 && d[k + 1] < 200 && d[k + 2] < 120) n++; return n; });
+  assert(orange > 20, `date stamp in the photo (${orange} orange pixels)`);
+  eq(await p.evaluate(() => { const f = scaleFilter(FILTERS.find((x) => x.id === 'disposable'), 0); return [f.f, f.wash.endsWith(',0)'), f.fx.grain, f.fx.date]; }),
+    ['saturate(1) contrast(1) sepia(0)', true, 0, 0], 'Strength 0 is no change');
+}, { start: 'camera' });
+
 test('camera: streams stop on leaving, backgrounding and flipping, with no duplicates', async ({ p }) => {
   await p.goto('https://app.test/'); await camLive(p);
   eq(await p.evaluate(() => __liveTracks()), 1, 'one live track');
