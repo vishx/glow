@@ -3220,6 +3220,31 @@ test('home screen: switched off from the admin page, nobody is asked', async ({ 
   eq(await p.evaluate(() => $('homeAdd').open), false, 'switch off');
 }, { start: 'enhance', camera: false, files: demoFiles(), init: homeApp(), features: { 'app:home': false } });
 
+test('audit: an AI result waiting for Apply opens as a before/after, and the tick never covers the AI price', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('coords-600x400.png'));
+  await tool(p, 'foryou', null, 'pro'); await applyTool(p);
+  await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 }); await settle(400);
+  eq(await p.evaluate(() => [ed.view, $('stage').dataset.view, getComputedStyle($('divider')).display !== 'none']), ['split', 'split', true], 'split view with the divider');
+  const over = await p.evaluate(() => {
+    const t = document.querySelector('#tools .tool[aria-pressed="true"]'), w = t.querySelector('.well'), c = t.querySelector('.cost');
+    if (!c) return 'no price';
+    const cs = getComputedStyle(w, '::before'), wr = w.getBoundingClientRect(), cr = c.getBoundingClientRect();
+    const tl = { left: wr.left + parseFloat(cs.left), top: wr.top + parseFloat(cs.top) }, tr = { right: tl.left + parseFloat(cs.width), bottom: tl.top + parseFloat(cs.height) };
+    return tr.right <= cr.left || tl.left >= cr.right || tr.bottom <= cr.top || tl.top >= cr.bottom ? 'clear' : 'covered';
+  });
+  eq(over, 'clear', 'tick clear of the price badge');
+  await p.evaluate(() => applyResult()); await p.waitForFunction(() => !job && ed.idx >= 1);
+  eq(await p.evaluate(() => ed.view), 'edited', 'back to the edit after Apply');
+});
+
+test('audit: every stylesheet has balanced braces (a lost one after a merge silently nests the rest)', async () => {
+  for (const f of fs.readdirSync(path.join(__dirname, '../public')).filter((n) => n.endsWith('.css'))) {
+    const t = fs.readFileSync(path.join(__dirname, '../public', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    let d = 0; for (const ch of t) { if (ch === '{') d++; else if (ch === '}') d--; if (d < 0) break; }
+    eq(d, 0, f + ' brace depth at end');
+  }
+}, { camera: false });
+
 (async () => {
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
   const results = [];

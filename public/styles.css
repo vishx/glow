@@ -1165,6 +1165,7 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
   .ob-slide h1 { grid-column: 2; grid-row: 2; text-align: left; font-size: 1.75rem; line-height: 2.125rem; }
   .ob-slide p { grid-column: 2; grid-row: 3; text-align: left; margin-bottom: var(--s3); }
   .ob-actions { grid-column: 2; grid-row: 4; width: 100%; margin: 0; }
+}
 /* Camera held sideways: the screen stays upright (like the phone's own camera) and only the icons
    turn to stay level. `rotate` is separate from `transform`, so press effects still work. */
 #flashBtn, #camTimer, #camAI, #camSettingsBtn, #camGallery, #camFlip, #camCount {
@@ -1186,3 +1187,6 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
   #cameraScreen .vf-note { right: calc(min(340px, 42vw) + var(--s3)); }
   #cameraScreen .cam-top { padding-left: max(var(--gutter), var(--sa-left)); padding-right: max(var(--gutter), var(--sa-right)); }
 }
+
+/* The picked tile's check sits top-left, so it never covers the "AI · 2" price at top-right (2026-11-01). */
+.tool[aria-pressed="true"] .well::before { left: -6px; right: auto; top: -6px; bottom: auto; }

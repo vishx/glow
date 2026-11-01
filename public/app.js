@@ -1383,6 +1383,8 @@ function selectTool(id, opts = {}) {
     if (t.kind === "ai" && demo && demo.ready.includes(id)) { showDemoPreview(id); return; }
     if (ed.idx > 0 && ed.hist.some((h) => h.op && h.op.demo)) demoReset("Back to the original. Sample previews show one effect at a time.");
   }
+  // Back to an AI result that is waiting for Apply: show it as a before/after.
+  if (id && TOOL[id] && TOOL[id].kind === "ai" && reviewing() && ed.view === "edited") { setView("split"); return; }
   renderEditor();
   if (id) {
     const t = TOOL[id];
@@ -1407,7 +1409,7 @@ async function discardResult() {
   const c = await ask({ title: `Discard this ${t.title} result?`, text: "The AI credit it used isn't returned. Your marks stay, so you can adjust them and try again.",
     actions: [{ label: "Discard", value: "yes" }, { label: "Keep reviewing", value: "", kind: "ghost" }] });
   if (!c || !job || job.status !== "done") return;
-  job = null; saveJob(); renderEditor(); say(`${t.title} result discarded.`);
+  job = null; saveJob(); ed.view = "edited"; renderEditor(); say(`${t.title} result discarded.`);
 }
 // Applying it adds one Undo step. A result made from an earlier version of the photo replaces
 // the current version, so that case asks first.
@@ -1420,7 +1422,7 @@ async function applyResult() {
     if (!c || !resultReady()) return;
   }
   const then = job.glow;
-  job = null; saveJob();
+  job = null; saveJob(); ed.view = "edited";
   commit(r.data, t, { tool: t.id, fixed: true }, r.full); strokes = []; if (sel === t.id) sel = null;
   renderEditor(); say(`${t.title} applied. Undo removes it.`); Platform.haptic();
   if (then) {
@@ -1922,7 +1924,7 @@ function panelState(t) {
     note = job.unblended ? "This device couldn't blend the result into your full-size photo, so the whole picture is at the size the AI returned. Discard to keep your photo as it was."
       : MASK_TOOLS.includes(t.id) ? "Only the marked area changed. It is blended into your full-size photo; the marked area itself is at the AI's size and may look softer up close."
       : t.id === "outfit" ? ""
-      : "Tap Compare to see the original. Apply keeps it; Discard drops it, and the credit isn't returned.";
+      : "Drag the line on the photo to compare. Apply keeps it; Discard drops it, and the credit isn't returned.";
   } else if (!aiLive(t.id)) {
     chip.textContent = "Not available yet"; chip.className = "chip";
     apply.textContent = "Not available yet"; apply.disabled = true;
@@ -2463,7 +2465,9 @@ async function settleJob(res) {
     // Every AI result waits for Apply. It is kept with the job, so it survives leaving the tool,
     // the editor, or a reload, and nothing is charged again to look at it.
     mine.status = "done"; mine.result = { data, full }; saveJob(); tryKeepLook(mine);
-    renderEditor(); Platform.haptic();
+    // Show it as a before/after right away (drag the line), as Enhance's result does.
+    if (sel === mine.tool && reviewing()) setView("split"); else renderEditor();
+    Platform.haptic();
     say(sel === mine.tool ? `${mine.title} is ready. Apply to keep it.` : `${mine.title} is ready to review.`);
   } else {
     recovered = { title: mine.title, data, full }; job = null; saveJob();
