@@ -3780,6 +3780,7 @@ function renderReview() {
   $("reviewImg").hidden = !s; $("camCanvas").hidden = !!s; renderCamFx();
   if (typeof layoutCamFrame === "function") { layoutCamFrame(); renderLenses(); }
   $("liveControls").hidden = !!s; $("reviewControls").hidden = !s;
+  $("cameraScreen").classList.toggle("reviewing", !!s);
   $("camAI").hidden = !!s || !featureOn("camera:ai"); $("shotAIBtn").hidden = !s || !featureOn("camera:ai");
   $("nav").hidden = screen !== "cameraScreen" ? $("nav").hidden : !!s;
   if (s) {
