@@ -7,6 +7,9 @@ const CONFIG = {
   // From RevenueCat > Project settings > API keys (public app-specific keys).
   revenuecatIos: "REVENUECAT_IOS_PUBLIC_KEY",
   revenuecatAndroid: "REVENUECAT_ANDROID_PUBLIC_KEY",
+  // Web checkout (card, Apple Pay, Google Pay through Stripe): RevenueCat > Web Billing public key (rcb_...).
+  // Until it is set, the website keeps saying Pro is in the phone app.
+  revenuecatWeb: "REVENUECAT_WEB_BILLING_KEY",
   // From AdMob > Apps > Ad units (rewarded). These are Google's test units until real ones are added.
   admobRewardIos: "ca-app-pub-3940256099942544/1712485313",
   admobRewardAndroid: "ca-app-pub-3940256099942544/5224354917",
@@ -3644,7 +3647,7 @@ function openSettings() {
   renderMarkSetting();
   $("autoSaveToggle").checked = autoSaveOn();
   applyTheme(); showBuild();
-  $("settings").showModal();
+  $("settings").showModal(); showWebManage();
 }
 // Which build this is, so a test on a phone can be matched to a commit. The fingerprint is a
 // hash of the app's own files as served (tools/fingerprint.js computes the same from a checkout),
@@ -3815,8 +3818,14 @@ $("supportForm").addEventListener("submit", async (e) => {
   finally { $("supportSend").disabled = false; $("supportSend").textContent = "Send"; }
 });
 $("manageSubs").hidden = !native;
+// On the website, a web subscriber manages it on RevenueCat's page (cancel, card, receipts).
+async function showWebManage() {
+  if (!webCheckout() || !account || account.plan !== "pro" || !(await setupPurchases())) return;
+  const url = await WebRC.managementURL(); if (url) { $("manageSubs").hidden = false; $("manageSubs").dataset.url = url; }
+}
 $("manageSubs").addEventListener("click", (e) => {
   e.preventDefault();
+  if (!native && $("manageSubs").dataset.url) { window.open($("manageSubs").dataset.url, "_blank", "noopener"); return; }
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
   window.open(ios ? "https://apps.apple.com/account/subscriptions" : "https://play.google.com/store/account/subscriptions", "_blank");
 });
@@ -3832,13 +3841,61 @@ function followAccount() {
   purchases().logIn({ appUserID: id }).then(() => { rcUser = id; }).catch((e) => reportError("RevenueCat logIn failed", e && e.message));
 }
 const packages = {};
-const purchases = () => plugins.Purchases;
+// On the website, RevenueCat Web Billing (Stripe) sells the same glow_pro entitlement, so Pro bought on the
+// web and in the app is one plan and the same webhook switches it on. WebRC speaks the few calls this file
+// makes to the phone plugin, so the paywall and credit packs work the same on both.
+const webCheckout = () => !native && featureOn("money:web") && !CONFIG.revenuecatWeb.startsWith("REVENUECAT_");
+const canBuy = () => native || webCheckout();
+const WebRC = {
+  sdk: null, rc: null,
+  async load() {
+    if (!this.sdk) this.sdk = new Promise((ok, fail) => {
+      if (window.Purchases && window.Purchases.Purchases) return ok(window.Purchases);
+      const s = document.createElement("script"); s.src = "/vendor/purchases-js/Purchases.umd.js";
+      s.onload = () => (window.Purchases && window.Purchases.Purchases ? ok(window.Purchases) : fail(new Error("checkout didn't load")));
+      s.onerror = () => { this.sdk = null; fail(new Error("Couldn't load checkout. Check your connection.")); };
+      document.head.append(s);
+    });
+    return this.sdk;
+  },
+  async configure({ apiKey, appUserID }) { const P = await this.load(); this.rc = P.Purchases.configure({ apiKey, appUserId: appUserID }); },
+  async logIn({ appUserID }) { if (this.rc) await this.rc.changeUser(appUserID); },
+  wrap(p) {
+    const pr = p.product, ft = pr.freeTrialPhase && pr.freeTrialPhase.period;
+    let perMonth = "";
+    try { if (pr.period && pr.period.unit === "year" && pr.price) perMonth = new Intl.NumberFormat(undefined, { style: "currency", currency: pr.price.currency }).format(pr.price.amountMicros / 1e6 / 12 / (pr.period.number || 1)); } catch {}
+    return { _pkg: p, identifier: pr.identifier, priceString: pr.price ? pr.price.formattedPrice : "",
+      pricePerMonthString: perMonth, introPrice: ft ? { price: 0, periodUnit: String(ft.unit).toUpperCase(), periodNumberOfUnits: ft.number } : null };
+  },
+  async getOfferings() {
+    const o = await this.rc.getOfferings(), cur = o.current;
+    const list = [];
+    if (cur && cur.weekly) list.push({ packageType: "WEEKLY", product: this.wrap(cur.weekly) });
+    if (cur && cur.annual) list.push({ packageType: "ANNUAL", product: this.wrap(cur.annual) });
+    return { current: { availablePackages: list } };
+  },
+  async buy(pkg) {
+    try { return await this.rc.purchase({ rcPackage: pkg }); }
+    catch (e) { if (e && e.errorCode === 1) e.userCancelled = true; throw e; }
+  },
+  purchasePackage({ aPackage }) { return this.buy(aPackage.product._pkg); },
+  // Credit packs: one-time products in an offering called "credit_packs", matched by product id.
+  async getProducts({ productIdentifiers }) {
+    const o = await this.rc.getOfferings(), packs = (o.all && o.all.credit_packs && o.all.credit_packs.availablePackages) || [];
+    return { products: packs.map((p) => this.wrap(p)).filter((p) => productIdentifiers.includes(p.identifier)) };
+  },
+  purchaseStoreProduct({ product }) { return this.buy(product._pkg); },
+  // Web purchases belong to this Glow Studio account already; there is no store account to restore from.
+  async restorePurchases() { if (this.rc) await this.rc.getCustomerInfo(); },
+  async managementURL() { try { return this.rc ? (await this.rc.getCustomerInfo()).managementURL : null; } catch { return null; } },
+};
+const purchases = () => (native ? plugins.Purchases : webCheckout() ? WebRC : null);
 function setupPurchases() {
-  if (!native || !purchases()) return Promise.resolve(false);
+  if (!purchases()) return Promise.resolve(false);
   if (!rcReady) rcReady = (async () => {
     const s = await ensureSession();
-    const ios = window.Capacitor.getPlatform() === "ios";
-    const apiKey = ios ? CONFIG.revenuecatIos : CONFIG.revenuecatAndroid;
+    const ios = native && window.Capacitor.getPlatform() === "ios";
+    const apiKey = !native ? CONFIG.revenuecatWeb : ios ? CONFIG.revenuecatIos : CONFIG.revenuecatAndroid;
     if (apiKey.startsWith("REVENUECAT_")) return false; // store not set up yet
     await purchases().configure({ apiKey, appUserID: s.user_id });
     rcUser = s.user_id; followAccount();   // the account may have changed while configuring
@@ -3872,7 +3929,7 @@ async function trialDays(product) {
   if (!intro || intro.price !== 0) return 0;
   const unit = { DAY: 1, WEEK: 7, MONTH: 30 }[intro.periodUnit] || 0, days = unit * (intro.periodNumberOfUnits || 0);
   if (!days) return 0;
-  if (window.Capacitor.getPlatform() === "ios") {
+  if (native && window.Capacitor.getPlatform() === "ios") {
     try {
       const e = await purchases().checkTrialOrIntroductoryPriceEligibility({ productIdentifiers: [product.identifier] });
       const st = e && e[product.identifier] && e[product.identifier].status;
@@ -3884,13 +3941,15 @@ async function trialDays(product) {
 function renderPlanNote() {
   const price = $(plan === "yearly" ? "priceYearly" : "priceWeekly").textContent.replace("/", " per ");
   const trial = plan === "yearly" && yearlyTrial;
-  $("pwNote").textContent = native
+  $("pwNote").textContent = webCheckout()
+    ? `${trial ? `Free for ${yearlyTrial} days, with 10 AI credits to try. Then ${price}` : price}. Renews automatically every ${plan === "yearly" ? "year" : "week"} until you cancel. Cancel anytime from Settings > Manage subscription or the link in your receipt email. Secure card payment by Stripe.`
+    : native
     ? `${trial ? `Free for ${yearlyTrial} days, with 10 AI credits to try. Then ${price}` : price}. Renews automatically every ${plan === "yearly" ? "year" : "week"} until you cancel. Cancel anytime in your App Store or Google Play settings at least 24 hours before renewal. Payment is charged to your store account.`
     : "Glow Studio Pro is available in the Glow Studio app for iPhone and Android. The camera and on-device tools stay free here.";
 }
 function openPaywall() {
   if (account && account.plan === "pro") { openCredits(); return; }
-  $("buyBtn").disabled = !native; $("buyBtn").textContent = buyLabel();
+  $("buyBtn").disabled = !canBuy(); $("buyBtn").textContent = buyLabel();
   $("adBtn").hidden = !(featureOn("money:ads") && native && plugins.AdMob && account && account.plan !== "pro" && account.remaining < 2 && account.adsLeft > 0);
   renderPlanNote();
   setupPurchases();
@@ -3901,7 +3960,7 @@ function openPaywall() {
 // from the editor), show the Pro screen. It closes like any sheet and nothing is locked. Only in the
 // phone app, where Pro can be bought, and never on top of another sheet or after the person moved on.
 function introOffer(where) {
-  if (!native || store.get("glowIntroOffer") || !featureOn("money:intro") || (account && account.plan === "pro")) return;
+  if (!canBuy() || store.get("glowIntroOffer") || !featureOn("money:intro") || (account && account.plan === "pro")) return;
   const from = screen;
   setTimeout(async () => {
     if (!(await setupPurchases())) return;   // the store isn't set up yet: nothing could be bought
@@ -3935,7 +3994,7 @@ async function afterPurchase() {
 $("buyBtn").addEventListener("click", async () => {
   try {
     if (!(await setupPurchases()) || !packages[plan]) throw new Error("The store isn't available right now. Try again in a moment.");
-    $("buyBtn").disabled = true; $("buyBtn").textContent = "Opening store…";
+    $("buyBtn").disabled = true; $("buyBtn").textContent = native ? "Opening store…" : "Opening checkout…";
     track("purchase_start", { plan });
     await purchases().purchasePackage({ aPackage: packages[plan] });
     track("purchase", { plan });
@@ -3946,11 +4005,12 @@ $("buyBtn").addEventListener("click", async () => {
   } catch (err) {
     track("purchase_fail", { plan, cancelled: !!(err && err.userCancelled) });
     if (!(err && err.userCancelled)) say((err && err.message) || "Purchase didn't go through.", true);
-  } finally { $("buyBtn").disabled = !native; $("buyBtn").textContent = buyLabel(); }
+  } finally { $("buyBtn").disabled = !canBuy(); $("buyBtn").textContent = buyLabel(); }
 });
 async function restore() {
   try {
     if (!(await setupPurchases())) throw new Error("Restore works in the Glow Studio app for iPhone and Android.");
+    if (!native) { const back = await afterPurchase(); say(back ? "Glow Studio Pro is active." : "No web subscription found for this browser. If you bought Pro in the app, use Restore there."); $("paywall").close(); $("settings").close(); return; }
     await purchases().restorePurchases();
     const back = await afterPurchase();
     track("restore", { found: back });
@@ -3975,10 +4035,12 @@ async function loadPacks() {
 function renderPacks() {
   $("packs").innerHTML = CONFIG.creditPacks.map((k) => {
     const sp = packProducts[k.id];
-    return `<button class="pack" data-pack="${k.id}"${native ? "" : " disabled"} aria-label="${k.credits} AI credits for ${sp ? sp.priceString : k.price}">` +
+    return `<button class="pack" data-pack="${k.id}"${canBuy() ? "" : " disabled"} aria-label="${k.credits} AI credits for ${sp ? sp.priceString : k.price}">` +
       `${k.tag ? `<em>${k.tag}</em>` : ""}<b>${k.credits}</b><span class="unit">AI credits</span><span class="price">${sp ? sp.priceString : k.price}</span></button>`;
   }).join("");
-  $("packsNote").textContent = native
+  $("packsNote").textContent = webCheckout()
+    ? "One-time card payment through Stripe. Credits are added to this Glow Studio account and used after your free or weekly credits. They stay with this browser's account."
+    : native
     ? "One-time purchase, charged to your store account. Credits are added to this Glow Studio account and used after your free or weekly credits. Deleting the app or your account removes them."
     : "Credit packs are available in the Glow Studio app for iPhone and Android.";
   $("packsPro").hidden = !!(account && account.plan === "pro");

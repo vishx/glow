@@ -3006,6 +3006,38 @@ test('golden hour: before & after video is made and shared (downloaded on a comp
   eq(await p.evaluate(() => document.querySelectorAll('#enhanceHome .recent').length), 1, 'the video is not added to Recent');
 }, { start: 'enhance', camera: false, mobile: false, touch: false });
 
+test('web checkout: with a Web Billing key the website sells Pro by card (RevenueCat purchases-js), cancel is quiet, Pro switches on', async ({ p, state }) => {
+  // A stand-in for RevenueCat's purchases-js, so no real checkout or network is touched.
+  await p.addInitScript(() => {
+    const price = (n) => ({ amountMicros: n * 1e6, currency: 'USD', formattedPrice: '$' + n.toFixed(2) });
+    const pkg = (id, n, unit, trial) => ({ identifier: id, product: { identifier: id, price: price(n), period: { number: 1, unit }, freeTrialPhase: trial ? { period: { number: 3, unit: 'day' } } : null } });
+    window.__rc = { bought: [], cancelNext: false, user: '' };
+    window.Purchases = { Purchases: { configure: ({ appUserId }) => { window.__rc.user = appUserId; return {
+      getOfferings: async () => ({ current: { weekly: pkg('glow_pro_weekly_web', 4.99, 'week'), annual: pkg('glow_pro_yearly_web', 49.99, 'year', true) }, all: { credit_packs: { availablePackages: [pkg('glow_credits_10', 1.99, null)] } } }),
+      purchase: async ({ rcPackage }) => { if (window.__rc.cancelNext) { window.__rc.cancelNext = false; const e = new Error('cancelled'); e.errorCode = 1; throw e; } window.__rc.bought.push(rcPackage.identifier); return {}; },
+      getCustomerInfo: async () => ({ managementURL: 'https://pay.rev.cat/manage' }), changeUser: async () => ({}),
+    }; } } };
+  });
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => { CONFIG.revenuecatWeb = 'rcb_test'; openPaywall(); });
+  await p.waitForFunction(() => /\$49\.99/.test($('priceYearly').textContent));
+  eq(await p.evaluate(() => [$('buyBtn').disabled, $('buyBtn').textContent, $('yearlyNote').textContent]), [false, 'Start 3-day free trial', '3 days free, then $49.99 a year'], 'web prices, trial and an enabled button');
+  assert(/Stripe/.test(await p.textContent('#pwNote')), 'web terms note');
+  await p.evaluate(() => { window.__rc.cancelNext = true; }); await p.click('#buyBtn'); await settle(500);
+  eq(await p.evaluate(() => [window.__rc.bought.length, $('paywall').open, $('toast').classList.contains('on') && /didn't go through/.test($('toast').textContent)]), [0, true, false], 'cancel: nothing bought, no error');
+  state.plan = 'pro'; await p.click('#buyBtn');
+  await p.waitForFunction(() => !$('paywall').open);
+  eq(await p.evaluate(() => [window.__rc.bought, window.__rc.user === session.user_id]), [['glow_pro_yearly_web'], true], 'bought yearly for this Glow Studio account');
+  await p.waitForFunction(() => account && account.plan === 'pro');
+  await p.evaluate(() => openSettings()); await p.waitForFunction(() => !$('manageSubs').hidden);
+}, { start: 'enhance', camera: false });
+
+test('web checkout: without a Web Billing key (or switched off) the website still points to the app', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => openPaywall());
+  eq(await p.evaluate(() => [$('buyBtn').disabled, /available in the Glow Studio app/.test($('pwNote').textContent), !!document.querySelector('script[src*="purchases-js"]')]), [true, true, false], 'no key: disabled, app note, checkout not loaded');
+}, { start: 'enhance', camera: false });
+
 (async () => {
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
   const results = [];
