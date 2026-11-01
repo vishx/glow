@@ -16,7 +16,7 @@ const CONFIG = {
   publicUrl: "https://glow-photo-enhancer.vercel.app",
   // The small second line of the badge on free saves, such as a real domain or "On the App Store".
   // "" uses publicUrl's address; "none" shows "Glow Studio" alone.
-  badgeLine: "",
+  badgeLine: "AI Photo Enhancer",   // 2026-11-01: the web address looked unpolished; the store subtitle reads cleaner
   // Fill sends mode "fill" with a short prompt. Live since enhance v9 (2026-10-30, after migration 006).
   aiFill: true,
   // AI scene, HD cutout and Describe need the "bgscene", "bgcut" and "custom" modes on the
@@ -2245,7 +2245,7 @@ async function startAiEdit(t) {
       // The server answered, so the edit didn't start. It returns the credit itself if it had taken one.
       job = null; saveJob();
       // Switched off from the admin page since this tool was opened: nothing was charged.
-      if (err.featureOff) { if (sel === t.id) selectTool(null, { discard: true }); say(err.message, true); refreshFeatures(true); return; }
+      if (err.featureOff) { if (sel === t.id) selectTool(null, { discard: true }); say(err.message, true); featureOffSaidAt = Date.now(); refreshFeatures(true); return; }
       // A premium tool on the free plan draws on the one-time trial, which never resets, so say that
       // rather than the server's "come back tomorrow".
       if (err.limit && trialTool(t)) err.message = "You've used your free premium credits. Go Pro or buy a credit pack to keep using premium AI tools, or use the everyday AI tools with your daily credits.";
@@ -2606,7 +2606,9 @@ const loadBadgeIcon = () => badgeIcon || (badgeIcon = loadImg("icon-512.png").ca
 // half its height. The address line is left out when it would be too small to read or make the
 // badge wider than 45% of the picture.
 function markLayout(ctx, w, h) {
-  const H = Math.max(26, Math.round(Math.min(w, h) * 0.05)), pad = Math.round(H * 0.16), icon = H - pad * 2, inset = Math.round(H * 0.5);
+  // At least 44px tall, so the name and the second line keep enough pixels to stay crisp on small
+  // photos (the badge can't be sharper than the photo it's drawn into).
+  const H = Math.max(44, Math.round(Math.min(w, h) * 0.05)), pad = Math.round(H * 0.16), icon = H - pad * 2, inset = Math.round(H * 0.5);
   const s = Math.round(H * 0.4), u = Math.round(H * 0.22);
   ctx.font = MARK_SERIF(s); let gw = ctx.measureText("Glow Studio").width;
   let line = BADGE_LINE; ctx.font = MARK_SANS(u); let lw = line ? ctx.measureText(line).width : 0;
@@ -2618,6 +2620,17 @@ function markLayout(ctx, w, h) {
   return { H, pad, icon, s, u, gw, line, bw, x: w - inset - bw, y: h - inset - H };
 }
 function pill(ctx, x, y, w, h) { const r = h / 2; ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+// The 512px icon shrunk to the badge's size in halving steps, so its fine rings stay smooth instead
+// of shimmering (one big jump from 512px to 30px skips most of the pixels).
+function iconAt(icon, size) {
+  let src = icon, w = icon.naturalWidth || icon.width;
+  while (w / 2 >= size) {
+    const c = newCanvas(Math.round(w / 2), Math.round(w / 2)), x = c.getContext("2d");
+    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high"; x.drawImage(src, 0, 0, c.width, c.height);
+    src = c; w = c.width;
+  }
+  return src;
+}
 function drawBadge(ctx, m, icon) {
   const { x, y, H, pad } = m;
   ctx.save();
@@ -2630,7 +2643,8 @@ function drawBadge(ctx, m, icon) {
   const ix = x + pad, iy = y + pad;
   if (icon) {
     ctx.save(); pill(ctx, ix, iy, m.icon, m.icon); ctx.clip();
-    ctx.drawImage(icon, ix, iy, m.icon, m.icon); ctx.restore();
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(iconAt(icon, Math.round(m.icon)), ix, iy, m.icon, m.icon); ctx.restore();
   }
   const tx = ix + m.icon + H * 0.22;
   ctx.fillStyle = "#ffffff"; ctx.textBaseline = "alphabetic";
@@ -3454,9 +3468,22 @@ function saveShot(s, auto, note = "") {
   items.push(s.processed ? { data: s.processed, name: `glow-studio-${s.stamp}` } : { blob: s.rawBlob, name: `glow-studio-${s.stamp}` });
   s.saving = (async () => {
     try {
+      // The Glow Studio mark goes on camera photos too (owner's choice 2026-11-01), by the same rule
+      // as every save: always on the free plan, on for Pro unless switched off. A tapped Save shows
+      // the one-time note; auto-save never stops for a dialog. "Also save the original" stays untouched.
+      let marked = false;
+      if (wantMark()) {
+        const main = items[items.length - 1], data = main.data || await blobToData(main.blob);
+        if (auto) { try { const m = await addMark(data, false); if (m) { items[items.length - 1] = { data: m.data, name: main.name }; marked = true; } } catch {} }
+        else {
+          const m = await markForSave(data, false);
+          if (!m) return false;   // the note was cancelled: nothing saved
+          if (m.marked) { items[items.length - 1] = { data: m.data, name: main.name }; marked = true; }
+        }
+      }
       // Auto-save never opens a share sheet on its own; browsers get a download.
       const where = await Platform.savePhotos(items, { download: auto });
-      track("save", { from: "camera", auto: !!auto, look: lookId, where: String(where || "") });
+      track("save", { from: "camera", auto: !!auto, look: lookId, marked, where: String(where || "") });
       s.saved = true; if (withOrig || !s.processed) s.originalSaved = true;
       if (cam.shot === s || ed.shotStamp === s.stamp) say(savedText(where, items.length, note));
       if (ed.shotStamp === s.stamp) {
@@ -3537,9 +3564,11 @@ function applyFeatures() {
   }
   // Editor: a tool switched off while open closes (keeping nothing it hadn't applied).
   if (glow.ai && !toolOn(glow.ai)) glow.ai = null;
-  if (sel && TOOL[sel] && !toolOn(sel) && !(job && job.tool === sel)) { const t = TOOL[sel]; selectTool(null, { discard: true }); say(`${t.title} isn't available right now.`); }
+  // The server's own "nothing was charged" message, shown a moment ago, already explains; keep it.
+  if (sel && TOOL[sel] && !toolOn(sel) && !(job && job.tool === sel)) { const t = TOOL[sel]; selectTool(null, { discard: true }); if (Date.now() - featureOffSaidAt > 8000) say(`${t.title} isn't available right now.`); }
   if (screen === "editorScreen") { renderTabs(); renderTools(); renderPanel(); }
 }
+var featureOffSaidAt = 0;   // var: applyFeatures may run before this line on start-up
 Features.onChange(applyFeatures);
 // Checked again when the app comes back to the front (at most once a minute) and every 15 minutes
 // while it's open, so a switch flipped on the admin page reaches everyone within minutes.

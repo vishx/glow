@@ -100,6 +100,34 @@ test('camera: auto-save on saves each capture once, with the original only when 
   eq(state.downloads.length, 4, 'Original look saves one file');
 }, { start: 'camera', init: () => { localStorage.setItem('glowAutoSave', 'on'); localStorage.setItem('glowSaveOrig', 'on'); } });
 
+// 2026-11-01 (owner's choice): camera saves carry the Glow Studio mark too, by the same rule.
+// The saved camera file against the shot it came from: where they differ, and how big that area is.
+const camMarked = async (p, file) => {
+  const clean = await p.evaluate(() => cam.shot && (cam.shot.processed || cam.shot.raw));
+  const r = await diffBox(p, 'data:image/jpeg;base64,' + fileB64(file), clean);
+  return r.box && r.box[0] > r.w * 0.5 && r.box[1] > r.h * 0.85 ? 1 : 0;
+};
+test('camera: Save shows the mark note once and saves a marked photo', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  await p.click('#shutter'); await p.waitForSelector('#reviewControls:not([hidden])');
+  await p.click('#saveShotBtn'); await p.waitForSelector('#ask[open]');
+  eq(await p.textContent('#askTitle'), 'Free saves include a small Glow Studio badge', 'note before the first free camera save');
+  await p.click('#ask .btn:has-text("Save")'); const [d] = await downloads(state, 1);
+  assert(await camMarked(p, d.file) > 0.3, 'the saved camera photo has the dark badge pill in the corner');
+  const ev = await p.evaluate(() => { flushTelemetry(); }).then(() => settle(400)).then(() => state.events.filter((e) => e.name === 'save').map((e) => e.props && e.props.marked));
+  eq(ev.slice(-1), [true], 'tracked as marked');
+}, { start: 'camera', markIntro: true, init: () => { localStorage.setItem('glowAutoSave', 'off'); } });
+test('camera: auto-save marks quietly; Pro with the mark off saves clean', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  await p.click('#shutter'); const [d] = await downloads(state, 1);
+  eq(await p.evaluate(() => $('ask').open), false, 'auto-save never stops for a note');
+  assert(await camMarked(p, d.file) > 0.3, 'auto-saved photo is marked ');
+  await p.evaluate(() => { showUsage({ plan: 'pro', expires: new Date(Date.now() + 864e5).toISOString(), remaining: 40, quota: 40 }); store.set('glowMark', 'off'); });
+  await p.click('#retakeBtn').catch(() => {}); await camLive(p);
+  await p.click('#shutter'); const d2 = (await downloads(state, 2))[1];
+  eq(await camMarked(p, d2.file), 0, 'Pro with the mark off: clean');
+}, { start: 'camera', init: () => { localStorage.setItem('glowAutoSave', 'on'); } });
+
 // ---------- Camera lifecycle ----------
 // ---------- AI Enhance in the camera, full-screen preview ----------
 test('camera: full-screen preview, and the photo is cropped to what the screen showed', async ({ p }) => {
@@ -800,7 +828,7 @@ test('settings: Help, Privacy, Terms and Licenses open inside the app, readable 
   }
   // A link to another help page stays in the sheet; the Glow Studio home link closes it.
   await p.click('#settings [data-doc="Privacy policy"]');
-  await p.waitForFunction(() => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.embed; });
+  await p.waitForFunction(() => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.embed && /privacy/.test(d.location.pathname) && d.querySelector('footer'); });
   await p.evaluate(() => $('docFrame').contentDocument.querySelector('footer a[href="/support.html"]').click());
   await p.waitForFunction(() => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.embed && /support/.test(d.location.pathname); });
   eq(await p.textContent('#docTitle'), 'Help and support', 'footer link opens Help in the sheet');
@@ -1298,8 +1326,11 @@ test('crop: Cancel restores, Apply exports exactly the framed area at full size,
   const same = await p.evaluate(async (file) => {
     const [a, b] = await Promise.all([loadImg(committed()), loadImg(file)]), w = a.naturalWidth, h = a.naturalHeight;
     const ca = newCanvas(w, h).getContext('2d'), cb = newCanvas(w, h).getContext('2d'); ca.drawImage(a, 0, 0); cb.drawImage(b, 0, 0, w, h);
-    const da = ca.getImageData(0, 0, w, h).data, db = cb.getImageData(0, 0, w, h).data; let sum = 0; for (let i = 0; i < da.length; i += 4) sum += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]);
-    return sum / (da.length / 2);
+    // Everything outside the badge's own box (plus its soft shadow) must match.
+    const m = markLayout(cb, w, h), bx = m.x - m.H * 0.5, by = m.y - m.H * 0.5;
+    const da = ca.getImageData(0, 0, w, h).data, db = cb.getImageData(0, 0, w, h).data; let sum = 0, n = 0;
+    for (let i = 0; i < da.length; i += 4) { const x = (i / 4) % w, y = Math.floor(i / 4 / w); if (x >= bx && y >= by) continue; sum += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]); n += 2; }
+    return sum / n;
   }, 'data:image/png;base64,' + fs.readFileSync(state.downloads[0].file).toString('base64'));
   assert(same < 3, 'saved file matches the preview pixel for pixel, apart from the free-plan Glow Studio badge (mean difference ' + same.toFixed(2) + ')');
   eq([state.posts.length, state.used], [0, 0], 'no AI request and no credit used');
@@ -1542,7 +1573,7 @@ test('mark: placed after crop and rotation, at small and large sizes; paid saves
   await applyTool(p); await idle(p); await p.click('#saveBtn'); const [d] = await downloads(state, 1);
   const clean = await p.evaluate(async () => (await renderExport()).data);
   const r = await diffBox(p, `data:${mime(d.file)};base64,${fileB64(d.file)}`, clean);
-  assert(r.box && r.box[0] > r.w * 0.4 && r.box[1] > r.h * 0.85, `small cropped and rotated save: mark bottom-right ${r.box} of ${r.w}x${r.h}`);
+  assert(r.box && r.box[0] > r.w * 0.4 && r.box[1] > r.h * 0.8, `small cropped and rotated save: mark bottom-right ${r.box} of ${r.w}x${r.h}`);
   eq(r.w, r.h, 'square crop kept');
   await p.click('#backBtn'); await pick(p, fx('large-24mp.jpg'));
   await tool(p, 'looks', 'filters', 'filter:glow'); await applyTool(p); await idle(p); await p.click('#saveBtn'); const d2 = (await downloads(state, 2, 60000))[1];
@@ -2541,6 +2572,46 @@ test('audit: Enhance saves the AI result at its full size, not the 2048px workin
   await p.click('#enhDownload'); const [d] = await downloads(state, 1);
   eq(imageSize(d.file).w, 6000, 'saved at the AI result size');
 }, { start: 'enhance', camera: false, files: { '/__ai.jpg': path.join(fixtures, 'large-24mp.jpg') } });
+
+// 2026-11-01 audit of the Pro mark switch: the Enhance tab follows it too, and the paywall the free
+// switch opens closes back to Settings.
+test('audit: Enhance saves follow the mark switch for Pro (on by default, off when switched off)', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && account && account.plan === 'pro');
+  const run = async () => {
+    const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+    await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+    await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 60000 });
+  };
+  await run();
+  await p.click('#enhDownload'); await p.waitForSelector('#ask[open]');
+  eq(await p.textContent('#askTitle'), 'Your saves include a small Glow Studio badge', 'Pro note on the Enhance save too');
+  await p.click('#ask .btn:has-text("Keep it and save")'); await downloads(state, 1);
+  eq(await p.evaluate(() => [store.get('glowMark'), store.get('glowProBadgeSeen')]), ['', '1'], 'kept on (default), note seen');
+  const ev = () => p.evaluate(() => { flushTelemetry(); }).then(() => settle(400)).then(() => state.events.filter((e) => e.name === 'save').map((e) => e.props && e.props.marked));
+  await p.evaluate(() => { store.set('glowMark', 'off'); });
+  await p.click('#enhShareBack'); await p.waitForFunction(() => screen === 'enhanceResult');
+  await p.click('#enhDownload'); await downloads(state, 2);
+  const marks = await ev();
+  eq(marks.slice(-2), [true, false], 'first save marked, after switching off clean: ' + JSON.stringify(marks));
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, plan: 'pro', quota: 40, markIntro: true });
+test('audit: the Pro offer from the free mark switch closes back to Settings', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && account && account.plan === 'free');
+  await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
+  await p.click('#markToggle'); await p.waitForSelector('#paywall[open]');
+  await p.evaluate(() => goBack()); await p.waitForFunction(() => !$('paywall').open);
+  eq(await p.evaluate(() => [$('settings').open, $('markToggle').checked]), [true, true], 'Settings still open, mark still on');
+}, { start: 'enhance', camera: false });
+
+// 2026-11-01: a release dropped tryon.js from the offline app shell, so Try on didn't load offline.
+test('audit: every script the app loads is in the offline app shell', async () => {
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8'), sw = fs.readFileSync(path.join(__dirname, '../public/sw.js'), 'utf8');
+  const shell = JSON.parse(sw.match(/const SHELL = (\[[\s\S]*?\]);/)[1]);
+  const scripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => '/' + m[1].replace(/^\//, '')).filter((s) => !/^\/\//.test(s) && !/^\/https?:/.test(s));
+  const css = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g)].map((m) => '/' + m[1].replace(/^\//, '')).filter((s) => !/^\/https?:/.test(s));
+  const missing = scripts.concat(css).filter((f) => !shell.includes(f));
+  eq(missing, [], 'missing from the shell');
+});
 
 // ---------- Runner ----------
 // ---------- Batch Enhance (Pro) ----------
