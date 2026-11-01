@@ -18,6 +18,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght,SOFT,WONK@9..144,400..600,0..100,0..1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<script>/* Dark is the default look (gold reads best on dark); Light and System stay in Settings. Set before first paint. */
+try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system") document.documentElement.dataset.theme = gt; } catch (e) { document.documentElement.dataset.theme = "dark"; }</script>
 <link rel="stylesheet" href="enhance.css">
 </head>
 <body>
@@ -55,6 +57,7 @@
         <button class="link-btn enh-batch-link" id="enhBatchPick"><span data-icon="gallery"></span>Enhance up to 10 at once<span class="pro-chip">Pro</span></button>
       </div>
       <div class="enh-meta"><button id="enhCredits" hidden></button></div>
+      <div class="recents" hidden><div class="recents-head"><h2>Recent</h2><button class="link-btn recents-clear">Clear</button></div><div class="recents-row" role="list"></div></div>
     </div>
   </section>
 
@@ -122,6 +125,7 @@
       </div>
     </div>
     <div class="enh-share-foot">
+      <button class="btn quiet" id="enhVideo" hidden><span data-icon="sparkle"></span>Share before &amp; after video</button>
       <button class="btn glow" id="enhAnother">Enhance another<span data-icon="sparkle"></span></button>
       <button class="link-btn" id="enhEdit">Edit more in the editor</button>
     </div>
@@ -274,6 +278,7 @@
         <div class="qa-grid" id="qaGrid"></div>
       </section>
       <div class="enh-meta"><button id="homeCredits" hidden></button></div>
+      <div class="recents" hidden><div class="recents-head"><h2>Recent</h2><button class="link-btn recents-clear">Clear</button></div><div class="recents-row" role="list"></div></div>
     </div>
   </section>
 

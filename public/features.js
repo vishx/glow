@@ -99,9 +99,11 @@ const FEATURE_AREAS = [
   ]],
   ["Money and sharing", [
     ["money:packs", "Credit packs", true, "Buying 10, 30 or 80 credits."],
+    ["money:web", "Web checkout", true, "Pro and credit packs by card on the website (RevenueCat Web Billing, Stripe). Needs the web key in app.js."],
     ["money:ads", "Watch an ad for a credit", true, "Free plan."],
     ["money:intro", "Pro screen at the first result", true, "Once per install, after the first Enhance result or editor save. Phone app only."],
     ["share:app", "Share Glow Studio card", true, "The QR card offered after saving."],
+    ["share:video", "Before & after video", true, "Share a 5-second reveal video after saving an Enhance result."],
   ]],
   ["Retired tools", RETIRED_TOOLS.map((id) => ["tool:" + id, RETIRED_NAMES[id] || id, false])],
 ];

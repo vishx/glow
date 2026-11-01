@@ -1110,3 +1110,16 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
 .area-bar .area { padding-right: 10px; gap: 5px; }
 @media (max-width: 380px) { .area-bar .area.refine { width: 44px; height: 44px; min-height: 44px; } }
 #editorScreen .side > .panel.live { overflow: visible; }
+
+/* Golden Hour moment (glowBurst in app.js): a warm light sweeps across, sparkles pop. Decorative. */
+.glow-burst { position: absolute; inset: 0; z-index: 6; overflow: hidden; pointer-events: none; border-radius: inherit; }
+.glow-burst.page { position: fixed; z-index: 400; border-radius: 0; }
+.glow-burst::before { content: ""; position: absolute; inset: -10% -60%; mix-blend-mode: screen;
+  background: linear-gradient(105deg, transparent 38%, rgb(255 227 163 / 0.0) 40%, rgb(255 222 150 / 0.55) 50%, rgb(243 181 74 / 0.0) 60%, transparent 62%);
+  transform: translateX(-60%); animation: glow-sweep 1100ms cubic-bezier(.3, .1, .2, 1) 80ms both; }
+.glow-burst i { position: absolute; width: calc(22px * var(--s, 1)); height: calc(22px * var(--s, 1)); margin: calc(-11px * var(--s, 1));
+  background: radial-gradient(circle, #fff 0 18%, #ffe3a3 40%, #f3b54a 70%); opacity: 0;
+  clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+  filter: drop-shadow(0 0 6px rgb(255 210 120 / 0.9)); animation: glow-spark 720ms cubic-bezier(.3, 1.5, .5, 1) both; }
+@keyframes glow-sweep { to { transform: translateX(60%); } }
+@keyframes glow-spark { 0% { opacity: 0; transform: scale(0) rotate(0); } 40% { opacity: 1; transform: scale(1.15) rotate(30deg); } 100% { opacity: 0; transform: scale(.6) rotate(90deg); } }
