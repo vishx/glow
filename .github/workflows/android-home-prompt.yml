@@ -78,6 +78,6 @@ jobs:
           TAG="android-home-prompt-${{ steps.apk.outputs.sha }}"
           gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$TAG" "${{ steps.apk.outputs.name }}" \
-            --repo "$GITHUB_REPOSITORY" --target "$(git rev-parse HEAD)" --prerelease \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title "Glow Studio test build: home screen prompt (${{ steps.apk.outputs.sha }})" \
             --notes "Debug build for sideloading: live website + Add to home screen prompt (${{ steps.apk.outputs.sha }}) + phone app branch ${APP_SHA} (native camera). Not for the Play Store."
