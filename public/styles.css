@@ -605,6 +605,15 @@ dialog.alert { width: min(92vw, 400px); border-radius: var(--r-card); padding: v
 .ask-figure { margin: var(--s3) 0 0; }
 .ask-figure img { display: block; width: 100%; max-height: 46dvh; object-fit: contain; border-radius: var(--r-well); background: var(--surface-2); }
 .ask-figure figcaption { margin-top: var(--s1); color: var(--muted); font-size: 0.8125rem; text-align: center; }
+/* "Add Glow Studio to your home screen" (homescreen.js): the app icon with a soft gold light, then the two iPhone taps. */
+dialog.home-add { text-align: center; }
+.home-add-icon { display: block; width: 72px; height: 72px; margin: 0 auto var(--s4); border-radius: 18px; box-shadow: 0 0 0 1px rgb(255 217 138 / 0.28), 0 10px 30px -8px rgb(243 181 74 / 0.55); }
+dialog.home-add #homeAddText { color: var(--muted); margin: var(--s2) 0 0; }
+.home-add-steps { list-style: none; margin: var(--s4) 0 0; padding: 0; display: grid; gap: var(--s2); text-align: left; counter-reset: step; }
+.home-add-steps li { display: flex; align-items: center; gap: var(--s3); padding: var(--s3); border-radius: var(--r-well); background: var(--surface-2); font-size: 0.9375rem; line-height: 1.35; }
+.home-add-steps li::before { counter-increment: step; content: counter(step); flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 0.75rem; font-weight: 700; background: var(--cta); color: var(--cta-fg); }
+.home-add-steps [data-icon] { display: inline-flex; flex: none; color: var(--rose); }
+.home-add-steps [data-icon] svg { width: 24px; height: 24px; }
 .sheet-head { display: flex; align-items: flex-start; gap: var(--s2); margin-bottom: var(--s3); }
 .sheet-head > :first-child { flex: 1; }
 .sheet-head .icon-btn { margin: -10px -10px 0 0; }
@@ -1123,13 +1132,3 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
   filter: drop-shadow(0 0 6px rgb(255 210 120 / 0.9)); animation: glow-spark 720ms cubic-bezier(.3, 1.5, .5, 1) both; }
 @keyframes glow-sweep { to { transform: translateX(60%); } }
 @keyframes glow-spark { 0% { opacity: 0; transform: scale(0) rotate(0); } 40% { opacity: 1; transform: scale(1.15) rotate(30deg); } 100% { opacity: 0; transform: scale(.6) rotate(90deg); } }
-
-/* "Add Glow Studio to your home screen" (homescreen.js): the app icon with a soft gold light, then the two iPhone taps. */
-dialog.home-add { text-align: center; }
-.home-add-icon { display: block; width: 72px; height: 72px; margin: 0 auto var(--s4); border-radius: 18px; box-shadow: 0 0 0 1px rgb(255 217 138 / 0.28), 0 10px 30px -8px rgb(243 181 74 / 0.55); }
-dialog.home-add #homeAddText { color: var(--muted); margin: var(--s2) 0 0; }
-.home-add-steps { list-style: none; margin: var(--s4) 0 0; padding: 0; display: grid; gap: var(--s2); text-align: left; counter-reset: step; }
-.home-add-steps li { display: flex; align-items: center; gap: var(--s3); padding: var(--s3); border-radius: var(--r-well); background: var(--surface-2); font-size: 0.9375rem; line-height: 1.35; }
-.home-add-steps li::before { counter-increment: step; content: counter(step); flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 0.75rem; font-weight: 700; background: var(--cta); color: var(--cta-fg); }
-.home-add-steps [data-icon] { display: inline-flex; flex: none; color: var(--rose); }
-.home-add-steps [data-icon] svg { width: 24px; height: 24px; }
