@@ -1,7 +1,7 @@
-/* Glow Studio's public pages: help, privacy, terms, deleting your data. Blush & Ink, light and dark. */
-:root { --bg: #fbf7f5; --surface: #fffdfc; --text: #1d181b; --muted: #6f6368; --line: #eadfdb; --rose: #b04468; --blush: #f6d9df; color-scheme: light dark; }
+/* Glow Studio's public pages: help, privacy, terms, deleting your data. Stone & Ink, light and dark. */
+:root { --bg: #f7f6f3; --surface: #ffffff; --text: #17171a; --muted: #5f5d59; --line: #e4e1dc; --rose: #7a5c28; --blush: #ecebe7; color-scheme: light dark; }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #141013; --surface: #1d171b; --text: #f6eef1; --muted: #b9aab1; --line: #3a2f35; --rose: #f2a5bb; --blush: rgb(242 165 187 / 0.18); }
+  :root { --bg: #121214; --surface: #1b1b1e; --text: #f5f4f2; --muted: #b0aeaa; --line: #36363c; --rose: #d8bd8a; --blush: rgb(255 255 255 / 0.10); }
 }
 body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 Figtree, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 main { max-width: 680px; margin: 0 auto; padding: 28px 18px 56px; }

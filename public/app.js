@@ -2212,7 +2212,7 @@ function drawStrokes() {
   const ctx = cv.getContext("2d"), r = imageRect();
   ctx.scale(dpr, dpr);
   // Marks are drawn solid on their own layer and shown at one opacity, so overlaps don't darken.
-  ctx.strokeStyle = "rgb(214 70 128)"; ctx.lineCap = ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgb(64 132 230)"; ctx.lineCap = ctx.lineJoin = "round";
   for (const s of strokes) {
     ctx.globalCompositeOperation = s.erase ? "destination-out" : "source-over";
     ctx.lineWidth = s.w * r.s; ctx.beginPath();
@@ -2423,7 +2423,7 @@ function drawBadge(ctx, m, icon) {
   // The pill: ink glass with a soft shadow and a hairline edge, so the white lettering reads on
   // white walls and skies as well as on dark or busy backgrounds.
   ctx.shadowColor = "rgba(0, 0, 0, 0.22)"; ctx.shadowBlur = H * 0.3; ctx.shadowOffsetY = H * 0.04;
-  pill(ctx, x, y, m.bw, H); ctx.fillStyle = "rgba(29, 24, 27, 0.56)"; ctx.fill();
+  pill(ctx, x, y, m.bw, H); ctx.fillStyle = "rgba(23, 23, 26, 0.56)"; ctx.fill();
   ctx.shadowColor = "transparent"; ctx.lineWidth = Math.max(1, H * 0.025); ctx.strokeStyle = "rgba(255, 255, 255, 0.22)"; ctx.stroke();
   // The app icon, rounded like on a home screen.
   const ix = x + pad, iy = y + pad;
@@ -2481,15 +2481,15 @@ async function makeShareCard(photo) {
   await markFonts();
   const img = await loadImg(photo), W = 1080, F = 280, k = Math.min(W / img.naturalWidth, 1350 / img.naturalHeight);
   const pw = Math.round(img.naturalWidth * k), ph = Math.round(img.naturalHeight * k), c = newCanvas(W, ph + F), ctx = c.getContext("2d");
-  ctx.fillStyle = "#f6f0ea"; ctx.fillRect(0, 0, W, ph + F);
+  ctx.fillStyle = "#f5f4f2"; ctx.fillRect(0, 0, W, ph + F);
   ctx.drawImage(img, Math.round((W - pw) / 2), 0, pw, ph);
   const q = window.qrcode(0, "M"); q.addData(CONFIG.publicUrl); q.make();
   const n = q.getModuleCount(), cell = Math.floor(200 / (n + 8)), qs = cell * (n + 8), qx = 48, qy = ph + Math.round((F - qs) / 2);
-  ctx.fillStyle = "#ffffff"; ctx.fillRect(qx, qy, qs, qs); ctx.fillStyle = "#1d1418";
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(qx, qy, qs, qs); ctx.fillStyle = "#17171a";
   for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (q.isDark(r, col)) ctx.fillRect(qx + (col + 4) * cell, qy + (r + 4) * cell, cell, cell);
   const tx = qx + qs + 40;
-  ctx.fillStyle = "#813b59"; ctx.font = MARK_SERIF(76); ctx.fillText("Try Glow Studio", tx, ph + F / 2 + 4);
-  ctx.fillStyle = "#72646f"; ctx.font = MARK_SANS(30); ctx.fillText(PUBLIC_HOST, tx, ph + F / 2 + 52);
+  ctx.fillStyle = "#17171a"; ctx.font = MARK_SERIF(76); ctx.fillText("Try Glow Studio", tx, ph + F / 2 + 4);
+  ctx.fillStyle = "#5f5d59"; ctx.font = MARK_SANS(30); ctx.fillText(PUBLIC_HOST, tx, ph + F / 2 + 52);
   return c.toDataURL("image/jpeg", 0.92);
 }
 async function openShareCard(photo) {

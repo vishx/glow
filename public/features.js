@@ -73,7 +73,7 @@ const FEATURE_AREAS = [
     ["tool:filters", "Filters (all)", true],
     ["tool:headshot", "Headshot", true, "AI, uses credits."], ["tool:fashion", "Fashion shoot", true, "AI, uses credits."],
     ["tool:golden", "Golden hour", true, "AI, uses credits."],
-    ["tool:outfit", "Try on (your outfit photo, ideas or words)", true, "AI, uses credits."], ["tool:suit", "Business suit", true, "AI, uses credits. Inside Try on."],
+    ["tool:outfit", "Try on an outfit", true, "AI, uses credits."], ["tool:suit", "Business suit", true, "AI, uses credits. Inside Try on."],
     ["tool:sundress", "Summer dress", true, "AI, uses credits. Inside Try on."],
     ["tool:mylook", "My Look (camera looks)", true, "In Search."],
   ]],
