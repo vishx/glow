@@ -1618,7 +1618,7 @@ function areaRow() {
     });
     box.append(b);
   }
-  refineHead(box);
+  refineHead(wrap);
   if (info && info.err) { const n = document.createElement("p"); n.className = "area-note"; n.textContent = info.err; wrap.append(n); }
   return wrap;
 }

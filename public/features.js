@@ -78,10 +78,13 @@ const FEATURE_AREAS = [
     ["tool:mylook", "My Look (camera looks)", true, "In Search."],
   ]],
   ["Editor · Adjust", [
-    ["tool:crop", "Crop and rotate", true], ["tool:light", "Light", true], ["tool:contrast", "Contrast", true],
-    ["tool:highlights", "Highlights", true], ["tool:shadows", "Shadows", true], ["tool:color", "Color", true],
-    ["tool:vibrance", "Vibrance", true], ["tool:warmth", "Warmth", true], ["tool:tint", "Tint", true],
-    ["tool:detail", "Detail", true], ["tool:fade", "Fade", true], ["tool:vignette", "Vignette", true], ["tool:grain", "Grain", true],
+    ["edit:areas", "Full / Person / Background chips", true, "Lets every Adjust slider change only the person or only the background."],
+    ["tool:crop", "Crop and rotate", true], ["tool:exposure", "Exposure", true], ["tool:light", "Brightness", true], ["tool:contrast", "Contrast", true],
+    ["tool:highlights", "Highlights", true], ["tool:shadows", "Shadows", true], ["tool:whites", "Whites", true], ["tool:blacks", "Blacks", true],
+    ["tool:color", "Saturation", true], ["tool:vibrance", "Vibrance", true], ["tool:warmth", "Temperature", true], ["tool:tint", "Tint", true],
+    ["tool:texture", "Texture", true], ["tool:clarity", "Clarity", true], ["tool:dehaze", "Dehaze", true], ["tool:detail", "Sharpen", true],
+    ["tool:lnoise", "Reduce noise", true], ["tool:cnoise", "Reduce color noise", true],
+    ["tool:fade", "Fade", true], ["tool:vignette", "Vignette", true], ["tool:grain", "Grain", true],
   ]],
   ["Editor · Background", [
     ["tool:bgblur", "Portrait blur", true], ["tool:bgremove", "Cutout", true], ["tool:bgcolor", "Color background", true],

@@ -1747,21 +1747,21 @@ test('edit: Revert asks, returns to the original as one undoable step, and saves
   await p.click('#redoBtn'); eq(await p.evaluate(() => ed.idx), 2, 'Redo reverts again');
 }, { viewport: { width: 1280, height: 860 }, mobile: false, touch: false });
 
-test('edit: switching tools keeps a free change as one Undo step; Cancel and Escape discard', async ({ p }) => {
+test('edit: switching tools keeps a free change as one Undo step; Undo and Escape discard', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'edit', null, 'light');
   for (const v of ['10', '20', '30']) { await p.fill('#panelBody input[type=range]', v); await settle(60); }
   await p.dispatchEvent('#panelBody input[type=range]', 'change'); await p.waitForFunction(() => ed.pending && ed.pending.op.value === 30); await idle(p);
   await p.click('.tool[data-tool="color"]'); await idle(p);
   eq(await p.evaluate(() => [ed.idx, ed.hist[1].op.tool, ed.hist[1].op.value, sel]), [1, 'light', 30, 'color'], 'one step for the whole slider session');
-  assert(/kept/.test(await toast(p)), 'says it was kept');
+  eq(await p.evaluate(() => $('alertLive').textContent), 'Brightness kept. Undo removes it.', 'screen readers hear it was kept (no toast: sliders keep as you go)');
   await p.fill('#panelBody input[type=range]', '20'); await p.dispatchEvent('#panelBody input[type=range]', 'change'); await p.waitForFunction(() => !!ed.pending); await idle(p);
   await p.keyboard.press('Escape'); await settle(100);
   eq(await p.evaluate(() => [ed.idx, !!ed.pending, sel]), [1, false, null], 'Escape discards');
   await tool(p, 'edit', null, 'warmth');
   await p.fill('#panelBody input[type=range]', '20'); await p.dispatchEvent('#panelBody input[type=range]', 'change'); await p.waitForFunction(() => !!ed.pending); await idle(p);
-  await p.click('#cancelBtn'); await settle(100);
-  eq(await p.evaluate(() => [ed.idx, !!ed.pending]), [1, false], 'Cancel discards');
+  await p.click('#undoBtn'); await settle(100);
+  eq(await p.evaluate(() => [ed.idx, !!ed.pending, toolAmt.warmth]), [1, false, 0], 'Undo drops the change and resets the slider');
   await tool(p, 'edit', null, 'warmth');
   await p.fill('#panelBody input[type=range]', '-20'); await p.dispatchEvent('#panelBody input[type=range]', 'change'); await p.waitForFunction(() => !!ed.pending); await idle(p);
   await p.click('.tab[data-cat="looks"]'); await settle(100);

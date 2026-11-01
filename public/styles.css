@@ -1092,3 +1092,15 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
   #editorScreen .panel.live .info-btn { min-height: 41px; height: 41px; position: relative; }
   #editorScreen .panel.live .info-btn::after { content: ""; position: absolute; inset: -2px 0; }
 }
+/* Refine sits beside the chips, outside their scrolling row, so it can't be pushed off a narrow
+   screen or by large text. The live panel never scrolls. */
+.area-bar .areas-wrap { display: flex; align-items: center; gap: 6px; }
+.area-bar .areas-wrap > .area-note { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); }
+.area-bar .areas { flex: 0 1 auto; min-width: 0; }
+.area-bar .area.refine { flex: none; width: 48px; height: 48px; min-height: 48px; border-radius: 24px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 0.16); }
+.area-bar .area.refine svg { width: 20px; height: 20px; }
+.area-bar .area { padding-right: 10px; gap: 5px; }
+@media (max-width: 380px) { .area-bar .area.refine { width: 44px; height: 44px; min-height: 44px; } }
+#editorScreen .side > .panel.live { overflow: visible; }
