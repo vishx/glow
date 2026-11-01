@@ -1204,6 +1204,7 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
 /* ---------- Pro camera controls (camerapro.js, 2026-11-01) ----------
    Like a Galaxy S26 / iPhone 18 Pro Max camera: lens buttons over the shutter with a zoom dial,
    tap to focus with a sun slider, photo shapes with the area outside the photo dimmed, grid, level. */
+#cameraScreen { --cam-gold: #f3c062; }
 #cameraScreen .cam-top { display: flex; justify-content: space-between; gap: var(--s1); }
 #cameraScreen .cam-top .wordmark { display: none; }
 .cam-left { display: flex; align-items: center; gap: 2px; }
@@ -1236,7 +1237,7 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
 .cam-level .lv-l { width: 28px; transform: rotate(var(--lvl-base, 0deg)) translateX(-90px); }
 .cam-level .lv-r { width: 28px; transform: rotate(var(--lvl-base, 0deg)) translateX(62px); }
 .cam-level .lv-c { width: 100px; transform: rotate(var(--lvl, 0deg)) translateX(-50px); }
-.cam-level.ok i { background: var(--accent); }
+.cam-level.ok i { background: var(--cam-gold); }
 .cam-level.ok .lv-c { transform: rotate(var(--lvl-base, 0deg)) translateX(-50px); }
 .cam-level.flat { visibility: hidden; }
 
@@ -1244,21 +1245,21 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
 .cam-focus { position: absolute; z-index: 2; width: 0; height: 0; pointer-events: none; transition: opacity 0.4s; }
 .cam-focus[hidden] { display: none; }
 .cam-focus.dim { opacity: 0.45; }
-.cf-box { position: absolute; left: -36px; top: -36px; width: 72px; height: 72px; border: 1.5px solid var(--accent); border-radius: 4px; box-shadow: 0 0 2px #0006; }
+.cf-box { position: absolute; left: -36px; top: -36px; width: 72px; height: 72px; border: 1.5px solid var(--cam-gold); border-radius: 4px; box-shadow: 0 0 2px #0006; }
 .cam-focus.pop .cf-box { animation: cfpop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); }
 @keyframes cfpop { from { transform: scale(1.45); opacity: 0.2; } to { transform: scale(1); opacity: 1; } }
 .cf-sun { position: absolute; left: 44px; top: -44px; width: 20px; height: 88px; }
-.cf-track { position: absolute; left: 9px; top: 0; bottom: 0; width: 1.5px; background: var(--accent); opacity: 0; transition: opacity 0.2s; }
+.cf-track { position: absolute; left: 9px; top: 0; bottom: 0; width: 1.5px; background: var(--cam-gold); opacity: 0; transition: opacity 0.2s; }
 .cam-focus.ev-set .cf-track, .cam-focus:not(.dim) .cf-track { opacity: 0.6; }
 .cf-knob { position: absolute; left: 0; top: 34px; width: 20px; height: 20px; border-radius: 50%;
-  background: radial-gradient(circle, var(--accent) 0 4px, transparent 4.5px), conic-gradient(from 0deg, var(--accent) 0 8deg, transparent 8deg 45deg, var(--accent) 45deg 53deg, transparent 53deg 90deg, var(--accent) 90deg 98deg, transparent 98deg 135deg, var(--accent) 135deg 143deg, transparent 143deg 180deg, var(--accent) 180deg 188deg, transparent 188deg 225deg, var(--accent) 225deg 233deg, transparent 233deg 270deg, var(--accent) 270deg 278deg, transparent 278deg 315deg, var(--accent) 315deg 323deg, transparent 323deg);
+  background: radial-gradient(circle, var(--cam-gold) 0 4px, transparent 4.5px), conic-gradient(from 0deg, var(--cam-gold) 0 8deg, transparent 8deg 45deg, var(--cam-gold) 45deg 53deg, transparent 53deg 90deg, var(--cam-gold) 90deg 98deg, transparent 98deg 135deg, var(--cam-gold) 135deg 143deg, transparent 143deg 180deg, var(--cam-gold) 180deg 188deg, transparent 188deg 225deg, var(--cam-gold) 225deg 233deg, transparent 233deg 270deg, var(--cam-gold) 270deg 278deg, transparent 278deg 315deg, var(--cam-gold) 315deg 323deg, transparent 323deg);
   -webkit-mask: radial-gradient(circle, #000 0 4.5px, transparent 5px 6.5px, #000 7px 10px, transparent 10.5px); mask: radial-gradient(circle, #000 0 4.5px, transparent 5px 6.5px, #000 7px 10px, transparent 10.5px); }
-.cf-sun b { position: absolute; left: 24px; top: 36px; color: var(--accent); font-size: 0.75rem; font-weight: 700; text-shadow: 0 1px 2px #000a; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cf-sun b { position: absolute; left: 24px; top: 36px; color: var(--cam-gold); font-size: 0.75rem; font-weight: 700; text-shadow: 0 1px 2px #000a; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cf-lock { position: absolute; left: -22px; top: 42px; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: none; color: #fff; display: grid; place-items: center; pointer-events: auto; }
 .cf-lock svg { width: 18px; height: 18px; filter: drop-shadow(0 1px 2px #000a); }
-.cf-lock[aria-pressed="true"] { color: var(--accent); }
+.cf-lock[aria-pressed="true"] { color: var(--cam-gold); }
 .cf-lock[hidden] { display: none; }
-.cam-locked { position: absolute; left: 50%; translate: -50% 0; z-index: 2; background: var(--accent) !important; color: var(--on-accent) !important; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; font-size: 0.6875rem; }
+.cam-locked { position: absolute; left: 50%; translate: -50% 0; z-index: 2; background: var(--cam-gold) !important; color: #15140f !important; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; font-size: 0.6875rem; }
 
 /* Lens buttons and the zoom dial, just above the looks and the shutter. */
 .cam-zoom { position: relative; display: flex; justify-content: center; padding: 0 0 var(--s2); touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -1267,16 +1268,16 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
 .cam-lenses { display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 22px; background: #00000059; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .cam-lenses button { min-width: 38px; height: 38px; padding: 0 4px; border: 0; border-radius: 19px; background: none; color: #fff; font-size: 0.75rem; font-weight: 700;
   font-variant-numeric: tabular-nums; rotate: var(--cam-rot, 0deg); transition: rotate 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), background var(--t-select), color var(--t-select); }
-.cam-lenses button.on { min-width: 44px; background: #ffffff1f; color: var(--accent); font-size: 0.8125rem; }
+.cam-lenses button.on { min-width: 44px; background: #ffffff1f; color: var(--cam-gold); font-size: 0.8125rem; }
 .cam-zoom.dialing .cam-lenses { opacity: 0; }
 .cam-dial { position: absolute; left: 0; right: 0; bottom: var(--s2); height: 62px; overflow: hidden; pointer-events: none;
   -webkit-mask: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); mask: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); }
 .cam-dial[hidden] { display: none; }
-.cam-dial::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 2px; height: 26px; margin-left: -1px; border-radius: 1px; background: var(--accent); }
+.cam-dial::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 2px; height: 26px; margin-left: -1px; border-radius: 1px; background: var(--cam-gold); }
 .cam-dial-track { position: absolute; left: 50%; bottom: 0; height: 100%; will-change: transform; }
 .cam-dial-track i { position: absolute; bottom: 0; width: 1px; height: 10px; background: #ffffffa6; }
 .cam-dial-track i.mj { height: 18px; width: 1.5px; background: #fff; }
 .cam-dial-track b { position: absolute; bottom: 22px; left: 0; translate: -50% 0; color: #fff; font-size: 0.6875rem; font-weight: 700; text-shadow: 0 1px 2px #000a; }
-.cam-dial-val { position: absolute; left: 50%; top: 0; translate: -50% 0; padding: 2px 8px; border-radius: 10px; background: #0000008c; color: var(--accent); font-size: 0.8125rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cam-dial-val { position: absolute; left: 50%; top: 0; translate: -50% 0; padding: 2px 8px; border-radius: 10px; background: #0000008c; color: var(--cam-gold); font-size: 0.8125rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 #camRatio, #camMore { rotate: var(--cam-rot, 0deg); transition: rotate 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
 @media (prefers-reduced-motion: reduce) { .cam-lenses button, #camRatio, #camMore { transition: none; } .cam-focus.pop .cf-box { animation: none; } }

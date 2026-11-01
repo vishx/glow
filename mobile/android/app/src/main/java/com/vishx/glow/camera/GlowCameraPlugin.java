@@ -694,7 +694,7 @@ public class GlowCameraPlugin extends Plugin {
     }
 
     /** Upright, cropped to what the screen showed, mirrored like the preview; the look baked into a second copy. */
-    private void finish(PluginCall call, byte[] jpeg, int rot, boolean mir, Look lk, boolean processed, double aspect, double[] crop, int deg, int turn) throws Exception {
+    private void finish(PluginCall call, byte[] jpeg, int rot, boolean mir, Look lk, boolean processed, double aspect, double[] frame, int deg, int turn) throws Exception {
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inJustDecodeBounds = true;
         BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length, o);
@@ -722,11 +722,11 @@ public class GlowCameraPlugin extends Plugin {
         }
         cw = Math.max(1, Math.min(W, cw)); ch = Math.max(1, Math.min(H, ch));
         int cx = (W - cw) / 2, cy = Math.round((H - ch) * lk.posY);
-        if (crop != null) {
+        if (frame != null) {
             // The frame the screen showed (photo shape, Adjust's face position), unmirrored for selfies.
-            double fx = mir ? 1 - crop[0] - crop[2] : crop[0];
-            cx = (int) Math.round(Math.max(0, fx) * W); cy = (int) Math.round(Math.max(0, crop[1]) * H);
-            cw = (int) Math.round(crop[2] * W); ch = (int) Math.round(crop[3] * H);
+            double fx = mir ? 1 - frame[0] - frame[2] : frame[0];
+            cx = (int) Math.round(Math.max(0, fx) * W); cy = (int) Math.round(Math.max(0, frame[1]) * H);
+            cw = (int) Math.round(frame[2] * W); ch = (int) Math.round(frame[3] * H);
             cw = Math.max(1, Math.min(W - cx, cw)); ch = Math.max(1, Math.min(H - cy, ch));
         }
         Bitmap crop = (cw == W && ch == H) ? up : Bitmap.createBitmap(up, cx, cy, cw, ch);
