@@ -6,6 +6,7 @@ import com.getcapacitor.BridgeActivity;
 import com.vishx.glow.home.GlowHomePlugin;
 import com.vishx.glow.cutout.GlowCutoutPlugin;
 import com.vishx.glow.image.GlowImagePlugin;
+import com.vishx.glow.camera.GlowCameraPlugin;
 
 public class MainActivity extends BridgeActivity {
     // Android's font size setting scales all text in the app (up to 200% on Android 14+). Glow Studio
@@ -19,6 +20,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GlowHomePlugin.class);
         registerPlugin(GlowCutoutPlugin.class);
         registerPlugin(GlowImagePlugin.class);
+        registerPlugin(GlowCameraPlugin.class);
         super.onCreate(savedInstanceState);
         capTextZoom();
     }

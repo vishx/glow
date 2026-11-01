@@ -19,6 +19,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght,SOFT,WONK@9..144,400..600,0..100,0..1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 <script>/* Dark is the default look (gold reads best on dark); Light and System stay in Settings. Set before first paint. */
+/* Golden Hour made Dark the default: a look picked before it (Light/System) is cleared once, so everyone starts on Dark; a later pick in Settings sticks. */
+try { if (localStorage.getItem("glowThemeV") !== "2") { localStorage.removeItem("glowTheme"); localStorage.setItem("glowThemeV", "2"); } } catch (e) {}
 try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system") document.documentElement.dataset.theme = gt; } catch (e) { document.documentElement.dataset.theme = "dark"; }</script>
 <link rel="stylesheet" href="enhance.css">
 </head>
@@ -153,6 +155,7 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
       <span class="spacer" id="flashSpacer" aria-hidden="true"></span>
       <p class="wordmark" aria-hidden="true">Glow Studio</p>
       <div class="cam-right">
+        <button class="icon-btn cam-timer" id="camTimer" aria-label="Timer off" aria-pressed="false"></button>
         <button class="cam-ai" id="camAI" aria-pressed="false" aria-label="AI Enhance each photo, 1 credit per photo"><span data-icon="sparkle"></span>AI</button>
         <button class="icon-btn" id="camSettingsBtn" aria-label="Settings"></button>
       </div>
@@ -162,6 +165,7 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
       <div class="cam-fx" id="camFx" aria-hidden="true" hidden><i class="fx-wash"></i><i></i><i class="fx-leak"></i><i></i><i class="fx-grain"></i><span class="fx-date"></span></div>
       <img id="reviewImg" alt="The photo you just took" hidden>
       <video id="camVideo" playsinline muted hidden></video>
+      <div class="cam-count" id="camCount" aria-hidden="true" hidden></div>
       <div class="vf-state" id="camState" hidden>
         <div class="vf-card">
           <div class="art" id="camStateArt"></div>

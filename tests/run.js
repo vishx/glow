@@ -154,6 +154,27 @@ test('camera: held sideways, the web camera keeps the people in view (controls i
   const a = await p.evaluate(() => cam.shot.w / cam.shot.h);
   assert(a > 1 && Math.abs(a - r.vfW / r.vfH) < 0.01, 'a landscape photo shaped like the screen: ' + [a, r.vfW / r.vfH]);
 }, { start: 'camera', viewport: { width: 844, height: 390 } });
+test('camera: phone app held sideways turns the icons the short way and saves the photo the way the phone was held', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  const r = await p.evaluate(async () => {
+    const rot = () => $('camFlip').style.getPropertyValue('--cam-rot'), seq = [];
+    for (const d of [90, 0, 270, 180, 90, 0]) { setCamDeg(d); seq.push(rot()); }
+    setCamDeg(0);
+    // A 4×2 picture with a red top-left pixel, turned 90°, 180° and 270° clockwise.
+    const c = newCanvas(4, 2), x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, 4, 2); x.fillStyle = '#f00'; x.fillRect(0, 0, 1, 1);
+    const src = c.toDataURL('image/png'), out = {};
+    for (const d of [90, 180, 270]) {
+      const t = await turnPhoto(src, d), px = t.getContext('2d').getImageData(0, 0, t.width, t.height).data, red = [];
+      for (let i = 0; i < px.length; i += 4) if (px[i] > 200 && px[i + 1] < 60) red.push([(i / 4) % t.width, Math.floor(i / 4 / t.width)]);
+      out[d] = { w: t.width, h: t.height, red };
+    }
+    return { seq, out };
+  });
+  eq(r.seq, ['-90deg', '0deg', '90deg', '180deg', '270deg', '360deg'], 'icons counter-turn, always by 90° at a time');
+  eq(r.out[90], { w: 2, h: 4, red: [[1, 0]] }, '90° clockwise: top-left goes to top-right');
+  eq(r.out[180], { w: 4, h: 2, red: [[3, 1]] }, '180°: top-left goes to bottom-right');
+  eq(r.out[270], { w: 2, h: 4, red: [[0, 3]] }, '270° clockwise: top-left goes to bottom-left');
+}, { start: 'camera' });
 test('camera: AI Enhance button on review runs Enhance for 1 credit, closing goes back to the camera', async ({ p, state }) => {
   await p.goto('https://app.test/'); await camLive(p);
   assert(await p.isVisible('#camAI'), 'AI switch visible'); eq(await p.getAttribute('#camAI', 'aria-pressed'), 'false', 'AI off by default');
@@ -194,6 +215,25 @@ test('camera: selfie screen flash defaults to Auto, cycles On/Off, and lights th
   await p.click('#retakeBtn'); await camLive(p);
   await p.click('#flashBtn'); eq(await p.evaluate(() => screenFlashMode()), 'off', 'Off');
   await p.click('#flashBtn'); eq(await p.evaluate(() => screenFlashMode()), 'auto', 'back to Auto');
+}, { start: 'camera' });
+
+test('camera: shutter timer counts down before the shot, and a second tap cancels it', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  eq(await p.evaluate(() => [timerSecs(), $('camTimer').getAttribute('aria-label')]), [0, 'Timer off'], 'off by default');
+  await p.click('#camTimer'); eq(await p.evaluate(() => [timerSecs(), $('camTimer').getAttribute('aria-label')]), [3, 'Timer 3 seconds'], '3 seconds');
+  await p.click('#camTimer'); eq(await p.evaluate(() => timerSecs()), 10, '10 seconds');
+  await p.click('#shutter'); await settle(400);
+  eq(await p.evaluate(() => [!!cam.shot, $('camCount').hidden, Number($('camCount').textContent) >= 7]), [false, false, true], 'counting, no photo yet');
+  await p.click('#shutter'); await settle(400);
+  eq(await p.evaluate(() => [!!cam.shot, $('camCount').hidden, !!cam.counting]), [false, true, false], 'second tap cancels');
+  await p.click('#camTimer'); await p.click('#camTimer'); eq(await p.evaluate(() => timerSecs()), 3, 'back to 3 seconds');
+  const t0 = Date.now(); await p.click('#shutter');
+  await p.waitForFunction(() => !!cam.shot, null, { timeout: 15000 });
+  assert(Date.now() - t0 > 2500, 'the photo waits for the countdown');
+  eq(await p.evaluate(() => $('camCount').hidden), true, 'countdown cleared');
+  await p.click('#retakeBtn'); await camLive(p);
+  await p.click('#camTimer'); await p.click('#camTimer');
+  eq(await p.evaluate(() => [timerSecs(), store.get('glowTimer')]), [0, '0'], 'cycles 10 then off, remembered');
 }, { start: 'camera' });
 
 test('camera filters: 13 filters, film effects over the preview and in the photo, Strength scales them', async ({ p }) => {
