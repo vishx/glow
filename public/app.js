@@ -249,6 +249,20 @@ function applyTheme() {
   // The browser bar follows the app's look, not just the phone's.
   const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
   document.querySelectorAll('meta[name="theme-color"]').forEach((m) => { m.content = dark ? "#0d0d10" : "#faf7f0"; });
+  syncSystemBars();
+}
+// Phone app: the clock, battery and gesture bar follow what is on screen. Android's default follows
+// the phone's own light/dark setting instead, so on a phone set to Light they were dark icons on
+// Glow Studio's dark screens, and couldn't be seen.
+let barsStyle = "";
+function syncSystemBars() {
+  if (!native || !plugins.SystemBars) return;
+  const t = themeChoice(), appDark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+  let el = null; try { el = screen ? document.getElementById(screen) : null; } catch {}   // runs once before `screen` exists
+  const style = appDark || (el && el.classList.contains("dark")) ? "DARK" : "LIGHT";   // DARK = light icons on a dark screen
+  if (style === barsStyle) return;
+  barsStyle = style;
+  try { plugins.SystemBars.setStyle({ style }).catch(() => {}); } catch {}
 }
 try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme); } catch {}
 applyTheme();
@@ -285,6 +299,7 @@ function showScreen(id) {
   if (id === "cameraScreen") enterCamera();
   if (id === "editorHome") renderHome();
   if (id === "enhanceHome" && typeof renderEnhanceHome === "function") renderEnhanceHome();
+  syncSystemBars();
   setTimeout(syncBackGuard);
 }
 function go(dest) { try { track("tab", { dest }); } catch {} showScreen(dest === "camera" ? "cameraScreen" : dest === "enhance" ? "enhanceHome" : "editorHome"); }
@@ -354,6 +369,15 @@ let reshapeNote = null;   // why a reshape tool can't be used on this face (null
 // Reads a photo once at full size: the untouched file is kept as the original, and a
 // working copy of up to 2048px drives previews.
 async function readPhoto(blob, name) {
+  try { return await readPhotoAs(blob, name); }
+  catch (err) {
+    const jpeg = await Platform.heicToJpeg(blob).catch(() => null);
+    if (jpeg) return readPhotoAs(jpeg, (name || "photo").replace(/\.(heic|heif)$/i, ".jpg"));
+    if (Platform.isHeic(blob, name)) throw new Error("This photo is in HEIC format, which this browser can't open. Try a JPEG or PNG, or use the Glow Studio app.");
+    throw err;
+  }
+}
+async function readPhotoAs(blob, name) {
   const url = URL.createObjectURL(blob);
   try {
     const img = await loadImg(url);
@@ -2974,10 +2998,17 @@ function ensureSession(force) {
 // Server calls
 async function call(path, opts = {}, retried) {
   const s = await ensureSession();
-  const res = await fetch(`${CONFIG.supabaseUrl}/functions/v1/${path}`, {
-    ...opts,
-    headers: { "Content-Type": "application/json", apikey: CONFIG.supabaseKey, Authorization: `Bearer ${s.access_token}` },
-  });
+  let res;
+  try {
+    res = await fetch(`${CONFIG.supabaseUrl}/functions/v1/${path}`, {
+      ...opts,
+      headers: { "Content-Type": "application/json", apikey: CONFIG.supabaseKey, Authorization: `Bearer ${s.access_token}` },
+    });
+  } catch (err) {
+    // No connection (or it dropped): say so in words, not the browser's "Failed to fetch".
+    if (err && err.name === "AbortError") throw err;
+    const e = new Error("You're offline. Check your internet and try again."); e.offline = true; throw e;
+  }
   if (res.status === 401 && !retried) { await ensureSession(true); return call(path, opts, true); }
   const body = await res.json().catch(() => ({}));
   if (body.usage) showUsage(body.usage);
@@ -4189,8 +4220,17 @@ function goBack() {
   if (open) { if (!(open.id === "enhSheet" && enh.busy)) open.close(); return true; }
   if (expanded) { setExpanded(false); return true; }
   if (typeof enhanceBack === "function" && enhanceBack()) return true;
-  if (screen === "editorScreen") { if (!$("backBtn").disabled) $("backBtn").click(); return true; }
+  if (screen === "editorScreen") {
+    // Back closes what's open first (a refine brush, a tool, the crop), like the panel's Cancel,
+    // and only then leaves the editor.
+    if (refining) { endRefine(); return true; }
+    if (sel && !$("cancelBtn").disabled && $("cancelBtn").offsetParent) { $("cancelBtn").click(); return true; }
+    if (!$("backBtn").disabled) $("backBtn").click(); return true;
+  }
   if (screen === "cameraScreen" && cam.shot) { $("retakeBtn").click(); return true; }
+  // Phone app: Back on the Editor or Camera tab goes to Enhance (home) first, like other Android
+  // apps; Back on Enhance leaves the app.
+  if (native && (screen === "editorHome" || screen === "cameraScreen")) { go("enhance"); return true; }
   return false;
 }
 if (native && plugins.App) plugins.App.addListener("backButton", () => { if (!goBack()) plugins.App.exitApp(); });
@@ -4211,6 +4251,20 @@ addEventListener("popstate", () => {
   if (!(history.state && history.state.glowBack)) history.back();
 });
 new MutationObserver(() => setTimeout(syncBackGuard)).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["open"] });
+// On-screen keyboard: once it has opened, bring the box being typed in into view, so it is never
+// left under the keyboard (support message, Describe, Try on words, search), whatever the phone does.
+document.addEventListener("focusin", (e) => {
+  const el = e.target;
+  if (!el.matches || !el.matches("textarea, input[type=text], input[type=search], input[type=email], input:not([type])")) return;
+  const vv = window.visualViewport;
+  const check = () => {
+    if (document.activeElement !== el) return;
+    const r = el.getBoundingClientRect(), bottom = vv ? vv.offsetTop + vv.height : innerHeight;
+    if (r.bottom > bottom - 8 || r.top < (vv ? vv.offsetTop : 0)) el.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
+  setTimeout(check, 350);
+  if (vv) vv.addEventListener("resize", check, { once: true });
+});
 // Keyboard: Escape closes the tool panel; Ctrl/Cmd+Z undoes.
 document.addEventListener("keydown", (e) => {
   if (screen !== "editorScreen" || document.querySelector("dialog[open]") || e.target.matches("input[type=search], input[type=text]")) return;

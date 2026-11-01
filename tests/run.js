@@ -3067,6 +3067,49 @@ test('web checkout: without a Web Billing key (or switched off) the website stil
   eq(await p.evaluate(() => [$('buyBtn').disabled, /available in the Glow Studio app/.test($('pwNote').textContent), !!document.querySelector('script[src*="purchases-js"]')]), [true, true, false], 'no key: disabled, app note, checkout not loaded');
 }, { start: 'enhance', camera: false });
 
+// ---------- 2026-11-01 whole-app audit (real-device issues) ----------
+test('audit: Back with a tool open closes the tool first, then leaves the editor', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('coords-600x400.png'));
+  await p.evaluate(() => { const t = [...document.querySelectorAll('#tools .tool[data-tool]')].find((x) => x.offsetParent && TOOL[x.dataset.tool].kind !== 'ai'); t.click(); });
+  await p.waitForFunction(() => !!sel);
+  await p.evaluate(() => goBack()); await settle(300);
+  eq(await p.evaluate(() => [screen, sel]), ['editorScreen', null], 'tool closed, still editing');
+  await p.evaluate(() => goBack()); await p.waitForFunction(() => screen !== 'editorScreen');
+}, { start: 'editor', camera: false });
+
+test('audit: no connection says so in words, not "Failed to fetch"', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && !!account);
+  await p.route('**/functions/v1/**', (r) => r.abort('internetdisconnected'));
+  const m = await p.evaluate(() => call('account', { method: 'GET' }).then(() => 'ok', (e) => [e.message, !!e.offline]));
+  eq(m, ["You're offline. Check your internet and try again.", true], 'friendly offline error');
+}, { start: 'enhance', camera: false });
+
+test('audit: a HEIC photo the browser cannot open gets a clear message', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick');
+  await (await fc).setFiles({ name: 'IMG_0001.HEIC', mimeType: 'image/heic', buffer: Buffer.from('not really a heic file') });
+  await p.waitForFunction(() => /HEIC/.test($('toast').textContent), null, { timeout: 10000 });
+}, { start: 'enhance', camera: false });
+
+test('audit: landscape phone keeps the photo big on Enhance, the buttons on screen at home, and Continue on the Pro sheet', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome'); await settle(800);
+  const vis = (id) => p.evaluate((id) => { const r = $(id).getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && r.width > 0; }, id);
+  assert(await vis('enhPick'), 'Choose a photo visible without scrolling');
+  const hero = await p.evaluate(() => document.querySelector('#enhanceHome .enh-hero').getBoundingClientRect().height);
+  assert(hero > 200, 'sample photo uses the height: ' + hero);
+  await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]');
+  const sheetPic = await p.evaluate(() => $('enhSheetImg').getBoundingClientRect().height);
+  assert(sheetPic > 250, 'pick sheet photo big: ' + sheetPic); assert(await vis('enhGo'), 'Enhance button on screen');
+  await p.click('#enhGo'); await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 }); await settle(600);
+  const fr = await p.evaluate(() => $('enhFrame').getBoundingClientRect().height);
+  assert(fr > 260, 'result photo big: ' + fr); assert(await vis('enhDownload'), 'save on screen');
+  await p.click('#enhDownload'); await p.waitForFunction(() => screen === 'enhanceShare'); await settle(500);
+  const card = await p.evaluate(() => document.querySelector('.enh-share-ph .enh-card').getBoundingClientRect().height);
+  assert(card > 260, 'share photo big: ' + card); assert(await vis('enhAnother'), 'Enhance another on screen');
+  await p.evaluate(() => { showScreen('enhanceHome'); openPaywall(); }); await settle(500);
+  assert(await vis('buyBtn'), 'Continue on screen without scrolling');
+}, { start: 'enhance', camera: false, viewport: { width: 844, height: 390 } });
+
 (async () => {
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
   const results = [];

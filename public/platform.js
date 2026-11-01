@@ -20,15 +20,37 @@ const Platform = {
       let settled = false;
       const finish = (f) => {
         if (settled) return; settled = true;
-        window.removeEventListener("focus", onFocus); input.onchange = null; input.value = "";
+        window.removeEventListener("focus", onFocus); input.onchange = null; input.oncancel = null; input.value = "";
         done(f);
       };
-      // Some browsers never fire "change" on cancel; returning focus without a file means cancel.
-      const onFocus = () => setTimeout(() => { if (!input.files.length) finish([]); }, 1000);
-      input.onchange = () => finish([...input.files]);
+      // Browsers that support it say "cancel" when the picker closes without a photo. Older ones only
+      // give focus back; then wait a few seconds, because on a phone a photo coming from the cloud
+      // (Google Photos, iCloud) can arrive well after the picker has closed.
+      const onFocus = () => setTimeout(() => { if (!input.files.length) finish([]); }, 4000);
+      input.onchange = async () => {
+        const picked = [...input.files];
+        // HEIC photos become JPEGs here in the phone app, so every screen can open them.
+        finish(await Promise.all(picked.map(async (f) => {
+          if (!this.isHeic(f, f.name)) return f;
+          const j = await this.heicToJpeg(f).catch(() => null);
+          return j ? new File([j], f.name.replace(/\.(heic|heif)$/i, "") + ".jpg", { type: "image/jpeg" }) : f;
+        })));
+      };
+      input.oncancel = () => finish([]);
       window.addEventListener("focus", onFocus);
       input.click();
     });
+  },
+
+  // HEIC/HEIF photos (Samsung's "High efficiency pictures", photos from iPhones) don't open in
+  // Android's WebView or Chrome. The phone app turns them into a JPEG with Android's own decoder
+  // (the GlowImage plugin), the right way up.
+  isHeic: (blob, name) => /hei[cf]/i.test((blob && blob.type) || "") || /\.(heic|heif)$/i.test(name || ""),
+  async heicToJpeg(blob) {
+    if (!native || !plugins.GlowImage) return null;
+    const data = await new Promise((ok, fail) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => fail(r.error); r.readAsDataURL(blob); });
+    const res = await plugins.GlowImage.toJpeg({ data });
+    return (await fetch(res.data)).blob();
   },
 
   // Saves photos ({ blob } or { data: dataURL }, plus a name without extension). Resolves only
@@ -43,10 +65,19 @@ const Platform = {
       const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
       return new File([blob], `${it.name}.${ext}`, { type: blob.type || "image/jpeg" });
     }));
-    if (!opts.share) Recents.add(files).catch(() => {});   // the home screens' "Recent" row (kept on this device only)
+    // The home screens' "Recent" row (kept on this device only), once the save went through.
+    const where = await this.savePhotoFiles(files, opts);
+    if (!opts.share) Recents.add(files).catch(() => {});
+    return where;
+  },
+  async savePhotoFiles(files, opts) {
     if (native && plugins.Media) {
-      for (const f of files) await saveToAlbum(await fileData(f), f.name.replace(/\.\w+$/, ""));
-      return "photos";
+      // If the photo library refuses (permission turned off in Android settings), fall back to the
+      // share sheet below so the photo isn't lost.
+      try {
+        for (const f of files) await saveToAlbum(await fileData(f), f.name.replace(/\.\w+$/, ""));
+        return "photos";
+      } catch (err) { console.warn("Saving to the photo library failed", err); if (!(plugins.Filesystem && plugins.Share)) throw err; opts = { ...opts, download: false }; }
     }
     if (native && plugins.Filesystem && plugins.Share && !opts.download) {
       const uris = [];
@@ -129,9 +160,13 @@ async function saveToAlbum(dataUrl, name) {
   const media = plugins.Media;
   let album;
   if (window.Capacitor.getPlatform() === "android") {
-    const find = async () => ((await media.getAlbums()).albums || []).find((a) => a.name === "Glow Studio");
-    album = await find();
-    if (!album) { await media.createAlbum({ name: "Glow Studio" }); album = await find(); }
+    // The Glow Studio album is a nicety: without it (no permission to list albums) the photo still
+    // goes to the phone's Pictures.
+    try {
+      const find = async () => ((await media.getAlbums()).albums || []).find((a) => a.name === "Glow Studio");
+      album = await find();
+      if (!album) { await media.createAlbum({ name: "Glow Studio" }); album = await find(); }
+    } catch (err) { console.warn("Glow Studio album unavailable", err); album = null; }
   }
   await media.savePhoto({ path: dataUrl, albumIdentifier: album && album.identifier, fileName: name });
 }

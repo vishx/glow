@@ -125,7 +125,7 @@ dialog.enh-sheet::backdrop { background: rgb(10 8 12 / .72); backdrop-filter: bl
 }
 /* The photo: contained, never cropped, on a blurred and darkened copy of itself. */
 .enh-sheet .ph { position: relative; flex: 1 1 auto; min-height: 0; display: grid; place-items: center; overflow: hidden; isolation: isolate; container-type: size;
-  padding: calc(60px + env(safe-area-inset-top)) var(--s3) calc(var(--s4) + 20px); box-sizing: border-box; }
+  padding: calc(60px + var(--sa-top)) var(--s3) calc(var(--s4) + 20px); box-sizing: border-box; }
 .enh-sheet .ph-fill { position: absolute; inset: -40px; width: calc(100% + 80px); height: calc(100% + 80px); object-fit: cover; z-index: -1;
   filter: blur(36px) saturate(1.15) brightness(.62); transform: scale(1.05); }
 .enh-sheet .ph::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
@@ -134,13 +134,13 @@ dialog.enh-sheet::backdrop { background: rgb(10 8 12 / .72); backdrop-filter: bl
   transition: transform 500ms cubic-bezier(.2, .9, .3, 1); }
 .enh-sheet .ph-pic img { display: block; max-width: 100cqw; max-height: 100cqh; object-fit: contain; }
 .enh-sheet.working .ph-pic { transform: scale(.985); }
-.enh-sheet .x { position: absolute; top: calc(var(--s3) + env(safe-area-inset-top)); left: var(--s3); width: 44px; height: 44px; border-radius: 50%; border: 0; display: grid; place-items: center;
+.enh-sheet .x { position: absolute; top: calc(var(--s3) + var(--sa-top)); left: var(--s3); width: 44px; height: 44px; border-radius: 50%; border: 0; display: grid; place-items: center;
   background: rgb(18 18 20 / .45); color: #fff; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: opacity 200ms; }
 .enh-sheet .x:disabled { opacity: 0; pointer-events: none; }
-.enh-sheet > .ph > .enh-pill.ai { top: calc(var(--s3) + 10px + env(safe-area-inset-top)); right: var(--s3); bottom: auto; }
+.enh-sheet > .ph > .enh-pill.ai { top: calc(var(--s3) + 10px + var(--sa-top)); right: var(--s3); bottom: auto; }
 
 /* The panel: porcelain (dark surface in dark mode), lifted over the photo's blur. */
-.enh-sheet .foot { position: relative; z-index: 1; flex: none; display: grid; gap: var(--s3); margin-top: -20px; padding: var(--s5) var(--s4) calc(var(--s4) + env(safe-area-inset-bottom));
+.enh-sheet .foot { position: relative; z-index: 1; flex: none; display: grid; gap: var(--s3); margin-top: -20px; padding: var(--s5) var(--s4) calc(var(--s4) + var(--sa-bottom));
   border-radius: var(--r-sheet) var(--r-sheet) 0 0; background: var(--surface); box-shadow: 0 -10px 30px rgb(0 0 0 / .18); }
 @media (min-width: 600px) { .enh-sheet .foot { padding-bottom: var(--s4); } }
 
@@ -255,7 +255,7 @@ dialog.enh-sheet::backdrop { background: rgb(10 8 12 / .72); backdrop-filter: bl
 .enh-dock { flex: none; display: grid; }
 .enh-dock > * { grid-area: 1 / 1; min-width: 0; }
 .enh-dock > [hidden] { display: flex !important; visibility: hidden; pointer-events: none; }
-.enh-toggles { align-self: center; display: flex; gap: var(--s1); overflow-x: auto; scrollbar-width: none; padding: var(--s4) var(--gutter) calc(var(--s4) + env(safe-area-inset-bottom));
+.enh-toggles { align-self: center; display: flex; gap: var(--s1); overflow-x: auto; scrollbar-width: none; padding: var(--s4) var(--gutter) calc(var(--s4) + var(--sa-bottom));
   scroll-snap-type: x proximity; }
 .enh-toggles::-webkit-scrollbar { display: none; }
 .enh-t { position: relative; flex: 0 0 auto; width: 92px; min-height: 84px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: var(--s2) 2px;
@@ -273,7 +273,7 @@ dialog.enh-sheet::backdrop { background: rgb(10 8 12 / .72); backdrop-filter: bl
 .enh-t.more .ic { background: none; box-shadow: inset 0 0 0 1px #45454b; }
 
 /* A tool's levels (Disabled, 1, 2, 3...), in place of the tool row. */
-.enh-levels { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) 0 calc(var(--s2) + env(safe-area-inset-bottom)); }
+.enh-levels { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) 0 calc(var(--s2) + var(--sa-bottom)); }
 .enh-default { align-self: center; display: inline-flex; align-items: center; gap: var(--s3); min-height: 40px; color: #f7f3ea; font-weight: 600; font-size: 0.9375rem; cursor: pointer; }
 .enh-default input { appearance: none; -webkit-appearance: none; margin: 0; width: 46px; height: 28px; border-radius: 14px; background: #45454b; position: relative; cursor: pointer;
   transition: background var(--t-select); }
@@ -303,7 +303,7 @@ dialog.enh-sheet::backdrop { background: rgb(10 8 12 / .72); backdrop-filter: bl
 .enh-saved .state .ok { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: #15140f; color: #f7f3ea; }
 .enh-saved .state .ok svg { width: 16px; height: 16px; stroke-width: 3; }
 .enh-saved .share { width: 48px; height: 48px; border-radius: 50%; border: 0; display: grid; place-items: center; background: #f7f3ea; color: #15140f; flex: none; }
-.enh-share-foot { flex: none; display: grid; width: 100%; max-width: 520px; margin: 0 auto; gap: var(--s2); padding: var(--s4) var(--gutter) calc(var(--s4) + env(safe-area-inset-bottom)); }
+.enh-share-foot { flex: none; display: grid; width: 100%; max-width: 520px; margin: 0 auto; gap: var(--s2); padding: var(--s4) var(--gutter) calc(var(--s4) + var(--sa-bottom)); }
 .enh-share-foot .btn { min-height: 60px; border-radius: 30px; font-size: 1.125rem; background: linear-gradient(135deg, #ffe3a3, #f3b54a); color: #1a1206;
   box-shadow: 0 0 0 1px rgb(255 217 138 / .35), 0 8px 26px -6px rgb(243 181 74 / .55); }
 .enh-share-foot .btn svg { color: currentColor; }
@@ -340,7 +340,7 @@ dialog.enh-sheet::backdrop { background: rgb(10 8 12 / .72); backdrop-filter: bl
 .bt-x::after { content: ""; position: absolute; inset: -8px; }   /* 44px touch target */
 .bt-x svg { width: 15px; height: 15px; stroke-width: 2.5; }
 .batch-foot { flex: none; width: 100%; max-width: 520px; margin: 0 auto; box-sizing: border-box; display: grid; gap: var(--s2);
-  padding: var(--s3) var(--gutter) calc(var(--s4) + env(safe-area-inset-bottom)); }
+  padding: var(--s3) var(--gutter) calc(var(--s4) + var(--sa-bottom)); }
 #enhanceBatch .enh-go { background: linear-gradient(135deg, #ffe3a3, #f3b54a); color: #1a1206; }
 #enhanceBatch .enh-go svg { color: currentColor; }
 #enhanceBatch .enh-go.off { opacity: .55; }
@@ -370,3 +370,47 @@ dialog.enh-sheet::backdrop { background: rgb(10 8 12 / .72); backdrop-filter: bl
 .recent:active { transform: scale(.95); }
 .recent img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .recent:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
+
+/* ---------- Landscape phones (short and wide): photo on the left, controls in a column on the right ----------
+   2026-11-01 audit: turned sideways, the bottom panels took the whole height and the photo shrank to a
+   sliver (pick sheet, Result, Share). Same parts, side by side. */
+@media (orientation: landscape) and (max-height: 560px) {
+  dialog.enh-sheet { width: 100vw; max-width: none; height: 100dvh; border-radius: 0; box-shadow: none; flex-direction: row; }
+  dialog.enh-sheet::backdrop { background: #111113; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .enh-sheet .ph { padding: calc(var(--s3) + var(--sa-top)) var(--s4) var(--s3) calc(60px + var(--sa-left)); }
+  .enh-sheet > .ph > .enh-pill.ai { top: auto; bottom: var(--s3); right: var(--s3); }
+  .enh-sheet .x { left: calc(var(--s3) + var(--sa-left)); }
+  .enh-sheet .foot { width: min(340px, 44vw); margin: 0; align-content: center; overflow-y: auto; border-radius: var(--r-sheet) 0 0 var(--r-sheet);
+    padding: calc(var(--s4) + var(--sa-top)) calc(var(--s4) + var(--sa-right)) calc(var(--s4) + var(--sa-bottom)) var(--s4); box-shadow: -10px 0 30px rgb(0 0 0 / .18); }
+  .enh-style { grid-auto-flow: row; grid-auto-columns: auto; }
+
+  #enhanceResult, #enhanceShare { display: grid; grid-template-columns: minmax(0, 1fr) min(320px, 42vw); grid-template-rows: auto minmax(0, 1fr) auto; }
+  #enhanceResult > .enh-top, #enhanceShare > .enh-top { grid-column: 1 / -1; max-width: none; height: 52px; }
+  #enhanceResult .enh-stage { grid-column: 1; grid-row: 2 / 4; padding: 0 var(--s2) calc(var(--s2) + var(--sa-bottom)); }
+  #enhanceResult .enh-pro { grid-column: 2; grid-row: 2; align-self: start; }
+  #enhanceResult .enh-dock { grid-column: 2; grid-row: 2 / 4; align-self: stretch; min-height: 0; overflow-y: auto; }
+  #enhanceResult .enh-pro:not([hidden]) ~ .enh-dock { grid-row: 3; }
+  .enh-toggles { flex-wrap: wrap; justify-content: center; align-content: flex-start; overflow-x: visible; padding: var(--s2) var(--s2) calc(var(--s2) + var(--sa-bottom)); }
+  .enh-t { width: 88px; min-height: 80px; }
+  .enh-levels { justify-content: center; }
+  .enh-lv-row { flex-wrap: wrap; justify-content: center; overflow-x: visible; }
+  .enh-lv.off { margin-right: 0; }
+  #enhanceShare .enh-share-ph { grid-column: 1; grid-row: 2 / 4; padding: 0 var(--s4) calc(var(--s3) + var(--sa-bottom)); }
+  #enhanceShare .enh-share-foot { grid-column: 2; grid-row: 2 / 4; align-self: center; padding: var(--s2) calc(var(--s4) + var(--sa-right)) calc(var(--s3) + var(--sa-bottom)) var(--s2); }
+  .enh-share-foot .btn { min-height: 52px; font-size: 1rem; }
+}
+
+/* Landscape phones: the home screens' sample photo on the left at full height; buttons, Quick actions
+   and Recent scroll on the right (2026-11-01 audit; Welcome is in styles.css). */
+@media (orientation: landscape) and (max-height: 560px) {
+  #enhanceHome, #editorHome { max-width: none; }
+  #enhanceHome .enh-home, #editorHome .home { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); grid-auto-rows: min-content; align-content: start;
+    gap: 0 var(--s5); padding: var(--s2) calc(var(--gutter) + var(--sa-right)) var(--s4) calc(var(--gutter) + var(--sa-left)); }
+  #enhanceHome .enh-home > *, #editorHome .home > * { grid-column: 2; min-width: 0; margin-bottom: var(--s3); }
+  #enhanceHome .enh-hero, #editorHome .ed-hero, #editorHome.has-qa .ed-hero { grid-column: 1; grid-row: 1 / span 8; position: sticky; top: 0; align-self: start; min-height: 0; margin: 0;
+    height: calc(100dvh - var(--sa-top) - 56px - var(--nav-h) - var(--sa-bottom) - var(--s2) * 2); }
+  #enhanceHome .enh-hero .cap h1, #editorHome .ed-hero .cap h1 { font-size: 1.75rem; line-height: 2rem; }
+  .qa-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .qa-name { white-space: nowrap; }
+
+}
