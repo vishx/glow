@@ -65,9 +65,13 @@
 .ed-looks span:nth-child(2) { animation-delay: 2.4s; } .ed-looks span:nth-child(3) { animation-delay: 4.8s; }
 .ed-looks span:nth-child(4) { animation-delay: 7.2s; } .ed-looks span:nth-child(5) { animation-delay: 9.6s; }
 @keyframes ed-look { 0% { opacity: 0; } 4%, 20% { opacity: 1; } 24%, 100% { opacity: 0; } }
+/* Labels never overlap: one fades out before the next fades in (two pills on top of each other
+   read as garbled text). The photos underneath still crossfade. */
+.ed-looks span { animation-name: ed-label; }
+@keyframes ed-label { 0%, 2% { opacity: 0; } 4%, 17% { opacity: 1; } 19%, 100% { opacity: 0; } }
 /* The first label is already showing when the page opens. */
-.ed-looks span:first-child { animation-name: ed-look-first; }
-@keyframes ed-look-first { 0%, 20% { opacity: 1; } 24%, 96% { opacity: 0; } 100% { opacity: 1; } }
+.ed-looks span:first-child { animation-name: ed-label-first; }
+@keyframes ed-label-first { 0%, 17% { opacity: 1; } 19%, 99% { opacity: 0; } 100% { opacity: 1; } }
 .ed-hero .enh-pill.ai { top: var(--s3); }
 #editorHome .enh-meta button svg { width: 16px; height: 16px; color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
