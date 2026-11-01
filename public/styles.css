@@ -766,20 +766,46 @@ dialog.pw .links { justify-content: center; }
   background: linear-gradient(var(--blush), var(--blush)), var(--bg); color: var(--rose); box-shadow: 0 0 0 2px var(--bg); }
 .tool.photo .glyph svg { width: 13px; height: 13px; stroke-width: 2.2; }
 
-/* Phones: Undo, Redo, Compare, Share and More float on a glass pill over the bottom of the
-   photo, so the photo gets the row's height back. Labels stay for screen readers. */
+/* Phones: Undo, Redo, Compare, Share and More sit in the top bar where the wordmark was, so nothing
+   covers the photo and the photo gets the row's height. Labels stay for screen readers. Share is in
+   More on narrow phones. The expanded viewer keeps its own Compare button at the bottom. */
 @media (max-width: 959px) and (min-height: 601px) {
-  #editorScreen .canvas-col { position: relative; }
-  #editorScreen:not(.viewer-expanded) .viewbar { position: absolute; left: 50%; bottom: var(--s3); z-index: 6; transform: translateX(-50%);
-    gap: 2px; padding: 3px; border-radius: 999px; background: var(--glass); -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2);
-    box-shadow: 0 10px 28px -14px rgb(0 0 0 / 0.45), inset 0 0 0 1px rgb(255 255 255 / 0.14); }
+  #editorScreen { position: relative; }
+  #editorScreen .topbar .wordmark { visibility: hidden; }
+  #editorScreen:not(.viewer-expanded) .viewbar { position: absolute; left: calc(env(safe-area-inset-left) + var(--gutter) - 6px + 44px); top: calc(env(safe-area-inset-top) + 2px);
+    z-index: 6; height: 44px; gap: 0; padding: 0; }
   #editorScreen .viewbar > .sep { display: none; }
   #editorScreen .viewbar .util, #editorScreen .viewbar .more, #editorScreen .viewbar .demo-own { flex: none; }
-  #editorScreen .viewbar .util { width: 44px; min-height: 44px; border-radius: 50%; color: var(--text); }
+  #editorScreen .viewbar .util { width: 40px; min-width: 40px; min-height: 44px; border-radius: 50%; color: var(--text); }
   #editorScreen .viewbar .util.on { background: var(--text); color: var(--bg); }
   #editorScreen .viewbar .util > span + span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  #editorScreen .stage.cropping ~ .viewbar { display: none; }
-  #editorScreen .zoomctl, #editorScreen .zoom-hint { bottom: calc(var(--s3) + 56px); }
+  #editorScreen:not(.viewer-expanded) .viewbar .more { position: static; }   /* the menu lines up with the row, under it */
+  #editorScreen:not(.viewer-expanded) .viewbar .more-menu { top: calc(100% + 4px); bottom: auto; left: 0; right: auto; }
+  #editorScreen:has(.stage.cropping) .viewbar { visibility: hidden; }
+  #editorScreen .zoomctl, #editorScreen .zoom-hint { bottom: var(--s3); }
+}
+#shareMenuBtn { display: none; }
+@media (max-width: 419px) and (min-height: 601px) {
+  #editorScreen:not(.viewer-expanded) .viewbar #shareBtn { display: none; }
+  #editorScreen #shareMenuBtn:not([hidden]) { display: flex; }
+}
+@media (max-width: 339px) and (min-height: 601px) {
+  #editorScreen .viewbar .util { width: 36px; min-width: 36px; }
+  #editorScreen .top-actions .credit-chip { display: none; }
+}
+
+/* Phones: an open tool's panel is only as tall as its controls (no empty band), the tool's
+   one-line note opens on tap, and the group chips step aside while a tool is open. */
+@media (max-width: 959px) {
+  #editorScreen.editing-tool .side > .subchips { display: none; }
+  #editorScreen.editing-tool .side > .tools { border-top: 1px solid var(--line); }
+  #editorScreen .side > .panel:not(.collapsed) { min-height: 0; }
+  #editorScreen .side > .panel { margin-top: 0; padding-top: var(--s1); padding-bottom: calc(var(--s2) + env(safe-area-inset-bottom)); }
+  #editorScreen .panel-head { min-height: 40px; }
+  #editorScreen .panel-note { -webkit-line-clamp: 1; cursor: pointer; }
+  #editorScreen .panel-note.open { -webkit-line-clamp: unset; }
+  #editorScreen .panel-actions .btn { min-height: 44px; }
+  #editorScreen .side > .panel:not(.collapsed) .panel-actions { padding-top: 0; }
 }
 
 /* ---------- Motion ----------

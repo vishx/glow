@@ -1048,8 +1048,8 @@ test('layout: stone (light) and ink (dark) surround, photo contained, edited vie
   eq(d.target, [44, 44], 'handle touch target'); assert(d.knob >= 24 && d.knob <= 28, 'visible knob ' + d.knob); eq(d.line, 2, '2px divider');
   assert(Math.abs(d.at - 0.75) < 0.03, 'handle about 75% down: ' + d.at);
   const seg = await p.evaluate(() => { const v = document.querySelector('.viewbar').getBoundingClientRect(), s = $('stage').getBoundingClientRect(), b = $('compareBtn').getBoundingClientRect();
-    return { below: v.top >= s.top && v.bottom <= s.bottom, h: Math.round(b.height), font: parseFloat(getComputedStyle($('compareBtn')).fontSize), one: Math.round(v.height) <= 52 }; });
-  eq([seg.below, seg.h >= 44, seg.one], [true, true, true], 'one compact utility row on the photo, 44px targets'); assert(seg.font >= 13 && seg.font <= 15, 'label size ' + seg.font);
+    return { below: v.top >= 0 && v.bottom <= s.top, h: Math.round(b.height), font: parseFloat(getComputedStyle($('compareBtn')).fontSize), one: Math.round(v.height) <= 52 }; });
+  eq([seg.below, seg.h >= 44, seg.one], [true, true, true], 'one compact utility row in the top bar, off the photo, 44px targets'); assert(seg.font >= 13 && seg.font <= 15, 'label size ' + seg.font);
   await p.focus('#handle'); await p.keyboard.press('ArrowLeft'); eq(await p.getAttribute('#handle', 'aria-valuenow'), '48', 'keyboard moves the divider');
   // Saved file is the photo alone: its own size, no canvas margins.
   await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
@@ -1435,10 +1435,10 @@ test('layout: on phones the idle editor reserves no panel space, and a closed to
   const sizes = {}, box = async (n) => { await settle(400); sizes[n] = await stageBox(p); };
   const gaps = () => p.evaluate(() => { const g = (s) => document.querySelector(s).getBoundingClientRect(), st = g('#stage'), vb = g('#editorScreen .viewbar'), tl = g('#editorScreen .side > .tools'), tb = g('#editorScreen .tabs');
     const ch = g('#subchips');
-    return { rowOnPhoto: vb.top >= st.top && vb.bottom <= st.bottom, photoToTools: Math.round(tl.top - st.bottom - ch.height), chipsOnTools: Math.round(tl.top - ch.bottom), toolsToTabs: Math.round(tb.top - tl.bottom), tabsToEnd: Math.round(innerHeight - tb.bottom),
+    return { rowOnPhoto: vb.top >= 0 && vb.bottom <= st.top, photoToTools: Math.round(tl.top - st.bottom - ch.height), chipsOnTools: Math.round(tl.top - ch.bottom), toolsToTabs: Math.round(tb.top - tl.bottom), tabsToEnd: Math.round(innerHeight - tb.bottom),
       toolsH: Math.round(tl.height), labels: [...document.querySelectorAll('#editorScreen .side > .tools .group-label')].filter((e) => e.offsetParent).length }; });
   const g = await gaps();
-  eq([g.rowOnPhoto, g.photoToTools, g.chipsOnTools, g.toolsToTabs, g.tabsToEnd, g.labels], [true, 0, 0, 0, 0, 0], 'utility pill floats on the photo; group chips, tool row and tabs stacked under it with no empty space or group labels: ' + JSON.stringify(g));
+  eq([g.rowOnPhoto, g.photoToTools, g.chipsOnTools, g.toolsToTabs, g.tabsToEnd, g.labels], [true, 0, 0, 0, 0, 0], 'utility row in the top bar, off the photo; group chips, tool row and tabs stacked under it with no empty space or group labels: ' + JSON.stringify(g));
   assert(g.toolsH <= 90, 'one compact tool row: ' + g.toolsH);
   await box('home');
   assert(sizes.home[1] >= 520, 'the photo takes the remaining height on a 390x844 phone: ' + sizes.home);
@@ -1672,12 +1672,35 @@ test('nav: group chips jump to their group, follow the row as it scrolls, and dr
   // A group whose tools are all switched off (Hair color, from the admin page) loses its chip.
   await p.click('.tab[data-cat="retouch"]');
   eq(await p.$$eval('#subchips .subchip', (x) => x.map((c) => c.dataset.chip)), ['auto', 'skin', 'face', 'makeup'], 'Hair chip gone with hair color off');
-  // A tool open keeps the chips; Search hides them.
+  // A tool open hides the chips (the photo keeps the room); closing it brings them back; Search hides them.
   await p.click('.tool[data-tool="fsmooth"]'); await idle(p);
-  assert(await p.isVisible('#subchips'), 'chips stay while a tool is open');
-  await p.click('#cancelBtn'); await p.click('#searchBtn');
+  assert(!(await p.isVisible('#subchips')), 'chips step aside while a tool is open');
+  await p.click('#cancelBtn'); await settle(200);
+  assert(await p.isVisible('#subchips'), 'chips back once the tool is closed');
+  await p.click('#searchBtn');
   assert(await p.isHidden('#subchips'), 'no chips in Search');
 }, { viewport: { width: 390, height: 844 }, features: { 'tool:hcolor': false } });
+
+test('layout: on phones the photo gets most of the screen in every editor tool and nothing covers it', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  const m = () => p.evaluate(() => { const i = $('before').getBoundingClientRect(), v = document.querySelector('#editorScreen .viewbar').getBoundingClientRect(), pn = $('panel').getBoundingClientRect();
+    return { share: i.width * i.height / (innerWidth * innerHeight), cover: v.bottom > i.top + 1 && v.top < i.bottom, underPanel: !$('panel').hidden && pn.top < i.bottom - 1, scroll: document.scrollingElement.scrollHeight > innerHeight + 1 }; });
+  const home = await m();
+  assert(home.share >= 0.5 && !home.cover && !home.scroll, 'browsing: ' + JSON.stringify(home));
+  const bad = [];
+  for (const id of ['fsmooth', 'flips', 'glowup', 'filter:glow', 'light', 'bgremove', 'bgscene', 'outfit', 'custom']) {
+    await tool(p, null, null, id); await settle(250);
+    const r = await m(); if (r.share < (['flips', 'glowup', 'bgscene', 'outfit'].includes(id) ? 0.4 : 0.5) || r.cover || r.underPanel || r.scroll) bad.push([id, r]);
+  }
+  eq(bad, [], 'every tool leaves the photo at least half the screen (40% for the tools with three rows of controls), uncovered');
+  // A tool's note shows one line; a tap shows all of it.
+  await tool(p, null, null, 'custom'); await settle(200);
+  const lines = () => p.evaluate(() => Math.round($('panelNote').getBoundingClientRect().height / parseFloat(getComputedStyle($('panelNote')).lineHeight)));
+  eq(await lines(), 1, 'one line'); await p.click('#panelNote'); assert((await lines()) >= 2, 'tap shows the whole note');
+  // Share moves into More on a 390px phone and still shares.
+  await p.click('#cancelBtn'); await p.click('#moreBtn');
+  eq(await p.evaluate(() => [getComputedStyle($('shareBtn')).display, $('shareMenuBtn').offsetParent !== null]), ['none', true], 'Share is in More');
+}, { viewport: { width: 390, height: 844 } });
 
 test('nav: Compare taps through split, original and back; holding shows the original; keys work', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);

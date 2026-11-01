@@ -491,7 +491,7 @@ $("demoNote").addEventListener("click", () => say("AI sample: this portrait is A
 // More (⋯): Revert and Edit another photo, in a small menu above the button.
 function setMore(open) {
   $("moreMenu").hidden = !open; $("moreBtn").setAttribute("aria-expanded", String(open));
-  if (open) { $("otherPhotoBtn").hidden = !!ed.demo; const f = [...$("moreMenu").querySelectorAll("button")].find((b) => !b.disabled && !b.hidden); if (f) f.focus(); }
+  if (open) { $("otherPhotoBtn").hidden = !!ed.demo; $("shareMenuBtn").hidden = $("shareBtn").hidden; $("shareMenuBtn").disabled = $("shareBtn").disabled; const f = [...$("moreMenu").querySelectorAll("button")].find((b) => !b.disabled && !b.hidden && b.offsetParent); if (f) f.focus(); }
 }
 $("moreBtn").addEventListener("click", (e) => { e.stopPropagation(); setMore($("moreMenu").hidden); });
 $("moreMenu").addEventListener("click", () => setMore(false));
@@ -833,6 +833,9 @@ $("revertBtn").addEventListener("click", async () => {
   renderEditor(); say("Reverted to the original. Undo brings your edits back.");
 });
 $("shareBtn").addEventListener("click", () => saveEdit({ share: true }));
+$("shareMenuBtn").addEventListener("click", () => $("shareBtn").click());
+// Phones show a tool's note on one line; a tap shows all of it.
+$("panelNote").addEventListener("click", () => $("panelNote").classList.toggle("open"));
 // Compare starts with the divider down the middle of the face when one is known (the
 // landmarks found by a face tool) and in view, otherwise down the middle of the visible photo.
 function centerDividerOnFace() {
@@ -1657,6 +1660,7 @@ function panelState(t) {
     if (t.id === "colorize" && photoColorful) { apply.disabled = true; note = "Colorize is for black-and-white photos. This photo already has color."; }
     if (MASK_TOOLS.includes(t.id) && !strokes.some((x) => !x.erase) && !short) apply.disabled = true;
   }
+  if ($("panelNote").textContent !== note) $("panelNote").classList.remove("open");
   $("panelNote").textContent = note; fitDock();
 }
 
@@ -2065,7 +2069,7 @@ async function startAiEdit(t) {
       // The server answered, so the edit didn't start. It returns the credit itself if it had taken one.
       job = null; saveJob();
       // Switched off from the admin page since this tool was opened: nothing was charged.
-      if (err.featureOff) { say(err.message, true); refreshFeatures(true); return; }
+      if (err.featureOff) { if (sel === t.id) selectTool(null, { discard: true }); say(err.message, true); refreshFeatures(true); return; }
       // A premium tool on the free plan draws on the one-time trial, which never resets, so say that
       // rather than the server's "come back tomorrow".
       if (err.limit && trialTool(t)) err.message = "You've used your free premium credits. Go Pro or buy a credit pack to keep using premium AI tools, or use the everyday AI tools with your daily credits.";
