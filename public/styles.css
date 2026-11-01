@@ -495,7 +495,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 
 /* While a tool is open on a phone, the categories step aside so the photo keeps its room. */
 @media (max-width: 959px) {
-  .editing-tool .tabs, .editing-tool .slot, .tools-open .tabs { display: none; }
+  .editing-tool:not(:has(.panel.live)) .tabs, .editing-tool .slot, .tools-open .tabs { display: none; }   /* Adjust keeps the tabs, like Photoshop Express */
   .panel-collapsed .tools { display: none; }
 }
 @media (max-height: 600px) and (max-width: 959px) {
@@ -1046,3 +1046,49 @@ dialog.doc-sheet .sheet-head { padding: 0 var(--gutter); }
 html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-mode: normal; }
 .cam-fx .fx-date { position: absolute; font: bold 16px/1 "Courier New", ui-monospace, monospace; color: rgba(255,160,70,0.95);
   text-shadow: 0 0 0.35em rgba(255,70,0,0.85); letter-spacing: 0; }
+
+/* ---------- Adjust, Photoshop Express style ----------
+   An Adjust tool is one row (name, slider, value, info) that keeps its change as you go: no title
+   row, note or Cancel / Apply. Full / Person / Background sit on the photo's bottom edge. */
+.panel.live .panel-head, .panel.live .panel-actions { display: none; }
+.panel.live:not(.show-note) .panel-note { display: none; }
+.panel.live .panel-note { -webkit-line-clamp: unset; margin-top: var(--s1); }
+.panel.live .panel-body { margin-top: 0; }
+.panel.live.collapsed .panel-body { display: grid; }
+.live-row { display: flex; align-items: center; gap: 2px; }
+.live-row .slider { flex: 1; min-width: 0; grid-template-columns: minmax(0, max-content) 1fr 2.75rem; }
+.live-row .slider > :first-child, .live-row .slider { font-weight: 600; }
+.live-row .slider output { font-weight: 500; cursor: pointer; padding: 10px 0; }
+.live-row .info-btn { flex: none; width: 40px; min-width: 40px; color: var(--muted); }
+.panel.show-note .info-btn { color: var(--text); }
+.area-bar { position: absolute; left: 8px; right: 8px; bottom: 10px; z-index: 4; display: flex; justify-content: center; pointer-events: none; }
+.area-bar[hidden] { display: none; }
+.area-bar .areas-wrap { pointer-events: auto; justify-items: center; min-width: 0; max-width: 100%; }
+.area-bar .areas { padding: 4px; border-radius: 26px; max-width: 100%;
+  background: color-mix(in srgb, var(--surface) 80%, transparent); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 0.16); }
+.area-bar .area { min-height: 40px; padding: 3px 12px 3px 3px; font-size: 0.875rem; background: transparent; }
+.area-bar .area i { width: 32px; height: 32px; }
+.area-bar .area[aria-pressed="true"] { background: var(--accent); }
+.area-bar .area.refine { width: 40px; padding: 0; justify-content: center; color: var(--text); border-radius: 20px; }
+.area-bar .area.refine.done { color: var(--accent); }
+.area-bar .area.refine svg { width: 18px; height: 18px; }
+.area-bar .area-note { padding: 4px 10px; border-radius: 12px; background: color-mix(in srgb, var(--surface) 85%, transparent); color: var(--text); text-align: center; max-width: 300px; }
+@media (max-width: 380px) { .area-bar .area { padding-right: 9px; font-size: 0.8125rem; gap: 4px; } .area-bar .area i { width: 28px; height: 28px; } .area-bar { bottom: 8px; } }
+.viewer-expanded .area-bar, .stage.cropping .area-bar { display: none; }
+/* Phones: the slider sits right under the photo and the tool row under it, like Photoshop Express. */
+@media (max-width: 959px) {
+  #editorScreen .side > .panel.live { order: -1; margin: 0; border-radius: 0; box-shadow: none; background: transparent; border: 0;
+    padding: 2px var(--gutter) 0; }
+  #editorScreen .side > .panel.live.show-note { padding-bottom: var(--s1); }
+  #editorScreen.editing-tool:has(.panel.live) .side > .tools { border-top: 0; }
+}
+#editorScreen:has(.area-bar:not([hidden])) .zoom-hint, #editorScreen:has(.area-bar:not([hidden])) .zoomctl { bottom: 64px; }
+/* The slider row takes the group chips' place, so the photo keeps the same size as while browsing. */
+@media (max-width: 959px) {
+  #editorScreen.editing-tool:has(.panel.live:not(.show-note)) .side > .tools { height: auto; }
+  #editorScreen .side > .panel.live:not(.show-note) { padding-top: 0; }
+  #editorScreen .panel.live .live-row .slider { min-height: 41px; }
+  #editorScreen .panel.live .info-btn { min-height: 41px; height: 41px; position: relative; }
+  #editorScreen .panel.live .info-btn::after { content: ""; position: absolute; inset: -2px 0; }
+}

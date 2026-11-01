@@ -904,15 +904,37 @@ $("frame").addEventListener("pointerdown", (e) => {
   $("frame").setPointerCapture(e.pointerId);
   if (!navPtrs.size && divDrag == null && onDivider(e)) { divDrag = e.pointerId; divPt = stagePt(e); hideZoomHint(); return; }
   if (divDrag != null) { navPtrs.set(divDrag, divPt); divDrag = null; }   // a second finger turns a divider drag into a pinch
-  navDown(e);
+  navDown(e); peekStart(e);
 });
+// Press and hold the photo to see the original (Facetune / Photoshop Express style). Not while
+// brushing, cropping or zoomed in (a held finger there is a pan), and a move or a second finger
+// cancels it.
+let peek = null;
+function peekStart(e) {
+  peekEnd();
+  if (navPtrs.size !== 1 || maskOn() || cr || insp.z > 1.05 || $("compareBtn").disabled || ed.view === "original") return;
+  const p0 = stagePt(e);
+  peek = { id: e.pointerId, x: p0.x, y: p0.y, prev: ed.view, on: false };
+  peek.timer = setTimeout(() => { if (!peek) return; peek.on = true; ed.view = "original"; renderEditor(); $("alertLive").textContent = "Showing the original while you hold."; }, 350);
+}
+function peekEnd(cancelOnly) {
+  if (!peek) return;
+  clearTimeout(peek.timer);
+  if (peek.on && !cancelOnly) { ed.view = peek.prev; renderEditor(); }
+  else if (peek.on) { ed.view = peek.prev; renderEditor(); }
+  peek = null;
+}
 $("frame").addEventListener("pointermove", (e) => {
   if (divDrag === e.pointerId) { divPt = stagePt(e); setSplit(((divPt.x - vis.x) / vis.w) * 100); return; }
   if (!navPtrs.has(e.pointerId)) return;
+  if (peek && (navPtrs.size > 1 || (!peek.on && Math.hypot(stagePt(e).x - peek.x, stagePt(e).y - peek.y) > 10))) peekEnd();
+  if (peek && peek.on) return;   // holding to compare: don't pan
   navPtrs.set(e.pointerId, stagePt(e)); navMove();
 });
 ["pointerup", "pointercancel"].forEach((ev) => $("frame").addEventListener(ev, (e) => {
   if (divDrag === e.pointerId) { divDrag = null; return; }
+  const held = peek && peek.on; peekEnd();
+  if (held) { navPtrs.delete(e.pointerId); ng = null; lastTap = null; return; }   // a hold isn't a tap
   navUp(e);
 }));
 // Desktop: the wheel (or a trackpad pinch) zooms around the cursor, only over the photo.
@@ -995,6 +1017,7 @@ function commit(data, t, op, full) {
 $("undoBtn").addEventListener("click", () => {
   if (ed.pending) { ed.pending = null; previewToken++; }
   else if (ed.idx > ed.floor) ed.idx--;
+  if (sel && liveTool(TOOL[sel]) && !refining) { toolAmt[sel] = 0; panelBuilt = null; }
   lastCommitTool = null; renderEditor(); saveDraft(); say("Undone.");
 });
 $("redoBtn").addEventListener("click", () => {
@@ -1206,6 +1229,13 @@ $("tools").addEventListener("click", (e) => {
 
 // ---------- Selected tool panel ----------
 function discardPending() { if (ed.pending) { ed.pending = null; previewToken++; } }
+// Adjust sliders work like Photoshop Express: a change shows and is kept as you go, with no
+// Cancel or Apply. Undo takes it back. Tools that cost credits keep their Apply button.
+const liveTool = (t) => !!t && t.kind === "adjust";
+function keepLive() {
+  const p = ed.pending; if (!p || !liveTool(TOOL[p.tool])) return false;
+  commit(p.data, TOOL[p.tool], p.op); previewToken++; return true;
+}
 // Leaving a free tool keeps its change: switching tools or tabs commits the preview as one
 // Undo step (one per tool visit, never one per slider move). Cancel and Escape discard it.
 function selectTool(id, opts = {}) {
@@ -1220,7 +1250,7 @@ function selectTool(id, opts = {}) {
   else if (ed.pending && ed.pending.tool !== id && !opts.discard) {
     const p = ed.pending, t = TOOL[p.tool];
     commit(p.data, t, p.op); previewToken++;
-    say(`${t.title} kept. Undo removes it.`);
+    if (!liveTool(t)) say(`${t.title} kept. Undo removes it.`); else $("alertLive").textContent = `${t.title} kept. Undo removes it.`;
   } else if (ed.pending && opts.discard) { say(`${TOOL[ed.pending.tool].title} discarded.`); discardPending(); }
   else discardPending();
   if (cr) closeCrop();
@@ -1506,20 +1536,30 @@ function loadAreas() {
       info.busy = false;
       if (areaInfo !== info) return;
       if (info.err && adjArea !== "full") { adjArea = "full"; if (sel && TOOL[sel].kind === "adjust") preview(); }
-      const row = $("areaRow"); if (row) row.replaceWith(areaRow());
+      renderAreaBar(true);
       fitDock();
     });
 }
 // Refine (Photoshop Express's Selection Tools) sits in the panel's title row, so the three
 // chips keep one row on small phones.
-function refineHead() {
+function refineHead(box) {
   const old = $("refineBtn"); if (old) old.remove();
   if (!sel || TOOL[sel].kind !== "adjust" || refining || !areasOn() || !(areaInfo && areaInfo.thumbs && areaInfo.src === committed())) return;
-  const r = document.createElement("button"); r.className = "link-btn head-extra"; r.id = "refineBtn";
-  r.textContent = areaEdits.length ? "Refined" : "Refine";
-  r.setAttribute("aria-label", "Refine the person outline with a brush");
+  const r = document.createElement("button"); r.className = "area refine"; r.id = "refineBtn";
+  r.innerHTML = icon("brush"); r.classList.toggle("done", !!areaEdits.length); r.title = areaEdits.length ? "Refined" : "Refine";
+  r.setAttribute("aria-label", areaEdits.length ? "Refined. Refine the person outline again" : "Refine the person outline with a brush");
   r.addEventListener("click", startRefine);
-  $("collapseBtn").before(r);
+  box.append(r);
+}
+// The Full / Person / Background bar on the photo's bottom edge, shown while an Adjust tool is open.
+let areaBarFor = null;
+function renderAreaBar(force) {
+  const bar = $("areaBar"), t = sel && TOOL[sel];
+  const want = !!t && t.kind === "adjust" && !refining && areasOn() && !cr;
+  if (!want) { if (!bar.hidden || bar.firstChild) { bar.hidden = true; bar.replaceChildren(); } areaBarFor = null; return; }
+  const key = sel + "|" + ed.idx + "|" + areaEdits.length;
+  if (!force && areaBarFor === key && bar.firstChild) { bar.hidden = false; return; }
+  areaBarFor = key; bar.replaceChildren(areaRow()); bar.hidden = false;
 }
 function startRefine() {
   refining = true; brushMode = "add"; strokes = []; refineView = null; $("editorScreen").classList.add("refining");
@@ -1578,7 +1618,7 @@ function areaRow() {
     });
     box.append(b);
   }
-  refineHead();
+  refineHead(box);
   if (info && info.err) { const n = document.createElement("p"); n.className = "area-note"; n.textContent = info.err; wrap.append(n); }
   return wrap;
 }
@@ -1590,6 +1630,9 @@ let panelBuilt = null;
 function renderPanel(rebuild) {
   const t = sel && TOOL[sel];
   $("panel").hidden = !t;
+  $("panel").classList.toggle("live", liveTool(t) && !refining);
+  if (!t || !liveTool(t)) $("panel").classList.remove("show-note");
+  renderAreaBar();
   if (!t) { panelBuilt = null; fitDock(); return; }
   const key = t.id + (t.id === "outfit" && tryCompact() ? ":compact" : "");
   if (rebuild || panelBuilt !== key) { buildPanel(t); panelBuilt = key; }
@@ -1637,11 +1680,28 @@ function buildPanel(t) {
   } else if (t.kind === "adjust" && refining) {
     refinePanel(body);
   } else if (t.kind === "adjust") {
-    if (areasOn()) body.append(areaRow());
+    // One row: the tool's name, the slider, its value and an info button for the tool's note.
+    // Full / Person / Background sit on the photo (renderAreaBar). Double-tap the slider, or tap
+    // the value, to go back to no change.
     const [lo, hi] = t.range || [-50, 50];
-    body.append(slider("Amount", lo, hi, toolAmt[t.id], (v) => {
+    const set = (v) => { toolAmt[t.id] = v; clearTimeout(adjustTimer); preview(); };
+    const sl = slider(t.label || t.title, lo, hi, toolAmt[t.id], (v) => {
       toolAmt[t.id] = v; clearTimeout(adjustTimer); adjustTimer = setTimeout(preview, 120);
-    }, (v) => { toolAmt[t.id] = v; clearTimeout(adjustTimer); preview(); }, lo < 0 ? signed : String));
+    }, set, lo < 0 ? signed : String);
+    sl.classList.add("live-slider");
+    sl.querySelector("input").setAttribute("aria-label", `${t.title} amount`);
+    const r = sl.querySelector("input"), out = sl.querySelector("output");
+    const reset = () => { if (!toolAmt[t.id]) return; r.value = 0; out.textContent = (lo < 0 ? signed : String)(0); r.setAttribute("aria-valuetext", "No change"); set(0); say(`${t.title} reset.`); };
+    r.addEventListener("dblclick", reset);
+    let lastUp = 0;
+    r.addEventListener("pointerup", (e) => { if (e.pointerType !== "touch") return; const now = performance.now(); if (now - lastUp < 300) { lastUp = 0; reset(); } else lastUp = now; });
+    out.addEventListener("click", (e) => { e.preventDefault(); reset(); });
+    out.title = "Tap to reset";
+    const info = document.createElement("button"); info.type = "button"; info.className = "icon-btn info-btn"; info.id = "toolInfo";
+    info.innerHTML = icon("info"); info.setAttribute("aria-label", `About ${t.title}`); info.setAttribute("aria-expanded", "false"); info.setAttribute("aria-controls", "panelNote");
+    info.addEventListener("click", () => { const on = !$("panel").classList.contains("show-note"); $("panel").classList.toggle("show-note", on); info.setAttribute("aria-expanded", String(on)); fitDock(); });
+    const row = document.createElement("div"); row.className = "live-row"; row.append(sl, info);
+    body.append(row);
   } else if (t.kind === "crop") {
     if (!cr) return;
     const shapes = options(CROPS, (v) => v === cr.aspect, (v) => setCropAspect(v));
@@ -2460,6 +2520,7 @@ function exportNote(r) {
 }
 async function saveEdit(opts) {
   const share = !!(opts && opts.share === true);   // the Share button: the share sheet wherever the browser has one
+  if (keepLive()) { sel = null; renderEditor(); }
   if (ed.pending) {
     const t = TOOL[ed.pending.tool];
     const c = await ask({ title: `Apply ${t.title} before saving?`, text: "This change is only a preview so far.", actions: [
@@ -2663,7 +2724,7 @@ function setEditorReturn(where) {
   $("backBtn").setAttribute("aria-label", RETURN_LABEL[editorReturn] || "Back to Editor home");
 }
 $("backBtn").addEventListener("click", () => {
-  setExpanded(false); discardPending(); sel = null;
+  setExpanded(false); keepLive(); discardPending(); sel = null;
   const where = editorReturn; setEditorReturn(null);
   if ((where === "enhanceResult" || where === "enhanceShare") && typeof enhanceReturn === "function" && enhanceReturn(where)) return;
   if (where === "camera") { go("camera"); return; }

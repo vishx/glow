@@ -20,12 +20,20 @@ async function pick(p, file) {
   await p.waitForFunction(() => screen === 'editorScreen' && ed.hist.length > 0, null, { timeout: 30000 });
   await p.waitForFunction(() => $('before').naturalWidth > 0);
 }
+// Apply: Adjust sliders keep their change as you go (no Apply button), so closing the tool keeps it.
+async function applyTool(p) {
+  if (await p.evaluate(() => $('panel').classList.contains('live'))) {
+    await p.waitForFunction(() => !busyNow && (!sel || !toolAmt[sel] || (ed.pending && ed.pending.tool === sel)), null, { timeout: 30000 });
+    await p.evaluate(() => selectTool(null));
+  } else await p.click('#applyBtn');
+}
 async function tool(p, cat, chip, id) {
   // The tab and subgroup come from where the app files the tool (the cat/chip arguments are
   // kept for readability; earlier tabs such as For You no longer exist).
   const home = await p.evaluate((x) => tabFor(x), id);
   // On phones the categories step aside while a tool is open; Done/Cancel brings them back.
   if (!(await p.isVisible('#tabs .tab'))) await p.click('#cancelBtn');
+  else if (await p.evaluate(() => !!sel && $('panel').classList.contains('live'))) await p.evaluate(() => selectTool(null, { discard: true }));
   if (home) await p.click(`.tab[data-cat="${home[0]}"]`);
   else { await p.click('#searchBtn'); await p.fill('#searchInput', await p.evaluate((x) => TOOL[x].label, id)); }   // advanced tools: through Search
   if (!(await p.evaluate((x) => sel === x, id))) await p.click(`.tool[data-tool="${id}"]`);
@@ -83,7 +91,7 @@ test('camera: auto-save on saves each capture once, with the original only when 
   await p.click('#editShotBtn'); await p.waitForFunction(() => screen === 'editorScreen');
   eq(await p.evaluate(() => [ed.idx, ed.savedIdx, ed.originalSaved]), [1, 1, true], 'editor knows the shot and original were saved');
   await tool(p, 'looks', 'filters', 'filter:film'); await p.waitForFunction(() => !!ed.pending, null, { timeout: 15000 });
-  await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 3); await settle(400);
+  await applyTool(p); await idle(p); await p.click('#saveBtn'); await downloads(state, 3); await settle(400);
   eq(state.downloads.length, 3, 'editor Save adds just the edit'); assert(!/-original/.test(state.downloads[2].name), 'no second original');
   // Retake with the Original look: one file only.
   await p.click('#backBtn'); await p.click('#nav button[data-dest="camera"]'); await camLive(p);
@@ -207,9 +215,9 @@ test('export: a 12 MP phone photo with EXIF rotation saves at full size, upright
   const red = (c) => c[0] > 180 && c[1] < 70 && c[2] < 70;
   assert(red(px[0]), 'top-right is red: ' + px[0]); assert(!red(px[1]), 'top-left is not red: ' + px[1]);
   await tool(p, 'edit', 'light', 'light'); await p.fill('.panel input[type=range]', '20'); await idle(p);
-  await p.click('#applyBtn'); await idle(p);
+  await applyTool(p); await idle(p);
   await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr); await p.click('.panel .opt:has-text("Square")');
-  const cropped = true; await p.click('#applyBtn'); await idle(p);
+  const cropped = true; await applyTool(p); await idle(p);
   await p.click('#saveBtn'); await downloads(state, 1); await settle(300);
   const s = imageSize(state.downloads[0].file);
   if (cropped) eq([s.w, s.h], [3024, 3024], 'square crop at full size'); else eq([s.w, s.h], [3024, 4032], 'full size');
@@ -219,7 +227,7 @@ test('export: a 12 MP phone photo with EXIF rotation saves at full size, upright
 
 test('export: a 24 MP photo is capped at 16 MP, never upscaled', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('large-24mp.jpg'));
-  await tool(p, 'looks', 'filters', await p.evaluate(() => TOOLS.find((t) => t.kind === 'filter' && t.filter.id === 'film').id)); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'looks', 'filters', await p.evaluate(() => TOOLS.find((t) => t.kind === 'filter' && t.filter.id === 'film').id)); await applyTool(p); await idle(p);
   await p.click('#saveBtn'); await downloads(state, 1);
   const s = imageSize(state.downloads[0].file);
   eq([s.w, s.h], [4899, 3266], '16 MP cap'); assert(/16-megapixel limit/.test(await toast(p)), 'toast explains the cap');
@@ -231,7 +239,7 @@ test('export: transparent PNG keeps transparency through a look and saves as PNG
   await tool(p, 'looks', 'filters', 'mylook').catch(() => {});
   if (!(await p.evaluate(() => sel === 'mylook'))) await p.evaluate(() => { sel = 'mylook'; renderEditor(); preview(); });
   await idle(p); await p.waitForFunction(() => !!ed.pending, null, { timeout: 20000 });
-  await p.click('#applyBtn'); await idle(p);
+  await applyTool(p); await idle(p);
   await p.click('#saveBtn'); await downloads(state, 1);
   const s = imageSize(state.downloads[0].file); eq(s.type, 'png', 'PNG out'); eq([s.w, s.h], [1200, 900], 'same size');
   const alpha = await p.evaluate(async (b64) => { const i = await loadImg('data:image/png;base64,' + b64), c = newCanvas(i.naturalWidth, i.naturalHeight), x = c.getContext('2d'); x.drawImage(i, 0, 0);
@@ -241,9 +249,9 @@ test('export: transparent PNG keeps transparency through a look and saves as PNG
 
 test('export: AI result saves at the size the AI returned, and later steps build on it', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
-  await tool(p, 'foryou', null, 'pro'); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'foryou', null, 'pro'); await applyTool(p); await idle(p);
   await aiApply(p, 20000);
-  await tool(p, 'edit', 'light', 'light'); await p.fill('.panel input[type=range]', '-10'); await idle(p); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'edit', 'light', 'light'); await p.fill('.panel input[type=range]', '-10'); await idle(p); await applyTool(p); await idle(p);
   await p.click('#saveBtn'); await downloads(state, 1);
   // Pro edit's finish puts the photo's own detail back, so it comes back at the photo's size (up to 2560px), not the AI's 1024 × 1365.
   const s = imageSize(state.downloads[0].file); eq([s.w, s.h], [1920, 2560], 'photo size (2560 cap), not the AI size or an upscale to 3024 × 4032');
@@ -254,12 +262,12 @@ test('export: AI result saves at the size the AI returned, and later steps build
 
 test('export: Also save the original saves the original file once, untouched', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
-  await tool(p, 'edit', 'light', 'light'); await p.fill('.panel input[type=range]', '15'); await idle(p); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'edit', 'light', 'light'); await p.fill('.panel input[type=range]', '15'); await idle(p); await applyTool(p); await idle(p);
   await p.click('#saveBtn'); await downloads(state, 2);
   const orig = state.downloads.find((d) => /-original/.test(d.name));
   assert(orig, 'original saved'); eq(fs.readFileSync(orig.file).equals(fs.readFileSync(fx('phone-12mp-exif6.jpg'))), true, 'byte-for-byte the picked file');
   assert(await p.isDisabled('#saveBtn'), 'Save disabled until something changes');
-  await tool(p, 'edit', 'color', 'color'); await p.fill('.panel input[type=range]', '10'); await idle(p); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'edit', 'color', 'color'); await p.fill('.panel input[type=range]', '10'); await idle(p); await applyTool(p); await idle(p);
   await p.click('#saveBtn'); await downloads(state, 3); await settle(300);
   eq(state.downloads.length, 3, 'second Save: only the new edit');
 }, { init: () => localStorage.setItem('glowSaveOrig', 'on') });
@@ -268,7 +276,7 @@ test('export: Also save the original saves the original file once, untouched', a
 test('ai: dropped connection on start → unknown, Check status never re-charges (current server)', async ({ p, state }) => {
   state.ai.dropPost = true;
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
-  await tool(p, 'foryou', null, 'pro'); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'foryou', null, 'pro'); await applyTool(p); await idle(p);
   await p.waitForFunction(() => job && job.status === 'unknown');
   assert(await p.isVisible('#jobBar'), 'status bar'); assert(/couldn't be confirmed/.test(await p.textContent('#jobText')), 'unknown wording');
   assert(!/returned|refund/i.test(await p.textContent('#jobText')), 'no refund claim');
@@ -283,7 +291,7 @@ test('ai: dropped connection on start → unknown, Check status never re-charges
 test('ai: dropped connection on start → Check status finds and finishes the job (patched server)', async ({ p, state }) => {
   state.ai = { ...state.ai, server: 'patched', dropPost: true };
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
-  await tool(p, 'foryou', null, 'pro'); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'foryou', null, 'pro'); await applyTool(p); await idle(p);
   await p.waitForFunction(() => job && job.status === 'unknown');
   await p.click('#jobActions button:has-text("Check status")');
   await aiApply(p, 15000);
@@ -302,7 +310,7 @@ test('ai: never-started edit is reported as free only when the server says so (p
 test('ai: still processing after a refresh resumes polling and lands in the same session', async ({ p, state }) => {
   state.ai = { ...state.ai, post: 'processing', polls: ['processing', 'processing', 'processing', 'processing', 'processing', 'processing', 'processing', 'processing', 'succeeded'] };
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
-  await tool(p, 'foryou', null, 'pro'); await p.click('#applyBtn'); await settle(2500);
+  await tool(p, 'foryou', null, 'pro'); await applyTool(p); await settle(2500);
   eq(await p.evaluate(() => job && job.status), 'processing', 'processing');
   await p.reload(); await p.waitForFunction(() => !!ed.hist.length, null, { timeout: 10000 });
   await p.click('#resumeBtn').catch(() => {});
@@ -313,7 +321,7 @@ test('ai: still processing after a refresh resumes polling and lands in the same
 test('ai: network loss while polling → unknown, then resumes on Check status', async ({ p, state }) => {
   state.ai = { ...state.ai, post: 'processing', polls: ['processing', 'processing', 'succeeded'], dropPolls: 1 };
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
-  await tool(p, 'foryou', null, 'pro'); await p.click('#applyBtn');
+  await tool(p, 'foryou', null, 'pro'); await applyTool(p);
   await p.waitForFunction(() => job && job.status === 'unknown', null, { timeout: 20000 });
   assert(/couldn't reach its server/.test(await p.textContent('#jobText')), 'network wording');
   await p.click('#jobActions button:has-text("Check status")');
@@ -324,13 +332,13 @@ test('ai: network loss while polling → unknown, then resumes on Check status',
 test('ai: confirmed failure claims a refund only when the server confirms it', async ({ p, state }) => {
   state.ai = { ...state.ai, post: 'processing', polls: ['processing', 'failed'] };
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
-  await tool(p, 'foryou', null, 'pro'); await p.click('#applyBtn');
+  await tool(p, 'foryou', null, 'pro'); await applyTool(p);
   await p.waitForFunction(() => job && job.status === 'failed', null, { timeout: 20000 }); await settle(400);
   const t1 = await p.textContent('#jobText');
   assert(!/returned the AI credit/.test(t1), 'current server: no refund claim: ' + t1); assert(/balance shows/.test(t1), 'shows the balance instead');
   await p.click('#jobActions button:has-text("Dismiss")');
   state.ai = { ...state.ai, server: 'patched', polls: ['processing', 'failed'] };
-  await tool(p, 'foryou', null, 'pro'); await p.click('#applyBtn');
+  await tool(p, 'foryou', null, 'pro'); await applyTool(p);
   await p.waitForFunction(() => job && job.status === 'failed', null, { timeout: 20000 });
   assert(/returned the AI credit/.test(await p.textContent('#jobText')), 'patched server: confirmed refund is stated');
   eq(state.posts.length, 2, 'no automatic retry');
@@ -339,7 +347,7 @@ test('ai: confirmed failure claims a refund only when the server confirms it', a
 test('ai: a result that finishes after the photo was replaced waits on Editor home', async ({ p, state }) => {
   state.ai = { ...state.ai, post: 'processing', polls: ['processing', 'processing', 'processing', 'processing', 'processing', 'processing', 'processing', 'processing', 'processing', 'processing', 'processing', 'processing', 'succeeded'] };
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
-  await tool(p, 'foryou', null, 'pro'); await p.click('#applyBtn');
+  await tool(p, 'foryou', null, 'pro'); await applyTool(p);
   await p.waitForFunction(() => job && job.status === 'processing'); await settle(500);
   // Move on: the job keeps going after the blocking minute; jump ahead by unblocking directly.
   await p.evaluate(() => { setBusy(false); });
@@ -363,7 +371,7 @@ test('a11y: 200% text has no horizontal scroll on Camera, Editor home, the edito
   await p.click('#nav button[data-dest="editor"]'); o = await over(); eq(o[0], false, 'home scroll'); eq(o[1], [], 'home clipped');
   await pick(p, fx('transparent.png')); await tool(p, 'edit', 'light', 'light');
   o = await over(); eq(o[0], false, 'editor scroll'); eq(o[1], [], 'editor clipped');
-  assert(await p.isVisible('#applyBtn'), 'Apply reachable');
+  assert(await p.isVisible('#panelBody .slider input'), 'slider reachable');
   await p.click('#backBtn'); await p.click('#homeSettingsBtn'); o = await over(); eq(o[0], false, 'settings scroll');
   await p.screenshot({ path: path.join(__dirname, 'out', 'a11y-200-settings.png') });
 }, { start: 'camera' });
@@ -468,7 +476,7 @@ test('demo: prepared previews make no AI request, use no credits, and never stac
 test('demo: works with zero credits and with sign-in failing', async ({ p, state }) => {
   await openDemo(p);
   await tool(p, 'foryou', null, 'pro'); await p.waitForFunction(() => ed.idx === 1);
-  await p.click('#applyBtn'); await settle(300);
+  await applyTool(p); await settle(300);
   eq(await p.evaluate(() => [sel, ed.idx, $('paywall').open]), [null, 1, false], 'Done keeps the preview, no paywall');
   eq(state.posts.length, 0, 'no AI request');
 }, { files: demoFiles(), quota: 0, authFail: true });
@@ -479,7 +487,7 @@ test('demo: on-device tools stay interactive and reset the prepared preview', as
   await tool(p, 'edit', 'light', 'light');
   eq(await p.evaluate(() => [ed.idx, ed.hist.length]), [0, 1], 'back to the original');
   assert(/Back to the original/.test(await toast(p)), 'says so');
-  await p.fill('.panel input[type=range]', '20'); await idle(p); await p.click('#applyBtn'); await idle(p);
+  await p.fill('.panel input[type=range]', '20'); await idle(p); await applyTool(p); await idle(p);
   eq(await p.evaluate(() => ed.idx), 1, 'light applied on the original');
   await tool(p, 'foryou', null, 'golden'); await p.waitForFunction(() => ed.idx === 1 && ed.hist[1].op.tool === 'golden');
   eq(await p.evaluate(() => ed.hist.map((h) => h.op && h.op.tool)), [null, 'golden'], 'prepared preview starts from the original, light dropped');
@@ -491,7 +499,7 @@ test('demo: a missing preview shows a useful message and Retry recovers', async 
   await tool(p, 'foryou', null, 'golden'); await p.waitForFunction(() => demo.failed.golden);
   assert(/Couldn't load this preview/.test(await p.textContent('#panelNote')), 'message'); eq(await p.textContent('#applyBtn'), 'Retry', 'retry action');
   eq(await p.evaluate(() => ed.idx), 0, 'shows the original meanwhile');
-  await p.click('#applyBtn'); await p.waitForFunction(() => ed.idx === 1 && ed.hist[1].op.tool === 'golden');
+  await applyTool(p); await p.waitForFunction(() => ed.idx === 1 && ed.hist[1].op.tool === 'golden');
   eq(state.posts.length, 0, 'no AI request');
 }, { files: demoFiles({ '/samples/demo-v2/test-golden.jpg': { path: fx('demo-test-b.jpg'), flaky: 2 /* the preload and the first tap fail */ } }) });
 
@@ -561,7 +569,7 @@ test('demo: Try your own photo exits the demo completely, then real AI is charge
   eq(state.posts.length, 0, 'the last demo tool did not run');
   await tool(p, 'foryou', null, 'pro');
   assert(/Apply · 2 credits/.test(await p.textContent('#applyBtn')), 'shows the real cost first');
-  await p.click('#applyBtn'); await idle(p); await aiApply(p, 20000);
+  await applyTool(p); await idle(p); await aiApply(p, 20000);
   eq([state.posts.length, state.used], [1, 2], 'real edit went to the server, which charged its 2 credits');
   const draft = await p.evaluate(async () => (await Drafts.get()).hist.map((h) => h.op && h.op.demo));
   assert(!draft.includes(true), 'no sample result in the saved project');
@@ -569,7 +577,7 @@ test('demo: Try your own photo exits the demo completely, then real AI is charge
 
 test('demo: saving exports the shown result and names it as an AI-generated sample', async ({ p, state }) => {
   await openDemo(p);
-  await tool(p, 'foryou', null, 'pro'); await p.waitForFunction(() => ed.idx === 1); await p.click('#applyBtn');
+  await tool(p, 'foryou', null, 'pro'); await p.waitForFunction(() => ed.idx === 1); await applyTool(p);
   await p.click('#saveBtn'); assert(/AI-generated sample/.test(await p.textContent('#ask')), 'export flow says it is a sample');
   await p.click('#ask .btn:has-text("Save sample")'); await downloads(state, 1);
   assert(/^glow-studio-ai-sample-/.test(state.downloads[0].name), 'file name: ' + state.downloads[0].name);
@@ -1052,7 +1060,7 @@ test('layout: stone (light) and ink (dark) surround, photo contained, edited vie
   eq([seg.below, seg.h >= 44, seg.one], [true, true, true], 'one compact utility row in the top bar, off the photo, 44px targets'); assert(seg.font >= 13 && seg.font <= 15, 'label size ' + seg.font);
   await p.focus('#handle'); await p.keyboard.press('ArrowLeft'); eq(await p.getAttribute('#handle', 'aria-valuenow'), '48', 'keyboard moves the divider');
   // Saved file is the photo alone: its own size, no canvas margins.
-  await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
+  await applyTool(p); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
   eq((({ w, h }) => [w, h])(imageSize(state.downloads[0].file)), await p.evaluate(() => [ed.original.w, ed.original.h]), 'saved at the photo\'s own size, no canvas margins');
 }, { viewport: { width: 390, height: 844 } });
 
@@ -1121,10 +1129,10 @@ test('retouch: reshape at 0 is untouched, previews come from the baseline, tools
   eq(await p.evaluate((f) => ed.pending.data === f, first), true, 'the same setting gives the same picture: each preview starts from the baseline, not the last preview');
   await set(0);
   eq(await p.evaluate(() => [!!ed.pending, committed() === ed.hist[0].data]), [false, true], '0 shows the photo exactly as it was');
-  await set(100); await p.click('#applyBtn'); await idle(p);
+  await set(100); await applyTool(p); await idle(p);
   for (const id of ['fnose', 'fbigeyes']) {
     await tool(p, 'retouch', 'face', id); await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 });
-    await set(100); await p.click('#applyBtn'); await idle(p);
+    await set(100); await applyTool(p); await idle(p);
   }
   eq(await p.evaluate(() => ed.hist.map((h) => h.op && h.op.tool)), [null, 'fslim', 'fnose', 'fbigeyes'], 'three reshape steps, one each');
   // Undo/redo walk the same pictures back and forth.
@@ -1262,7 +1270,7 @@ test('crop: Cancel restores, Apply exports exactly the framed area at full size,
   await settle(100); const v = await cropInfo(p);
   // What the frame shows on screen, as fractions of the photo.
   const shown = { x: (v.F[0] - v.I[0]) / v.I[2], y: (v.F[1] - v.I[1]) / v.I[3], w: v.F[2] / v.I[2], h: v.F[3] / v.I[3] };
-  await p.click('#applyBtn'); await idle(p);
+  await applyTool(p); await idle(p);
   const op = await p.evaluate(() => ed.hist[ed.idx].op);
   for (const k of ['x', 'y', 'w', 'h']) near(op.rect[k], shown[k], 0.003, 'saved crop matches the frame on screen: ' + k);
   eq(await p.evaluate(() => [ed.hist.length, ed.idx]), [2, 1], 'one undo step');
@@ -1281,7 +1289,7 @@ test('crop: Cancel restores, Apply exports exactly the framed area at full size,
   eq([Math.round(re.W), Math.round(re.H), re.aspect], [600, 400, 0.8], 're-opened on the full photo with 4:5');
   for (const k of ['x', 'y', 'w', 'h']) near(re.rect[k] / (k === 'x' || k === 'w' ? 600 : 400), op.rect[k], 0.002, 'same framing ' + k);
   eq(await p.evaluate(() => $('applyBtn').disabled), true, 'unchanged framing has nothing to apply');
-  await p.click('[aria-label="Rotate 90°"]'); await p.click('#applyBtn'); await idle(p);
+  await p.click('[aria-label="Rotate 90°"]'); await applyTool(p); await idle(p);
   const op2 = await p.evaluate(() => ed.hist[ed.idx].op); eq([op2.base, op2.turns], [0, 1], 'the new crop is made from the uncropped photo');
   // Saved file: the full-size render of the same crop.
   await p.click('#saveBtn'); await downloads(state, 1);
@@ -1299,7 +1307,7 @@ test('crop: Cancel restores, Apply exports exactly the framed area at full size,
 test('crop: a 12 MP photo crops at full resolution from the original', async ({ p, state }) => {
   await openCropOn(p, fx('phone-12mp-exif6.jpg'));
   await p.click('.panel .opt:has-text("9:16")'); await p.fill('#cropZoom', '200'); await p.click('[aria-label="Rotate 90°"]');
-  await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
+  await applyTool(p); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
   const op = await p.evaluate(() => ed.hist[ed.idx].op), s = imageSize(state.downloads[0].file);
   // Rotated original is 4032 × 3024; 9:16 at 2× zoom is half the tallest 9:16 that fits.
   near(s.h, Math.round(op.rect.h * 3024), 2, 'height from the original'); near(s.w / s.h, 9 / 16, 0.002, 'exact 9:16'); assert(s.w > 800, 'full resolution, not the preview: ' + s.w);
@@ -1310,7 +1318,7 @@ test('crop: a 12 MP photo crops at full resolution from the original', async ({ 
 if (face) test('face: smooth skin previews at 2048px and saves at full size', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, face);
   await tool(p, 'retouch', 'skin', 'fsmooth'); await p.waitForFunction(() => !!ed.pending, null, { timeout: 30000 });
-  await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
+  await applyTool(p); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
   const s = imageSize(state.downloads[0].file), o = await p.evaluate(() => [ed.original.w, ed.original.h]);
   eq([s.w, s.h], o, 'face edit saved at the original size');
 });
@@ -1378,7 +1386,7 @@ test('zoom: pinch, pan, double-tap, wheel and buttons inspect the photo without 
   const s7 = await viewState(p);
   eq([s7.hist, s7.idx, s7.ops, s7.undo, s7.redo, s7.pending === s0.pending], [s0.hist, s0.idx, s0.ops, s0.undo, s0.redo, true], 'no history steps, same ops, same preview pixels');
   await p.click('#zoomIn'); await settle(300);
-  await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
+  await applyTool(p); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
   eq((({ w, h }) => [w, h])(imageSize(state.downloads[0].file)), [1086, 1448], 'saved at the photo size while zoomed in');
   eq(await p.evaluate(() => ed.hist.length), s0.hist + 1, 'only Apply added a step');
 }, { viewport: { width: 390, height: 844 } });
@@ -1425,7 +1433,7 @@ test('filters: a Strength slider blends the filter; 100 is the full filter and t
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'looks', 'filters', 'filter:vivid'); await p.waitForFunction(() => !!ed.pending); const full = await p.evaluate(() => ed.pending.data);
   await p.fill('.panel input[type=range]', '40'); await p.waitForFunction((f) => ed.pending && ed.pending.data !== f, full); await idle(p);
-  await p.click('#applyBtn'); await idle(p);
+  await applyTool(p); await idle(p);
   const r = await p.evaluate(async () => { const px = async (s) => { const i = await loadImg(s), c = newCanvas(64, 64), x = c.getContext('2d'); x.drawImage(i, 0, 0, 64, 64); return x.getImageData(0, 0, 64, 64).data; };
     const o = await px(ed.hist[0].data), f = await px(await applyFilter(ed.hist[0].data, TOOL['filter:vivid'].filter)), e = await px((await renderExport()).data);
     let df = 0, de = 0; for (let i = 0; i < o.length; i += 4) { df += Math.abs(f[i] - o[i]); de += Math.abs(e[i] - o[i]); }
@@ -1483,7 +1491,7 @@ test('layout: photo-first editor, collapsible panel, no sideways scroll on small
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'retouch', 'face', 'fslim'); await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 });
   const m = () => p.evaluate(() => ({ stage: $('stage').getBoundingClientRect().height, head: document.querySelector('#editorScreen .topbar').getBoundingClientRect().height,
-    apply: $('applyBtn').getBoundingClientRect().bottom <= innerHeight, small: [...document.querySelectorAll('#editorScreen button')].filter((b) => b.offsetParent && !b.classList.contains('tool') && !b.classList.contains('tab') && !b.classList.contains('subchip') && b.id !== 'saveBtn').map((b) => [b.id || b.textContent.trim(), Math.round(b.getBoundingClientRect().height)]).filter(([, h]) => h < 44),
+    apply: ($('panel').classList.contains('live') ? $('panelBody').querySelector('.slider') : $('applyBtn')).getBoundingClientRect().bottom <= innerHeight, small: [...document.querySelectorAll('#editorScreen button')].filter((b) => b.offsetParent && !b.classList.contains('tool') && !b.classList.contains('tab') && !b.classList.contains('subchip') && b.id !== 'saveBtn').map((b) => [b.id || b.textContent.trim(), Math.round(b.getBoundingClientRect().height)]).filter(([, h]) => h < 44),
     sideways: document.documentElement.scrollWidth > innerWidth }));
   const a = await m();
   // The small Save pill keeps a 44px touch target through an invisible ::after.
@@ -1510,7 +1518,7 @@ const diffBox = (p, a, b) => p.evaluate(async ([a, b]) => {
 const mime = (f) => /\.png$/.test(f) ? 'image/png' : 'image/jpeg';
 test('mark: free saves carry a small Glow mark bottom-right, shown once before the first save; no credit or request', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
-  await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'looks', 'filters', 'filter:glow'); await applyTool(p); await idle(p);
   await p.click('#saveBtn'); await p.waitForSelector('#ask[open] #askImg');
   eq(await p.textContent('#askTitle'), 'Free saves include a small Glow Studio badge', 'disclosed before the first free save');
   assert(await p.evaluate(() => $('askImg').naturalWidth > 100), 'shows a preview of the marked corner');
@@ -1523,7 +1531,7 @@ test('mark: free saves carry a small Glow mark bottom-right, shown once before t
   assert((x1 - x0) < r.w * 0.5 && (y1 - y0) < r.h * 0.06, 'small: ' + [x1 - x0, y1 - y0]);
   eq(await p.evaluate(() => PUBLIC_HOST), 'glow-photo-enhancer.vercel.app', 'uses the configured production address');
   // A second save in the session: no dialog again.
-  await tool(p, 'looks', 'filters', 'filter:warm'); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'looks', 'filters', 'filter:warm'); await applyTool(p); await idle(p);
   await p.click('#saveBtn'); await downloads(state, 2); eq(await p.evaluate(() => $('ask').open), false, 'told once, not every save');
   eq([state.posts.length, state.used, state.lookups], [0, 0, state.lookups], 'no AI request and no credit for marking');
 }, { viewport: { width: 390, height: 844 }, markIntro: true });
@@ -1531,13 +1539,13 @@ test('mark: placed after crop and rotation, at small and large sizes; paid saves
   await p.goto('https://app.test/'); await pick(p, fx('coords-600x400.png'));
   await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr);
   await p.click('.panel .opt:has-text("Square")'); await p.click('[aria-label="Rotate 90°"]'); await settle(300);
-  await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); const [d] = await downloads(state, 1);
+  await applyTool(p); await idle(p); await p.click('#saveBtn'); const [d] = await downloads(state, 1);
   const clean = await p.evaluate(async () => (await renderExport()).data);
   const r = await diffBox(p, `data:${mime(d.file)};base64,${fileB64(d.file)}`, clean);
   assert(r.box && r.box[0] > r.w * 0.4 && r.box[1] > r.h * 0.85, `small cropped and rotated save: mark bottom-right ${r.box} of ${r.w}x${r.h}`);
   eq(r.w, r.h, 'square crop kept');
   await p.click('#backBtn'); await pick(p, fx('large-24mp.jpg'));
-  await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); const d2 = (await downloads(state, 2, 60000))[1];
+  await tool(p, 'looks', 'filters', 'filter:glow'); await applyTool(p); await idle(p); await p.click('#saveBtn'); const d2 = (await downloads(state, 2, 60000))[1];
   const clean2 = await p.evaluate(async () => (await renderExport()).data);
   const r2 = await diffBox(p, `data:${mime(d2.file)};base64,${fileB64(d2.file)}`, clean2);
   assert(r2.box && r2.box[0] > r2.w * 0.5 && r2.box[1] > r2.h * 0.9 && (r2.box[2] - r2.box[0]) > r2.w * 0.1, `large save: proportional mark ${r2.box} of ${r2.w}x${r2.h}`);
@@ -1548,7 +1556,7 @@ test('mark: placed after crop and rotation, at small and large sizes; paid saves
 test('mark: Pro saves carry the mark by default; the first save offers to turn it off, and Settings switches it', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   await p.waitForFunction(() => account && account.plan === 'pro');
-  await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'looks', 'filters', 'filter:glow'); await applyTool(p); await idle(p);
   await p.click('#saveBtn'); await p.waitForSelector('#ask[open] #askImg');
   eq(await p.textContent('#askTitle'), 'Your saves include a small Glow Studio badge', 'Pro is told once, with a preview');
   await p.click('#ask .btn:has-text("Turn it off and save")'); const [d] = await downloads(state, 1);
@@ -1559,7 +1567,7 @@ test('mark: Pro saves carry the mark by default; the first save offers to turn i
   await p.evaluate(() => openSettings());
   eq(await p.evaluate(() => [$('markToggle').checked, $('markToggle').closest('.setting').classList.contains('locked')]), [false, false], 'Pro switch shows off, unlocked');
   await p.click('#markToggle'); await p.evaluate(() => $('settings').close());
-  await tool(p, 'looks', 'filters', 'filter:warm'); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'looks', 'filters', 'filter:warm'); await applyTool(p); await idle(p);
   await p.click('#saveBtn'); const d2 = (await downloads(state, 2))[1];
   eq(await p.evaluate(() => $('ask').open), false, 'no note the second time');
   const clean2 = await p.evaluate(async () => (await renderExport()).data);
@@ -1569,7 +1577,7 @@ test('mark: Pro saves carry the mark by default; the first save offers to turn i
 test('mark: Pro with the mark switched off saves clean', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   await p.waitForFunction(() => account && account.plan === 'pro');
-  await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'looks', 'filters', 'filter:glow'); await applyTool(p); await idle(p);
   await p.click('#saveBtn'); const [d] = await downloads(state, 1);
   const clean = await p.evaluate(async () => (await renderExport()).data);
   eq(fileB64(d.file), clean.split(',')[1], 'clean');
@@ -1584,7 +1592,7 @@ test('mark: free users can\'t switch the mark off; the switch offers Pro', async
 }, { start: 'enhance', camera: false });
 test('mark: Share and Download give the same marked file; Share Glow card only on request, and its QR scans', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
-  await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'looks', 'filters', 'filter:glow'); await applyTool(p); await idle(p);
   await p.evaluate(() => { window.__shared = []; navigator.canShare = () => true; navigator.share = async (d) => { for (const f of d.files) window.__shared.push(await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); })); }; });
   await p.click('#saveBtn'); await p.waitForFunction(() => window.__shared.length === 1);
   const shared = await p.evaluate(() => window.__shared[0]);
@@ -1726,7 +1734,7 @@ test('nav: Compare taps through split, original and back; holding shows the orig
 test('edit: Revert asks, returns to the original as one undoable step, and saves the original', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   eq(await p.evaluate(() => $('revertBtn').disabled), true, 'nothing to revert');
-  await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending); await p.click('#applyBtn'); await idle(p);
+  await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending); await applyTool(p); await idle(p);
   eq(await p.evaluate(() => ed.idx), 1, 'one edit');
   await p.click('#moreBtn'); await p.click('#revertBtn'); await p.waitForSelector('#ask[open]'); await p.click('#askActions button:last-child'); await settle(150);
   eq(await p.evaluate(() => ed.idx), 1, 'Cancel leaves it');
@@ -1779,7 +1787,7 @@ test('retouch: in a group photo face tools edit only the highlighted face; the l
   await p.waitForFunction((o) => ed.pending && ed.pending.data !== o, out, { timeout: 30000 }); await idle(p);
   out = await p.evaluate(() => ed.pending.data); [l, r] = await d(out);
   assert(l < 0.05 && r > 0.3, `after switching only the other face changes: left ${l.toFixed(2)}, right ${r.toFixed(2)}`);
-  await p.click('#applyBtn'); await idle(p);
+  await applyTool(p); await idle(p);
   const op = await p.evaluate(() => ed.hist[1].op.face);
   assert(op && op[0] > 0.5, 'the step remembers which face');
   // Saved copy vs the unedited saved copy put through the same JPEG encode the face tools use.
@@ -1817,7 +1825,7 @@ test('ai: Remove waits for Apply, survives switching tools and a reload, and kee
   await p.keyboard.press('+'); await settle(300); await p.keyboard.press('0'); await settle(300);
   eq(state.posts.length, 0, 'nothing sent before Generate');
   const base = await p.evaluate(() => committed());
-  await p.click('#applyBtn'); await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
+  await applyTool(p); await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
   eq([state.posts, state.used], [['erase'], 1], 'one request, one credit');
   eq(await p.evaluate((b) => [ed.idx, committed() === b, reviewing()], base), [0, true, true], 'pending: nothing applied yet');
   const shown = await p.evaluate(() => job.result.data);
@@ -1837,7 +1845,7 @@ test('ai: Remove waits for Apply, survives switching tools and a reload, and kee
   await p.click('#cancelBtn'); await p.waitForSelector('#ask[open]'); assert(/isn't returned/.test(await p.textContent('#askText')), 'says the credit is not returned');
   await p.click('#askActions button:last-child'); await settle(150);
   eq(await p.evaluate(() => job && job.status), 'done', 'Keep reviewing keeps it');
-  await p.click('#applyBtn'); await settle(150);
+  await applyTool(p); await settle(150);
   eq(await p.evaluate(() => [ed.idx, job, ed.hist[1].op.fixed]), [1, null, true], 'Apply adds one step');
   await p.click('#undoBtn'); eq(await p.evaluate(() => ed.idx), 0, 'Undo takes it off');
   eq([state.posts.length, state.used], [1, 1], 'charged once in all');
@@ -1846,7 +1854,7 @@ test('ai: Remove waits for Apply, survives switching tools and a reload, and kee
 test('ai: Remove blends into the full-size photo; it keeps the original size and every unmarked pixel', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   await tool(p, 'ai', null, 'erase'); await paint(p, [0.3, 0.2], [0.6, 0.25]);
-  await p.click('#applyBtn'); await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 60000 });
+  await applyTool(p); await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 60000 });
   const r = await p.evaluate(async () => {
     const fb = await renderExport(0), [a, b] = await Promise.all([loadImg(fb.data), loadImg(job.result.full)]);
     const w = a.naturalWidth, h = a.naturalHeight;
@@ -1868,7 +1876,7 @@ test('ai: Remove blends into the full-size photo; it keeps the original size and
 test('ai: a failed Remove is refunded once and never retried by itself', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'ai', null, 'erase'); await paint(p, [0.2, 0.2], [0.3, 0.2]);
-  await p.click('#applyBtn'); await p.waitForFunction(() => job && job.status === 'failed', null, { timeout: 30000 });
+  await applyTool(p); await p.waitForFunction(() => job && job.status === 'failed', null, { timeout: 30000 });
   await settle(2000);
   eq([state.posts.length, state.refunds, state.used, await p.evaluate(() => [ed.idx, strokes.length])], [1, 1, 0, [0, 1]], 'refunded once, no retry, marks kept');
 }, { ai: { polls: ['processing', 'failed'], post: 'processing' } });
@@ -1885,7 +1893,7 @@ test('ai: Fill is listed but not sent until the server has it; then it sends the
   await p.fill('#fillPrompt', 'a small vase of white flowers');
   eq(await p.evaluate(() => [$('applyBtn').disabled, $('applyBtn').textContent]), [false, 'Generate · 2 credits'], 'cost shown before sending (pricing v2: 2 credits)');
   const req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
-  await p.click('#applyBtn'); const body = JSON.parse((await req).postData());
+  await applyTool(p); const body = JSON.parse((await req).postData());
   eq([body.mode, body.prompt, body.mask.startsWith('data:image/png'), !!body.request_id], ['fill', 'a small vase of white flowers', true, true], 'mode, prompt and mask');
   await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
   eq([state.used, await p.evaluate(() => ed.idx)], [1, 0], 'one credit, waiting for Apply');
@@ -1900,7 +1908,7 @@ test('ai: free plan v2 — premium tools use the one-time trial, cheap tools the
   await p.evaluate(() => showUsage({ plan: 'free', pool: 'trial', used: 3, quota: 3, remaining: 0 }));
   eq(await p.evaluate(() => [account.remaining, account.trialLeft]), [3, 0], 'a trial charge only moves the trial balance');
   eq(await p.evaluate(() => [$('applyBtn').textContent, /used your 3 free premium credits/.test($('panelNote').textContent)]), ['Go Pro or buy credits', true], 'trial used up');
-  await p.click('#applyBtn'); await settle(200);
+  await applyTool(p); await settle(200);
   eq([await p.evaluate(() => $('paywall').open), state.posts.length], [true, 0], 'opens Glow Pro, sends nothing');
   await p.evaluate(() => $('paywall').close());
   await tool(p, 'ai', null, 'erase');
@@ -1912,7 +1920,7 @@ test('demo: Remove and Fill on the sample offer your own photo and never call th
   await openDemo(p);
   await p.click('.tab[data-cat="ai"]'); await p.click('.tool[data-tool="erase"]'); await settle(200);
   eq(await p.evaluate(() => [$('cost').textContent, $('applyBtn').textContent, $('brush').hidden, /nothing is generated/.test($('panelNote').textContent)]), ['Own photo', 'Use your photo', true, true], 'explained, no brush');
-  const fc = p.waitForEvent('filechooser'); await p.click('#applyBtn'); await (await fc).setFiles([]); await settle(300);
+  const fc = p.waitForEvent('filechooser'); await applyTool(p); await (await fc).setFiles([]); await settle(300);
   await p.click('.tool[data-tool="fill"]'); await settle(200);
   eq(await p.evaluate(() => ed.idx), 0, 'nothing applied on the sample');
   eq(state.posts.length, 0, 'no AI request');
@@ -1945,7 +1953,7 @@ test('bg: on-device backgrounds keep her own pixels, replace the backdrop, and s
   const mine = await p.evaluate(() => ed.pending.data);
   assert(!nearPx(await pxAt(p, mine, 0.03, 0.04), await pxAt(p, base, 0.03, 0.04), 20), 'the picked photo is behind her');
   assert(nearPx(await pxAt(p, mine, 0.5, 0.3), await pxAt(p, base, 0.5, 0.3), 12), 'her face stays (only a light color match)');
-  await p.click('#applyBtn'); await settle(150);
+  await applyTool(p); await settle(150);
   eq(await p.evaluate(() => [ed.idx, ed.hist[1].op.tool, !!ed.hist[1].op.bg]), [1, 'bgphoto', true], 'applied as one step that remembers the photo');
 });
 
@@ -1957,7 +1965,7 @@ test('ai: AI scene costs 2 credits, sends the background mask and the scene, and
   eq(state.posts.length, 0, 'opening it sends nothing');
   await p.click('#panelBody .opt:has-text("Beach")');
   const req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
-  await p.click('#applyBtn'); const body = JSON.parse((await req).postData());
+  await applyTool(p); const body = JSON.parse((await req).postData());
   eq([body.mode, /beach/.test(body.prompt), body.mask.startsWith('data:image/png')], ['bgscene', true, true], 'mode, scene and mask');
   const mask = body.mask;
   assert(nearPx(await pxAt(p, mask, 0.03, 0.04), [255, 255, 255], 1) && nearPx(await pxAt(p, mask, 0.5, 0.3), [0, 0, 0], 1), 'the mask is the background only');
@@ -1976,7 +1984,7 @@ test('try on: one tool with ideas, your photo or words; sends the part; keeps ev
   assert(/Little of your outfit/.test(await p.textContent('#panelNote')), 'the free photo check says a head-and-shoulders photo makes the AI guess: ' + await p.textContent('#panelNote'));
   await p.click('.try-card[data-idea="suit"]'); await p.click('.try-color[aria-label="Navy"]');
   let req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
-  await p.click('#applyBtn'); let body = JSON.parse((await req).postData());
+  await applyTool(p); let body = JSON.parse((await req).postData());
   eq([body.mode, body.part, /business suit/.test(body.prompt), /navy blue/.test(body.prompt), body.extra], ['outfit', 'full', true, true, undefined], 'an idea sends words, color and part');
   await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
   await p.waitForFunction(() => tryLooksNow().length === 1);
@@ -2001,7 +2009,7 @@ test('try on: one tool with ideas, your photo or words; sends the part; keeps ev
   await p.waitForFunction(() => !!outfitData && tryOn.closet.length === 1);
   await p.click('.try-parts .opt:has-text("Top")');
   req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
-  await p.click('#applyBtn'); body = JSON.parse((await req).postData());
+  await applyTool(p); body = JSON.parse((await req).postData());
   eq([body.mode, body.part, body.extra.startsWith('data:image/'), body.prompt], ['outfit', 'top', true, undefined], 'a photo sends the picture and the part');
   await p.waitForFunction(() => job && job.status === 'done' && tryLooksNow().length === 2, null, { timeout: 30000 });
   // Flip back to the first look: free, nothing sent.
@@ -2009,13 +2017,13 @@ test('try on: one tool with ideas, your photo or words; sends the part; keeps ev
   await p.click('.try-look[aria-label^="Navy suit"]'); await settle(200);
   eq(await p.evaluate(() => [job.look, job.status, reviewing()]), ['Navy suit', 'done', true], 'the earlier look is back for review');
   eq(state.posts.length, posts, 'looking again sends nothing');
-  await p.click('#applyBtn'); await settle(200);
+  await applyTool(p); await settle(200);
   eq(await p.evaluate(() => [ed.idx, ed.hist[1].op.tool]), [1, 'outfit'], 'applied as one step');
   // Words: her own description.
   await tool(p, 'looks', null, 'outfit'); await p.click('.try-seg .opt:has-text("Describe")');
   await p.fill('#tryWords', 'a red satin slip dress');
   req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
-  await p.click('#applyBtn'); body = JSON.parse((await req).postData());
+  await applyTool(p); body = JSON.parse((await req).postData());
   eq([body.prompt, body.part], ['a red satin slip dress', 'top'], 'words are sent as written, with the part picked before');
 });
 
@@ -2088,7 +2096,7 @@ test('adjust: Person and Background change only their part of the photo', async 
   await p.click('#areaRow .area[data-area="bg"]');
   await p.waitForFunction(() => ed.pending && ed.pending.op.area === 'bg', null, { timeout: 60000 }); await idle(p);
   eq(await p.$eval('#areaRow .area[aria-pressed="true"]', (e) => e.dataset.area), 'bg', 'Background chosen');
-  await p.click('#applyBtn'); await p.waitForFunction(() => ed.idx === 1 && !ed.pending); await idle(p);
+  await applyTool(p); await p.waitForFunction(() => ed.idx === 1 && !ed.pending); await idle(p);
   eq(await p.evaluate(() => ed.hist[1].op), { tool: 'exposure', value: 30, area: 'bg' }, 'the step records its area');
   // The choice stays for the next Adjust tool.
   await tool(p, 'edit', null, 'clarity');
@@ -2125,10 +2133,10 @@ test('adjust: the Refine brush adds to and takes away from the person, and the s
   assert(Math.abs(r.far[0] - r.far[1]) < 0.02, 'away from the strokes nothing changed: ' + r.far);
   await p.click('#refineUndo'); await p.waitForFunction(() => areaEdits.length === 1);
   await p.click('#refineDone'); await p.waitForFunction(() => !refining);
-  await p.waitForSelector('#refineBtn', { timeout: 60000 }); eq(await p.textContent('#refineBtn'), 'Refined', 'the title row says the outline was refined');
+  await p.waitForSelector('#refineBtn.done', { timeout: 60000 }); assert(/^Refined/.test(await p.getAttribute('#refineBtn', 'aria-label')), 'the pencil on the photo says the outline was refined');
   await p.fill('#panelBody input[type=range]', '30'); await p.dispatchEvent('#panelBody input[type=range]', 'change');
   await p.waitForFunction(() => ed.pending && ed.pending.op.edits, null, { timeout: 60000 }); await idle(p);
-  await p.click('#applyBtn'); await p.waitForFunction(() => ed.idx === 1 && !ed.pending); await idle(p);
+  await applyTool(p); await p.waitForFunction(() => ed.idx === 1 && !ed.pending); await idle(p);
   const op = await p.evaluate(() => ed.hist[1].op);
   eq([op.tool, op.area, op.edits.length, op.edits[0].add], ['exposure', 'person', 1, false], 'the step records its Refine strokes');
   eq(state.errs, [], 'no page errors');
@@ -2164,6 +2172,45 @@ test('adjust: a photo without a person keeps Full and explains why', async ({ p 
   eq(await p.$eval('#areaRow .area[aria-pressed="true"]', (e) => e.dataset.area), 'full', 'Full stays chosen');
 });
 
+test('adjust: Photoshop Express layout: chips on the photo, one slider row, changes kept as you go, hold to compare', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, AREA_PHOTO);
+  const h0 = await p.evaluate(() => Math.round($('before').getBoundingClientRect().height));
+  await tool(p, 'edit', null, 'exposure');
+  await p.waitForSelector('#areaBar .area[data-area="person"]:not(:disabled)', { timeout: 60000 });
+  const lay = await p.evaluate(() => {
+    const st = $('stage').getBoundingClientRect(), bar = $('areaBar').getBoundingClientRect(), tabs = $('tabs');
+    return { live: $('panel').classList.contains('live'), onPhoto: bar.bottom <= st.bottom && bar.top >= st.top,
+      hidden: ['applyBtn', 'cancelBtn', 'toolName', 'panelNote'].filter((id) => $(id).offsetParent === null).length,
+      tabs: getComputedStyle(tabs).display !== 'none', refine: !!$('refineBtn'), label: $('panelBody').querySelector('.slider').firstChild.textContent,
+      photo: Math.round($('before').getBoundingClientRect().height) };
+  });
+  eq([lay.live, lay.onPhoto, lay.hidden, lay.tabs, lay.refine, lay.label], [true, true, 4, true, true, 'Exposure'], 'one row, chips and Refine on the photo, no Cancel/Apply, tabs stay');
+  assert(lay.photo >= h0 - 2, `the photo doesn't shrink when a slider opens: ${h0} -> ${lay.photo}`);
+  // The info button shows the tool's note.
+  await p.click('#toolInfo'); assert(await p.isVisible('#panelNote'), 'note shown'); await p.click('#toolInfo');
+  // A change is kept when you move on: no question, one Undo step.
+  await p.fill('#panelBody input[type=range]', '30'); await p.dispatchEvent('#panelBody input[type=range]', 'change');
+  await p.waitForFunction(() => ed.pending && ed.pending.op.value === 30); await idle(p);
+  await p.click('#tools .tool[data-tool="contrast"]'); await p.waitForFunction(() => sel === 'contrast' && ed.idx === 1 && !ed.pending);
+  eq(await p.evaluate(() => [ed.hist[1].op.tool, document.querySelector('#ask[open]') ? 1 : 0]), ['exposure', 0], 'kept without asking');
+  // Tapping the value goes back to no change; Undo takes a kept step back.
+  await p.fill('#panelBody input[type=range]', '20'); await p.dispatchEvent('#panelBody input[type=range]', 'change');
+  await p.waitForFunction(() => ed.pending && ed.pending.tool === 'contrast'); await idle(p);
+  await p.click('#panelBody .slider output'); await p.waitForFunction(() => !ed.pending && toolAmt.contrast === 0); await idle(p);
+  await p.click('#undoBtn'); await p.waitForFunction(() => ed.idx === 0);
+  // Hold the photo: the original shows while held.
+  await p.fill('#panelBody input[type=range]', '25'); await p.dispatchEvent('#panelBody input[type=range]', 'change');
+  await p.waitForFunction(() => ed.pending && ed.pending.tool === 'contrast'); await idle(p);
+  const c = await p.evaluate(() => { const r = $('frame').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 3]; });
+  await p.mouse.move(c[0], c[1]); await p.mouse.down(); await p.waitForTimeout(600);
+  eq(await p.evaluate(() => ed.view), 'original', 'holding shows the original');
+  await p.mouse.up(); eq(await p.evaluate(() => [ed.view, !!ed.pending]), ['edited', true], 'letting go shows the edit again');
+  // Save keeps the open slider's change without asking.
+  await p.click('#saveBtn'); await p.waitForFunction(() => ed.idx === 1 && ed.hist[1].op.tool === 'contrast', null, { timeout: 30000 });
+  eq(await p.evaluate(() => /Apply .* before saving/.test(document.body.innerText)), false, 'no "Apply before saving?" question');
+  eq(state.errs, [], 'no page errors');
+});
+
 test('looks: a second filter replaces the first instead of stacking on it', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   const ids = await p.evaluate(() => FILTER_IDS.slice(1, 3));
@@ -2181,7 +2228,7 @@ test('glowup: the checklist previews the ticked free steps, applies them as one 
   await p.click('#panelBody .opt.check:has-text("Lips")'); await p.click('#panelBody .opt.check:has-text("Under-eyes")');
   await p.waitForFunction(() => ed.pending && ed.pending.op.glow.face.some((x) => x[0] === 'flips'), null, { timeout: 60000 }); await idle(p);
   eq(await p.evaluate(() => ed.pending.op.glow.face.map((x) => x[0]).includes('fundereye')), false, 'unticking takes a step out');
-  await p.click('#saveRoutine'); await p.click('#applyBtn'); await settle(200);
+  await p.click('#saveRoutine'); await applyTool(p); await settle(200);
   eq(await p.evaluate(() => [ed.idx, ed.hist[1].op.tool]), [1, 'glowup'], 'one Undo step');
   eq(state.posts.length, 0, 'no AI request');
   await p.reload(); await p.waitForFunction(() => typeof glow !== 'undefined');
@@ -2197,11 +2244,11 @@ test('glowup: an AI step runs first, her face is checked, then the free steps go
   await p.fill('#glowWords', 'warmer and less tired');
   eq(await p.evaluate(() => $('applyBtn').disabled), false, 'ready once she has written something');
   const req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
-  await p.click('#applyBtn'); const body = JSON.parse((await req).postData());
+  await applyTool(p); const body = JSON.parse((await req).postData());
   eq([body.mode, body.prompt], ['custom', 'warmer and less tired'], 'mode and her words');
   await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 60000 });
   eq(await p.evaluate(() => [typeof job.faceKept, !!job.glow]), ['boolean', true], 'her face was checked; the free steps wait');
-  await p.click('#applyBtn'); await p.waitForFunction(() => ed.idx === 2 && !busyNow, null, { timeout: 60000 });
+  await applyTool(p); await p.waitForFunction(() => ed.idx === 2 && !busyNow, null, { timeout: 60000 });
   eq(await p.evaluate(() => [ed.hist[1].op.fixed, ed.hist[2].op.tool, !!ed.hist[2].op.glow]), [true, 'glowup', true], 'AI step, then the free steps');
   eq([state.posts.length, state.used], [1, 1], 'one request');
 });
@@ -2409,7 +2456,7 @@ test('ops: the editor and Enhance report what people do (photo, tool, AI result,
   await p.click('#enhDownload'); await downloads(state, 1); await p.waitForFunction(() => screen === 'enhanceShare');
   await p.click('#enhEdit'); await p.waitForFunction(() => screen === 'editorScreen' && ed.hist.length === 2);
   await tool(p, 'edit', 'light', 'light'); await p.fill('.panel input[type=range]', '20'); await idle(p);
-  await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 2);
+  await applyTool(p); await idle(p); await p.click('#saveBtn'); await downloads(state, 2);
   await settle(4500);
   const ev = (n) => state.events.filter((e) => e.name === n).map((e) => e.props);
   eq(ev('photo_open')[0]?.from, 'enhance', 'photo_open from enhance');
@@ -2613,7 +2660,7 @@ test('packs: in the phone app a pack is bought through the store and its credits
   eq(await p.evaluate(() => [$('packsSheet').open, account.bonus]), [true, 30], 'cancel keeps the sheet open');
   // Pro users who run out get packs instead of a dead end.
   await p.evaluate(() => { $('packsSheet').close(); showUsage({ plan: 'pro', used: 40, quota: 40, remaining: 0, bonus: 0 }); });
-  await pick(p, PORTRAIT); await tool(p, 'edit', null, 'pro'); await p.click('#applyBtn'); await settle(300);
+  await pick(p, PORTRAIT); await tool(p, 'edit', null, 'pro'); await applyTool(p); await settle(300);
   eq(await p.evaluate(() => [$('packsSheet').open, $('packsTitle').textContent, $('packsPro').hidden]), [true, 'Out of AI credits for this week', true], 'Pro out of credits: packs, no Pro upsell');
   await p.evaluate(() => flushTelemetry()); await settle(500);
   const names = state.events.map((e) => e.name);
@@ -2711,6 +2758,7 @@ test('pricing: no Pro screen by itself in the phone app before the store keys ar
 const shownTools = (p) => p.evaluate(() => [...document.querySelectorAll('#tools .tool[data-tool]')].map((b) => b.dataset.tool));
 async function searchAll(p) {
   if (!(await p.isVisible('#tabs .tab'))) await p.click('#cancelBtn');
+  else if (await p.evaluate(() => !!sel && $('panel').classList.contains('live'))) await p.evaluate(() => selectTool(null, { discard: true }));
   await p.click('#searchBtn'); await p.waitForTimeout(150); return shownTools(p);
 }
 
@@ -2763,7 +2811,7 @@ test('features: a tool switched off while open closes; the server refuses it bef
   await p.goto('https://app.test/'); await pick(p, PORTRAIT); await tool(p, 'edit', null, 'pro');
   // Owner flips the switch; this phone hasn't heard yet. Apply goes to the server, which refuses.
   state.features = { 'tool:pro': false };
-  await p.click('#applyBtn');
+  await applyTool(p);
   await p.waitForFunction(() => /Nothing was charged/.test($('toast').textContent), null, { timeout: 15000 });
   eq([state.used, state.posts.length], [0, 1], 'refused before any charge');
   eq(state.aiBodies[0].tool, 'pro', 'the editor says which tool sent it');
