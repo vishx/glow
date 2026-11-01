@@ -2471,6 +2471,81 @@ test('packs: in the phone app a pack is bought through the store and its credits
 } });
 
 
+// ---------- Pricing 2026-11-01: yearly free trial, Pro screen at the first result (migration 015) ----------
+// RevenueCat stand-in for the phone app. window.__rc picks the platform and the trial answers.
+const rcInit = () => {
+  const o = window.__rcOpts || {};
+  window.Capacitor = { isNativePlatform: () => true, getPlatform: () => o.ios ? 'ios' : 'android', Plugins: { Purchases: {
+    configure: async () => {}, logIn: async () => {}, getProducts: async () => ({ products: [] }),
+    checkTrialOrIntroductoryPriceEligibility: async ({ productIdentifiers }) => Object.fromEntries(productIdentifiers.map((id) => [id, { status: o.iosStatus ?? 2 }])),
+    getOfferings: async () => ({ current: { availablePackages: [
+      { packageType: 'WEEKLY', product: { identifier: 'glow_pro_weekly', priceString: '$4.99' } },
+      { packageType: 'ANNUAL', product: { identifier: 'glow_pro_yearly', priceString: '$49.99', pricePerMonthString: '$4.17',
+        introPrice: o.noTrial ? null : { price: 0, priceString: '$0.00', periodUnit: 'DAY', periodNumberOfUnits: 3 } } }] } }),
+  } } };
+};
+const openPw = async (p) => { eq(await p.evaluate(async () => { CONFIG.revenuecatAndroid = 'goog_test'; CONFIG.revenuecatIos = 'appl_test'; rcReady = null; openPaywall(); return await rcReady; }), true, 'store set up'); };
+
+test('pricing: the yearly free trial shows its terms when the store offers it; weekly has none; the yearly cap reads 60', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
+  await openPw(p);
+  eq(await p.evaluate(() => [$('yearlyNote').textContent, $('buyBtn').textContent, $('pwNote').textContent.split('.')[0]]),
+    ['3 days free, then $49.99 a year', 'Start 3-day free trial', 'Free for 3 days, with 10 AI credits to try'], 'trial terms on yearly');
+  assert(/Then \$49\.99 per year\. Renews automatically every year/.test(await p.textContent('#pwNote')), 'price after the trial: ' + await p.textContent('#pwNote'));
+  await p.click('.plan[data-plan="weekly"]');
+  eq(await p.evaluate(() => [$('buyBtn').textContent, /Free for/.test($('pwNote').textContent)]), ['Continue with weekly', false], 'weekly: no trial');
+  assert((await p.textContent('.pw-free')).includes('up to 60 credits a month'), 'yearly cap 60');
+  eq(state.errs, [], 'no page errors');
+}, { init: rcInit });
+
+test('pricing: no trial wording when Apple says this person can\'t have it, or the store has no trial', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
+  await openPw(p);
+  eq(await p.evaluate(() => [$('yearlyNote').textContent, $('buyBtn').textContent, /Free for/.test($('pwNote').textContent)]),
+    ['About $4.17 a month, billed yearly', 'Continue with yearly', false], 'iPhone, used the trial before');
+}, { init: `window.__rcOpts = { ios: true, iosStatus: 1 }; (${rcInit})();` });
+
+test('pricing: a Pro trial account shows its 10 trial credits, not 40 a week', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
+  await p.evaluate(() => { account = { plan: 'pro', used: 2, quota: 10, remaining: 8, bonus: 0, inTrial: true }; renderCreditsSheet(); });
+  const t = await p.textContent('#creditsBody');
+  assert(/of 10 AI credits left/.test(t) && /free trial includes 10 AI credits/.test(t) && !/80 credits/.test(t), t);
+});
+
+test('pricing: the Pro screen opens once, by itself, after the first Enhance result in the phone app (store set up)', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => { CONFIG.revenuecatAndroid = 'goog_test'; rcReady = null; });
+  const sample = async () => {
+    await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+    await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  };
+  await sample();
+  eq(await p.evaluate(() => $('paywall').open), false, 'not on top of the reveal');
+  await p.waitForSelector('#paywall[open]', { timeout: 6000 });
+  await p.evaluate(() => $('paywall').close());
+  await p.evaluate(() => closeEnhResult()); await p.waitForFunction(() => screen === 'enhanceHome');
+  await sample(); await settle(3500);
+  eq(await p.evaluate(() => $('paywall').open), false, 'only once');
+  await p.evaluate(() => flushTelemetry()); await settle(500);
+  eq(state.events.filter((e) => e.name === 'intro_offer').length, 1, 'tracked once');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, files: demoFiles(), init: rcInit });
+
+test('pricing: no Pro screen by itself on the web', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  await settle(3500);
+  eq(await p.evaluate(() => $('paywall').open), false, 'web: no paywall');
+}, { start: 'enhance', camera: false, files: demoFiles() });
+test('pricing: no Pro screen by itself in the phone app before the store keys are added', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  await settle(3500);
+  eq(await p.evaluate(() => [$('paywall').open, localStorage.getItem('glowIntroOffer')]), [false, null], 'no paywall, offer still pending');
+}, { start: 'enhance', camera: false, files: demoFiles(), init: rcInit });
+
 // ---------- Feature switches (features.js, migration 013) ----------
 const shownTools = (p) => p.evaluate(() => [...document.querySelectorAll('#tools .tool[data-tool]')].map((b) => b.dataset.tool));
 async function searchAll(p) {

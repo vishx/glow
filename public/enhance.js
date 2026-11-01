@@ -589,6 +589,7 @@ function showEnhResult() {
     store.set("glow.compareZoomHint", "1");
     say(matchMedia("(pointer: coarse)").matches ? "Pinch or double-tap to zoom in" : "Scroll or double-click to zoom in");
   }, 1300);
+  introOffer("enhance");   // once per install: the Pro screen, after the reveal and the zoom hint
 }
 setIcon($("enhClose"), "close"); setIcon($("enhDownload"), "save"); setIcon($("enhKnob"), "compare");
 
