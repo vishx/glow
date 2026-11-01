@@ -609,6 +609,15 @@ dialog.alert { width: min(92vw, 400px); border-radius: var(--r-card); padding: v
 .ask-figure { margin: var(--s3) 0 0; }
 .ask-figure img { display: block; width: 100%; max-height: 46dvh; object-fit: contain; border-radius: var(--r-well); background: var(--surface-2); }
 .ask-figure figcaption { margin-top: var(--s1); color: var(--muted); font-size: 0.8125rem; text-align: center; }
+/* "Add Glow Studio to your home screen" (homescreen.js): the app icon with a soft gold light, then the two iPhone taps. */
+dialog.home-add { text-align: center; }
+.home-add-icon { display: block; width: 72px; height: 72px; margin: 0 auto var(--s4); border-radius: 18px; box-shadow: 0 0 0 1px rgb(255 217 138 / 0.28), 0 10px 30px -8px rgb(243 181 74 / 0.55); }
+dialog.home-add #homeAddText { color: var(--muted); margin: var(--s2) 0 0; }
+.home-add-steps { list-style: none; margin: var(--s4) 0 0; padding: 0; display: grid; gap: var(--s2); text-align: left; counter-reset: step; }
+.home-add-steps li { display: flex; align-items: center; gap: var(--s3); padding: var(--s3); border-radius: var(--r-well); background: var(--surface-2); font-size: 0.9375rem; line-height: 1.35; }
+.home-add-steps li::before { counter-increment: step; content: counter(step); flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 0.75rem; font-weight: 700; background: var(--cta); color: var(--cta-fg); }
+.home-add-steps [data-icon] { display: inline-flex; flex: none; color: var(--rose); }
+.home-add-steps [data-icon] svg { width: 24px; height: 24px; }
 .sheet-head { display: flex; align-items: flex-start; gap: var(--s2); margin-bottom: var(--s3); }
 .sheet-head > :first-child { flex: 1; }
 .sheet-head .icon-btn { margin: -10px -10px 0 0; }
@@ -1156,4 +1165,24 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
   .ob-slide h1 { grid-column: 2; grid-row: 2; text-align: left; font-size: 1.75rem; line-height: 2.125rem; }
   .ob-slide p { grid-column: 2; grid-row: 3; text-align: left; margin-bottom: var(--s3); }
   .ob-actions { grid-column: 2; grid-row: 4; width: 100%; margin: 0; }
+/* Camera held sideways: the screen stays upright (like the phone's own camera) and only the icons
+   turn to stay level. `rotate` is separate from `transform`, so press effects still work. */
+#flashBtn, #camTimer, #camAI, #camSettingsBtn, #camGallery, #camFlip, #camCount {
+  rotate: var(--cam-rot, 0deg); transition: rotate 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  #flashBtn, #camTimer, #camAI, #camSettingsBtn, #camGallery, #camFlip, #camCount { transition: none; }
+}
+/* The web camera on a phone held sideways (the phone apps keep the camera upright instead): the
+   controls move to a column on the right, so they no longer cover the lower half of the picture
+   and the people in it stay in view. */
+@media (max-width: 959px) and (min-width: 560px) and (max-height: 560px) and (orientation: landscape) {
+  #cameraScreen .cam-controls { position: absolute; top: 56px; right: 0; bottom: 0; width: min(340px, 42vw); margin: 0;
+    display: flex; flex-direction: column; justify-content: flex-end; padding: var(--s2) var(--sa-right) var(--s2) 0;
+    background: linear-gradient(90deg, #0000, #00000073 25%, #000000a6); }
+  #cameraScreen .cam-controls > * { max-width: none; width: 100%; }
+  #cameraScreen .looks { justify-content: flex-start; padding-bottom: var(--s2); }
+  #cameraScreen .capture-row { padding: 0 var(--s3); }
+  #cameraScreen .vf-note { right: calc(min(340px, 42vw) + var(--s3)); }
+  #cameraScreen .cam-top { padding-left: max(var(--gutter), var(--sa-left)); padding-right: max(var(--gutter), var(--sa-right)); }
 }

@@ -139,6 +139,21 @@ test('camera: full-screen preview, and the photo is cropped to what the screen s
   assert(Math.abs(a - r.cw / r.ch) < 0.01, 'photo shape matches the preview: ' + [a, r.cw / r.ch]);
 }, { start: 'camera' });
 
+test('camera: held sideways, the web camera keeps the people in view (controls in a side column)', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  const r = await p.evaluate(() => {
+    const b = (id) => $(id).getBoundingClientRect(), vf = b('viewfinder'), cc = b('camControls');
+    const clickable = ['camTimer', 'camAI', 'camSettingsBtn', 'shutter', 'camGallery'].filter((id) => $(id) && !$(id).hidden).every((id) => {
+      const q = b(id); return $(id).contains(document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2)); });
+    return { vfW: vf.width, vfH: vf.height, ccLeft: cc.left, ccTop: cc.top, clickable };
+  });
+  assert(r.ccLeft >= r.vfW * 0.55, 'controls sit in a right-hand column, leaving most of the picture clear: ' + JSON.stringify(r));
+  assert(r.ccTop >= 48, 'the controls column starts below the top bar: ' + r.ccTop);
+  assert(r.clickable, 'top bar and capture buttons are all tappable');
+  await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot);
+  const a = await p.evaluate(() => cam.shot.w / cam.shot.h);
+  assert(a > 1 && Math.abs(a - r.vfW / r.vfH) < 0.01, 'a landscape photo shaped like the screen: ' + [a, r.vfW / r.vfH]);
+}, { start: 'camera', viewport: { width: 844, height: 390 } });
 test('camera: AI Enhance button on review runs Enhance for 1 credit, closing goes back to the camera', async ({ p, state }) => {
   await p.goto('https://app.test/'); await camLive(p);
   assert(await p.isVisible('#camAI'), 'AI switch visible'); eq(await p.getAttribute('#camAI', 'aria-pressed'), 'false', 'AI off by default');
@@ -3109,6 +3124,101 @@ test('audit: landscape phone keeps the photo big on Enhance, the buttons on scre
   await p.evaluate(() => { showScreen('enhanceHome'); openPaywall(); }); await settle(500);
   assert(await vis('buyBtn'), 'Continue on screen without scrolling');
 }, { start: 'enhance', camera: false, viewport: { width: 844, height: 390 } });
+// ---------- Add to home screen (homescreen.js, 2026-11-01) ----------
+// Saves the Enhance sample, then waits for the one-time prompt.
+async function homeSave(p) {
+  await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  await p.evaluate(() => { enh.demo = false; });   // the sample stands in for the person's own photo
+  await p.click('#enhDownload'); await p.waitForFunction(() => screen === 'enhanceShare');
+}
+const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
+test('home screen: iPhone Safari gets the two-step sheet once, after the first save; Settings keeps a row', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  eq(await p.evaluate(() => HomeAdd.mode()), 'ios', 'iPhone Safari: instructions');
+  await homeSave(p);
+  await settle(1500); eq(await p.evaluate(() => $('homeAdd').open), false, 'not on top of the Saved moment');
+  await p.waitForSelector('#homeAdd[open]', { timeout: 5000 });
+  eq(await p.evaluate(() => [$('homeAddSteps').hidden, $('homeAddYes').textContent, $('homeAddNo').hidden]), [false, 'Got it', true], 'two steps and Got it');
+  await p.click('#homeAddYes'); await p.waitForFunction(() => !$('homeAdd').open);
+  await p.click('#enhShareDone'); await homeSave(p); await settle(4000);
+  eq(await p.evaluate(() => $('homeAdd').open), false, 'only once');
+  await p.evaluate(() => $('settings').showModal()); eq(await p.isVisible('#homeAddRow'), true, 'Settings row');
+  await p.click('#homeAddRow'); await p.waitForSelector('#homeAdd[open]');
+  await p.evaluate(() => flushTelemetry()); await settle(500);
+  eq(state.events.filter((e) => e.name === 'home_offer').map((e) => e.props.from), ['enhance', 'settings'], 'tracked');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, files: demoFiles(), viewport: { width: 390, height: 844 }, init: () => {
+  Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1' });
+} });
+
+test('home screen: Android browser that has not offered install (Firefox, in-app browsers) is never asked', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  eq(await p.evaluate(() => HomeAdd.mode()), '', 'no way to add');
+  await p.evaluate(() => HomeAdd.afterSave('enhance')); await settle(3800);
+  eq(await p.evaluate(() => $('homeAdd').open), false, 'nothing');
+  await p.evaluate(() => $('settings').showModal()); eq(await p.isVisible('#homeAddRow'), false, 'no Settings row');
+}, { start: 'enhance', camera: false });
+test('home screen: iPhone already running Glow Studio from the home screen is never asked', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  eq(await p.evaluate(() => HomeAdd.mode()), '', 'standalone');
+}, { start: 'enhance', camera: false, init: () => {
+  Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1' });
+  Object.defineProperty(navigator, 'standalone', { get: () => true });
+} });
+test('home screen: iPhone inside Instagram is never asked', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  eq(await p.evaluate(() => HomeAdd.mode()), '', 'in-app browser');
+}, { start: 'enhance', camera: false, init: () => {
+  Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 350.0' });
+} });
+
+test('home screen: Android Chrome uses the browser Install dialog, held back until the first save', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => {
+    const e = new Event('beforeinstallprompt', { cancelable: true });
+    e.prompt = async () => { window.__prompted = (window.__prompted || 0) + 1; }; e.userChoice = Promise.resolve({ outcome: 'accepted' });
+    window.dispatchEvent(e); window.__bip = e;
+  });
+  eq(await p.evaluate(() => [HomeAdd.mode(), window.__bip.defaultPrevented]), ['install', true], 'Chrome mini-infobar held back for our moment');
+  await homeSave(p); await p.waitForSelector('#homeAdd[open]', { timeout: 6000 });
+  eq(await p.evaluate(() => [$('homeAddSteps').hidden, $('homeAddYes').textContent]), [true, 'Install'], 'Install button');
+  await p.click('#homeAddYes'); await settle(300);
+  eq(await p.evaluate(() => [window.__prompted, $('homeAdd').open, localStorage.getItem('glowHomeAsk')]), [1, false, 'shown'], 'browser dialog shown once');
+  await p.evaluate(() => flushTelemetry()); await settle(500);
+  eq(state.events.filter((e) => e.name === 'home_install').map((e) => e.props.outcome), ['accepted'], 'outcome tracked');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, files: demoFiles(), viewport: { width: 412, height: 892 } });
+
+const homeApp = (o) => () => {
+  const st = window.__home = { supported: true, pinned: false, pins: 0 };
+  window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: { GlowHome: {
+    status: async () => ({ supported: st.supported, pinned: st.pinned }),
+    pin: async () => { st.pins++; st.pinned = true; return { requested: true }; },
+  } } };
+};
+test('home screen: Android app asks once after the first save, Add asks the launcher, then the Settings row goes away', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.waitForFunction(() => HomeAdd.mode() === 'app');
+  await homeSave(p); await p.waitForSelector('#homeAdd[open]', { timeout: 6000 });
+  eq(await p.evaluate(() => [$('homeAddYes').textContent, $('homeAddNo').textContent, $('homeAddSteps').hidden]), ['Add to home screen', 'Not now', true], 'buttons');
+  await p.click('#homeAddYes'); await settle(1800);
+  eq(await p.evaluate(() => [window.__home.pins, HomeAdd.mode()]), [1, ''], 'launcher asked once; pinned now');
+  await p.evaluate(() => $('settings').showModal()); eq(await p.isVisible('#homeAddRow'), false, 'no row once pinned');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, files: demoFiles(), init: homeApp() });
+test('home screen: Android app, Not now: no launcher call and no second ask', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => HomeAdd.mode() === 'app');
+  await homeSave(p); await p.waitForSelector('#homeAdd[open]', { timeout: 6000 });
+  await p.click('#homeAddNo'); await p.click('#enhShareDone'); await homeSave(p); await settle(4000);
+  eq(await p.evaluate(() => [window.__home.pins, $('homeAdd').open]), [0, false], 'left alone');
+}, { start: 'enhance', camera: false, files: demoFiles(), init: homeApp() });
+test('home screen: switched off from the admin page, nobody is asked', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => HomeAdd.mode() === 'app');
+  await homeSave(p); await settle(4000);
+  eq(await p.evaluate(() => $('homeAdd').open), false, 'switch off');
+}, { start: 'enhance', camera: false, files: demoFiles(), init: homeApp(), features: { 'app:home': false } });
 
 (async () => {
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
