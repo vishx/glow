@@ -7,8 +7,8 @@
 <title>Glow Studio admin</title>
 <link rel="icon" href="/icon-192.png">
 <style>
-  :root { --bg: #fbf7f5; --card: #fffdfc; --text: #1d181b; --muted: #75686e; --line: #eadfdb; --rose: #b04468; --blush: #f6d9df;
-    --good: #2f7a52; --warn: #a8611a; --bad: #b3261e; --ink: #1d181b; }
+  :root { --bg: #f7f6f3; --card: #ffffff; --text: #17171a; --muted: #64615c; --line: #e4e1dc; --rose: #7a5c28; --blush: #ecebe7;
+    --good: #2f7a52; --warn: #a8611a; --bad: #b3261e; --ink: #17171a; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 Figtree, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   header { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
@@ -191,16 +191,16 @@ function chart(daily) {
   const maxC = Math.max(0.01, ...days.map((d) => Number(d.ai_cost))), maxR = Math.max(1, ...days.map((d) => d.ai_runs));
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", `0 0 ${W} ${H + 24}`);
-  let s = `<line x1="${pad}" y1="${H}" x2="${W - pad}" y2="${H}" stroke="#eadfdb"/>`;
+  let s = `<line x1="${pad}" y1="${H}" x2="${W - pad}" y2="${H}" stroke="#e4e1dc"/>`;
   days.forEach((d, i) => {
     const x = pad + i * bw, hr = (d.ai_runs / maxR) * (H - 20), hc = (Number(d.ai_cost) / maxC) * (H - 20);
     s += `<rect x="${x + bw * 0.12}" y="${H - hr}" width="${bw * 0.36}" height="${hr}" rx="2" fill="#d8ccc8"><title>${d.day}: ${d.ai_runs} AI runs</title></rect>`;
-    s += `<rect x="${x + bw * 0.52}" y="${H - hc}" width="${bw * 0.36}" height="${hc}" rx="2" fill="#b04468"><title>${d.day}: ${money(d.ai_cost)} est. AI cost</title></rect>`;
+    s += `<rect x="${x + bw * 0.52}" y="${H - hc}" width="${bw * 0.36}" height="${hc}" rx="2" fill="#7a5c28"><title>${d.day}: ${money(d.ai_cost)} est. AI cost</title></rect>`;
     if (i % Math.ceil(days.length / 10) === 0 || i === days.length - 1) s += `<text x="${x + bw / 2}" y="${H + 16}" text-anchor="middle">${d.day.slice(5)}</text>`;
   });
   s += `<text x="${pad}" y="12">max ${maxR} runs · ${money(maxC)}</text>`;
   svg.innerHTML = s;
-  return h("div", { class: "chart" }, svg, h("div", { class: "legend" }, h("span", {}, h("i", { style: "background:#d8ccc8" }), "AI runs"), h("span", {}, h("i", { style: "background:#b04468" }), "Estimated AI cost")));
+  return h("div", { class: "chart" }, svg, h("div", { class: "legend" }, h("span", {}, h("i", { style: "background:#d8ccc8" }), "AI runs"), h("span", {}, h("i", { style: "background:#7a5c28" }), "Estimated AI cost")));
 }
 
 // Plain names for the events the app reports (anything not listed shows its raw name).
