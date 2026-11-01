@@ -1845,8 +1845,14 @@ async function personBase(src, c) {
   try { faces = await findFaces(src, c); } catch { /* no face model: the whole-picture cutout */ }
   const bx = faces.map(boxOf).map(([x, y, w, h]) => [x * W, y * H, w * W, h * H]);
   const big = Math.max(0, ...bx.map((b) => b[2])), main = bx.filter((b) => b[2] >= 0.55 * big);
-  const alpha = main.length ? await peopleMatte(c, main) : await matte(src, c);
-  if (main.length === 1) await clipToBody(c, alpha, main[0]);
+  // In the phone apps, the phone's own cutout (Google ML Kit / Apple Vision) when it answers;
+  // otherwise the on-device web models.
+  let alpha = null;
+  try { alpha = await nativePeople(c, main); } catch { alpha = null; }
+  if (!alpha) {
+    alpha = main.length ? await peopleMatte(c, main) : await matte(src, c);
+    if (main.length === 1) await clipToBody(c, alpha, main[0]);
+  }
   let on = 0, n = 0; for (let i = 0; i < alpha.length; i += 17) { on += alpha[i]; n++; }
   if (on / n < 0.01 || (!main.length && on / n > 0.97)) throw unavailable("No person found in this photo, so Person and Background can't be used. Full still works.");
   personCache.unshift({ src, w: W, h: H, alpha }); personCache.length = Math.min(personCache.length, 3);
@@ -1912,6 +1918,36 @@ async function areaOverlay(src, edits) {
   for (let i = 0; i < alpha.length; i++) { d.data[i * 4] = 235; d.data[i * 4 + 1] = 40; d.data[i * 4 + 2] = 55; d.data[i * 4 + 3] = (1 - alpha[i]) * 150; }
   ox.putImageData(d, 0, 0);
   return o;
+}
+// The phone's own person cutout (the GlowCutout plugin in mobile/: ML Kit subject segmentation on
+// Android, Vision person segmentation on iPhone). ML Kit returns every subject separately (a person,
+// a sofa, a bag), so only those under one of the main faces are kept. Returns null without it.
+const cutoutPlugin = () => (typeof native !== "undefined" && native && window.Capacitor.Plugins && window.Capacitor.Plugins.GlowCutout) || window.__glowCutoutForTests || null;
+async function nativePeople(c, boxes) {
+  const plug = cutoutPlugin(); if (!plug) return null;
+  const W = c.width, H = c.height, k = Math.min(1, 1600 / Math.max(W, H));
+  const sm = newCanvas(Math.round(W * k), Math.round(H * k)); sm.getContext("2d").drawImage(c, 0, 0, sm.width, sm.height);
+  const r = await plug.people({ image: sm.toDataURL("image/jpeg", 0.9) });
+  if (!r || !r.subjects || !r.subjects.length) return null;
+  const centers = boxes.map((b) => [(b[0] + b[2] / 2) / W, (b[1] + b[3] / 2) / H]);
+  const subs = r.subjects.map((s) => {
+    const bin = atob(s.mask), m = new Uint8Array(bin.length); for (let i = 0; i < m.length; i++) m[i] = bin.charCodeAt(i);
+    const at = ([x, y]) => { const u = (x - s.x) / s.w, v = (y - s.y) / s.h; if (u < 0 || v < 0 || u >= 1 || v >= 1) return 0; return m[Math.floor(v * s.mh) * s.mw + Math.floor(u * s.mw)] / 255; };
+    return { s, m, area: s.w * s.h, face: centers.some((p) => at(p) > 0.5) };
+  });
+  const keep = r.engine === "vision" ? subs : centers.length ? subs.filter((x) => x.face) : subs.sort((a, b) => b.area - a.area).slice(0, 1);
+  if (!keep.length) return null;
+  const acc = newCanvas(W, H), ax = acc.getContext("2d", { willReadFrequently: true });
+  ax.globalCompositeOperation = "lighten"; ax.imageSmoothingQuality = "high";
+  for (const { s, m } of keep) {
+    const mc = newCanvas(s.mw, s.mh), mx = mc.getContext("2d"), d = mx.createImageData(s.mw, s.mh);
+    for (let i = 0; i < m.length; i++) { d.data[i * 4] = d.data[i * 4 + 1] = d.data[i * 4 + 2] = m[i]; d.data[i * 4 + 3] = 255; }
+    mx.putImageData(d, 0, 0); ax.drawImage(mc, s.x * W, s.y * H, s.w * W, s.h * H);
+  }
+  const ad = ax.getImageData(0, 0, W, H).data, alpha = new Float32Array(W * H);
+  let on = 0;
+  for (let i = 0; i < alpha.length; i++) { alpha[i] = ad[i * 4] / 255; on += alpha[i]; }
+  return on / alpha.length > 0.005 ? alpha : null;
 }
 // One person: the body model's own outline (made for full-length shots) trims what the selfie
 // segmenter wrongly joined to them, such as a pale floor or sofa beside a pale top. Its outline is

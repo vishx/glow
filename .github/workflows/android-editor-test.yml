@@ -1,0 +1,83 @@
+# Builds a sideloadable test APK of the editor (Person / Background with the phone's own cutout,
+# Google ML Kit) on every push to its branch. It installs beside the main test app as
+# "Glow Editor test" (package com.vishx.glow.editortest), so nothing else on the phone changes.
+name: Android editor test APK
+
+on:
+  push:
+    branches: [claude/project-thread-l2q9h2]
+    paths: [mobile/**, public/**, .github/workflows/android-editor-test.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Android SDK packages (the runner ships the SDK itself)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Build web assets and sync Capacitor
+        working-directory: mobile
+        run: |
+          npm ci
+          bash build-web.sh
+          npx cap sync android
+
+      - name: Name this test build on the phone
+        run: |
+          mkdir -p mobile/android/app/src/debug/res/values
+          cat > mobile/android/app/src/debug/res/values/strings.xml <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <string name="app_name">Glow Editor test</string>
+              <string name="title_activity_main">Glow Editor test</string>
+          </resources>
+          XML
+
+      - name: Build debug APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug -PglowTestSuffix=.editortest
+
+      - name: Name the APK
+        id: apk
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          NAME="glow-editor-test-${SHA}.apk"
+          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk "$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          ls -l "$NAME"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glow-editor-test-apk
+          path: ${{ steps.apk.outputs.name }}
+
+      - name: Publish as a pre-release (a download page for the phone)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="android-editor-test-${{ steps.apk.outputs.sha }}"
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" "${{ steps.apk.outputs.name }}" \
+            --repo "$GITHUB_REPOSITORY" --target "$(git rev-parse HEAD)" --prerelease \
+            --title "Glow Editor test build (${{ steps.apk.outputs.sha }})" \
+            --notes "Debug build of the editor with Person / Background and the phone's own cutout, for sideloading. Installs beside the main app as Glow Editor test. Not for the Play Store."

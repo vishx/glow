@@ -1,0 +1,35 @@
+# Compiles the iPhone app with the phone's own cutout (Apple Vision person segmentation) on a
+# cloud Mac, for the simulator and unsigned, so build errors show up before anyone needs Xcode.
+name: iOS editor build check
+
+on:
+  push:
+    branches: [claude/project-thread-l2q9h2]
+    paths: [mobile/ios/**, public/**, .github/workflows/ios-editor-test.yml]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build web assets and sync Capacitor
+        working-directory: mobile
+        run: |
+          npm ci
+          bash build-web.sh
+          npx cap sync ios
+
+      - name: Compile for the simulator
+        working-directory: mobile/ios/App
+        run: |
+          set -o pipefail
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee /tmp/build.log | grep -E "error:|warning: .*Glow|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" /tmp/build.log

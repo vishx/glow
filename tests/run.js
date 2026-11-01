@@ -2087,6 +2087,27 @@ test('adjust: the Refine brush adds to and takes away from the person, and the s
   eq(state.errs, [], 'no page errors');
 });
 
+test('adjust: in the phone apps the phone\'s own cutout is used, keeping only subjects under a face', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, AREA_PHOTO);
+  const r = await p.evaluate(async () => {
+    // A stand-in for the GlowCutout plugin: two ML Kit-style subjects, one where the face is
+    // (a box from the face down) and one off to the side (like a sofa).
+    const base = committed(), img = await loadImg(base), c = canvasFor(img); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const f = (await findFaces(base, c)).map(boxOf)[0], cx = f[0] + f[2] / 2;
+    const sub = (x, y, w, h) => ({ x, y, w, h, mw: 4, mh: 4, mask: btoa(String.fromCharCode(...new Array(16).fill(255))) });
+    const calls = [];
+    window.__glowCutoutForTests = { people: async (o) => { calls.push(o.image.slice(0, 23)); return { engine: 'mlkit', width: 100, height: 100, subjects: [sub(cx - 0.15, f[1] - 0.02, 0.3, 0.9), sub(0, 0.6, 0.12, 0.3)] }; } };
+    personCache.length = 0;
+    const a = await personAlpha(base, c), W = c.width, H = c.height, at = (x, y) => a[Math.round(y * H) * W + Math.round(x * W)];
+    delete window.__glowCutoutForTests; personCache.length = 0;
+    return { calls, person: at(cx, f[1] + 0.2), sofa: at(0.05, 0.75), corner: at(0.95, 0.05) };
+  });
+  eq(r.calls, ['data:image/jpeg;base64,'], 'the plugin gets one JPEG');
+  assert(r.person > 0.9, 'the subject under the face is the person: ' + r.person);
+  assert(r.sofa < 0.1 && r.corner < 0.1, 'the other subject and the room are background: ' + [r.sofa, r.corner]);
+  eq(state.errs, [], 'no page errors');
+});
+
 test('adjust: a photo without a person keeps Full and explains why', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, fx('coords-600x400.png'));
   await tool(p, 'edit', null, 'contrast');
