@@ -3067,6 +3067,102 @@ test('web checkout: without a Web Billing key (or switched off) the website stil
   eq(await p.evaluate(() => [$('buyBtn').disabled, /available in the Glow Studio app/.test($('pwNote').textContent), !!document.querySelector('script[src*="purchases-js"]')]), [true, true, false], 'no key: disabled, app note, checkout not loaded');
 }, { start: 'enhance', camera: false });
 
+// ---------- Add to home screen (homescreen.js, 2026-11-01) ----------
+// Saves the Enhance sample, then waits for the one-time prompt.
+async function homeSave(p) {
+  await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  await p.evaluate(() => { enh.demo = false; });   // the sample stands in for the person's own photo
+  await p.click('#enhDownload'); await p.waitForFunction(() => screen === 'enhanceShare');
+}
+const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
+test('home screen: iPhone Safari gets the two-step sheet once, after the first save; Settings keeps a row', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  eq(await p.evaluate(() => HomeAdd.mode()), 'ios', 'iPhone Safari: instructions');
+  await homeSave(p);
+  await settle(1500); eq(await p.evaluate(() => $('homeAdd').open), false, 'not on top of the Saved moment');
+  await p.waitForSelector('#homeAdd[open]', { timeout: 5000 });
+  eq(await p.evaluate(() => [$('homeAddSteps').hidden, $('homeAddYes').textContent, $('homeAddNo').hidden]), [false, 'Got it', true], 'two steps and Got it');
+  await p.click('#homeAddYes'); await p.waitForFunction(() => !$('homeAdd').open);
+  await p.click('#enhShareDone'); await homeSave(p); await settle(4000);
+  eq(await p.evaluate(() => $('homeAdd').open), false, 'only once');
+  await p.evaluate(() => $('settings').showModal()); eq(await p.isVisible('#homeAddRow'), true, 'Settings row');
+  await p.click('#homeAddRow'); await p.waitForSelector('#homeAdd[open]');
+  await p.evaluate(() => flushTelemetry()); await settle(500);
+  eq(state.events.filter((e) => e.name === 'home_offer').map((e) => e.props.from), ['enhance', 'settings'], 'tracked');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, files: demoFiles(), viewport: { width: 390, height: 844 }, init: () => {
+  Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1' });
+} });
+
+test('home screen: Android browser that has not offered install (Firefox, in-app browsers) is never asked', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  eq(await p.evaluate(() => HomeAdd.mode()), '', 'no way to add');
+  await p.evaluate(() => HomeAdd.afterSave('enhance')); await settle(3800);
+  eq(await p.evaluate(() => $('homeAdd').open), false, 'nothing');
+  await p.evaluate(() => $('settings').showModal()); eq(await p.isVisible('#homeAddRow'), false, 'no Settings row');
+}, { start: 'enhance', camera: false });
+test('home screen: iPhone already running Glow Studio from the home screen is never asked', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  eq(await p.evaluate(() => HomeAdd.mode()), '', 'standalone');
+}, { start: 'enhance', camera: false, init: () => {
+  Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1' });
+  Object.defineProperty(navigator, 'standalone', { get: () => true });
+} });
+test('home screen: iPhone inside Instagram is never asked', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  eq(await p.evaluate(() => HomeAdd.mode()), '', 'in-app browser');
+}, { start: 'enhance', camera: false, init: () => {
+  Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 350.0' });
+} });
+
+test('home screen: Android Chrome uses the browser Install dialog, held back until the first save', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => {
+    const e = new Event('beforeinstallprompt', { cancelable: true });
+    e.prompt = async () => { window.__prompted = (window.__prompted || 0) + 1; }; e.userChoice = Promise.resolve({ outcome: 'accepted' });
+    window.dispatchEvent(e); window.__bip = e;
+  });
+  eq(await p.evaluate(() => [HomeAdd.mode(), window.__bip.defaultPrevented]), ['install', true], 'Chrome mini-infobar held back for our moment');
+  await homeSave(p); await p.waitForSelector('#homeAdd[open]', { timeout: 6000 });
+  eq(await p.evaluate(() => [$('homeAddSteps').hidden, $('homeAddYes').textContent]), [true, 'Install'], 'Install button');
+  await p.click('#homeAddYes'); await settle(300);
+  eq(await p.evaluate(() => [window.__prompted, $('homeAdd').open, localStorage.getItem('glowHomeAsk')]), [1, false, 'shown'], 'browser dialog shown once');
+  await p.evaluate(() => flushTelemetry()); await settle(500);
+  eq(state.events.filter((e) => e.name === 'home_install').map((e) => e.props.outcome), ['accepted'], 'outcome tracked');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, files: demoFiles(), viewport: { width: 412, height: 892 } });
+
+const homeApp = (o) => () => {
+  const st = window.__home = { supported: true, pinned: false, pins: 0 };
+  window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: { GlowHome: {
+    status: async () => ({ supported: st.supported, pinned: st.pinned }),
+    pin: async () => { st.pins++; st.pinned = true; return { requested: true }; },
+  } } };
+};
+test('home screen: Android app asks once after the first save, Add asks the launcher, then the Settings row goes away', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.waitForFunction(() => HomeAdd.mode() === 'app');
+  await homeSave(p); await p.waitForSelector('#homeAdd[open]', { timeout: 6000 });
+  eq(await p.evaluate(() => [$('homeAddYes').textContent, $('homeAddNo').textContent, $('homeAddSteps').hidden]), ['Add to home screen', 'Not now', true], 'buttons');
+  await p.click('#homeAddYes'); await settle(1800);
+  eq(await p.evaluate(() => [window.__home.pins, HomeAdd.mode()]), [1, ''], 'launcher asked once; pinned now');
+  await p.evaluate(() => $('settings').showModal()); eq(await p.isVisible('#homeAddRow'), false, 'no row once pinned');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, files: demoFiles(), init: homeApp() });
+test('home screen: Android app, Not now: no launcher call and no second ask', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => HomeAdd.mode() === 'app');
+  await homeSave(p); await p.waitForSelector('#homeAdd[open]', { timeout: 6000 });
+  await p.click('#homeAddNo'); await p.click('#enhShareDone'); await homeSave(p); await settle(4000);
+  eq(await p.evaluate(() => [window.__home.pins, $('homeAdd').open]), [0, false], 'left alone');
+}, { start: 'enhance', camera: false, files: demoFiles(), init: homeApp() });
+test('home screen: switched off from the admin page, nobody is asked', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => HomeAdd.mode() === 'app');
+  await homeSave(p); await settle(4000);
+  eq(await p.evaluate(() => $('homeAdd').open), false, 'switch off');
+}, { start: 'enhance', camera: false, files: demoFiles(), init: homeApp(), features: { 'app:home': false } });
+
 (async () => {
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
   const results = [];

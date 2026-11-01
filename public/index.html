@@ -445,6 +445,7 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
       <a href="#" id="subsInfo"><span data-icon="star"></span><span>AI credits and plan</span></a>
       <a href="#" id="manageSubs"><span data-icon="pro"></span><span>Manage subscription</span></a>
       <a href="#" id="shareApp"><span data-icon="share"></span><span>Share Glow Studio</span></a>
+      <a href="#" id="homeAddRow" hidden><span data-icon="addhome"></span><span>Add to home screen</span></a>
     </div>
   </div>
   <div class="setting">
@@ -563,6 +564,20 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
   </div>
 </dialog>
 
+<dialog class="alert home-add" id="homeAdd" aria-labelledby="homeAddTitle" aria-describedby="homeAddText">
+  <img class="home-add-icon" src="icon-192.png" alt="" width="72" height="72">
+  <h2 class="t-section" id="homeAddTitle">Add Glow Studio to your home screen</h2>
+  <p id="homeAddText"></p>
+  <ol class="home-add-steps" id="homeAddSteps" hidden>
+    <li><span data-icon="share"></span><span>Tap <b>Share</b> in Safari's bar (under <b>&middot;&middot;&middot;</b> if you don't see it)</span></li>
+    <li><span data-icon="addhome"></span><span>Choose <b>Add to Home Screen</b>, then <b>Add</b></span></li>
+  </ol>
+  <div class="stack">
+    <button class="btn glow" id="homeAddYes">Add to home screen</button>
+    <button class="btn ghost" id="homeAddNo">Not now</button>
+  </div>
+</dialog>
+
 <dialog class="alert" id="ask" aria-labelledby="askTitle">
   <h2 class="t-section" id="askTitle"></h2>
   <p id="askText"></p>
@@ -578,5 +593,6 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
 <script src="app.js"></script>
 <script src="tryon.js"></script>
 <script src="enhance.js"></script>
+<script src="homescreen.js"></script>
 </body>
 </html>

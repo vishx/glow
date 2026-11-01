@@ -974,6 +974,7 @@ async function enhDownload() {
     enh.saved = { data, where, name };
     if (enh.fromBatch) enh.fromBatch.saved = true;
     showEnhShare();
+    if (!enh.demo) HomeAdd.afterSave("enhance");
   } catch (err) {
     if (err && err.name === "AbortError") return;
     say(saveFailText(), true);

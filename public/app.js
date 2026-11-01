@@ -2664,7 +2664,7 @@ async function saveEdit(opts) {
     const offer = CONFIG.publicUrl && !shareOffered && featureOn("share:app") ? { label: "Share Glow Studio", run: () => openShareCard(out.data) } : null;
     if (offer) shareOffered = true;
     say(savedText(where, items.length, exportNote(out)), false, offer);
-    if (!share && !ed.demo) introOffer("editor");
+    if (!share && !ed.demo) { introOffer("editor"); HomeAdd.afterSave("editor"); }
     return true;
   } catch (err) {
     if (err && err.name === "AbortError") return false;
