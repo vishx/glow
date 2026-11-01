@@ -148,7 +148,7 @@ test('camera: selfie screen flash defaults to Auto, cycles On/Off, and lights th
 test('camera filters: 13 filters, film effects over the preview and in the photo, Strength scales them', async ({ p }) => {
   await p.goto('https://app.test/'); await camLive(p);
   eq(await p.evaluate(() => FILTERS.map((f) => f.id)), ['none', 'glow', 'film', 'warm', 'soft', 'matte', 'clear', 'vivid', 'cool', 'digicam', 'disposable', 'instant', 'mono', 'noir'], 'the filter list');
-  eq(await p.evaluate(() => FILTERS.every((f) => f.f === 'none' || f.f.match(/\(/g).length <= FILTER_STEPS)), true, 'every chain fits the native camera');
+  eq(await p.evaluate(() => FILTERS.every((f) => f.f === 'none' || f.f.match(/\(/g).length <= 4)), true, 'every chain fits the native camera');
   await p.evaluate(() => { $('adjustPanel').hidden = false; selectAdj('filter'); });
   eq(await p.evaluate(() => [$('camFx').hidden, $('sFilterAmt').closest('.slider').hidden]), [true, true], 'no filter: no effects, no Strength');
   await p.evaluate(() => [...$('camFilters').children].find((b) => b.textContent === 'Disposable').click());
