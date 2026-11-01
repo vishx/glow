@@ -139,17 +139,19 @@ test('camera: full-screen preview, and the photo is cropped to what the screen s
   assert(Math.abs(a - r.cw / r.ch) < 0.01, 'photo shape matches the preview: ' + [a, r.cw / r.ch]);
 }, { start: 'camera' });
 
-test('camera: held sideways, the web camera keeps the people in view (controls in a side column)', async ({ p }) => {
+test('camera: held sideways, the web camera keeps the people in view (shutter rail on the right, rows along the bottom)', async ({ p }) => {
   await p.goto('https://app.test/'); await camLive(p);
   await p.waitForFunction(() => !$('splash'), null, { timeout: 5000 });   // the launch animation is over
   const r = await p.evaluate(() => {
-    const b = (id) => $(id).getBoundingClientRect(), vf = b('viewfinder'), cc = b('camControls');
+    const b = (id) => $(id).getBoundingClientRect(), vf = b('viewfinder'), sh = b('shutter'), cr = document.querySelector('#cameraScreen .capture-row').getBoundingClientRect();
+    const rows = $('camLooks').hidden ? null : b('camLooks');
     const clickable = ['camTimer', 'camAI', 'camSettingsBtn', 'shutter', 'camGallery'].filter((id) => $(id) && !$(id).hidden).every((id) => {
       const q = b(id); return $(id).contains(document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2)); });
-    return { vfW: vf.width, vfH: vf.height, ccLeft: cc.left, ccTop: cc.top, clickable };
+    return { vfW: vf.width, vfH: vf.height, railLeft: cr.left, shutterX: sh.left + sh.width / 2, rowsTop: rows ? rows.top : vf.bottom, rowsRight: rows ? rows.right : 0, clickable };
   });
-  assert(r.ccLeft >= r.vfW * 0.55, 'controls sit in a right-hand column, leaving most of the picture clear: ' + JSON.stringify(r));
-  assert(r.ccTop >= 48, 'the controls column starts below the top bar: ' + r.ccTop);
+  assert(r.railLeft >= r.vfW * 0.8, 'shutter rail is a slim strip on the right edge: ' + JSON.stringify(r));
+  assert(r.shutterX >= r.vfW * 0.85, 'shutter sits on the right edge: ' + JSON.stringify(r));
+  assert(r.rowsTop >= r.vfH * 0.7 && r.rowsRight <= r.railLeft + 1, 'Looks run along the bottom, left of the rail: ' + JSON.stringify(r));
   assert(r.clickable, 'top bar and capture buttons are all tappable: ' + await p.evaluate(() => ['camTimer', 'camAI', 'camSettingsBtn', 'shutter', 'camGallery'].map((id) => { const q = $(id).getBoundingClientRect(), e = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return id + '>' + (e && (e.id || e.className)) + '@' + Math.round(q.left) + ',' + Math.round(q.top); }).join(' ')));
   await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot);
   const a = await p.evaluate(() => cam.shot.w / cam.shot.h);

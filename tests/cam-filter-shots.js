@@ -15,6 +15,8 @@ fs.mkdirSync(out, { recursive: true });
   await p.evaluate(() => document.querySelector('#adjChips [data-set="filter"]').click()); await p.waitForTimeout(300);
   await p.evaluate(() => document.querySelectorAll('#camFilters .look')[3].click()); await p.waitForTimeout(500); await shot('4-filter');
   await p.evaluate(() => document.querySelector('#adjChips [data-set="lips"]').click()); await p.waitForTimeout(300); await shot('5-lips');
+  await p.click('#adjDone'); await p.waitForTimeout(300); await p.click('#shutter');
+  await p.waitForFunction(() => !$('reviewControls').hidden, null, { timeout: 20000 }); await p.waitForTimeout(600); await shot('6-review');
   console.log(state.errs.join('\n') || 'no errors');
   await browser.close();
 })().catch((e) => { console.error(e); process.exit(1); });
