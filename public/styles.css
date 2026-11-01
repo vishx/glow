@@ -1132,3 +1132,25 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
   filter: drop-shadow(0 0 6px rgb(255 210 120 / 0.9)); animation: glow-spark 720ms cubic-bezier(.3, 1.5, .5, 1) both; }
 @keyframes glow-sweep { to { transform: translateX(60%); } }
 @keyframes glow-spark { 0% { opacity: 0; transform: scale(0) rotate(0); } 40% { opacity: 1; transform: scale(1.15) rotate(30deg); } 100% { opacity: 0; transform: scale(.6) rotate(90deg); } }
+
+/* Camera held sideways: the screen stays upright (like the phone's own camera) and only the icons
+   turn to stay level. `rotate` is separate from `transform`, so press effects still work. */
+#flashBtn, #camTimer, #camAI, #camSettingsBtn, #camGallery, #camFlip, #camCount {
+  rotate: var(--cam-rot, 0deg); transition: rotate 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  #flashBtn, #camTimer, #camAI, #camSettingsBtn, #camGallery, #camFlip, #camCount { transition: none; }
+}
+/* The web camera on a phone held sideways (the phone apps keep the camera upright instead): the
+   controls move to a column on the right, so they no longer cover the lower half of the picture
+   and the people in it stay in view. */
+@media (max-width: 959px) and (min-width: 560px) and (max-height: 560px) and (orientation: landscape) {
+  #cameraScreen .cam-controls { position: absolute; top: 56px; right: 0; bottom: 0; width: min(340px, 42vw); margin: 0;
+    display: flex; flex-direction: column; justify-content: flex-end; padding: var(--s2) env(safe-area-inset-right) var(--s2) 0;
+    background: linear-gradient(90deg, #0000, #00000073 25%, #000000a6); }
+  #cameraScreen .cam-controls > * { max-width: none; width: 100%; }
+  #cameraScreen .looks { justify-content: flex-start; padding-bottom: var(--s2); }
+  #cameraScreen .capture-row { padding: 0 var(--s3); }
+  #cameraScreen .vf-note { right: calc(min(340px, 42vw) + var(--s3)); }
+  #cameraScreen .cam-top { padding-left: max(var(--gutter), env(safe-area-inset-left)); padding-right: max(var(--gutter), env(safe-area-inset-right)); }
+}
