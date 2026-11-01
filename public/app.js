@@ -3290,6 +3290,13 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 setInterval(() => { if (document.visibilityState === "visible") refreshFeatures(true); }, 15 * 60000);
 
 // ---------- Settings ----------
+// Pages opened from Settings (credits, Pro, Help, Privacy, Terms, Licenses, Contact support) open on top
+// of it, so closing them lands back in Settings where you were, not on the home screen.
+// Back and Escape close the sheet on top first: each dialog remembers when it was opened.
+let dialogSeq = 0;
+const showModal0 = HTMLDialogElement.prototype.showModal;
+HTMLDialogElement.prototype.showModal = function () { this.dataset.openSeq = String(++dialogSeq); return showModal0.call(this); };
+const topDialog = () => [...document.querySelectorAll("dialog[open]")].sort((a, b) => (+a.dataset.openSeq || 0) - (+b.dataset.openSeq || 0)).pop() || null;
 // Tapping the build line copies the full account ID (to add a phone as a tester on the admin page).
 $("buildId").addEventListener("click", async () => {
   const id = session && session.user_id; if (!id) return;
@@ -3317,7 +3324,7 @@ async function showBuild() {
   buildFp = fp || buildFp;
   const id = session && session.user_id;
   // The phone app is served from its own files (host "localhost"), so name the platform instead.
-  const where = { android: "Android app", ios: "iPhone app" }[PLATFORM] || (native ? "Phone app" : location.host || "Web");
+  const where = { android: "Android app", ios: "iPhone app" }[PLATFORM] || (native ? "Phone app" : "Web");
   $("buildId").textContent = `Version ${APP_BUILD} (${fp || "unknown"}) · ${where}${id ? ` · ID ${id.slice(0, 8)}` : ""}${Features.tester ? " · Tester" : ""}`;
   $("buildId").title = `${FEATURES}. Tap to copy your account ID.`;
 }
@@ -3329,7 +3336,7 @@ $("autoSaveToggle").addEventListener("change", (e) => { store.set("glowAutoSave"
 $("autoSaveHelp").textContent = native && plugins.Media
   ? "Each photo goes to the Glow Studio album as soon as you take it. You can still edit or retake it."
   : "Each photo downloads as soon as you take it. Look in Downloads; browsers can't save to your photo library.";
-$("goProBtn").addEventListener("click", () => { $("settings").close(); openPaywall(); });
+$("goProBtn").addEventListener("click", () => openPaywall());
 $("deleteAccount").addEventListener("click", async (e) => {
   e.preventDefault();
   const ok = await ask({ title: "Delete your account and data?", text: "This permanently deletes your Glow Studio account and its data. It can't be undone. Cancel any subscription in your store settings too.",
@@ -3358,11 +3365,11 @@ function openSupport(idea) {
   $("supportTitle").textContent = idea ? "Suggest a feature" : "Contact support";
   $("supportTopic").closest("label").hidden = idea;
   $("supportMessage").placeholder = idea ? "What would make Glow Studio better for you?" : "Tell us what happened.";
-  $("settings").close(); $("supportSheet").showModal();
+  $("supportSheet").showModal();
 }
 $("contactSupport").addEventListener("click", (e) => { e.preventDefault(); openSupport(false); });
 $("suggestFeature").addEventListener("click", (e) => { e.preventDefault(); openSupport(true); });
-$("subsInfo").addEventListener("click", (e) => { e.preventDefault(); $("settings").close(); openCredits(); });
+$("subsInfo").addEventListener("click", (e) => { e.preventDefault(); openCredits(); });
 // Share Glow Studio: the app's address through the phone's share sheet, or copied where there is none.
 $("shareApp").hidden = !CONFIG.publicUrl;
 $("shareApp").addEventListener("click", async (e) => {
@@ -3391,7 +3398,7 @@ function openDoc(href, title) {
   const frame = $("docFrame");
   $("docTitle").textContent = title;
   frame.src = href;
-  $("settings").close(); $("docSheet").showModal();
+  $("docSheet").showModal();
   track("open_doc", { page: href.replace(/^\/|\.html$/g, "") });
 }
 $("docFrame").addEventListener("load", () => {
@@ -3683,7 +3690,7 @@ $("adBtn").addEventListener("click", async () => {
 // back through Enhance, leave the editor (to where the photo came from) or the photo review.
 // Returns false on the main tabs, where Back leaves the app.
 function goBack() {
-  const open = document.querySelector("dialog[open]");
+  const open = topDialog();
   if (open) { if (!(open.id === "enhSheet" && enh.busy)) open.close(); return true; }
   if (expanded) { setExpanded(false); return true; }
   if (typeof enhanceBack === "function" && enhanceBack()) return true;

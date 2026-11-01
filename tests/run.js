@@ -744,7 +744,7 @@ test('settings: Enhance defaults, subscription details, share the app, and sugge
   await p.click('#suggestFeature'); await p.waitForSelector('#supportSheet[open]');
   eq([await p.textContent('#supportTitle'), await p.isVisible('#supportTopic')], ['Suggest a feature', false], 'idea form');
   await p.click('#supportSheet [data-close]');
-  await p.click('#enhSettingsBtn'); await p.click('#subsInfo'); await p.waitForSelector('#creditsSheet[open]');
+  await p.click('#subsInfo'); await p.waitForSelector('#creditsSheet[open]');
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false });
 
@@ -757,7 +757,7 @@ test('settings: Help, Privacy, Terms and Licenses open inside the app, readable 
   await p.evaluate(() => { store.set('glowTheme', 'dark'); applyTheme(); });
   const docs = [['Help and FAQ', 'Help and support', 'support'], ['Privacy policy', 'Privacy Policy', 'privacy'], ['Terms of use', 'Terms of Use', 'terms'], ['Licenses', 'Licenses', 'licenses']];
   for (const [row, h1] of docs) {
-    await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
+    if (!(await p.evaluate(() => $('settings').open))) await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
     await p.click(`#settings [data-doc="${row}"]`); await p.waitForSelector('#docSheet[open]');
     await p.waitForFunction((h1) => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.theme && d.querySelector('h1') && d.querySelector('h1').textContent === h1; }, h1);
     const r = await p.evaluate(() => { const d = $('docFrame').contentDocument, cs = d.defaultView.getComputedStyle(d.body);
@@ -767,13 +767,13 @@ test('settings: Help, Privacy, Terms and Licenses open inside the app, readable 
     await p.click('#docSheet [data-close]');
   }
   // A link to another help page stays in the sheet; the Glow Studio home link closes it.
-  await p.click('#enhSettingsBtn'); await p.click('#settings [data-doc="Privacy policy"]');
+  await p.click('#settings [data-doc="Privacy policy"]');
   await p.waitForFunction(() => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.embed; });
   await p.evaluate(() => $('docFrame').contentDocument.querySelector('footer a[href="/support.html"]').click());
   await p.waitForFunction(() => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.embed && /support/.test(d.location.pathname); });
   eq(await p.textContent('#docTitle'), 'Help and support', 'footer link opens Help in the sheet');
   await p.evaluate(() => { const a = $('docFrame').contentDocument.createElement('a'); a.href = '/'; $('docFrame').contentDocument.body.append(a); a.click(); });
-  await p.waitForFunction(() => !$('docSheet').open); eq(await p.evaluate(() => location.pathname), '/', 'home link closes the sheet');
+  await p.waitForFunction(() => !$('docSheet').open); eq(await p.evaluate(() => [location.pathname, $('settings').open]), ['/', true], 'home link closes the sheet, back to Settings');
   // Credits sheet: the 2-credit tools are the real ones, and retired tools aren't named.
   await p.evaluate(() => { account = { plan: 'free', remaining: 3, quota: 3, trialLeft: 3 }; renderCreditsSheet(); });
   const txt = await p.textContent('#creditsBody');
@@ -781,6 +781,25 @@ test('settings: Help, Privacy, Terms and Licenses open inside the app, readable 
   assert(/Golden hour, Try on, portrait styles/.test(txt) && !/Headshot|Fashion|outfits|Expand/.test(txt), 'no stale names: ' + txt);
   assert(/Daily credits work with Enhance, AI retouch, Colorize and Remove\./.test(txt), 'daily tools: ' + txt);
   eq(await p.evaluate(() => $('manageSubs').hidden), true, 'no store subscriptions on the web');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false });
+
+// 2026-11-01: closing a page opened from Settings (Help, credits, Contact support...) closed Settings too.
+test('settings: pages opened from Settings close back to Settings, where you were', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const open = async () => { if (!(await p.evaluate(() => $('settings').open))) await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]'); await p.evaluate(() => { $('settings').scrollTop = 9999; }); };
+  const back = (how) => how === 'x' ? null : p.evaluate(() => goBack());
+  for (const [sel, sheet] of [['[data-doc="Help and FAQ"]', 'docSheet'], ['[data-doc="Licenses"]', 'docSheet'], ['#subsInfo', 'creditsSheet'], ['#contactSupport', 'supportSheet'], ['#suggestFeature', 'supportSheet']]) {
+    for (const how of ['x', 'back']) {
+      await open(); const top = await p.evaluate(() => $('settings').scrollTop);
+      await p.click('#settings ' + sel); await p.waitForSelector(`#${sheet}[open]`);
+      if (how === 'x') await p.click(`#${sheet} [data-close]`); else await back(how);
+      await p.waitForFunction((id) => !$(id).open, sheet);
+      eq(await p.evaluate(() => [$('settings').open, $('settings').scrollTop > 0]), [true, top > 0], `${sel} closed with ${how}: Settings still open where it was`);
+    }
+  }
+  // Back from Settings itself still closes it.
+  await p.evaluate(() => goBack()); eq(await p.evaluate(() => $('settings').open), false, 'Back on Settings closes it');
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false });
 
@@ -1101,7 +1120,7 @@ test('retouch: Compare puts the divider on the face; Settings shows which build 
   await p.click('#cancelBtn'); await p.click('#settingsBtn').catch(() => p.evaluate(() => openSettings()));
   await p.waitForFunction(() => /Version/.test($('buildId').textContent) && !/checking/.test($('buildId').textContent));
   const line = await p.textContent('#buildId');
-  assert(new RegExp(`^Version ${await p.evaluate(() => APP_BUILD)} \\([0-9a-f]{8}\\) · app\\.test`).test(line), 'build line names the version and fingerprint: ' + line);
+  assert(new RegExp(`^Version ${await p.evaluate(() => APP_BUILD)} \\([0-9a-f]{8}\\) · Web`).test(line), 'build line names the version and fingerprint: ' + line);
   assert(/reshape-v2 · crop-v2/.test(await p.getAttribute('#buildId', 'title')), 'features kept in the tooltip');
 });
 test('retouch: no trustworthy face shows an unavailable note instead of a guessed warp', async ({ p, state }) => {

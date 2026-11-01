@@ -7,7 +7,7 @@ fs.mkdirSync(out, { recursive: true });
 (async () => {
   for (const scheme of ['light', 'dark']) {
     const { browser, p, state } = await H.launch({ start: 'enhance', camera: false, viewport: { width: 390, height: 844 }, scheme,
-      init: () => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: {} }; } });
+      });
     await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
     await p.evaluate(() => document.getElementById('splash')?.remove());
     await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]'); await p.waitForTimeout(600);
@@ -20,8 +20,10 @@ fs.mkdirSync(out, { recursive: true });
       await p.screenshot({ path: path.join(out, `${f}-${scheme}.png`) });
       await p.click('#docSheet [data-close]');
     }
-    await p.evaluate(() => { account = { plan: 'free', remaining: 3, quota: 3, trialLeft: 3, adsLeft: 1 }; openCredits = openCredits; renderCreditsSheet(); $('creditsSheet').showModal(); });
-    await p.waitForTimeout(500); await p.screenshot({ path: path.join(out, `credits-${scheme}.png`), fullPage: false });
+    await p.click('#contactSupport'); await p.waitForTimeout(600); await p.screenshot({ path: path.join(out, `support-${scheme}.png`) });
+    await p.click('#supportSheet [data-close]'); await p.waitForTimeout(300); await p.screenshot({ path: path.join(out, `back-to-settings-${scheme}.png`) });
+    await p.evaluate(() => { account = { plan: 'free', remaining: 3, quota: 3, trialLeft: 3, adsLeft: 1 }; renderCreditsSheet(); });
+    await p.click('#subsInfo'); await p.waitForTimeout(600); await p.screenshot({ path: path.join(out, `credits-${scheme}.png`) });
     if (state.errs.length) console.log(scheme, 'errors', state.errs);
     await browser.close();
   }
