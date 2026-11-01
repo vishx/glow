@@ -2381,6 +2381,36 @@ test('audit: Enhance saves the AI result at its full size, not the 2048px workin
   eq(imageSize(d.file).w, 6000, 'saved at the AI result size');
 }, { start: 'enhance', camera: false, files: { '/__ai.jpg': path.join(fixtures, 'large-24mp.jpg') } });
 
+// 2026-11-01 audit of the Pro mark switch: the Enhance tab follows it too, and the paywall the free
+// switch opens closes back to Settings.
+test('audit: Enhance saves follow the mark switch for Pro (on by default, off when switched off)', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && account && account.plan === 'pro');
+  const run = async () => {
+    const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+    await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+    await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 60000 });
+  };
+  await run();
+  await p.click('#enhDownload'); await p.waitForSelector('#ask[open]');
+  eq(await p.textContent('#askTitle'), 'Your saves include a small Glow Studio badge', 'Pro note on the Enhance save too');
+  await p.click('#ask .btn:has-text("Keep it and save")'); await downloads(state, 1);
+  eq(await p.evaluate(() => [store.get('glowMark'), store.get('glowProBadgeSeen')]), ['', '1'], 'kept on (default), note seen');
+  const ev = () => p.evaluate(() => { flushTelemetry(); }).then(() => settle(400)).then(() => state.events.filter((e) => e.name === 'save').map((e) => e.props && e.props.marked));
+  await p.evaluate(() => { store.set('glowMark', 'off'); });
+  await p.click('#enhShareBack'); await p.waitForFunction(() => screen === 'enhanceResult');
+  await p.click('#enhDownload'); await downloads(state, 2);
+  const marks = await ev();
+  eq(marks.slice(-2), [true, false], 'first save marked, after switching off clean: ' + JSON.stringify(marks));
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, plan: 'pro', quota: 40, markIntro: true });
+test('audit: the Pro offer from the free mark switch closes back to Settings', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && account && account.plan === 'free');
+  await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
+  await p.click('#markToggle'); await p.waitForSelector('#paywall[open]');
+  await p.evaluate(() => goBack()); await p.waitForFunction(() => !$('paywall').open);
+  eq(await p.evaluate(() => [$('settings').open, $('markToggle').checked]), [true, true], 'Settings still open, mark still on');
+}, { start: 'enhance', camera: false });
+
 // ---------- Runner ----------
 // ---------- Batch Enhance (Pro) ----------
 const BATCH_FILES = ['demo-test-a.jpg', 'demo-test-b.jpg', 'group-two.jpg', 'coords-600x400.png', 'phone-12mp-exif6.jpg'].map(fx);
