@@ -820,7 +820,7 @@ test('settings: Help, Privacy, Terms and Licenses open inside the app, readable 
   }
   // A link to another help page stays in the sheet; the Glow Studio home link closes it.
   await p.click('#settings [data-doc="Privacy policy"]');
-  await p.waitForFunction(() => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.embed; });
+  await p.waitForFunction(() => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.embed && /privacy/.test(d.location.pathname) && d.querySelector('footer'); });
   await p.evaluate(() => $('docFrame').contentDocument.querySelector('footer a[href="/support.html"]').click());
   await p.waitForFunction(() => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.embed && /support/.test(d.location.pathname); });
   eq(await p.textContent('#docTitle'), 'Help and support', 'footer link opens Help in the sheet');
