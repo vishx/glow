@@ -1,1 +1,3 @@
 CAPACITOR_DEBUG = true
+// MediaPipe (CocoaPods, see pods/Podfile): Debug uses this file as its base, so it pulls in the Pods settings.
+#include? "pods/Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"

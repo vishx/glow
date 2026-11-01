@@ -1056,6 +1056,16 @@ dialog.doc-sheet .sheet-head { padding: 0 var(--gutter); }
 @media (min-width: 600px) { dialog.doc-sheet { width: min(92vw, 640px); max-width: 640px; } }
 .setting.locked input[type=checkbox] { opacity: 0.55; }
 
+/* Phone app: the native camera (GlowCamera plugin) draws the picture behind the page. */
+html.native-cam, html.native-cam body, html.native-cam #app, html.native-cam #cameraScreen { background: transparent !important; }
+html.native-cam #camCanvas { visibility: hidden; }
+
+/* Shutter timer */
+#camTimer { position: relative; }
+#camTimer .fa { position: absolute; right: 6px; bottom: 6px; font-size: 0.625rem; font-weight: 800; line-height: 1; }
+.cam-count { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; pointer-events: none;
+  color: #fff; font-size: 7rem; font-weight: 800; line-height: 1; text-shadow: 0 2px 24px #0008; font-variant-numeric: tabular-nums; }
+
 /* A camera filter's film effects over the live preview (renderCamFx); the photo gets the same in paintFx. */
 .cam-fx { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .cam-fx > i { position: absolute; inset: 0; }

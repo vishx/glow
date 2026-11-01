@@ -106,6 +106,7 @@ for dpi, k in (("mdpi", 1), ("hdpi", 1.5), ("xhdpi", 2), ("xxhdpi", 3), ("xxxhdp
 # Web app (PWA) icons
 save(full, "public/icon-180.png", 180, opaque=True)
 save(full, "public/icon-192.png", 192, opaque=True)
+full.convert("RGB").save(out("public/favicon.ico"), sizes=[(16, 16), (32, 32), (48, 48), (64, 64)])
 save(full, "public/icon-512.png", 512, opaque=True)
 save(android_full, "public/icon-512-maskable.png", 512, opaque=True)
 

@@ -3,9 +3,7 @@
 name: iOS editor build check
 
 on:
-  push:
-    branches: [claude/project-thread-l2q9h2]
-    paths: [mobile/ios/**, public/**, .github/workflows/ios-editor-test.yml]
+  # Push builds now come from the combined app workflow (android-native-camera.yml / ios-native-camera.yml).
   workflow_dispatch:
 
 jobs:
