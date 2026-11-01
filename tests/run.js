@@ -51,7 +51,7 @@ async function downloads(state, n, ms = 20000) {
   return state.downloads;
 }
 const toast = (p) => p.textContent('#toast');
-const camLive = (p) => p.waitForFunction(() => cam.state === 'live' && !!cam.stream && __liveTracks() >= 1, null, { timeout: 15000 });
+const camLive = (p) => p.waitForFunction(() => cam.state === 'live' && !!cam.stream && !!cam.zr && __liveTracks() >= 1, null, { timeout: 15000 });
 const settle = (ms = 600) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- Camera saving ----------
@@ -149,7 +149,7 @@ test('camera: held sideways, the web camera keeps the people in view (controls i
   });
   assert(r.ccLeft >= r.vfW * 0.55, 'controls sit in a right-hand column, leaving most of the picture clear: ' + JSON.stringify(r));
   assert(r.ccTop >= 48, 'the controls column starts below the top bar: ' + r.ccTop);
-  assert(r.clickable, 'top bar and capture buttons are all tappable');
+  assert(r.clickable, 'top bar and capture buttons are all tappable: ' + await p.evaluate(() => ['camTimer', 'camAI', 'camSettingsBtn', 'shutter', 'camGallery'].map((id) => { const q = $(id).getBoundingClientRect(), e = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); return id + '>' + (e && (e.id || e.className)) + '@' + Math.round(q.left) + ',' + Math.round(q.top); }).join(' ')));
   await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot);
   const a = await p.evaluate(() => cam.shot.w / cam.shot.h);
   assert(a > 1 && Math.abs(a - r.vfW / r.vfH) < 0.01, 'a landscape photo shaped like the screen: ' + [a, r.vfW / r.vfH]);
@@ -221,6 +221,7 @@ test('camera: shutter timer counts down before the shot, and a second tap cancel
   await p.goto('https://app.test/'); await camLive(p);
   eq(await p.evaluate(() => [timerSecs(), $('camTimer').getAttribute('aria-label')]), [0, 'Timer off'], 'off by default');
   await p.click('#camTimer'); eq(await p.evaluate(() => [timerSecs(), $('camTimer').getAttribute('aria-label')]), [3, 'Timer 3 seconds'], '3 seconds');
+  await p.click('#camTimer'); eq(await p.evaluate(() => timerSecs()), 5, '5 seconds');
   await p.click('#camTimer'); eq(await p.evaluate(() => timerSecs()), 10, '10 seconds');
   await p.click('#shutter'); await settle(400);
   eq(await p.evaluate(() => [!!cam.shot, $('camCount').hidden, Number($('camCount').textContent) >= 7]), [false, false, true], 'counting, no photo yet');
@@ -232,10 +233,104 @@ test('camera: shutter timer counts down before the shot, and a second tap cancel
   assert(Date.now() - t0 > 2500, 'the photo waits for the countdown');
   eq(await p.evaluate(() => $('camCount').hidden), true, 'countdown cleared');
   await p.click('#retakeBtn'); await camLive(p);
-  await p.click('#camTimer'); await p.click('#camTimer');
-  eq(await p.evaluate(() => [timerSecs(), store.get('glowTimer')]), [0, '0'], 'cycles 10 then off, remembered');
+  await p.click('#camTimer'); await p.click('#camTimer'); await p.click('#camTimer');
+  eq(await p.evaluate(() => [timerSecs(), store.get('glowTimer')]), [0, '0'], 'cycles 5, 10 then off, remembered');
 }, { start: 'camera' });
 
+// ---------- Pro camera controls (2026-11-01): lenses, pinch, dial, focus, exposure, shapes ----------
+// The fake camera can't zoom itself, so these run the browser's crop ("digital") zoom; the phone
+// app's real lenses (NativeCam.setZoom) can't be checked here.
+const vfPtr = (p, type, id, x, y) => p.evaluate(([type, id, x, y]) => {
+  const r = $('viewfinder').getBoundingClientRect();
+  $('viewfinder').dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: r.left + x, clientY: r.top + y, bubbles: true, isPrimary: id === 1 }));
+}, [type, id, x, y]);
+const vfTap = (p, x, y) => p.evaluate(([x, y]) => {
+  const r = $('viewfinder').getBoundingClientRect();
+  for (const type of ['pointerdown', 'pointerup']) $('viewfinder').dispatchEvent(new PointerEvent(type, { pointerId: 1, clientX: r.left + x, clientY: r.top + y, bubbles: true, isPrimary: true }));
+}, [x, y]);
+test('camera pro: lens buttons zoom with a glide, pinch and the dial zoom, and the photo keeps what the frame shows', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  eq(await p.evaluate(() => [$('camZoom').hidden, cam.zr.mode, [...$('camLenses').children].map((b) => b.textContent)]), [false, 'digital', ['1×', '2']], 'lens pill over the shutter: 1× (gold, active) and 2');
+  await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot); const w1 = await p.evaluate(() => [cam.shot.w, cam.shot.h]);
+  await p.click('#retakeBtn'); await camLive(p);
+  await p.click('#camLenses button:nth-child(2)'); await settle(500);
+  eq(await p.evaluate(() => [Math.round(cam.zoom * 100) / 100, $('camCanvas').style.transform, [...$('camLenses').children].map((b) => b.textContent)]), [2, 'scale(2)', ['1', '2×']], '2× glides in and the preview zooms');
+  await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot); const w2 = await p.evaluate(() => [cam.shot.w, cam.shot.h]);
+  assert(Math.abs(w2[0] * 2 - w1[0]) <= 2 && Math.abs(w2[1] * 2 - w1[1]) <= 2, 'the 2× photo is the middle half of the 1× one: ' + [w1, w2]);
+  await p.click('#retakeBtn'); await camLive(p);
+  eq(await p.evaluate(() => cam.zoom), 1, 'a reopened camera starts at 1×');
+  // Pinch out to about 3×, with the dial showing.
+  await vfPtr(p, 'pointerdown', 1, 150, 400); await vfPtr(p, 'pointerdown', 2, 250, 400);
+  await vfPtr(p, 'pointermove', 1, 50, 400); await vfPtr(p, 'pointermove', 2, 350, 400);
+  eq(await p.evaluate(() => [Math.round(cam.zoom * 10) / 10, $('camDial').hidden, $('camDialVal').textContent]), [3, false, '3×'], 'pinch zooms with the finger and shows the dial');
+  await vfPtr(p, 'pointerup', 1, 50, 400); await vfPtr(p, 'pointerup', 2, 350, 400); await settle(1500);
+  eq(await p.evaluate(() => [$('camDial').hidden, cam.compare]), [true, false], 'dial hides after letting go; no compare from a pinch');
+  // Drag the lens pill to the right: the dial turns back toward 1×; never past the limits.
+  const b = await p.evaluate(() => { const r = $('camLenses').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+  await p.mouse.move(b[0], b[1]); await p.mouse.down(); await p.mouse.move(b[0] + 60, b[1], { steps: 4 }); await p.mouse.move(b[0] + 400, b[1], { steps: 4 });
+  eq(await p.evaluate(() => [cam.zoom, $('camDial').hidden]), [1, false], 'dragging the lenses turns the dial, stopping at 1×');
+  await p.mouse.up(); await settle(200);
+  eq(await p.evaluate(() => cam.zoom), 1, 'a drag is not a tap on a lens');
+}, { start: 'camera' });
+test('camera pro: tap to focus shows the square, a slide sets exposure (baked into the photo), lock where supported', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  await vfTap(p, 200, 300);
+  eq(await p.evaluate(() => [$('camFocus').hidden, Math.round(parseFloat($('camFocus').style.left)), Math.round(parseFloat($('camFocus').style.top)), cam.ev]), [false, 200, 300, 0], 'gold square where the finger tapped');
+  await vfPtr(p, 'pointerdown', 1, 200, 400); await vfPtr(p, 'pointermove', 1, 200, 380); await vfPtr(p, 'pointermove', 1, 200, 310); await vfPtr(p, 'pointerup', 1, 200, 310);
+  const ev = await p.evaluate(() => [cam.ev, $('camCanvas').style.filter, $('camEvVal').textContent, cam.compare]);
+  eq([ev[0], ev[2], ev[3]], [1, '+1.0', false], 'sliding up 90px brightens by one stop');
+  assert(/brightness\(1\.5/.test(ev[1]), 'preview brightened: ' + ev[1]);
+  await vfPtr(p, 'pointerdown', 1, 200, 400); await vfPtr(p, 'pointermove', 1, 200, 420); await vfPtr(p, 'pointermove', 1, 200, 900); await vfPtr(p, 'pointerup', 1, 200, 900);
+  eq(await p.evaluate(() => cam.ev), -2, 'never darker than −2');
+  await vfTap(p, 100, 500);
+  eq(await p.evaluate(() => [cam.ev, $('camCanvas').style.filter]), [0, ''], 'a new tap resets exposure, like the phones');
+  // A darker photo with exposure down.
+  const lum = () => p.evaluate(async () => { const i = await loadImg(cam.shot.raw), c = newCanvas(32, 32), x = c.getContext('2d'); x.drawImage(i, 0, 0, 32, 32); const d = x.getImageData(0, 0, 32, 32).data; let t = 0; for (let k = 0; k < d.length; k += 4) t += d[k] + d[k + 1] + d[k + 2]; return t / (d.length / 4) / 3; });
+  await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot); const l0 = await lum();
+  await p.click('#retakeBtn'); await camLive(p);
+  await vfTap(p, 200, 300);
+  await vfPtr(p, 'pointerdown', 1, 200, 400); await vfPtr(p, 'pointermove', 1, 200, 420); await vfPtr(p, 'pointermove', 1, 200, 490); await vfPtr(p, 'pointerup', 1, 200, 490);
+  const dbg = await p.evaluate(() => [cam.ev, cam.evr.mode, camEvGain()]);
+  await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot); const l1 = await lum();
+  assert(l1 < l0 * 0.9, 'exposure −1 is baked into the saved photo: ' + [l0, l1, dbg]);
+  eq(await p.evaluate(() => { const c = newCanvas(4, 4), x = c.getContext('2d'); x.fillStyle = 'rgb(200,200,200)'; x.fillRect(0, 0, 4, 4);
+    return withGain(c, 0.5).getContext('2d').getImageData(1, 1, 1, 1).data[0]; }), 100, 'exposure gain halves a mid grey');
+  await p.click('#retakeBtn'); await camLive(p);
+  await vfTap(p, 200, 300);
+  eq(await p.evaluate(() => $('camLock').hidden), !(await p.evaluate(() => cam.canLock)), 'the lock shows only where the camera can lock');
+  if (await p.evaluate(() => cam.canLock)) {
+    await p.click('#camLock');
+    eq(await p.evaluate(() => [cam.focus.locked, $('camLocked').hidden, $('camLock').getAttribute('aria-pressed')]), [true, false, 'true'], 'AE/AF lock on');
+    await vfTap(p, 120, 500);
+    eq(await p.evaluate(() => [cam.focus.locked, $('camLocked').hidden]), [false, true], 'a tap elsewhere unlocks and refocuses');
+  }
+}, { start: 'camera', init: () => { localStorage.setItem('glowAutoSave', 'off'); } });
+test('camera pro: photo shapes dim the rest and crop the photo; grid, level, 5s timer and back-camera flash modes', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  eq(await p.evaluate(() => [$('camRatio').textContent, $('camFrame').classList.contains('masked')]), ['Full', false], 'Full by default (unchanged)');
+  for (const [want, a] of [['3:4', 3 / 4], ['9:16', 9 / 16], ['1:1', 1]]) {
+    await p.click('#camRatio');
+    const r = await p.evaluate(() => { const f = $('camFrame').getBoundingClientRect(); return [$('camRatio').textContent, f.width / f.height, $('camFrame').classList.contains('masked'), f.top >= $('cameraScreen').querySelector('.cam-top').getBoundingClientRect().bottom - 1]; });
+    eq([r[0], Math.round(r[1] * 100) / 100, r[2], r[3]], [want, Math.round(a * 100) / 100, true, true], `${want} frame below the top bar, the rest dimmed`);
+    await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot);
+    const s = await p.evaluate(() => { const i = $('reviewImg').getBoundingClientRect(), f = $('camFrame').getBoundingClientRect(); return [cam.shot.w / cam.shot.h, Math.abs(i.top - f.top) + Math.abs(i.height - f.height)]; });
+    assert(Math.abs(s[0] - a) < 0.02, `${want} photo: ` + s[0]);
+    assert(s[1] < 2, 'review shows the photo in the same frame');
+    await p.click('#retakeBtn'); await camLive(p);
+  }
+  await p.click('#camRatio'); eq(await p.evaluate(() => [store.get('glowRatio'), $('camRatio').textContent]), ['full', 'Full'], 'back to Full, remembered');
+  await p.click('#camMore');
+  eq(await p.evaluate(() => [$('camQuick').hidden, $('camMore').getAttribute('aria-expanded'), $('camQuick').querySelector('[data-q=hdr]').hidden]), [false, 'true', true], 'quick settings open; HDR only in the phone app');
+  await p.click('#camQuick [data-q=grid]'); await p.click('#camQuick [data-q=level]');
+  eq(await p.evaluate(() => [$('camGrid').hidden, $('camLevel').hidden, store.get('glowGrid'), store.get('glowLevel')]), [false, false, 'on', 'on'], 'grid and level on, remembered');
+  await p.evaluate(() => { const e = new Event('devicemotion'); e.accelerationIncludingGravity = { x: 0, y: 9.8, z: 0 }; for (let i = 0; i < 12; i++) window.dispatchEvent(e); });
+  eq(await p.evaluate(() => $('camLevel').classList.contains('ok')), true, 'level turns gold when straight');
+  await p.evaluate(() => { const e = new Event('devicemotion'); e.accelerationIncludingGravity = { x: -1.7, y: 9.65, z: 0 }; for (let i = 0; i < 30; i++) window.dispatchEvent(e); });
+  eq(await p.evaluate(() => [$('camLevel').classList.contains('ok'), Math.round(parseFloat($('camLevel').style.getPropertyValue('--lvl')))]), [false, -10], 'tilted 10°: the line turns back 10° to stay level');
+  // Back camera flash: Auto, On, Off (the fake camera has none, so the button is drawn directly).
+  eq(await p.evaluate(() => { cam.screenFlash = false; renderFlashBtn(); const seq = [$('flashBtn').getAttribute('aria-label')]; for (let i = 0; i < 3; i++) { cycleRearFlash(); seq.push($('flashBtn').getAttribute('aria-label')); } return seq; }),
+    ['Flash auto', 'Flash on', 'Flash off', 'Flash auto'], 'back flash cycles Auto, On, Off');
+}, { start: 'camera' });
 test('camera filters: 13 filters, film effects over the preview and in the photo, Strength scales them', async ({ p }) => {
   await p.goto('https://app.test/'); await camLive(p);
   eq(await p.evaluate(() => FILTERS.map((f) => f.id)), ['none', 'glow', 'film', 'warm', 'soft', 'matte', 'clear', 'vivid', 'cool', 'digicam', 'disposable', 'instant', 'mono', 'noir'], 'the filter list');

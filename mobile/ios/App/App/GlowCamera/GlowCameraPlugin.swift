@@ -22,6 +22,10 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         CAPPluginMethod(name: "capture", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getOrientation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setZoom", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "focus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setExposure", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setFlash", returnType: CAPPluginReturnPromise),
     ]
     private static let stillMax: CGFloat = 4032
 
@@ -44,7 +48,12 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
     private var _mirror = true
     private var _light: Float = 255
     private var _awaitingFrame = false
-    private var _capture: (call: CAPPluginCall, look: Look, processed: Bool, aspect: Double, mirror: Bool, deg: Int)?
+    private var _capture: (call: CAPPluginCall, look: Look, processed: Bool, aspect: Double, crop: [Double]?, mirror: Bool, deg: Int)?
+    // Pro controls (session queue): the zoom factor that means "1×" (2 on a camera whose widest lens
+    // is the ultra wide), the flash mode for photos, and whether HDR (best quality) is on.
+    private var zoomBase: CGFloat = 1
+    private var flashMode: AVCaptureDevice.FlashMode = .auto
+    private var hdrOn = false
     private func locked<T>(_ f: () -> T) -> T { frameLock.lock(); defer { frameLock.unlock() }; return f() }
     var look: Look { get { locked { _look } } set { locked { _look = newValue } } }
     var mirror: Bool { get { locked { _mirror } } set { locked { _mirror = newValue } } }
@@ -138,6 +147,7 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
 
     private func begin(_ call: CAPPluginCall) {
         let wantFront = call.getString("facing", "user") != "environment"
+        let wantHdr = call.getBool("hdr", false)
         look = Look.from(call.options)
         tracker.start { [weak self] in self?.sendFace() }
         DispatchQueue.main.async {
@@ -149,12 +159,16 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
             guard self.showView() else { self.holdUpright(false); call.reject("Couldn't show the camera", "error"); return }
             self.sessionQueue.async {
                 let front = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
-                let back = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+                // The back camera as one device over all its lenses (ultra wide, wide, telephoto), so zooming
+                // switches lenses the way the iPhone camera does.
+                let back = [AVCaptureDevice.DeviceType.builtInTripleCamera, .builtInDualWideCamera, .builtInDualCamera, .builtInWideAngleCamera]
+                    .lazy.compactMap { AVCaptureDevice.default($0, for: .video, position: .back) }.first
                 guard let dev = (wantFront ? (front ?? back) : (back ?? front)) else {
                     DispatchQueue.main.async { self.hideView(); call.reject("No camera found", "none") }
                     return
                 }
                 self.mirror = dev.position == .front
+                self.hdrOn = wantHdr
                 self.cameraCount = (front != nil ? 1 : 0) + (back != nil ? 1 : 0)
                 do {
                     try self.configure(dev)
@@ -208,10 +222,89 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
             if c.isVideoMirroringSupported { c.automaticallyAdjustsVideoMirroring = false; c.isVideoMirrored = false }
         }
         // A steady 30 frames a second at most: more only heats the phone.
+        if #available(iOS 13.0, *) { photoOutput.maxPhotoQualityPrioritization = .quality }
+        // 1× is the main (wide) lens: on a camera that starts at its ultra wide, that's the first switch-over zoom.
+        zoomBase = 1
+        if #available(iOS 13.0, *), dev.isVirtualDevice, dev.constituentDevices.contains(where: { $0.deviceType == .builtInUltraWideCamera }),
+           let f = dev.virtualDeviceSwitchOverVideoZoomFactors.first { zoomBase = CGFloat(truncating: f) }
         try? dev.lockForConfiguration()
         dev.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 15)
         dev.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 30)
+        dev.videoZoomFactor = max(dev.minAvailableVideoZoomFactor, min(dev.maxAvailableVideoZoomFactor, zoomBase))
         dev.unlockForConfiguration()
+    }
+
+    // ---------- Pro controls: zoom and lenses, focus, exposure, flash ----------
+
+    /** The lenses as zoom numbers (1 = the main lens): 0.5 for the ultra wide, 2 (a crop of the main sensor), the telephoto(s). */
+    private func lensStops(_ d: AVCaptureDevice) -> [Double] {
+        var out: [Double] = [1]
+        let b = Double(zoomBase), maxZ = Double(d.maxAvailableVideoZoomFactor) / b
+        if b > 1 { out.append(1 / b) }
+        if maxZ >= 2 { out.append(2) }
+        if #available(iOS 13.0, *) {
+            for f in d.virtualDeviceSwitchOverVideoZoomFactors.map({ Double(truncating: $0) / b }) where f > 1.05 && f <= maxZ { out.append(f) }
+        }
+        var clean: [Double] = []
+        for f in out.sorted() {
+            let r = f < 1 ? (f * 10).rounded() / 10 : (f * 2).rounded() / 2
+            if !clean.contains(where: { abs($0 - r) < 0.05 }) { clean.append(r) }
+        }
+        return clean
+    }
+
+    @objc func setZoom(_ call: CAPPluginCall) {
+        let z = CGFloat(call.getDouble("zoom") ?? 1)
+        sessionQueue.async {
+            guard let d = self.device else { call.reject("The camera isn't ready"); return }
+            let v = max(d.minAvailableVideoZoomFactor, min(d.maxAvailableVideoZoomFactor, z * self.zoomBase))
+            do { try d.lockForConfiguration(); d.videoZoomFactor = v; d.unlockForConfiguration(); call.resolve(["zoom": Double(v / self.zoomBase)]) }
+            catch { call.reject("Couldn't zoom") }
+        }
+    }
+
+    /// Focus and exposure on a point of the upright picture (x, y from 0 to 1, not mirrored); lock keeps them (AE/AF lock).
+    @objc func focus(_ call: CAPPluginCall) {
+        let reset = call.getBool("reset", false), lock = call.getBool("lock", false)
+        let x = min(1, max(0, call.getDouble("x") ?? 0.5)), y = min(1, max(0, call.getDouble("y") ?? 0.5))
+        sessionQueue.async {
+            guard let d = self.device else { call.reject("The camera isn't ready"); return }
+            // Points of interest are in the sensor's own (landscape) orientation; the picture is turned 90° to stand upright.
+            let p = CGPoint(x: y, y: 1 - x)
+            do {
+                try d.lockForConfiguration()
+                if d.isFocusPointOfInterestSupported && !reset { d.focusPointOfInterest = p }
+                if d.isExposurePointOfInterestSupported && !reset { d.exposurePointOfInterest = p }
+                if reset {
+                    if d.isFocusPointOfInterestSupported { d.focusPointOfInterest = CGPoint(x: 0.5, y: 0.5) }
+                    if d.isExposurePointOfInterestSupported { d.exposurePointOfInterest = CGPoint(x: 0.5, y: 0.5) }
+                }
+                let fm: AVCaptureDevice.FocusMode = lock ? .autoFocus : .continuousAutoFocus
+                if d.isFocusModeSupported(fm) { d.focusMode = fm }
+                let em: AVCaptureDevice.ExposureMode = lock ? .autoExpose : .continuousAutoExposure
+                if d.isExposureModeSupported(em) { d.exposureMode = em }
+                d.unlockForConfiguration()
+                call.resolve()
+            } catch { call.reject("Couldn't focus") }
+        }
+    }
+
+    @objc func setExposure(_ call: CAPPluginCall) {
+        let ev = Float(call.getDouble("ev") ?? 0)
+        sessionQueue.async {
+            guard let d = self.device else { call.reject("The camera isn't ready"); return }
+            let v = max(d.minExposureTargetBias, min(d.maxExposureTargetBias, ev))
+            do { try d.lockForConfiguration(); d.setExposureTargetBias(v, completionHandler: nil); d.unlockForConfiguration(); call.resolve(["ev": Double(v)]) }
+            catch { call.reject("Couldn't set exposure") }
+        }
+    }
+
+    @objc func setFlash(_ call: CAPPluginCall) {
+        let m = call.getString("mode", "auto")
+        sessionQueue.async {
+            self.flashMode = m == "on" ? .on : m == "off" ? .off : .auto
+            call.resolve()
+        }
     }
 
     @objc func stop(_ call: CAPPluginCall) {
@@ -288,8 +381,16 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         if locked({ _awaitingFrame }) { DispatchQueue.main.async {
             guard let c = self.pendingStart else { return }
             self.pendingStart = nil
-            c.resolve(["width": W, "height": H, "torch": self.device?.hasTorch ?? false, "cameras": self.cameraCount,
-                       "facing": self.mirror ? "user" : "environment"])
+            var res: [String: Any] = ["width": W, "height": H, "torch": self.device?.hasTorch ?? false, "cameras": self.cameraCount,
+                       "facing": self.mirror ? "user" : "environment", "focus": true, "hdr": true, "hdrOn": self.hdrOn]
+            if let d = self.device {
+                let b = self.zoomBase
+                res["zoomMin"] = Double(d.minAvailableVideoZoomFactor / b)
+                res["zoomMax"] = Double(min(d.maxAvailableVideoZoomFactor, b * 15) / b)
+                res["lenses"] = self.lensStops(d)
+                res["ev"] = [Double(max(-2, d.minExposureTargetBias)), Double(min(2, d.maxExposureTargetBias)), 0.1]
+            }
+            c.resolve(res)
             self.forceFace = true
             self.sendFace()
         } }
@@ -357,40 +458,52 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         let lk = Look.from(call.options)
         let processed = call.getBool("processed", true)
         let aspect = call.getDouble("aspect") ?? 0
+        // The photo frame as fractions of the picture as shown (mirrored for selfies), if the page sent it.
+        var crop: [Double]? = call.getArray("crop")?.compactMap { ($0 as? NSNumber)?.doubleValue }
+        if let c = crop, c.count != 4 || c[2] <= 0.01 || c[3] <= 0.01 { crop = nil }
         sessionQueue.async {
             let mir = self.mirror
             let busy: Bool = self.locked {
                 if self._capture != nil { return true }
-                self._capture = (call, lk, processed, aspect, mir, self._devDeg); return false
+                self._capture = (call, lk, processed, aspect, crop, mir, self._devDeg); return false
             }
             guard !busy else { call.reject("The camera isn't ready"); return }
             guard self.session.isRunning else { self.locked { self._capture = nil }; call.reject("The camera isn't ready"); return }
             let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
             if #available(iOS 16.0, *) { settings.maxPhotoDimensions = self.photoOutput.maxPhotoDimensions }
             else { settings.isHighResolutionPhotoEnabled = true }
+            if self.device?.hasFlash == true, self.photoOutput.supportedFlashModes.contains(self.flashMode) { settings.flashMode = self.flashMode }
+            // HDR on: the iPhone's best-quality processing (Smart HDR / Deep Fusion); off: balanced and quicker.
+            if #available(iOS 13.0, *) { settings.photoQualityPrioritization = self.hdrOn ? .quality : .balanced }
             self.photoOutput.capturePhoto(with: settings, delegate: self)
         }
     }
 
     public func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        guard let job: (call: CAPPluginCall, look: Look, processed: Bool, aspect: Double, mirror: Bool, deg: Int) = locked({ let j = _capture; _capture = nil; return j }) else { return }
+        guard let job: (call: CAPPluginCall, look: Look, processed: Bool, aspect: Double, crop: [Double]?, mirror: Bool, deg: Int) = locked({ let j = _capture; _capture = nil; return j }) else { return }
         guard error == nil, let data = photo.fileDataRepresentation(), let ui = UIImage(data: data) else {
             job.call.reject("Couldn't take the photo."); return
         }
         captureQueue.async {
-            do { try self.finish(job.call, ui, job.look, job.processed, job.aspect, job.mirror, job.deg) }
+            do { try self.finish(job.call, ui, job.look, job.processed, job.aspect, job.crop, job.mirror, job.deg) }
             catch { job.call.reject("Couldn't take the photo.") }
         }
     }
 
     /// Upright, cropped to what the screen showed, mirrored like the preview; the look baked into a second copy.
-    private func finish(_ call: CAPPluginCall, _ ui: UIImage, _ lk: Look, _ processed: Bool, _ aspect: Double, _ mir: Bool, _ deg: Int) throws {
+    private func finish(_ call: CAPPluginCall, _ ui: UIImage, _ lk: Look, _ processed: Bool, _ aspect: Double, _ crop: [Double]?, _ mir: Bool, _ deg: Int) throws {
         let s = min(1, GlowCameraPlugin.stillMax / max(ui.size.width, ui.size.height))
         var W = (ui.size.width * s).rounded(), H = (ui.size.height * s).rounded()
         var cw = W, ch = H
         if aspect > 0 { if Double(W / H) > aspect { cw = (H * CGFloat(aspect)).rounded() } else { ch = (W / CGFloat(aspect)).rounded() } }
         cw = max(1, min(W, cw)); ch = max(1, min(H, ch))
-        let cx = ((W - cw) / 2).rounded(), cy = ((H - ch) * CGFloat(lk.posY)).rounded()
+        var cx = ((W - cw) / 2).rounded(), cy = ((H - ch) * CGFloat(lk.posY)).rounded()
+        if let c = crop {
+            // The frame the screen showed (photo shape, Adjust's face position), unmirrored for selfies.
+            let fx = mir ? 1 - c[0] - c[2] : c[0]
+            cx = (CGFloat(max(0, fx)) * W).rounded(); cy = (CGFloat(max(0, c[1])) * H).rounded()
+            cw = max(1, min(W - cx, (CGFloat(c[2]) * W).rounded())); ch = max(1, min(H - cy, (CGFloat(c[3]) * H).rounded()))
+        }
         let fmt = UIGraphicsImageRendererFormat(); fmt.scale = 1; fmt.opaque = true
         // The crop, upright (UIImage applies the photo's orientation), not mirrored.
         let crop = UIGraphicsImageRenderer(size: CGSize(width: cw, height: ch), format: fmt).image { _ in

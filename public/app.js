@@ -3307,13 +3307,8 @@ function renderCamFx() {
 }
 window.addEventListener("resize", () => { if (!$("camFx").hidden) renderCamFx(); });
 // Press and hold the preview to see the camera without the look.
-let compareTimer = 0;
-const endCompare = () => { clearTimeout(compareTimer); cam.compare = false; $("camCompare").hidden = true; renderCamFx(); };
-$("viewfinder").addEventListener("pointerdown", (e) => {
-  if (cam.state !== "live" || cam.shot || !cam.gl || e.target.closest(".vf-state")) return;
-  compareTimer = setTimeout(() => { cam.compare = true; $("camCompare").hidden = false; renderCamFx(); }, 150);
-});
-["pointerup", "pointercancel", "pointerleave"].forEach((n) => $("viewfinder").addEventListener(n, endCompare));
+// (The hold, along with tap to focus and pinch to zoom, is handled in camerapro.js.)
+const endCompare = () => { cam.compare = false; $("camCompare").hidden = true; renderCamFx(); };
 
 function camState(kind) {
   // live = camera working; denied/error = someone who wanted the camera and couldn't use it.
@@ -3386,13 +3381,15 @@ async function startCamera() {
   // The selfie camera has no flash light, so the screen lights the face instead (Off, On, Auto).
   cam.screenFlash = !torch && cam.facing === "user" && featureOn("camera:flash");
   $("flashBtn").hidden = !torch && !cam.screenFlash; $("flashSpacer").hidden = !$("flashBtn").hidden;
-  if (torch && cam.torch) Platform.camera.setTorch(cam.stream, true).catch(() => {});
   renderFlashBtn();
   $("camFlip").hidden = (await Platform.camera.count()) < 2;
+  if (gen !== cam.gen) return;
   drawFrame(); renderCamFx();
+  if (typeof camProStart === "function") camProStart();
 }
 function stopCamera() {
   cam.gen++;
+  if (typeof camProStop === "function") camProStop();
   if (cam.counting) cam.counting.stop();
   cancelAnimationFrame(cam.raf);
   if (cam.nativeOn) {
@@ -3426,7 +3423,7 @@ function hookNativeCam() {
 // How the phone is held (0, 90, 180, 270: degrees turned clockwise), like a phone's own camera:
 // the camera screen stays upright and only the icons turn to stay level; a photo taken sideways is
 // saved sideways. The page itself is held upright by the app while the camera is open.
-const CAM_TURN_IDS = ["flashBtn", "camTimer", "camAI", "camSettingsBtn", "camGallery", "camFlip", "camCount"];
+const CAM_TURN_IDS = ["flashBtn", "camTimer", "camAI", "camSettingsBtn", "camGallery", "camFlip", "camCount", "camRatio", "camMore", "camLenses"];
 function setCamDeg(d) {
   d = [0, 90, 180, 270].includes(d) ? d : 0;
   if (cam.deg === d) return;
@@ -3451,7 +3448,7 @@ async function startNativeCamera(gen) {
   $("camNote").hidden = true;
   let r;
   try {
-    r = await NativeCam.start({ facing: cam.facing, ...nativeCamState({ view: nativeView() }) });
+    r = await NativeCam.start({ facing: cam.facing, hdr: store.get("glowHdr") === "on", ...nativeCamState({ view: nativeView() }) });
   } catch (e) {
     if (gen !== cam.gen) return;
     const code = e && e.code;
@@ -3476,9 +3473,10 @@ async function startNativeCamera(gen) {
   cam.nativeTorch = !!r.torch;
   cam.screenFlash = !r.torch && cam.facing === "user" && featureOn("camera:flash");
   $("flashBtn").hidden = !r.torch && !cam.screenFlash; $("flashSpacer").hidden = !$("flashBtn").hidden;
-  if (r.torch && cam.torch) NativeCam.setTorch({ on: true }).catch(() => {});
   renderFlashBtn();
   $("camFlip").hidden = (r.cameras || 1) < 2;
+  cam.nativeStart = r;
+  if (typeof camProStart === "function") camProStart(r);
   nativeLoop();
 }
 // The viewfinder's box as fractions of the window: the native picture fills just that box.
@@ -3507,8 +3505,8 @@ function nativeLoop() {
 }
 // A real full-resolution photo from the native camera, cropped to what the screen showed.
 async function nativeShot() {
-  const vf = $("viewfinder").getBoundingClientRect(), looked = !isOriginalLook();
-  const r = await NativeCam.capture({ ...nativeCamState({ posY: cam.posY == null ? 0.5 : cam.posY }), processed: looked, aspect: vf.width && vf.height ? vf.width / vf.height : 0 });
+  const fr = camFrameRect(), looked = !isOriginalLook();
+  const r = await NativeCam.capture({ ...nativeCamState({ posY: cam.posY == null ? 0.5 : cam.posY }), processed: looked, aspect: fr.w && fr.h ? fr.w / fr.h : 0, crop: camFrameNorm() });
   const blobOf = async (path) => (await fetch(window.Capacitor.convertFileSrc(path))).blob();
   let rawBlob = await blobOf(r.raw);
   let processed = r.processed ? await fileData(await blobOf(r.processed)) : null;
@@ -3605,7 +3603,8 @@ const SCREEN_FLASH = { auto: ["Auto", "Screen flash auto: lights up when it's da
 const screenFlashMode = () => (SCREEN_FLASH[store.get("glowScreenFlash")] ? store.get("glowScreenFlash") : "auto");
 function renderFlashBtn() {
   const b = $("flashBtn");
-  if (!cam.screenFlash) { b.classList.remove("sflash"); setIcon(b, cam.torch ? "flash" : "flashoff"); b.setAttribute("aria-pressed", String(cam.torch)); b.setAttribute("aria-label", cam.torch ? "Flash on" : "Flash off"); return; }
+  // The back camera: Off, Auto, On, like a phone's own camera (camerapro.js).
+  if (!cam.screenFlash) { renderRearFlash(b); return; }
   const m = screenFlashMode();
   b.classList.add("sflash"); b.innerHTML = icon(m === "off" ? "flashoff" : "flash") + (m === "auto" ? '<span class="fa" aria-hidden="true">A</span>' : "");
   b.setAttribute("aria-pressed", String(m !== "off")); b.setAttribute("aria-label", SCREEN_FLASH[m][1]);
@@ -3664,10 +3663,7 @@ $("flashBtn").addEventListener("click", async () => {
     store.set("glowScreenFlash", next); Platform.haptic(); renderFlashBtn(); say(`Screen flash: ${SCREEN_FLASH[next][0]}`);
     track("setting", { screen_flash: next }); return;
   }
-  cam.torch = !cam.torch;
-  try { await (cam.native ? NativeCam.setTorch({ on: cam.torch }) : Platform.camera.setTorch(cam.stream, cam.torch)); } catch { cam.torch = false; say("Flash isn't available right now.", true); }
-  $("flashBtn").setAttribute("aria-pressed", String(cam.torch)); setIcon($("flashBtn"), cam.torch ? "flash" : "flashoff");
-  $("flashBtn").setAttribute("aria-label", cam.torch ? "Flash on" : "Flash off");
+  cycleRearFlash();
 });
 
 // Capture: the preview and the photo match, mirroring included. The untouched frame is kept
@@ -3680,7 +3676,7 @@ $("shutter").addEventListener("click", async () => {
   track("capture", { look: lookId });
   Platform.haptic("heavy");
   cam.shooting = true;
-  const lit = await screenFlashOn(v).catch(() => null);
+  const lit = await screenFlashOn(v).catch(() => null), torchOff = lit ? null : await webFlashOn(v).catch(() => null);
   if (!lit) { const flash = document.createElement("div"); flash.className = "cam-flash"; document.body.append(flash); setTimeout(() => flash.remove(), 400); }
   let shot;
   try {
@@ -3695,15 +3691,16 @@ $("shutter").addEventListener("click", async () => {
       drawLive(cam.gl, v, v.videoWidth, v.videoHeight, cam.facing === "user", camLook(), false);
     }
     // The photo is what the screen showed: the full-screen preview's crop of the frame.
-    const r = visibleRect(o.width, o.height), raw = cropTo(o, r);
-    const processed = looked ? withFilterCanvas(cropTo($("camCanvas"), r), camLook().filter, r.w, r.h, (camLook().filterAmt ?? 100) / 100).toDataURL("image/jpeg", 0.92) : null;
+    // (Its photo shape, zoom crop and, where the camera can't set exposure itself, its brightness.)
+    const r = visibleRect(o.width, o.height), raw = withGain(cropTo(o, r), camEvGain());
+    const processed = looked ? withFilterCanvas(withGain(cropTo($("camCanvas"), r), camEvGain()), camLook().filter, r.w, r.h, (camLook().filterAmt ?? 100) / 100).toDataURL("image/jpeg", 0.92) : null;
     const stamp = Date.now();
     shot = { raw: raw.toDataURL("image/jpeg", 0.92), rawBlob: await canvasBlob(raw), processed, w: raw.width, h: raw.height,
       look: looked ? lookName() : null, stamp, saved: false, originalSaved: false, saving: null };
     }
   } catch {
     say("Couldn't take the photo. Try again.", true); return;
-  } finally { if (lit) { lit.remove(); if (lit.restore) lit.restore(); } cam.shooting = false; }
+  } finally { if (lit) { lit.remove(); if (lit.restore) lit.restore(); } if (torchOff) torchOff(); cam.shooting = false; }
   cam.shot = shot;
   stopCamera(); renderReview();
   makeThumb(shot.processed || shot.raw).then((t) => { cam.thumb = t; renderReview(); }).catch(() => {});
@@ -3715,12 +3712,18 @@ $("shutter").addEventListener("click", async () => {
     saveShot(shot, true);
   } else $("alertLive").textContent = "Photo taken. Save it, edit it, or retake.";
 });
-// The part of a W×H frame the preview shows (object-fit: cover, and Adjust's face position).
+// The part of a W×H frame the photo keeps: what the preview shows inside the photo frame
+// (object-fit: cover, Adjust's face position, the photo shape and zoom; camerapro.js).
 function visibleRect(W, H) {
-  const c = $("camCanvas"), bw = c.clientWidth, bh = c.clientHeight;
-  if (!bw || !bh) return { x: 0, y: 0, w: W, h: H };
-  const k = Math.max(bw / W, bh / H), w = Math.min(W, Math.round(bw / k)), h = Math.min(H, Math.round(bh / k));
-  return { x: Math.round((W - w) / 2), y: Math.round((H - h) * (cam.posY == null ? 0.5 : cam.posY)), w, h };
+  const c = $("camCanvas");
+  if (!c.clientWidth || !c.clientHeight) return { x: 0, y: 0, w: W, h: H };
+  return camShotRect(W, H);
+}
+// A copy brightened (or darkened) by `gain`, or the canvas itself when there's nothing to change.
+function withGain(c, gain) {
+  if (Math.abs(gain - 1) < 0.005) return c;
+  const o = newCanvas(c.width, c.height), x = o.getContext("2d");
+  x.filter = `brightness(${gain})`; x.drawImage(c, 0, 0); return o;
 }
 function cropTo(src, r) {
   if (r.x === 0 && r.y === 0 && r.w === src.width && r.h === src.height) return src;
@@ -3729,6 +3732,7 @@ function cropTo(src, r) {
 function renderReview() {
   const s = cam.shot;
   $("reviewImg").hidden = !s; $("camCanvas").hidden = !!s; renderCamFx();
+  if (typeof layoutCamFrame === "function") { layoutCamFrame(); renderLenses(); }
   $("liveControls").hidden = !!s; $("reviewControls").hidden = !s;
   $("camAI").hidden = !!s || !featureOn("camera:ai"); $("shotAIBtn").hidden = !s || !featureOn("camera:ai");
   $("nav").hidden = screen !== "cameraScreen" ? $("nav").hidden : !!s;

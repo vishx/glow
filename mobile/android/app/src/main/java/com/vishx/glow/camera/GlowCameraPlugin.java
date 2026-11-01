@@ -22,7 +22,27 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import androidx.annotation.NonNull;
+import android.content.Context;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraManager;
+import android.util.Rational;
+import android.util.SizeF;
+import androidx.camera.camera2.interop.Camera2CameraControl;
+import androidx.camera.camera2.interop.Camera2CameraInfo;
 import androidx.camera.camera2.interop.Camera2Interop;
+import androidx.camera.camera2.interop.CaptureRequestOptions;
+import androidx.camera.core.ExposureState;
+import androidx.camera.core.FocusMeteringAction;
+import androidx.camera.core.MeteringPoint;
+import androidx.camera.core.SurfaceOrientedMeteringPointFactory;
+import androidx.camera.core.ZoomState;
+import androidx.camera.extensions.ExtensionMode;
+import androidx.camera.extensions.ExtensionsManager;
+import com.getcapacitor.JSArray;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop;
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraSelector;
@@ -62,7 +82,9 @@ import java.util.concurrent.TimeUnit;
  * JS: Capacitor.Plugins.GlowCamera
  *   start({ facing: "user" | "environment", ...look }) -> { width, height, torch, cameras, facing }
  *   setLook({ look, color, wash, compare, posY, view })   stop()   setTorch({ on })   getLight() -> { light }
- *   capture({ ...look, processed, aspect }) -> { raw, processed?, width, height }   (file paths)
+ *   capture({ ...look, processed, aspect, crop? }) -> { raw, processed?, width, height }   (file paths)
+ *   setZoom({ zoom })   focus({ x, y, lock } | { reset })   setExposure({ ev })   setFlash({ mode: "off" | "auto" | "on" })
+ *   start also takes { hdr } and returns { zoomMin, zoomMax, lenses, ev: [min, max, step], focus, hdr }
  *   events: "face" { ready, failed, seen, cy }
  */
 @CapacitorPlugin(name = "GlowCamera", permissions = { @Permission(strings = { Manifest.permission.CAMERA }, alias = "camera") })
@@ -98,6 +120,10 @@ public class GlowCameraPlugin extends Plugin {
     private boolean sentSeen, sentReady, sentFailed;
     private long faceSentAt;
     private volatile boolean forceFace;
+    // Pro controls: the flash mode for photos, whether HDR was asked for and is on, the lenses.
+    private int flashMode = ImageCapture.FLASH_MODE_AUTO;
+    private boolean hdrOn, hdrAvailable;
+    private ExtensionsManager extensions;
 
     // How the phone is held, like a phone's own camera: the camera screen stays upright (portrait)
     // and only the icons turn; a photo taken sideways is saved sideways (the page turns it), and
@@ -171,6 +197,7 @@ public class GlowCameraPlugin extends Plugin {
     @androidx.annotation.OptIn(markerClass = ExperimentalCamera2Interop.class)
     private void begin(PluginCall call) {
         final boolean wantFront = !"environment".equals(call.getString("facing", "user"));
+        final boolean wantHdr = Boolean.TRUE.equals(call.getBoolean("hdr", false));
         look = Look.from(call.getData());
         tracker.init(this::sendFace);
         main.post(() -> {
@@ -189,6 +216,31 @@ public class GlowCameraPlugin extends Plugin {
                 if (my != session) { call.reject("Stopped", "stopped"); return; }
                 try {
                     provider = fut.get();
+                } catch (Throwable t) {
+                    Log.e(TAG, "provider", t);
+                    call.reject("Couldn't open the camera", "busy");
+                    return;
+                }
+                if (extensions != null) { bind(call, my, wantFront, wantHdr); return; }
+                // HDR comes from the phone maker's camera extensions, where the phone has them.
+                try {
+                    ListenableFuture<ExtensionsManager> ef = ExtensionsManager.getInstanceAsync(getContext(), provider);
+                    ef.addListener(() -> {
+                        try { extensions = ef.get(); } catch (Throwable t) { Log.w(TAG, "extensions", t); }
+                        if (my != session) { call.reject("Stopped", "stopped"); return; }
+                        bind(call, my, wantFront, wantHdr);
+                    }, ContextCompat.getMainExecutor(getContext()));
+                } catch (Throwable t) {
+                    Log.w(TAG, "extensions", t);
+                    bind(call, my, wantFront, wantHdr);
+                }
+            }, ContextCompat.getMainExecutor(getContext()));
+        });
+    }
+
+    @androidx.annotation.OptIn(markerClass = ExperimentalCamera2Interop.class)
+    private void bind(PluginCall call, int my, boolean wantFront, boolean wantHdr) {
+                try {
                     CameraSelector front = CameraSelector.DEFAULT_FRONT_CAMERA, back = CameraSelector.DEFAULT_BACK_CAMERA;
                     boolean hasFront = provider.hasCamera(front), hasBack = provider.hasCamera(back);
                     if (!hasFront && !hasBack) { hideView(); call.reject("No camera found", "none"); return; }
@@ -219,10 +271,29 @@ public class GlowCameraPlugin extends Plugin {
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                         .setResolutionSelector(stillRes)
                         .setTargetRotation(Surface.ROTATION_0)
+                        .setFlashMode(flashMode)
                         .build();
                     provider.unbindAll();
                     synchronized (frameLock) { hasFrame = false; frameNew = false; }
-                    camera = provider.bindToLifecycle((LifecycleOwner) getActivity(), useFront ? front : back, analysis, imageCapture);
+                    CameraSelector sel = useFront ? front : back;
+                    hdrAvailable = false; hdrOn = false;
+                    try {
+                        hdrAvailable = extensions != null && extensions.isExtensionAvailable(sel, ExtensionMode.HDR)
+                            && extensions.isImageAnalysisSupported(sel, ExtensionMode.HDR);
+                    } catch (Throwable t) { Log.w(TAG, "hdr check", t); }
+                    camera = null;
+                    if (wantHdr && hdrAvailable) {
+                        try {
+                            camera = provider.bindToLifecycle((LifecycleOwner) getActivity(), extensions.getExtensionEnabledCameraSelector(sel, ExtensionMode.HDR), analysis, imageCapture);
+                            hdrOn = true;
+                        } catch (Throwable t) {
+                            // HDR wouldn't open with the live look's frames: the camera opens without it.
+                            Log.w(TAG, "hdr bind", t);
+                            provider.unbindAll();
+                            hdrAvailable = false;
+                        }
+                    }
+                    if (camera == null) camera = provider.bindToLifecycle((LifecycleOwner) getActivity(), sel, analysis, imageCapture);
                     pendingStart = call;
                     // A camera that never sends a frame is most likely held by another app.
                     main.postDelayed(() -> {
@@ -237,8 +308,6 @@ public class GlowCameraPlugin extends Plugin {
                     stopCamera();
                     call.reject("Couldn't open the camera", "busy");
                 }
-            }, ContextCompat.getMainExecutor(getContext()));
-        });
     }
 
     @PluginMethod public void stop(PluginCall call) {
@@ -329,6 +398,7 @@ public class GlowCameraPlugin extends Plugin {
                     o.put("torch", camera != null && camera.getCameraInfo().hasFlashUnit());
                     o.put("cameras", cameraCount);
                     o.put("facing", mirror ? "user" : "environment");
+                    putPro(o);
                     c.resolve(o);
                     // A fresh page state: tell it about the face finder again.
                     forceFace = true;
@@ -422,12 +492,171 @@ public class GlowCameraPlugin extends Plugin {
         call.resolve(o);
     }
 
+    // ---------- Pro controls: zoom and lenses, focus, exposure, flash ----------
+
+    /** Zoom range, the lenses as zoom numbers (1 = the main lens), exposure range, whether focus works, HDR. */
+    private void putPro(JSObject o) {
+        Camera c = camera;
+        if (c == null) return;
+        try {
+            ZoomState z = c.getCameraInfo().getZoomState().getValue();
+            float min = z != null ? z.getMinZoomRatio() : 1f, max = z != null ? z.getMaxZoomRatio() : 1f;
+            o.put("zoomMin", min);
+            o.put("zoomMax", max);
+            JSArray l = new JSArray();
+            for (float f : lensStops(c, min, max)) l.put(f);
+            o.put("lenses", l);
+        } catch (Throwable t) { Log.w(TAG, "zoom info", t); }
+        try {
+            ExposureState es = c.getCameraInfo().getExposureState();
+            if (es.isExposureCompensationSupported()) {
+                Rational st = es.getExposureCompensationStep();
+                float step = st.floatValue();
+                JSArray ev = new JSArray();
+                ev.put(es.getExposureCompensationRange().getLower() * step);
+                ev.put(es.getExposureCompensationRange().getUpper() * step);
+                ev.put(step);
+                o.put("ev", ev);
+            }
+        } catch (Throwable t) { Log.w(TAG, "exposure info", t); }
+        o.put("focus", true);
+        o.put("hdr", hdrAvailable);
+        o.put("hdrOn", hdrOn);
+    }
+
+    /**
+     * The phone's lenses as zoom numbers, from each physical camera's field of view against the
+     * main one (for example 0.6, 1, 3, 5 on a Galaxy, 0.5, 1, 4 on an iPhone-like set). 2 is
+     * always offered (a sharp crop of the main sensor, as the phones do). Phones that hide their
+     * lenses get a sensible set for their zoom range.
+     */
+    @androidx.annotation.OptIn(markerClass = ExperimentalCamera2Interop.class)
+    private List<Float> lensStops(Camera c, float min, float max) {
+        List<Float> out = new ArrayList<>();
+        out.add(1f);
+        if (max >= 2f) out.add(2f);
+        try {
+            Camera2CameraInfo ci = Camera2CameraInfo.from(c.getCameraInfo());
+            float main = fov(ci.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS),
+                ci.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE));
+            if (main > 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                CameraManager cm = (CameraManager) getContext().getSystemService(Context.CAMERA_SERVICE);
+                Set<String> ids = cm.getCameraCharacteristics(ci.getCameraId()).getPhysicalCameraIds();
+                for (String id : ids) {
+                    CameraCharacteristics pc = cm.getCameraCharacteristics(id);
+                    float f = fov(pc.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS), pc.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE));
+                    if (f > 0) out.add(f / main);
+                }
+            }
+        } catch (Throwable t) { Log.w(TAG, "lenses", t); }
+        if (min < 0.95f) out.add(min);
+        if (out.size() <= 3 && !mirror) { if (max >= 10f) out.add(5f); else if (max >= 4f) out.add(3f); }
+        List<Float> clean = new ArrayList<>();
+        for (float f : out) {
+            float r = f < 1f ? Math.round(f * 10f) / 10f : Math.round(f * 2f) / 2f;
+            if (r < min - 0.01f || r > max + 0.01f || r < 0.3f) continue;
+            boolean dup = false;
+            for (float g : clean) if (Math.abs(g - r) < 0.05f) dup = true;
+            if (!dup) clean.add(r);
+        }
+        Collections.sort(clean);
+        return clean;
+    }
+
+    /** A lens's zoom number up to a constant: its focal length over its sensor's diagonal. */
+    private static float fov(float[] focal, SizeF sensor) {
+        if (focal == null || focal.length == 0 || sensor == null) return 0;
+        double d = Math.hypot(sensor.getWidth(), sensor.getHeight());
+        return d > 0 ? (float) (focal[0] / d) : 0;
+    }
+
+    @PluginMethod public void setZoom(PluginCall call) {
+        final float want = call.getFloat("zoom", 1f);
+        main.post(() -> {
+            Camera c = camera;
+            if (c == null) { call.reject("The camera isn't ready"); return; }
+            ZoomState z = c.getCameraInfo().getZoomState().getValue();
+            float v = z == null ? want : Math.max(z.getMinZoomRatio(), Math.min(z.getMaxZoomRatio(), want));
+            c.getCameraControl().setZoomRatio(v);
+            JSObject o = new JSObject(); o.put("zoom", v); call.resolve(o);
+        });
+    }
+
+    /**
+     * Focus and exposure on a point of the upright picture (x, y from 0 to 1, not mirrored), like a
+     * tap on a phone's camera. lock: keep them there (AE/AF lock) until the next tap or reset.
+     */
+    @androidx.annotation.OptIn(markerClass = ExperimentalCamera2Interop.class)
+    @PluginMethod public void focus(PluginCall call) {
+        final boolean reset = Boolean.TRUE.equals(call.getBoolean("reset", false));
+        final boolean lock = Boolean.TRUE.equals(call.getBoolean("lock", false));
+        final float x = Math.max(0f, Math.min(1f, call.getFloat("x", 0.5f))), y = Math.max(0f, Math.min(1f, call.getFloat("y", 0.5f)));
+        main.post(() -> {
+            Camera c = camera;
+            if (c == null) { call.reject("The camera isn't ready"); return; }
+            try {
+                Camera2CameraControl.from(c.getCameraControl()).setCaptureRequestOptions(new CaptureRequestOptions.Builder()
+                    .setCaptureRequestOption(CaptureRequest.CONTROL_AE_LOCK, lock && !reset).build());
+            } catch (Throwable t) { Log.w(TAG, "ae lock", t); }
+            if (reset) { c.getCameraControl().cancelFocusAndMetering(); call.resolve(); return; }
+            // The frames come in the sensor's own orientation (frameRot turns them upright), so turn the point back.
+            int rot;
+            synchronized (frameLock) { rot = frameRot; }
+            float bx = x, by = y;
+            if (rot == 90) { bx = y; by = 1f - x; }
+            else if (rot == 180) { bx = 1f - x; by = 1f - y; }
+            else if (rot == 270) { bx = 1f - y; by = x; }
+            MeteringPoint pt = new SurfaceOrientedMeteringPointFactory(1f, 1f).createPoint(bx, by);
+            FocusMeteringAction.Builder b = new FocusMeteringAction.Builder(pt, FocusMeteringAction.FLAG_AF | FocusMeteringAction.FLAG_AE | FocusMeteringAction.FLAG_AWB);
+            if (lock) b.disableAutoCancel(); else b.setAutoCancelDuration(5, TimeUnit.SECONDS);
+            c.getCameraControl().startFocusAndMetering(b.build());
+            call.resolve();
+        });
+    }
+
+    /** Exposure compensation in stops (the camera rounds it to its own steps). */
+    @PluginMethod public void setExposure(PluginCall call) {
+        final float ev = call.getFloat("ev", 0f);
+        main.post(() -> {
+            Camera c = camera;
+            if (c == null) { call.reject("The camera isn't ready"); return; }
+            ExposureState es = c.getCameraInfo().getExposureState();
+            if (!es.isExposureCompensationSupported()) { call.reject("No exposure control"); return; }
+            float step = es.getExposureCompensationStep().floatValue();
+            int i = Math.round(ev / step);
+            i = Math.max(es.getExposureCompensationRange().getLower(), Math.min(es.getExposureCompensationRange().getUpper(), i));
+            c.getCameraControl().setExposureCompensationIndex(i);
+            JSObject o = new JSObject(); o.put("ev", i * step); call.resolve(o);
+        });
+    }
+
+    /** The flash for photos: off, auto or on (the back camera's real flash). */
+    @PluginMethod public void setFlash(PluginCall call) {
+        String m = call.getString("mode", "auto");
+        flashMode = "on".equals(m) ? ImageCapture.FLASH_MODE_ON : "off".equals(m) ? ImageCapture.FLASH_MODE_OFF : ImageCapture.FLASH_MODE_AUTO;
+        main.post(() -> {
+            ImageCapture ic = imageCapture;
+            if (ic != null) ic.setFlashMode(flashMode);
+            call.resolve();
+        });
+    }
+
     // ---------- Shutter ----------
 
     @PluginMethod public void capture(PluginCall call) {
         final Look lk = Look.from(call.getData());
         final boolean processed = Boolean.TRUE.equals(call.getBoolean("processed", true));
         final double aspect = call.getDouble("aspect", 0d);
+        // The photo frame as fractions of the picture as shown (mirrored for selfies), if the page sent it.
+        double[] cr = null;
+        try {
+            JSArray a = call.getArray("crop");
+            if (a != null && a.length() == 4) {
+                cr = new double[] { a.getDouble(0), a.getDouble(1), a.getDouble(2), a.getDouble(3) };
+                if (!(cr[2] > 0.01 && cr[3] > 0.01)) cr = null;
+            }
+        } catch (Throwable t) { cr = null; }
+        final double[] crop = cr;
         main.post(() -> {
             ImageCapture ic = imageCapture;
             if (ic == null || capturing) { call.reject("The camera isn't ready"); return; }
@@ -451,7 +680,7 @@ public class GlowCameraPlugin extends Plugin {
                     } finally {
                         image.close();
                     }
-                    try { finish(call, jpeg, rot, mir, lk, processed, aspect, deg, turn); }
+                    try { finish(call, jpeg, rot, mir, lk, processed, aspect, crop, deg, turn); }
                     catch (Throwable t) { Log.e(TAG, "capture", t); call.reject("Couldn't take the photo."); }
                     finally { capturing = false; }
                 }
@@ -465,7 +694,7 @@ public class GlowCameraPlugin extends Plugin {
     }
 
     /** Upright, cropped to what the screen showed, mirrored like the preview; the look baked into a second copy. */
-    private void finish(PluginCall call, byte[] jpeg, int rot, boolean mir, Look lk, boolean processed, double aspect, int deg, int turn) throws Exception {
+    private void finish(PluginCall call, byte[] jpeg, int rot, boolean mir, Look lk, boolean processed, double aspect, double[] crop, int deg, int turn) throws Exception {
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inJustDecodeBounds = true;
         BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length, o);
@@ -493,6 +722,13 @@ public class GlowCameraPlugin extends Plugin {
         }
         cw = Math.max(1, Math.min(W, cw)); ch = Math.max(1, Math.min(H, ch));
         int cx = (W - cw) / 2, cy = Math.round((H - ch) * lk.posY);
+        if (crop != null) {
+            // The frame the screen showed (photo shape, Adjust's face position), unmirrored for selfies.
+            double fx = mir ? 1 - crop[0] - crop[2] : crop[0];
+            cx = (int) Math.round(Math.max(0, fx) * W); cy = (int) Math.round(Math.max(0, crop[1]) * H);
+            cw = (int) Math.round(crop[2] * W); ch = (int) Math.round(crop[3] * H);
+            cw = Math.max(1, Math.min(W - cx, cw)); ch = Math.max(1, Math.min(H - cy, ch));
+        }
         Bitmap crop = (cw == W && ch == H) ? up : Bitmap.createBitmap(up, cx, cy, cw, ch);
         if (crop != up) up.recycle();
 

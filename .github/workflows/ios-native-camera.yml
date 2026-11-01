@@ -5,7 +5,7 @@ name: iOS native camera build
 
 on:
   push:
-    branches: [claude/project-thread-bnuul9, claude/project-thread-l2q9h2]
+    branches: [claude/project-thread-bnuul9, claude/project-thread-l2q9h2, claude/project-thread-rucp5v]
     paths: [mobile/ios/**, public/**, .github/workflows/ios-native-camera.yml]
   workflow_dispatch:
 

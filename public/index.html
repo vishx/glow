@@ -151,17 +151,36 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
   <!-- Camera -->
   <section class="screen dark" id="cameraScreen" hidden aria-label="Camera">
     <header class="topbar cam-top">
-      <button class="icon-btn" id="flashBtn" aria-label="Flash" aria-pressed="false" hidden></button>
-      <span class="spacer" id="flashSpacer" aria-hidden="true"></span>
+      <div class="cam-left">
+        <button class="icon-btn" id="flashBtn" aria-label="Flash" aria-pressed="false" hidden></button>
+        <span class="spacer" id="flashSpacer" aria-hidden="true"></span>
+        <button class="icon-btn cam-ratio" id="camRatio" aria-label="Photo shape">Full</button>
+      </div>
       <p class="wordmark" aria-hidden="true">Glow Studio</p>
       <div class="cam-right">
         <button class="icon-btn cam-timer" id="camTimer" aria-label="Timer off" aria-pressed="false"></button>
         <button class="cam-ai" id="camAI" aria-pressed="false" aria-label="AI Enhance each photo, 1 credit per photo"><span data-icon="sparkle"></span>AI</button>
+        <button class="icon-btn" id="camMore" aria-label="More camera settings" aria-expanded="false" aria-controls="camQuick"></button>
         <button class="icon-btn" id="camSettingsBtn" aria-label="Settings"></button>
       </div>
     </header>
+    <div class="cam-quick" id="camQuick" role="group" aria-label="Camera settings" hidden>
+      <button data-q="grid" aria-pressed="false">Grid</button>
+      <button data-q="level" aria-pressed="false">Level</button>
+      <button data-q="hdr" aria-pressed="false" hidden>HDR</button>
+    </div>
     <div class="viewfinder" id="viewfinder">
       <canvas id="camCanvas" aria-label="Camera preview" role="img"></canvas>
+      <div class="cam-frame" id="camFrame" aria-hidden="true">
+        <div class="cam-grid" id="camGrid" hidden><i></i><i></i><i></i><i></i></div>
+        <div class="cam-level" id="camLevel" hidden><i class="lv-l"></i><i class="lv-c"></i><i class="lv-r"></i></div>
+      </div>
+      <div class="cam-focus" id="camFocus" hidden>
+        <span class="cf-box"></span>
+        <span class="cf-sun" aria-hidden="true"><i class="cf-track"></i><i class="cf-knob" id="camSun"></i><b id="camEvVal"></b></span>
+        <button class="cf-lock" id="camLock" aria-label="Lock focus and exposure" aria-pressed="false"></button>
+      </div>
+      <p class="vf-pill cam-locked" id="camLocked" hidden>AE/AF lock</p>
       <div class="cam-fx" id="camFx" aria-hidden="true" hidden><i class="fx-wash"></i><i></i><i class="fx-leak"></i><i></i><i class="fx-grain"></i><span class="fx-date"></span></div>
       <img id="reviewImg" alt="The photo you just took" hidden>
       <video id="camVideo" playsinline muted hidden></video>
@@ -180,6 +199,10 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
     </div>
     <div class="cam-controls" id="camControls">
       <div id="liveControls">
+        <div class="cam-zoom" id="camZoom" role="group" aria-label="Zoom. Drag sideways for the zoom dial" hidden>
+          <div class="cam-dial" id="camDial" hidden><div class="cam-dial-track" id="camDialTrack"></div><b class="cam-dial-val" id="camDialVal"></b></div>
+          <div class="cam-lenses" id="camLenses"></div>
+        </div>
         <div class="adjust-panel" id="adjustPanel" hidden>
           <div class="adj-chips" id="adjChips" role="radiogroup" aria-label="Setting"></div>
           <button class="adj-reset1" id="adjReset1" aria-label="Reset this setting"></button>
@@ -595,6 +618,7 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
 <script src="engine.js"></script>
 <script src="livebeauty.js"></script>
 <script src="app.js"></script>
+<script src="camerapro.js"></script>
 <script src="tryon.js"></script>
 <script src="enhance.js"></script>
 <script src="homescreen.js"></script>
