@@ -460,6 +460,10 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .area:disabled { opacity: 0.45; }
 .area.loading i { animation: area-pulse 1.1s ease-in-out infinite alternate; }
 @keyframes area-pulse { from { opacity: 0.35; } to { opacity: 0.9; } }
+/* While refining, the tool rows step aside so the photo is as big as it can be. */
+#editorScreen.refining #tabs, #editorScreen.refining #tools, #editorScreen.refining #subchips { display: none !important; }
+.refine-acts { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.refine-acts .opt:disabled { opacity: 0.45; }
 .area-note { margin: 0; font-size: 0.8125rem; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .area.loading i { animation: none; } }
 /* One scrolling row of colors: "+" (any color), the dropper, the curated shades, then her own. */

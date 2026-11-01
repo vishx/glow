@@ -310,7 +310,7 @@ let brushSize = 28, brushMode = "paint", fillPrompt = "", customText = "";
 // loses paid work; reopening the tool (or Review in the status bar) shows it again.
 const resultReady = () => !!job && job.status === "done" && job.session === ed.session && hasPhoto();
 const reviewing = () => resultReady() && sel === job.tool;
-const maskOn = () => MASK_TOOLS.includes(sel) && !reviewing() && !ed.demo;
+const maskOn = () => (MASK_TOOLS.includes(sel) && !reviewing() && !ed.demo) || refining;
 
 const hasPhoto = () => ed.hist.length > 0;
 const committed = () => ed.hist[ed.idx].data;
@@ -352,7 +352,7 @@ async function openPhoto(work, original, opts = {}) {
   ed.demo = !!opts.demo;
   ed.hist = [{ data: work, op: null }]; ed.idx = 0; ed.floor = 0; ed.pending = null; ed.savedIdx = 0;
   ed.original = original; ed.originalSaved = !!opts.originalSaved; ed.session = newSession();
-  ed.name = opts.name || "Photo"; ed.shotStamp = opts.shotStamp || 0; lastCommitTool = null; cutoutCache = {}; matteCache.clear(); strokes = []; adjArea = "full"; areaInfo = null;
+  ed.name = opts.name || "Photo"; ed.shotStamp = opts.shotStamp || 0; lastCommitTool = null; cutoutCache = {}; matteCache.clear(); strokes = []; adjArea = "full"; areaInfo = null; areaEdits = []; refining = false; refineView = null; $("editorScreen").classList.remove("refining");
   if (opts.processed) { ed.hist.push({ data: opts.processed.data, full: opts.processed.full, op: { tool: "camlook", fixed: true, label: opts.processed.label } }); ed.idx = 1; }
   if (opts.savedAlready) ed.savedIdx = ed.idx;
   sel = null; ed.view = "edited"; ed.split = 50; toolsOpen = false; setEditorReturn(null);
@@ -980,6 +980,7 @@ $("handle").addEventListener("keydown", (e) => {
 // pictures of steps older than MAX_UNDO are dropped (those steps can no longer be undone).
 function commit(data, t, op, full) {
   if (t) track("edit", { tool: t.id, kind: t.kind || "", demo: !!ed.demo });
+  if (t && t.kind === "crop") areaEdits = [];   // Refine strokes belong to the uncropped picture
   ed.hist = ed.hist.slice(0, ed.idx + 1); ed.hist.push({ data, op: op || { tool: t.id }, full });
   ed.idx = ed.hist.length - 1; ed.pending = null;
   while (ed.idx - ed.floor > MAX_UNDO) { ed.floor++; if (ed.floor > 1) ed.hist[ed.floor - 1].data = null; }
@@ -1222,6 +1223,7 @@ function selectTool(id, opts = {}) {
   if (cr) closeCrop();
   if (id !== sel) { panelCollapsed = false; filterAmt = 100; }   // a newly opened tool always shows its controls
   if (searching && id) { searching = false; $("searchInput").value = ""; $("editorScreen").classList.remove("tools-open"); const home = tabFor(id); if (home) cat = home[0]; }
+  if (refining && !(id && TOOL[id] && TOOL[id].kind === "adjust")) endRefine(false);
   sel = id; strokes = []; toolsOpen = false; panelBuilt = null; reshapeNote = null; picking = null;
   dropper = false; $("stage").classList.remove("dropping");
   lookPick = editorLooks().some((l) => l.id === lookId) ? lookId : "natural";
@@ -1484,15 +1486,19 @@ const signed = (v) => (v > 0 ? "+" + v : String(v));
 // change. The person is found on the phone with the same cutout as Background Blur, once per
 // photo state; the chips show small pictures with the chosen part tinted red. The choice stays
 // while you move between Adjust tools and goes back to Full for a new photo.
-let adjArea = "full", areaInfo = null;   // areaInfo: { src, thumbs, err, busy }
+let adjArea = "full", areaInfo = null;   // areaInfo: { src, key, thumbs, err, busy }
+// Refine brush: strokes that add to or take away from the person, kept for this photo (0–1 of
+// its width and height) and recorded in each step that uses Person or Background.
+let refining = false, areaEdits = [], refineView = null, refineToken = 0;
 const AREAS = [["Full", "full"], ["Person", "person"], ["Background", "bg"]];
 const areasOn = () => featureOn("edit:areas");
-const areaReady = () => !!(areaInfo && areaInfo.src === committed() && areaInfo.thumbs);
+const areaKey = () => JSON.stringify(areaEdits);
+const areaReady = () => !!(areaInfo && areaInfo.src === committed() && areaInfo.key === areaKey() && areaInfo.thumbs);
 function loadAreas() {
-  const src = committed();
-  if (areaInfo && areaInfo.src === src) return;
-  const info = areaInfo = { src, thumbs: null, err: null, busy: true };
-  areaThumbs(src).then((th) => { info.thumbs = th; }, (e) => { info.err = e.unavailable ? e.message : "Couldn't find the person in this photo. Full still works."; })
+  const src = committed(), key = areaKey();
+  if (areaInfo && areaInfo.src === src && areaInfo.key === key) return;
+  const info = areaInfo = { src, key, thumbs: null, err: null, busy: true };
+  areaThumbs(src, 96, areaEdits).then((th) => { info.thumbs = th; }, (e) => { info.err = e.unavailable ? e.message : "Couldn't find the person in this photo. Full still works."; })
     .finally(() => {
       info.busy = false;
       if (areaInfo !== info) return;
@@ -1500,6 +1506,53 @@ function loadAreas() {
       const row = $("areaRow"); if (row) row.replaceWith(areaRow());
       fitDock();
     });
+}
+// Refine (Photoshop Express's Selection Tools) sits in the panel's title row, so the three
+// chips keep one row on small phones.
+function refineHead() {
+  const old = $("refineBtn"); if (old) old.remove();
+  if (!sel || TOOL[sel].kind !== "adjust" || refining || !areasOn() || !(areaInfo && areaInfo.thumbs && areaInfo.src === committed())) return;
+  const r = document.createElement("button"); r.className = "link-btn head-extra"; r.id = "refineBtn";
+  r.textContent = areaEdits.length ? "Refined" : "Refine";
+  r.setAttribute("aria-label", "Refine the person outline with a brush");
+  r.addEventListener("click", startRefine);
+  $("collapseBtn").before(r);
+}
+function startRefine() {
+  refining = true; brushMode = "add"; strokes = []; refineView = null; $("editorScreen").classList.add("refining");
+  if (adjArea === "full") adjArea = "person";
+  panelBuilt = null; renderEditor(); drawRefine();
+  $("alertLive").textContent = "Refine: paint to add to the person or remove from them. Red is the background.";
+}
+async function drawRefine() {
+  const token = ++refineToken, src = committed();
+  try { const v = await areaOverlay(src, areaEdits); if (token === refineToken && refining) { refineView = v; drawStrokes(); } }
+  catch (e) { if (token === refineToken) say(e.message, true); }
+}
+function refineStroke() {
+  const s = strokes.pop(), r = imageRect(); if (!s) return;
+  areaEdits.push({ add: !s.rm, w: +(s.w / r.nw).toFixed(5), pts: s.pts.map(([x, y]) => [+(x / r.nw).toFixed(5), +(y / r.nh).toFixed(5)]) });
+  drawStrokes(); renderPanel(); drawRefine();
+}
+function endRefine(rerender = true) {
+  refining = false; strokes = []; refineView = null; refineToken++; $("editorScreen").classList.remove("refining");
+  if (rerender) { panelBuilt = null; renderEditor(); if (sel && toolAmt[sel]) preview(); }
+}
+function refinePanel(body) {
+  const modes = options([["Add to person", "add"], ["Remove", "remove"]], (v) => v === brushMode, (v) => { brushMode = v; renderPanel(true); });
+  modes.setAttribute("role", "group"); modes.setAttribute("aria-label", "Brush");
+  const sz = slider("Size", 8, 80, brushSize, (v) => { brushSize = v; }, (v) => { brushSize = v; }, (v) => v);
+  sz.querySelector("input").setAttribute("aria-valuetext", `${brushSize} pixels`);
+  const acts = document.createElement("div"); acts.className = "refine-acts";
+  const undo = document.createElement("button"); undo.className = "opt"; undo.id = "refineUndo"; undo.textContent = "Undo stroke"; undo.disabled = !areaEdits.length;
+  undo.addEventListener("click", () => { areaEdits.pop(); renderPanel(true); drawRefine(); });
+  const reset = document.createElement("button"); reset.className = "opt"; reset.id = "refineReset"; reset.textContent = "Reset"; reset.disabled = !areaEdits.length;
+  reset.addEventListener("click", () => { areaEdits = []; renderPanel(true); drawRefine(); });
+  const done = document.createElement("button"); done.className = "opt done"; done.id = "refineDone"; done.textContent = "Done"; done.setAttribute("aria-pressed", "true");
+  done.addEventListener("click", () => endRefine());
+  acts.append(undo, reset, done);
+  const note = document.createElement("p"); note.className = "area-note"; note.textContent = "Paint along an edge and it snaps to the photo. Red is the background.";
+  body.append(modes, sz, acts, note);
 }
 function areaRow() {
   loadAreas();
@@ -1522,6 +1575,7 @@ function areaRow() {
     });
     box.append(b);
   }
+  refineHead();
   if (info && info.err) { const n = document.createElement("p"); n.className = "area-note"; n.textContent = info.err; wrap.append(n); }
   return wrap;
 }
@@ -1577,6 +1631,8 @@ function buildPanel(t) {
     body.append(slider("Strength", 0, 100, filterAmt, (v) => {
       filterAmt = v; clearTimeout(adjustTimer); adjustTimer = setTimeout(preview, 120);
     }, (v) => { filterAmt = v; clearTimeout(adjustTimer); preview(); }));
+  } else if (t.kind === "adjust" && refining) {
+    refinePanel(body);
   } else if (t.kind === "adjust") {
     if (areasOn()) body.append(areaRow());
     const [lo, hi] = t.range || [-50, 50];
@@ -1672,7 +1728,7 @@ function panelState(t) {
   apply.disabled = busyNow;
   if (!cost) {
     apply.textContent = "Apply";
-    if (t.kind === "adjust") apply.disabled ||= !ed.pending;
+    if (t.kind === "adjust") apply.disabled ||= !ed.pending || refining;
     if (t.id === "bgphoto" && !bgPhoto) apply.disabled = true;
     if (t.reshape) apply.disabled ||= !(faceSet.amt[t.id] > 0) || !!(blocked && blocked.msg !== "");
     else if (blocked && blocked.msg) apply.disabled = true;
@@ -1728,7 +1784,7 @@ function opFor(t) {
   if (t.kind === "face" || t.kind === "body" || t.kind === "hair") { op.amt = (faceSet.amt[t.id] ?? 50) / 100; op.shades = { ...faceSet.shade }; op.styles = { ...faceSet.style }; }
   if (t.id === "fglam" && faceSet.style.fglam === "mine") op.mine = (faceSet.mine || []).map((x) => [...x]);
   if (t.kind === "face" && faceSel.boxes.length > 1) { const b = faceSel.boxes[faceSel.i]; op.face = [b.cx, b.cy]; }
-  if (t.kind === "adjust") { op.value = toolAmt[t.id]; if (adjArea !== "full" && areasOn()) op.area = adjArea; }
+  if (t.kind === "adjust") { op.value = toolAmt[t.id]; if (adjArea !== "full" && areasOn()) { op.area = adjArea; if (areaEdits.length) op.edits = areaEdits.map((e) => ({ ...e, pts: e.pts.map((q) => [...q]) })); } }
   if (t.kind === "filter" && filterAmt < 100) op.amt = filterAmt / 100;
   if (t.kind === "look") op.look = { ...(editorLooks().find((l) => l.id === lookPick) || PRESET_LOOKS[1]) };
   if (t.id === "bgphoto") { op.bg = bgPhoto; op.bgBlur = bgBlur; }
@@ -1756,7 +1812,7 @@ async function computeOp(op, base) {
     try { return await glowUp(base, op.glow, op.face); } finally { Object.assign(faceSet.shade, keep); Object.assign(faceSet.style, keepStyle); }
   }
   if (t.kind === "filter") return applyFilter(base, t.filter, op.amt ?? 1);
-  if (t.kind === "adjust") return op.value ? adjust(base, t.id, op.value, op.area || "full") : null;
+  if (t.kind === "adjust") return op.value ? adjust(base, t.id, op.value, op.area || "full", op.edits) : null;
   if (t.kind === "crop") {
     if (op.rect) return cropRect(base, op.turns, op.rect, op.aspect);
     return op.ratio || op.turns % 4 ? cropRotate(base, op.ratio, op.turns) : null; // steps saved before interactive crop
@@ -2271,6 +2327,19 @@ function drawStrokes() {
   if (!hasPhoto() || !$("before").naturalWidth) return;
   const ctx = cv.getContext("2d"), r = imageRect();
   ctx.scale(dpr, dpr);
+  if (refining) {
+    // The background tinted red (as on the chips); the stroke being drawn shows green for Add
+    // and red for Remove until it is lifted and snapped to the photo's edges.
+    if (refineView) ctx.drawImage(refineView, r.x, r.y, r.nw * r.s, r.nh * r.s);
+    ctx.lineCap = ctx.lineJoin = "round";
+    for (const s of strokes) {
+      ctx.strokeStyle = s.rm ? "rgba(235 40 55 / 0.55)" : "rgba(40 200 120 / 0.55)"; ctx.lineWidth = s.w * r.s; ctx.beginPath();
+      s.pts.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, r.x + x * r.s, r.y + y * r.s));
+      if (s.pts.length === 1) ctx.lineTo(r.x + s.pts[0][0] * r.s + 0.1, r.y + s.pts[0][1] * r.s);
+      ctx.stroke();
+    }
+    return;
+  }
   // Marks are drawn solid on their own layer and shown at one opacity, so overlaps don't darken.
   ctx.strokeStyle = "rgb(64 132 230)"; ctx.lineCap = ctx.lineJoin = "round";
   for (const s of strokes) {
@@ -2297,7 +2366,7 @@ $("brush").addEventListener("pointerdown", (e) => {
   }
   if (e.pointerType === "mouse" && e.button !== 0) return;
   painting = true; painter = { id: e.pointerId, p: stagePt(e) };
-  strokes.push({ w: brushSize / imageRect().s, pts: [brushPoint(e)], erase: brushMode === "erase" || undefined }); drawStrokes();
+  strokes.push({ w: brushSize / imageRect().s, pts: [brushPoint(e)], erase: brushMode === "erase" || undefined, rm: refining && brushMode === "remove" || undefined }); drawStrokes();
 });
 $("brush").addEventListener("pointermove", (e) => {
   if (navPtrs.has(e.pointerId)) { navPtrs.set(e.pointerId, stagePt(e)); navMove(); return; }
@@ -2306,7 +2375,7 @@ $("brush").addEventListener("pointermove", (e) => {
 });
 ["pointerup", "pointercancel"].forEach((ev) => $("brush").addEventListener(ev, (e) => {
   if (navPtrs.has(e.pointerId)) { navUp(e); return; }
-  if (painting && painter.id === e.pointerId) { painting = false; painter = null; renderPanel(); }
+  if (painting && painter.id === e.pointerId) { painting = false; painter = null; if (refining) refineStroke(); else renderPanel(); }
 }));
 $("brush").addEventListener("wheel", (e) => { e.preventDefault(); const p = stagePt(e); zoomTo(insp.z * Math.exp(-e.deltaY * 0.0025), p.x, p.y); }, { passive: false });
 // The mask is drawn at the size of the image that is uploaded.

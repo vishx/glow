@@ -2049,6 +2049,44 @@ test('adjust: Person and Background change only their part of the photo', async 
   eq(state.errs, [], 'no page errors (the body model once crashed on odd-sized pictures)');
 });
 
+test('adjust: the Refine brush adds to and takes away from the person, and the step replays it', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, AREA_PHOTO);
+  await tool(p, 'edit', null, 'exposure');
+  await p.waitForSelector('#refineBtn', { timeout: 60000 }); await p.click('#refineBtn');
+  await p.waitForFunction(() => refining && refineView, null, { timeout: 60000 });
+  assert(await p.evaluate(() => getComputedStyle($('tools')).display === 'none'), 'tool rows step aside');
+  eq(await p.evaluate(() => adjArea), 'person', 'Refine picks Person');
+  // One stroke out across the middle of the person (Remove), one in across the background corner (Add).
+  const drag = async (pts) => {
+    const b = await p.evaluate((pts) => { const st = $('stage').getBoundingClientRect(), r = imageRect(); return pts.map(([x, y]) => [st.left + r.x + x * r.nw * r.s, st.top + r.y + y * r.nh * r.s]); }, pts);
+    await p.mouse.move(b[0][0], b[0][1]); await p.mouse.down(); for (const q of b.slice(1)) await p.mouse.move(q[0], q[1], { steps: 4 }); await p.mouse.up();
+  };
+  await p.click('[aria-label="Brush"] button:nth-child(2)');
+  await drag([[0.4, 0.5], [0.5, 0.5], [0.6, 0.5]]);
+  await p.click('[aria-label="Brush"] button:nth-child(1)');
+  await drag([[0.05, 0.05], [0.12, 0.05]]);
+  await p.waitForFunction(() => areaEdits.length === 2);
+  eq(await p.evaluate(() => areaEdits.map((e) => e.add)), [false, true], 'Remove then Add');
+  const r = await p.evaluate(async () => {
+    const base = committed(), img = await loadImg(base), c = canvasFor(img); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const a0 = await personAlpha(base, c), a1 = await personAlpha(base, c, areaEdits), W = c.width, H = c.height;
+    const at = (a, x, y) => a[Math.round(y * H) * W + Math.round(x * W)];
+    return { mid: [at(a0, 0.5, 0.5), at(a1, 0.5, 0.5)], corner: [at(a0, 0.08, 0.05), at(a1, 0.08, 0.05)], far: [at(a0, 0.5, 0.3), at(a1, 0.5, 0.3)] };
+  });
+  assert(r.mid[0] > 0.9 && r.mid[1] < 0.5, 'Remove took the middle out: ' + r.mid);
+  assert(r.corner[0] < 0.1 && r.corner[1] > 0.5, 'Add put the corner in: ' + r.corner);
+  assert(Math.abs(r.far[0] - r.far[1]) < 0.02, 'away from the strokes nothing changed: ' + r.far);
+  await p.click('#refineUndo'); await p.waitForFunction(() => areaEdits.length === 1);
+  await p.click('#refineDone'); await p.waitForFunction(() => !refining);
+  await p.waitForSelector('#refineBtn', { timeout: 60000 }); eq(await p.textContent('#refineBtn'), 'Refined', 'the title row says the outline was refined');
+  await p.fill('#panelBody input[type=range]', '30'); await p.dispatchEvent('#panelBody input[type=range]', 'change');
+  await p.waitForFunction(() => ed.pending && ed.pending.op.edits, null, { timeout: 60000 }); await idle(p);
+  await p.click('#applyBtn'); await p.waitForFunction(() => ed.idx === 1 && !ed.pending); await idle(p);
+  const op = await p.evaluate(() => ed.hist[1].op);
+  eq([op.tool, op.area, op.edits.length, op.edits[0].add], ['exposure', 'person', 1, false], 'the step records its Refine strokes');
+  eq(state.errs, [], 'no page errors');
+});
+
 test('adjust: a photo without a person keeps Full and explains why', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, fx('coords-600x400.png'));
   await tool(p, 'edit', null, 'contrast');

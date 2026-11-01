@@ -1828,8 +1828,18 @@ async function applyFilter(src, flt, amt = 1) {
 // segmenter on squares around each main face and down their body), or the whole-picture cutout when
 // no face is found. Kept for the last two pictures, so dragging a slider doesn't cut them out again.
 const personCache = [];
-async function personAlpha(src, c) {
-  const W = c.width, H = c.height, hit = personCache.find((e) => e.src === src && e.w === W && e.h === H);
+// edits: the Refine brush's strokes, [{ add, w, pts }] in 0–1 of the photo's width and height.
+async function personAlpha(src, c, edits) {
+  const base = await personBase(src, c);
+  if (!edits || !edits.length) return base;
+  const key = JSON.stringify(edits), hit = personCache.find((e) => e.src === src && e.w === c.width && e.h === c.height && e.key === key);
+  if (hit) return hit.alpha;
+  const alpha = refineAlpha(c, base, edits);
+  personCache.unshift({ src, w: c.width, h: c.height, key, alpha }); personCache.length = Math.min(personCache.length, 3);
+  return alpha;
+}
+async function personBase(src, c) {
+  const W = c.width, H = c.height, hit = personCache.find((e) => e.src === src && e.w === W && e.h === H && !e.key);
   if (hit) return hit.alpha;
   let faces = [];
   try { faces = await findFaces(src, c); } catch { /* no face model: the whole-picture cutout */ }
@@ -1839,8 +1849,69 @@ async function personAlpha(src, c) {
   if (main.length === 1) await clipToBody(c, alpha, main[0]);
   let on = 0, n = 0; for (let i = 0; i < alpha.length; i += 17) { on += alpha[i]; n++; }
   if (on / n < 0.01 || (!main.length && on / n > 0.97)) throw unavailable("No person found in this photo, so Person and Background can't be used. Full still works.");
-  personCache.unshift({ src, w: W, h: H, alpha }); personCache.length = Math.min(personCache.length, 2);
+  personCache.unshift({ src, w: W, h: H, alpha }); personCache.length = Math.min(personCache.length, 3);
   return alpha;
+}
+// The Refine brush: Add paints the person in, Remove takes them out. Each stroke snaps to the
+// edges in the photo inside its own width (the edge-aware filter, guided by the photo), so a
+// rough stroke along a sleeve follows the sleeve. Strokes are applied in order.
+function refineAlpha(c, base, edits) {
+  const W = c.width, H = c.height, k = Math.min(1, 1000 / Math.max(W, H)), w = Math.round(W * k), h = Math.round(H * k);
+  const sm = newCanvas(w, h), sx = sm.getContext("2d", { willReadFrequently: true });
+  sx.imageSmoothingQuality = "high"; sx.drawImage(c, 0, 0, w, h);
+  const sd = sx.getImageData(0, 0, w, h).data, I = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) { const r = sd[i * 4], g = sd[i * 4 + 1], b = sd[i * 4 + 2]; I[i] = (lum(r, g, b) + (r - b) * 0.8 + (g - (r + b) / 2) * 0.5) / 255; }
+  // The person at working size, edited stroke by stroke.
+  const big = newCanvas(W, H), bx = big.getContext("2d", { willReadFrequently: true }), bd = bx.createImageData(W, H);
+  for (let i = 0; i < base.length; i++) bd.data[i * 4 + 3] = base[i] * 255;
+  bx.putImageData(bd, 0, 0);
+  const ac = newCanvas(w, h), ax = ac.getContext("2d", { willReadFrequently: true });
+  ax.imageSmoothingQuality = "high"; ax.drawImage(big, 0, 0, w, h);
+  const ad = ax.getImageData(0, 0, w, h), a = new Float32Array(w * h);
+  for (let i = 0; i < a.length; i++) a[i] = ad.data[i * 4 + 3] / 255;
+  const st = newCanvas(w, h), stx = st.getContext("2d", { willReadFrequently: true });
+  stx.lineCap = stx.lineJoin = "round";
+  for (const e of edits) {
+    stx.clearRect(0, 0, w, h); stx.strokeStyle = "#fff"; stx.lineWidth = Math.max(2, e.w * w); stx.beginPath();
+    e.pts.forEach(([x, y], i) => (i ? stx.lineTo : stx.moveTo).call(stx, x * w, y * h));
+    if (e.pts.length === 1) stx.lineTo(e.pts[0][0] * w + 0.1, e.pts[0][1] * h);
+    stx.stroke();
+    const m = stx.getImageData(0, 0, w, h).data, M = new Float32Array(w * h);
+    let x0 = w, y0 = h, x1 = 0, y1 = 0;
+    for (let i = 0; i < M.length; i++) if ((M[i] = m[i * 4 + 3] / 255) > 0) { const x = i % w, y = (i / w) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < x0) continue;
+    // Inside the stroke, the target is what the photo's edges say: start from "all in" (Add) or
+    // "all out" (Remove) where the stroke's core is, keep the old cutout elsewhere, and let the
+    // guided filter pull the boundary to the nearest edge in the photo.
+    const p = new Float32Array(w * h);
+    for (let i = 0; i < p.length; i++) p[i] = M[i] > 0.5 ? (e.add ? 1 : 0) : a[i];
+    const q = guided(I, p, w, h, Math.max(2, Math.round(e.w * w / 4)), 1e-3);
+    for (let i = 0; i < a.length; i++) if (M[i] > 0) {
+      const v = clamp01(q[i]), snap = e.add ? Math.max(a[i], smoothstep(0.35, 0.65, v)) : Math.min(a[i], smoothstep(0.35, 0.65, v));
+      a[i] += (snap - a[i]) * M[i];
+    }
+  }
+  for (let i = 0; i < a.length; i++) ad.data[i * 4 + 3] = Math.round(a[i] * 255);
+  ax.putImageData(ad, 0, 0);
+  bx.clearRect(0, 0, W, H); bx.imageSmoothingQuality = "high"; bx.drawImage(ac, 0, 0, W, H);
+  const up = bx.getImageData(0, 0, W, H).data, out = new Float32Array(W * H);
+  // Only where a stroke went does the result change; everywhere else keeps the full-size edge.
+  const touched = newCanvas(w, h), tx = touched.getContext("2d", { willReadFrequently: true });
+  tx.lineCap = tx.lineJoin = "round"; tx.strokeStyle = "#fff";
+  for (const e of edits) { tx.lineWidth = Math.max(2, e.w * w) + 4; tx.beginPath(); e.pts.forEach(([x, y], i) => (i ? tx.lineTo : tx.moveTo).call(tx, x * w, y * h)); if (e.pts.length === 1) tx.lineTo(e.pts[0][0] * w + 0.1, e.pts[0][1] * h); tx.stroke(); }
+  const tb = newCanvas(W, H), tbx = tb.getContext("2d", { willReadFrequently: true }); tbx.drawImage(touched, 0, 0, W, H);
+  const td = tbx.getImageData(0, 0, W, H).data;
+  for (let i = 0; i < out.length; i++) { const t = td[i * 4 + 3] / 255; out[i] = base[i] + (up[i * 4 + 3] / 255 - base[i]) * t; }
+  return out;
+}
+// The Refine view: the photo's background tinted red over a transparent person, at the size of
+// the picture `src` (the brush draws it over the photo).
+async function areaOverlay(src, edits) {
+  const img = await loadImg(src), c = canvasFor(img); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  const alpha = await personAlpha(src, c, edits), o = newCanvas(c.width, c.height), ox = o.getContext("2d"), d = ox.createImageData(c.width, c.height);
+  for (let i = 0; i < alpha.length; i++) { d.data[i * 4] = 235; d.data[i * 4 + 1] = 40; d.data[i * 4 + 2] = 55; d.data[i * 4 + 3] = (1 - alpha[i]) * 150; }
+  ox.putImageData(d, 0, 0);
+  return o;
 }
 // One person: the body model's own outline (made for full-length shots) trims what the selfie
 // segmenter wrongly joined to them, such as a pale floor or sofa beside a pale top. Its outline is
@@ -1907,9 +1978,9 @@ async function clipToBody(c, alpha, fb) {
 }
 // Small pictures for the Full / Person / Background chips, the chosen area tinted red
 // (as Photoshop Express shows it). Throws (unavailable) when there's no person in the photo.
-async function areaThumbs(src, size = 96) {
+async function areaThumbs(src, size = 96, edits) {
   const img = await loadImg(src), c = canvasFor(img); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-  const alpha = await personAlpha(src, c), W = c.width, H = c.height;
+  const alpha = await personAlpha(src, c, edits), W = c.width, H = c.height;
   const k = size / Math.max(W, H), w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
   const t = newCanvas(w, h), tx = t.getContext("2d", { willReadFrequently: true });
   tx.imageSmoothingQuality = "high"; tx.drawImage(c, 0, 0, w, h);
@@ -1927,12 +1998,12 @@ async function areaThumbs(src, size = 96) {
 }
 // v runs from -50 to 50, with 0 meaning no change (the noise tools run from 0 to 100).
 // area: "full" (the whole photo), "person" (only the people) or "bg" (everything but them).
-async function adjust(src, kind, v, area = "full") {
+async function adjust(src, kind, v, area = "full", edits) {
   const { c, img } = await adjustCanvas(src, kind, v);
   if (area !== "person" && area !== "bg") return encode(c, src);
   const o = newCanvas(c.width, c.height), ox = o.getContext("2d", { willReadFrequently: true });
   ox.drawImage(img, 0, 0, c.width, c.height);
-  const alpha = await personAlpha(src, o), od = ox.getImageData(0, 0, o.width, o.height), D = od.data;
+  const alpha = await personAlpha(src, o, edits), od = ox.getImageData(0, 0, o.width, o.height), D = od.data;
   const A = c.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, c.width, c.height).data, bg = area === "bg";
   for (let i = 0, j = 0; i < alpha.length; i++, j += 4) {
     const a = bg ? 1 - alpha[i] : alpha[i]; if (a <= 0) continue;
