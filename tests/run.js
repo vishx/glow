@@ -763,7 +763,7 @@ test('settings: Help, Privacy, Terms and Licenses open inside the app, readable 
     const r = await p.evaluate(() => { const d = $('docFrame').contentDocument, cs = d.defaultView.getComputedStyle(d.body);
       return [location.pathname, screen, $('docTitle').textContent, cs.color, cs.backgroundColor, d.documentElement.dataset.theme, d.defaultView.getComputedStyle(d.querySelector('.brand')).display]; });
     eq(r[0], '/', `${row}: the app stays on its page`); eq(r[1], 'enhanceHome', `${row}: no restart`); eq(r[2], h1, `${row}: sheet title`);
-    eq([r[3], r[4], r[5], r[6]], ['rgb(246, 238, 241)', 'rgb(20, 16, 19)', 'dark', 'none'], `${row}: light text on dark, app header hidden`);
+    eq([r[3], r[4], r[5], r[6]], ['rgb(245, 244, 242)', 'rgb(18, 18, 20)', 'dark', 'none'], `${row}: light text on dark, app header hidden`);
     await p.click('#docSheet [data-close]');
   }
   // A link to another help page stays in the sheet; the Glow Studio home link closes it.
