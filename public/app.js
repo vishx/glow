@@ -2393,6 +2393,12 @@ $("saveBtn").addEventListener("click", saveEdit);
 // request or allowance. Pro is remembered (until it expires) for when the server can't be reached
 // yet, such as right after opening the app offline, so a Pro save never gets the badge.
 const isPro = () => (account && account.plan ? account.plan === "pro" : new Date(store.get("glowPro") || 0) > new Date());
+// 2026-11-01 (owner's choice): Pro saves carry the mark too, every save is a chance for friends to see
+// where the photo was made, but Pro can switch it off in Settings (glowMark = "off"). Free saves
+// always carry it. The first Pro save with the mark says where to switch it off.
+const PRO_MARK_DEFAULT = "on";
+const proMarkOn = () => (store.get("glowMark") || PRO_MARK_DEFAULT) !== "off";
+const wantMark = () => !isPro() || proMarkOn();
 let shareOffered = false;
 const BADGE_LINE = CONFIG.badgeLine === "none" ? "" : CONFIG.badgeLine || PUBLIC_HOST;
 async function markFonts() {
@@ -2458,11 +2464,22 @@ async function addMark(data, png) {
 // The badged picture for a free save. The first time, the person sees exactly where the badge
 // sits before anything is saved; null when they cancel. Pro saves come back unchanged.
 async function markForSave(data, png) {
-  if (isPro()) return { data, marked: false };
+  if (!wantMark()) return { data, marked: false };
   let m; try { m = await addMark(data, png); } catch { m = null; }
   if (!m) return { data, marked: false };
+  if (isPro()) {
+    // Pro: shown once, with a one-tap way to save this photo (and every later one) without it.
+    if (!store.get("glowProBadgeSeen")) {
+      const c = await ask({ title: "Your saves include a small Glow Studio badge", text: "It sits in the bottom-right corner, like this, so friends can see where your photo was made. With Glow Studio Pro you can turn it off any time in Settings.",
+        image: m.preview, caption: "The corner of your saved photo", actions: [{ label: "Keep it and save", value: "keep" }, { label: "Turn it off and save", value: "off", kind: "ghost" }] });
+      if (!c) return null;
+      store.set("glowProBadgeSeen", "1");
+      if (c === "off") { store.set("glowMark", "off"); track("setting", { mark: false, from: "first_save" }); return { data, marked: false }; }
+    }
+    return { data: m.data, marked: true };
+  }
   if (!store.get("glowBadgeSeen")) {
-    const c = await ask({ title: "Free saves include a small Glow Studio badge", text: "It sits in the bottom-right corner, like this, so friends can see where your photo was made. Glow Studio Pro saves don't have it.",
+    const c = await ask({ title: "Free saves include a small Glow Studio badge", text: "It sits in the bottom-right corner, like this, so friends can see where your photo was made. Glow Studio Pro lets you turn it off.",
       image: m.preview, caption: "The corner of your saved photo", actions: [{ label: "Save", value: "yes" }, { label: "Cancel", value: "", kind: "ghost" }] });
     if (!c) return null;
     store.set("glowBadgeSeen", "1");
@@ -2573,7 +2590,7 @@ function renderCreditsSheet() {
   }
   if (a && a.bonus > 0) facts.unshift(fact("star", `${a.bonus} extra AI ${a.bonus === 1 ? "credit" : "credits"}, included above`,
     `They never expire and are used after your ${a.plan === "pro" ? "weekly" : "free"} credits${a.plan === "pro" ? "" : ", on every AI tool"}.`));
-  facts.push(fact("save", "Saving is free and unlimited", "On the free plan, saves carry a small Glow Studio mark."),
+  facts.push(fact("save", "Saving is free and unlimited", a && a.plan === "pro" ? "Saves carry a small Glow Studio mark unless you turn it off in Settings." : "On the free plan, saves carry a small Glow Studio mark."),
     fact("sliders", "On-device tools are always free", "Camera, filters, face, makeup, backgrounds, light and color. Undo and redo never use credits."),
     fact("wand", twoCredit ? "Most AI tools use 1 credit" : "Each AI tool uses 1 credit", `${twoCredit ? `${twoCredit} use 2. ` : ""}Each tool shows its cost before you apply it.`),
     fact("revert", "Failed edits are refunded", "If the AI service reports an edit failed, its credit comes back automatically."));
@@ -2602,6 +2619,7 @@ function showUsage(u) {
     ? `Glow Studio Pro: ${account.remaining} of ${account.quota} AI credits left this week.`
     : `Free plan: ${account.remaining} of ${account.quota} AI credits left today. On-device tools are always free.`;
   $("goProBtn").hidden = account.plan === "pro";
+  if ($("settings").open) renderMarkSetting();
   renderCredits();
   if (screen === "editorScreen") { renderPanel(); }
   if (screen === "enhanceHome" && typeof renderEnhanceHome === "function") renderEnhanceHome();
@@ -3305,6 +3323,7 @@ $("buildId").addEventListener("click", async () => {
 function openSettings() {
   refreshAccount(); renderEnhPrefs();
   $("saveOrigToggle").checked = store.get("glowSaveOrig") === "on";
+  renderMarkSetting();
   $("autoSaveToggle").checked = autoSaveOn();
   applyTheme(); showBuild();
   $("settings").showModal();
@@ -3331,6 +3350,22 @@ async function showBuild() {
 $("camSettingsBtn").addEventListener("click", openSettings);
 $("homeSettingsBtn").addEventListener("click", openSettings);
 $("themeSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { store.set("glowTheme", b.dataset.theme); applyTheme(); track("setting", { theme: b.dataset.theme }); } });
+// The Glow Studio mark: always on for free saves (the switch shows it, and tapping it offers Pro);
+// Pro can turn it off.
+function renderMarkSetting() {
+  const pro = isPro();
+  $("markToggle").checked = wantMark();
+  $("markToggle").closest(".setting").classList.toggle("locked", !pro);
+  $("markHelp").textContent = pro
+    ? "A small badge in the corner of each saved photo shows friends where it was made."
+    : "Free saves include a small badge in the corner. Glow Studio Pro lets you turn it off.";
+}
+$("markToggle").addEventListener("change", (e) => {
+  if (!isPro()) { e.target.checked = true; track("mark_locked", {}); openPaywall(); return; }
+  store.set("glowMark", e.target.checked ? "on" : "off"); store.set("glowProBadgeSeen", "1");
+  track("setting", { mark: e.target.checked });
+  say(e.target.checked ? "Saved photos will include the Glow Studio badge." : "Saved photos won't include the Glow Studio badge.");
+});
 $("saveOrigToggle").addEventListener("change", (e) => { store.set("glowSaveOrig", e.target.checked ? "on" : "off"); track("setting", { save_original: e.target.checked }); });
 $("autoSaveToggle").addEventListener("change", (e) => { store.set("glowAutoSave", e.target.checked ? "on" : "off"); track("setting", { auto_save: e.target.checked }); });
 $("autoSaveHelp").textContent = native && plugins.Media

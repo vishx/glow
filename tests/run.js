@@ -1517,15 +1517,45 @@ test('mark: placed after crop and rotation, at small and large sizes; paid saves
   assert(r2.box && r2.box[0] > r2.w * 0.5 && r2.box[1] > r2.h * 0.9 && (r2.box[2] - r2.box[0]) > r2.w * 0.1, `large save: proportional mark ${r2.box} of ${r2.w}x${r2.h}`);
   eq([state.posts.length, state.used], [0, 0], 'no AI request, no credit');
 }, { viewport: { width: 390, height: 844 } });
-test('mark: Glow Pro saves have no mark', async ({ p, state }) => {
+// 2026-11-01 (owner's choice): Pro saves carry the mark by default; Pro can turn it off in Settings
+// or on the first save's note. Free saves always carry it.
+test('mark: Pro saves carry the mark by default; the first save offers to turn it off, and Settings switches it', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
+  await p.waitForFunction(() => account && account.plan === 'pro');
+  await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
+  await p.click('#saveBtn'); await p.waitForSelector('#ask[open] #askImg');
+  eq(await p.textContent('#askTitle'), 'Your saves include a small Glow Studio badge', 'Pro is told once, with a preview');
+  await p.click('#ask .btn:has-text("Turn it off and save")'); const [d] = await downloads(state, 1);
+  const clean = await p.evaluate(async () => (await renderExport()).data);
+  eq(fileB64(d.file), clean.split(',')[1], 'turned off: saved file is exactly the clean export');
+  eq(await p.evaluate(() => store.get('glowMark')), 'off', 'remembered');
+  // Settings: the switch is off; turning it on marks the next save, with no note again.
+  await p.evaluate(() => openSettings());
+  eq(await p.evaluate(() => [$('markToggle').checked, $('markToggle').closest('.setting').classList.contains('locked')]), [false, false], 'Pro switch shows off, unlocked');
+  await p.click('#markToggle'); await p.evaluate(() => $('settings').close());
+  await tool(p, 'looks', 'filters', 'filter:warm'); await p.click('#applyBtn'); await idle(p);
+  await p.click('#saveBtn'); const d2 = (await downloads(state, 2))[1];
+  eq(await p.evaluate(() => $('ask').open), false, 'no note the second time');
+  const clean2 = await p.evaluate(async () => (await renderExport()).data);
+  const r = await diffBox(p, `data:${mime(d2.file)};base64,${fileB64(d2.file)}`, clean2);
+  assert(r.box && r.box[0] > r.w * 0.5 && r.box[1] > r.h * 0.9, 'switched back on: marked bottom-right ' + r.box);
+}, { viewport: { width: 390, height: 844 }, plan: 'pro', markIntro: true });
+test('mark: Pro with the mark switched off saves clean', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   await p.waitForFunction(() => account && account.plan === 'pro');
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);
   await p.click('#saveBtn'); const [d] = await downloads(state, 1);
-  eq(await p.evaluate(() => $('ask').open), false, 'no mark note for Pro');
   const clean = await p.evaluate(async () => (await renderExport()).data);
-  eq(fileB64(d.file), clean.split(',')[1], 'saved file is exactly the clean export');
-}, { viewport: { width: 390, height: 844 }, plan: 'pro', markIntro: true });
+  eq(fileB64(d.file), clean.split(',')[1], 'clean');
+}, { viewport: { width: 390, height: 844 }, plan: 'pro', mark: 'off' });
+test('mark: free users can\'t switch the mark off; the switch offers Pro', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && account && account.plan === 'free');
+  await p.evaluate(() => store.set('glowMark', 'off')); await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
+  eq(await p.evaluate(() => [$('markToggle').checked, $('markToggle').closest('.setting').classList.contains('locked')]), [true, true], 'free: on and locked');
+  await p.click('#markToggle'); await p.waitForSelector('#paywall[open]');
+  eq(await p.evaluate(() => $('markToggle').checked), true, 'still on; the paywall opened instead');
+  eq(await p.evaluate(() => wantMark()), true, 'free saves are marked even with the old off setting');
+}, { start: 'enhance', camera: false });
 test('mark: Share and Download give the same marked file; Share Glow card only on request, and its QR scans', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.click('#applyBtn'); await idle(p);

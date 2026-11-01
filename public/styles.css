@@ -990,3 +990,4 @@ dialog.doc-sheet[open] { display: grid; }
 dialog.doc-sheet .sheet-head { padding: 0 var(--gutter); }
 #docFrame { width: 100%; height: 100%; border: 0; background: var(--surface); }
 @media (min-width: 600px) { dialog.doc-sheet { width: min(92vw, 640px); max-width: 640px; } }
+.setting.locked input[type=checkbox] { opacity: 0.55; }

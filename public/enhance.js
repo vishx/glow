@@ -1077,7 +1077,7 @@ async function camEnhance(s, auto) {
 // free saves), staying on the Result screen.
 async function enhAutoSave() {
   let data = enh.current === enh.ai && enh.full ? enh.full : enh.current;
-  const marked = !isPro();
+  const marked = wantMark();
   if (marked) { try { const m = await addMark(data, false); if (m) data = m.data; } catch {} }
   const name = `glow-studio-enhanced-${Date.now()}`;
   try {
@@ -1290,7 +1290,7 @@ async function batchSave() {
   if (!done.length || batch.saving) return;
   batch.saving = true; renderBatch();
   try {
-    const stamp = Date.now(), pro = isPro(), files = [];
+    const stamp = Date.now(), pro = !wantMark(), files = [];   // "pro" here: saved without the mark
     for (const [k, it] of done.entries()) {
       const name = `glow-studio-enhanced-${stamp}-${k + 1}`;
       if (pro) { files.push({ blob: it.full, name }); continue; }

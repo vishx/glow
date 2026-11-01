@@ -54,7 +54,8 @@ exports.launch = async (opts = {}) => {
     navigator.permissions.query = (d) => d.name === 'camera' ? Promise.resolve({ state: 'denied', addEventListener() {} }) : q(d);
   });
   // The one-time "Free saves include a small Glow badge" note is assumed seen, except in the tests about it.
-  if (!opts.markIntro) await ctx.addInitScript(() => { localStorage.setItem('glowBadgeSeen', '1'); });
+  if (!opts.markIntro) await ctx.addInitScript(() => { localStorage.setItem('glowBadgeSeen', '1'); localStorage.setItem('glowProBadgeSeen', '1'); });
+  if (opts.mark) await ctx.addInitScript((v) => { localStorage.setItem('glowMark', v); }, opts.mark);
   // Camera auto-save is on by default in the app; most checks were written with it off.
   if (!opts.autoSaveDefault) await ctx.addInitScript(() => { if (!localStorage.getItem('glowAutoSave')) localStorage.setItem('glowAutoSave', 'off'); });
   if (opts.init) await ctx.addInitScript(opts.init);
