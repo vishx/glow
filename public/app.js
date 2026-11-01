@@ -3188,7 +3188,7 @@ $("viewfinder").addEventListener("pointerdown", (e) => {
 
 function camState(kind) {
   // live = camera working; denied/error = someone who wanted the camera and couldn't use it.
-  if (kind !== cam.state && ["live", "denied", "error", "unavailable"].includes(kind)) track("camera", { state: kind });
+  if (kind !== cam.state && ["live", "denied", "error", "unavailable"].includes(kind)) track("camera", { state: kind, engine: NativeCam ? "native" : "web" });
   cam.state = kind;
   const S = {
     prompt: ["camera", "Take photos with Glow Studio", "Glow Studio needs your camera to show a live preview. Photos stay on your device until you save or edit them.", "Turn on camera"],
@@ -3221,8 +3221,8 @@ $("sysCamera").addEventListener("change", async (e) => {
 async function enterCamera() {
   renderReview();
   if (cam.shot) return;
-  if (!Platform.camera.supported()) { camState("unsupported"); return; }
-  const perm = await Platform.camera.permission();
+  if (!NativeCam && !Platform.camera.supported()) { camState("unsupported"); return; }
+  const perm = NativeCam ? await nativePermission() : await Platform.camera.permission();
   if (screen !== "cameraScreen") return;
   if (perm === "granted") startCamera();
   else camState(perm === "denied" ? "denied" : "prompt");
@@ -3233,6 +3233,7 @@ async function startCamera() {
   stopCamera();
   const gen = cam.gen;
   camState("starting");
+  if (NativeCam) return startNativeCamera(gen);
   cam.gl = cam.gl || initLive($("camCanvas")) || initGl($("camCanvas"));
   if (cam.gl && cam.gl.live) liveFinder();
   renderLooks();
@@ -3263,11 +3264,113 @@ async function startCamera() {
 }
 function stopCamera() {
   cam.gen++;
+  if (cam.counting) cam.counting.stop();
   cancelAnimationFrame(cam.raf);
+  if (cam.nativeOn) {
+    cam.nativeOn = false; cam.native = null;
+    document.documentElement.classList.remove("native-cam");
+    NativeCam.stop().catch(() => {});
+  }
   if (cam.stream) cam.stream.getTracks().forEach((t) => t.stop());
   cam.stream = null; resetFace(); endCompare();
   const v = $("camVideo"); if (v.srcObject) { v.pause(); v.srcObject = null; }
 }
+// ---------- Native camera (Android app; see livebeauty.js) ----------
+async function nativePermission() {
+  try { const p = (await NativeCam.checkPermissions()).camera; return p === "granted" ? "granted" : p === "denied" ? "denied" : "prompt"; }
+  catch { return "prompt"; }
+}
+let nativeHooked = false;
+function hookNativeCam() {
+  if (nativeHooked) return;
+  nativeHooked = true;
+  NativeCam.addListener("face", (m) => {
+    liveFace.ready = !!m.ready; liveFace.failed = !!m.failed; liveFace.seen = m.seen ? 1 : 0;
+    if (cam.native) cam.native.faceCY = m.seen && Number.isFinite(m.cy) ? m.cy : null;
+    if (m.failed && !liveFace.reported) { liveFace.reported = true; reportError(`Native camera face finder failed: ${m.error || ""}`); }
+    renderAdjNote();
+  });
+  NativeCam.addListener("error", (m) => reportError((m && m.text) || "Native camera error"));
+}
+async function startNativeCamera(gen) {
+  hookNativeCam();
+  cam.gl = NATIVE_GL; cam.nativeOn = true;
+  renderLooks();
+  $("camNote").hidden = true;
+  let r;
+  try {
+    r = await NativeCam.start({ facing: cam.facing, ...nativeCamState({ view: nativeView() }) });
+  } catch (e) {
+    if (gen !== cam.gen) return;
+    const code = e && e.code;
+    if (code === "stopped") return;
+    stopCamera();
+    camState(code === "denied" ? "denied" : code === "none" ? "none" : "busy");
+    return;
+  }
+  if (gen !== cam.gen || screen !== "cameraScreen" || cam.shot || document.hidden) {
+    if (gen === cam.gen) stopCamera();
+    // A start that finished after the camera was left (e.g. after the permission prompt): turn it off,
+    // unless a newer start now owns the camera.
+    else if (!cam.nativeOn) NativeCam.stop().catch(() => {});
+    return;
+  }
+  cam.native = { w: r.width, h: r.height, faceCY: null, sent: "" }; renderCamFx();
+  document.documentElement.classList.add("native-cam");
+  cam.opened++;
+  camState("live");
+  // The selfie camera has no flash light, so the screen lights the face instead (Off, On, Auto).
+  cam.nativeTorch = !!r.torch;
+  cam.screenFlash = !r.torch && cam.facing === "user" && featureOn("camera:flash");
+  $("flashBtn").hidden = !r.torch && !cam.screenFlash; $("flashSpacer").hidden = !$("flashBtn").hidden;
+  if (r.torch && cam.torch) NativeCam.setTorch({ on: true }).catch(() => {});
+  renderFlashBtn();
+  $("camFlip").hidden = (r.cameras || 1) < 2;
+  nativeLoop();
+}
+// The viewfinder's box as fractions of the window: the native picture fills just that box.
+function nativeView() {
+  const b = $("viewfinder").getBoundingClientRect(), W = innerWidth || 1, H = innerHeight || 1;
+  return b.width && b.height ? [b.left / W, b.top / H, b.width / W, b.height / H].map((n) => Math.round(n * 1e4) / 1e4) : [0, 0, 1, 1];
+}
+// While Adjust is open, the face stays in the part of the picture the panel leaves (as followFace).
+function nativePosY() {
+  if ($("adjustPanel").hidden || !cam.native) { cam.focusY = null; cam.posY = null; return 0.5; }
+  const fy = cam.native.faceCY == null ? 0.45 : cam.native.faceCY;
+  cam.focusY = cam.focusY == null ? fy : cam.focusY + (fy - cam.focusY) * 0.15;
+  const vf = $("viewfinder").getBoundingClientRect(), W = cam.native.w, H = cam.native.h;
+  const k = Math.max(vf.width / W, vf.height / H), hs = H * k;
+  if (!vf.width || hs - vf.height < 1) return 0.5;
+  const open = $("camControls").getBoundingClientRect().top - vf.top, vh = Math.max(vf.height / 3, Math.min(vf.height, open));
+  cam.posY = Math.min(1, Math.max(0, (cam.focusY * hs - vh / 2) / (hs - vf.height)));
+  return Math.round(cam.posY * 1000) / 1000;
+}
+// Sends the look whenever it changes (a slider, a look, hold to compare, Adjust opening).
+function nativeLoop() {
+  if (!cam.native) return;
+  const st = nativeCamState({ compare: !!cam.compare, posY: nativePosY(), view: nativeView() }), key = JSON.stringify(st);
+  if (key !== cam.native.sent) { cam.native.sent = key; NativeCam.setLook(st).catch(() => {}); }
+  cam.raf = requestAnimationFrame(nativeLoop);
+}
+// A real full-resolution photo from the native camera, cropped to what the screen showed.
+async function nativeShot() {
+  const vf = $("viewfinder").getBoundingClientRect(), looked = !isOriginalLook();
+  const r = await NativeCam.capture({ ...nativeCamState({ posY: cam.posY == null ? 0.5 : cam.posY }), processed: looked, aspect: vf.width && vf.height ? vf.width / vf.height : 0 });
+  const blobOf = async (path) => (await fetch(window.Capacitor.convertFileSrc(path))).blob();
+  const rawBlob = await blobOf(r.raw);
+  let processed = r.processed ? await fileData(await blobOf(r.processed)) : null;
+  // The native camera bakes in the color and wash; the film effects (grain, date...) go on here.
+  const fx = camFilter().fx;
+  if (processed && fx && Object.values(fx).some((v) => v > 0)) {
+    const img = await loadImg(processed), c = newCanvas(img.naturalWidth, img.naturalHeight), x = c.getContext("2d");
+    x.drawImage(img, 0, 0); paintFx(x, c.width, c.height, fx);
+    processed = c.toDataURL("image/jpeg", 0.92);
+  }
+  return { raw: await fileData(rawBlob), rawBlob, processed, w: r.width, h: r.height, look: processed ? lookName() : null,
+    stamp: Date.now(), saved: false, originalSaved: false, saving: null };
+}
+async function nativeLight() { try { return (await NativeCam.getLight()).light; } catch { return 255; } }
+
 const LIVE_PREVIEW = Math.round(Math.min(1280, Math.max(window.screen.width, window.screen.height) * Math.min(2, devicePixelRatio || 1)));
 function drawFrame() {
   const v = $("camVideo"), c = $("camCanvas");
@@ -3354,13 +3457,44 @@ function sceneLight(v) {
 // Lights the whole screen a soft warm white and gives the camera a moment to adjust to it.
 async function screenFlashOn(v) {
   const m = screenFlashMode();
-  if (!cam.screenFlash || !featureOn("camera:flash") || m === "off" || (m === "auto" && sceneLight(v) > 70)) return null;
+  if (!cam.screenFlash || !featureOn("camera:flash") || m === "off" || (m === "auto" && (cam.native ? await nativeLight() : sceneLight(v)) > 70)) return null;
   const el = document.createElement("div"); el.className = "screen-flash"; document.body.append(el);
   // In the phone app the screen also goes to full brightness for the shot (a web page can't).
   const sb = window.Capacitor?.Plugins?.ScreenBrightness;
   if (sb) { try { const { brightness } = await sb.getBrightness(); el.restore = () => sb.setBrightness({ brightness }).catch(() => {}); await sb.setBrightness({ brightness: 1 }); } catch {} }
   await sleep(800);   // time for the camera's exposure to settle on the lit face
   return el;
+}
+// Shutter timer: Off, 3 or 10 seconds, remembered. A second tap on the shutter cancels the countdown.
+const TIMERS = [0, 3, 10];
+const timerSecs = () => { const n = Number(store.get("glowTimer")); return TIMERS.includes(n) ? n : 0; };
+function renderTimerBtn() {
+  const n = timerSecs(), b = $("camTimer");
+  b.innerHTML = icon("timer") + (n ? `<span class="fa" aria-hidden="true">${n}</span>` : "");
+  b.setAttribute("aria-pressed", String(!!n)); b.setAttribute("aria-label", n ? `Timer ${n} seconds` : "Timer off");
+}
+renderTimerBtn();
+$("camTimer").addEventListener("click", () => {
+  const n = TIMERS[(TIMERS.indexOf(timerSecs()) + 1) % TIMERS.length];
+  store.set("glowTimer", String(n)); Platform.haptic(); renderTimerBtn();
+  say(n ? `Timer: ${n} seconds` : "Timer off"); track("setting", { timer: n });
+});
+// Counts down on the photo before the shot. Resolves true to take it, false if cancelled or the camera stopped.
+async function camCountdown() {
+  if (cam.counting) { cam.counting.stop(); return false; }
+  const n = timerSecs();
+  if (!n) return true;
+  const job = (cam.counting = { cancel: false }), gen = cam.gen, el = $("camCount");
+  const stopped = new Promise((r) => { job.stop = () => { job.cancel = true; r(); }; });
+  el.hidden = false;
+  try {
+    for (let i = n; i > 0; i--) {
+      el.textContent = String(i); $("alertLive").textContent = String(i); Platform.haptic();
+      await Promise.race([sleep(1000), stopped]);
+      if (job.cancel || gen !== cam.gen || cam.state !== "live" || cam.shot) { $("alertLive").textContent = "Timer cancelled"; return false; }
+    }
+    return true;
+  } finally { el.hidden = true; el.textContent = ""; cam.counting = null; }
 }
 $("flashBtn").addEventListener("click", async () => {
   if (cam.screenFlash) {
@@ -3369,7 +3503,7 @@ $("flashBtn").addEventListener("click", async () => {
     track("setting", { screen_flash: next }); return;
   }
   cam.torch = !cam.torch;
-  try { await Platform.camera.setTorch(cam.stream, cam.torch); } catch { cam.torch = false; say("Flash isn't available right now.", true); }
+  try { await (cam.native ? NativeCam.setTorch({ on: cam.torch }) : Platform.camera.setTorch(cam.stream, cam.torch)); } catch { cam.torch = false; say("Flash isn't available right now.", true); }
   $("flashBtn").setAttribute("aria-pressed", String(cam.torch)); setIcon($("flashBtn"), cam.torch ? "flash" : "flashoff");
   $("flashBtn").setAttribute("aria-label", cam.torch ? "Flash on" : "Flash off");
 });
@@ -3378,7 +3512,9 @@ $("flashBtn").addEventListener("click", async () => {
 // as the original; the look is baked into a second copy at the same size.
 const canvasBlob = (c, type = "image/jpeg", q = 0.95) => new Promise((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error("Couldn't take the photo."))), type, q));
 $("shutter").addEventListener("click", async () => {
-  const v = $("camVideo"); if (!v.videoWidth || cam.state !== "live" || cam.shot || cam.shooting) return;
+  const v = $("camVideo"); if ((!cam.native && !v.videoWidth) || cam.state !== "live" || cam.shot || cam.shooting) return;
+  if (!(await camCountdown())) return;
+  if ((!cam.native && !v.videoWidth) || cam.state !== "live" || cam.shot || cam.shooting) return;
   track("capture", { look: lookId });
   Platform.haptic("heavy");
   cam.shooting = true;
@@ -3386,6 +3522,7 @@ $("shutter").addEventListener("click", async () => {
   if (!lit) { const flash = document.createElement("div"); flash.className = "cam-flash"; document.body.append(flash); setTimeout(() => flash.remove(), 400); }
   let shot;
   try {
+    if (cam.native) shot = await nativeShot(); else {
     const o = newCanvas(v.videoWidth, v.videoHeight), octx = o.getContext("2d");
     if (cam.facing === "user") { octx.translate(o.width, 0); octx.scale(-1, 1); }
     octx.drawImage(v, 0, 0);
@@ -3401,6 +3538,7 @@ $("shutter").addEventListener("click", async () => {
     const stamp = Date.now();
     shot = { raw: raw.toDataURL("image/jpeg", 0.92), rawBlob: await canvasBlob(raw), processed, w: raw.width, h: raw.height,
       look: looked ? lookName() : null, stamp, saved: false, originalSaved: false, saving: null };
+    }
   } catch {
     say("Couldn't take the photo. Try again.", true); return;
   } finally { if (lit) { lit.remove(); if (lit.restore) lit.restore(); } cam.shooting = false; }
@@ -3546,7 +3684,7 @@ function applyFeatures() {
   // Camera
   $("camAI").hidden = !!cam.shot || !featureOn("camera:ai");
   $("shotAIBtn").hidden = !cam.shot || !featureOn("camera:ai");
-  if (!featureOn("camera:flash")) { cam.screenFlash = false; if (screen === "cameraScreen" && cam.stream && !Platform.camera.torchSupported(cam.stream)) { $("flashBtn").hidden = true; $("flashSpacer").hidden = false; } }
+  if (!featureOn("camera:flash")) { cam.screenFlash = false; if (screen === "cameraScreen" && ((cam.stream && !Platform.camera.torchSupported(cam.stream)) || (cam.native && !cam.nativeTorch))) { $("flashBtn").hidden = true; $("flashSpacer").hidden = false; } }
   document.querySelectorAll("#adjChips [data-set]").forEach((c) => { const g = ADJ_SETTINGS.find((a) => a[0] === c.dataset.set)[2]; c.hidden = !!ADJ_SWITCH[g] && !featureOn(ADJ_SWITCH[g]); });
   document.querySelectorAll("#adjustPanel [role=tab]").forEach((t) => { t.hidden = !!ADJ_SWITCH[t.dataset.adj] && !featureOn(ADJ_SWITCH[t.dataset.adj]); });
   const g = ADJ_SETTINGS.find((a) => a[0] === adjSel)[2];

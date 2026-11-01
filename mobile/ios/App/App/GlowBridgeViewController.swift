@@ -5,5 +5,6 @@ import Capacitor
 class GlowBridgeViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(GlowCutoutPlugin())
+        bridge?.registerPluginInstance(GlowCameraPlugin())
     }
 }

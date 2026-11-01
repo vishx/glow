@@ -149,6 +149,7 @@
       <span class="spacer" id="flashSpacer" aria-hidden="true"></span>
       <p class="wordmark" aria-hidden="true">Glow Studio</p>
       <div class="cam-right">
+        <button class="icon-btn cam-timer" id="camTimer" aria-label="Timer off" aria-pressed="false"></button>
         <button class="cam-ai" id="camAI" aria-pressed="false" aria-label="AI Enhance each photo, 1 credit per photo"><span data-icon="sparkle"></span>AI</button>
         <button class="icon-btn" id="camSettingsBtn" aria-label="Settings"></button>
       </div>
@@ -158,6 +159,7 @@
       <div class="cam-fx" id="camFx" aria-hidden="true" hidden><i class="fx-wash"></i><i></i><i class="fx-leak"></i><i></i><i class="fx-grain"></i><span class="fx-date"></span></div>
       <img id="reviewImg" alt="The photo you just took" hidden>
       <video id="camVideo" playsinline muted hidden></video>
+      <div class="cam-count" id="camCount" aria-hidden="true" hidden></div>
       <div class="vf-state" id="camState" hidden>
         <div class="vf-card">
           <div class="art" id="camStateArt"></div>

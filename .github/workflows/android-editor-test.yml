@@ -4,9 +4,7 @@
 name: Android editor test APK
 
 on:
-  push:
-    branches: [claude/project-thread-l2q9h2]
-    paths: [mobile/**, public/**, .github/workflows/android-editor-test.yml]
+  # Push builds now come from the combined app workflow (android-native-camera.yml / ios-native-camera.yml).
   workflow_dispatch:
 
 permissions:

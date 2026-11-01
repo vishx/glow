@@ -181,6 +181,25 @@ test('camera: selfie screen flash defaults to Auto, cycles On/Off, and lights th
   await p.click('#flashBtn'); eq(await p.evaluate(() => screenFlashMode()), 'auto', 'back to Auto');
 }, { start: 'camera' });
 
+test('camera: shutter timer counts down before the shot, and a second tap cancels it', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  eq(await p.evaluate(() => [timerSecs(), $('camTimer').getAttribute('aria-label')]), [0, 'Timer off'], 'off by default');
+  await p.click('#camTimer'); eq(await p.evaluate(() => [timerSecs(), $('camTimer').getAttribute('aria-label')]), [3, 'Timer 3 seconds'], '3 seconds');
+  await p.click('#camTimer'); eq(await p.evaluate(() => timerSecs()), 10, '10 seconds');
+  await p.click('#shutter'); await settle(400);
+  eq(await p.evaluate(() => [!!cam.shot, $('camCount').hidden, Number($('camCount').textContent) >= 7]), [false, false, true], 'counting, no photo yet');
+  await p.click('#shutter'); await settle(400);
+  eq(await p.evaluate(() => [!!cam.shot, $('camCount').hidden, !!cam.counting]), [false, true, false], 'second tap cancels');
+  await p.click('#camTimer'); await p.click('#camTimer'); eq(await p.evaluate(() => timerSecs()), 3, 'back to 3 seconds');
+  const t0 = Date.now(); await p.click('#shutter');
+  await p.waitForFunction(() => !!cam.shot, null, { timeout: 15000 });
+  assert(Date.now() - t0 > 2500, 'the photo waits for the countdown');
+  eq(await p.evaluate(() => $('camCount').hidden), true, 'countdown cleared');
+  await p.click('#retakeBtn'); await camLive(p);
+  await p.click('#camTimer'); await p.click('#camTimer');
+  eq(await p.evaluate(() => [timerSecs(), store.get('glowTimer')]), [0, '0'], 'cycles 10 then off, remembered');
+}, { start: 'camera' });
+
 test('camera filters: 13 filters, film effects over the preview and in the photo, Strength scales them', async ({ p }) => {
   await p.goto('https://app.test/'); await camLive(p);
   eq(await p.evaluate(() => FILTERS.map((f) => f.id)), ['none', 'glow', 'film', 'warm', 'soft', 'matte', 'clear', 'vivid', 'cool', 'digicam', 'disposable', 'instant', 'mono', 'noir'], 'the filter list');
