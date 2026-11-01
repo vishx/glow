@@ -27,9 +27,11 @@ function same(a: string, b: string) {
 
 // Which plan was bought: the yearly plan has an extra monthly credit cap (migration 007).
 const periodOf = (productId?: string) => (/year|annual/i.test(productId ?? "") ? "yearly" : productId ? "weekly" : null);
-async function setPlan(ids: string[], plan: "pro" | "free", expires: string | null, period: string | null = null) {
+// A free trial (period_type TRIAL) gets Pro with a smaller AI allowance (migration 015). Any later
+// event without TRIAL (the paid renewal) clears it; a trial that ends unpaid expires to free.
+async function setPlan(ids: string[], plan: "pro" | "free", expires: string | null, period: string | null = null, trial = false) {
   for (const id of ids) {
-    const row: Record<string, unknown> = { id, plan, plan_expires_at: plan === "pro" ? expires : null };
+    const row: Record<string, unknown> = { id, plan, plan_expires_at: plan === "pro" ? expires : null, plan_trial: plan === "pro" && trial };
     if (period) row.plan_period = period;
     const { error } = await admin.from("profiles").upsert(row);
     // A user deleted since purchase has no auth row to reference; skip it.
@@ -93,10 +95,10 @@ Deno.serve(async (req) => {
     if (event.type === "TRANSFER") {
       // "Restore purchases" on a new install moves the subscription to the new account.
       const from = uuids(event.transferred_from), to = uuids(event.transferred_to);
-      const { data } = await admin.from("profiles").select("plan, plan_expires_at, plan_period").in("id", from.length ? from : ["00000000-0000-0000-0000-000000000000"])
+      const { data } = await admin.from("profiles").select("plan, plan_expires_at, plan_period, plan_trial").in("id", from.length ? from : ["00000000-0000-0000-0000-000000000000"])
         .eq("plan", "pro").order("plan_expires_at", { ascending: false }).limit(1);
       const expires = data?.[0]?.plan_expires_at ?? null, period = data?.[0]?.plan_period ?? null;
-      if (expires && new Date(expires) > new Date()) { await setPlan(to, "pro", expires, period); await setPlan(from, "free", null); }
+      if (expires && new Date(expires) > new Date()) { await setPlan(to, "pro", expires, period, !!data?.[0]?.plan_trial); await setPlan(from, "free", null); }
       console.log("revenuecat TRANSFER", from.join(","), "->", to.join(","), expires);
       return new Response("ok", { status: 200 });
     }
@@ -105,9 +107,9 @@ Deno.serve(async (req) => {
     if (!ids.length) return new Response("ignored", { status: 200 });
     const expires = event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null;
     if (event.type === "EXPIRATION") await setPlan(ids, "free", null);
-    else if (ACTIVE.has(event.type) && expires) await setPlan(ids, "pro", expires, periodOf(event.product_id));
+    else if (ACTIVE.has(event.type) && expires) await setPlan(ids, "pro", expires, periodOf(event.product_id), event.period_type === "TRIAL");
     else return new Response("ignored", { status: 200 });
-    console.log("revenuecat", event.type, ids.join(","), expires);
+    console.log("revenuecat", event.type, event.period_type ?? "", ids.join(","), expires);
     return new Response("ok", { status: 200 });
   } catch (e) {
     return new Response((e as Error).message, { status: 500 });

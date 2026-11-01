@@ -62,8 +62,10 @@ Deno.serve(async (req) => {
   const v2 = await admin.rpc("ai_allowance", { p_user: user.id }).maybeSingle();
   if (!v2.error && v2.data) {
     const a = v2.data as { plan: string; period: string | null; used: number; quota: number; remaining: number; trial_left: number; ads_left: number; bonus?: number; blocked?: boolean };
-    const { data: pe } = await admin.from("profiles").select("plan_expires_at").eq("id", user.id).maybeSingle();
+    // select("*") so this keeps working before migration 015 adds plan_trial.
+    const { data: pe } = await admin.from("profiles").select("*").eq("id", user.id).maybeSingle();
     return json({ plan: a.plan, period: a.period, expires: a.plan === "pro" ? pe?.plan_expires_at : null, used: a.used, quota: a.quota,
+      inTrial: a.plan === "pro" && !!pe?.plan_trial,
       remaining: a.remaining, trialLeft: a.plan === "pro" ? undefined : a.trial_left, adsLeft: a.ads_left,
       bonus: a.bonus ?? 0, blocked: a.blocked ?? false, v: 2 });
   }

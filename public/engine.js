@@ -8,18 +8,106 @@ const BG_FILLS = {
   bgblush: (ctx, w, h) => gradient(ctx, w, h, ["#ffd6e0", "#ffb3c7", "#f7a1c4"]),
   bgsky: (ctx, w, h) => gradient(ctx, w, h, ["#cfe9ff", "#9fd3ff", "#6fb8ff"]),
 };
-// On-phone filters: canvas filter chains plus an optional color wash.
+// On-phone filters: a canvas filter chain (at most 4 steps, so the native camera can draw it),
+// an optional soft-light color wash, and optional film effects (fx, all 0..1):
+//   fade: lifts the blacks (a white layer); leak: a warm light leak from the right edge;
+//   vignette: darker corners; grain: film grain; date: an orange date stamp, bottom right.
+// Ids never change (saved looks and edits refer to them); names may.
 const FILTERS = [
   { id: "none", name: "None", f: "none" },
-  { id: "glow", name: "Glow", f: "brightness(1.08) contrast(0.95) saturate(1.1)", wash: "rgba(255,190,170,0.10)" },
-  { id: "warm", name: "Warm", f: "saturate(1.2) contrast(1.05)", wash: "rgba(255,160,60,0.12)" },
-  { id: "film", name: "Film", f: "contrast(1.1) saturate(0.85) sepia(0.18)", wash: "rgba(40,80,90,0.08)" },
-  { id: "vivid", name: "Vivid", f: "saturate(1.45) contrast(1.12)" },
-  { id: "soft", name: "Soft", f: "brightness(1.1) contrast(0.85) saturate(0.9)", wash: "rgba(255,255,255,0.08)" },
-  { id: "cool", name: "Cool", f: "saturate(1.05) hue-rotate(-8deg)", wash: "rgba(80,140,255,0.10)" },
-  { id: "mono", name: "Mono", f: "grayscale(1) contrast(1.15)" },
-  { id: "noir", name: "Noir", f: "grayscale(1) contrast(1.5) brightness(0.9)" },
+  { id: "glow", name: "Glow", f: "brightness(1.05) contrast(0.96) saturate(1.04)", wash: "rgba(255,150,175,0.24)", fx: { fade: 0.02 } },
+  { id: "film", name: "Film", f: "contrast(0.93) saturate(0.95) sepia(0.14) brightness(1.03)", wash: "rgba(255,160,80,0.22)",
+    fx: { fade: 0.06, grain: 0.35, vignette: 0.14 } },
+  { id: "warm", name: "Golden", f: "saturate(1.14) contrast(1.04) brightness(1.03)", wash: "rgba(255,150,40,0.18)", fx: { vignette: 0.1 } },
+  { id: "soft", name: "Soft", f: "brightness(1.09) contrast(0.88) saturate(0.92)", wash: "rgba(255,240,236,0.10)", fx: { fade: 0.04 } },
+  { id: "matte", name: "Matte", f: "contrast(0.86) saturate(0.8) brightness(1.02)", wash: "rgba(120,140,150,0.10)", fx: { fade: 0.1, grain: 0.15 } },
+  { id: "clear", name: "Clear", f: "contrast(1.1) saturate(1.1)", wash: "rgba(70,150,190,0.10)" },
+  { id: "vivid", name: "Vivid", f: "saturate(1.38) contrast(1.1)" },
+  { id: "cool", name: "Cool", f: "saturate(0.95) brightness(1.02)", wash: "rgba(80,140,255,0.18)" },
+  { id: "digicam", name: "Digicam", f: "contrast(1.06) saturate(1.12) brightness(1.02) hue-rotate(-4deg)", wash: "rgba(90,170,255,0.10)",
+    fx: { grain: 0.2 } },
+  { id: "disposable", name: "Disposable", f: "saturate(1.18) contrast(1.08) sepia(0.1)", wash: "rgba(255,150,70,0.14)",
+    fx: { fade: 0.04, grain: 0.5, vignette: 0.28, leak: 0.35, date: 1 } },
+  { id: "instant", name: "Instant", f: "contrast(0.9) saturate(0.88) sepia(0.15) brightness(1.03)", wash: "rgba(255,200,150,0.14)",
+    fx: { fade: 0.07, grain: 0.2, vignette: 0.18 } },
+  { id: "mono", name: "Mono", f: "grayscale(1) contrast(1.15)", fx: { grain: 0.15 } },
+  { id: "noir", name: "Noir", f: "grayscale(1) contrast(1.4) brightness(0.95)", fx: { grain: 0.25, vignette: 0.25 } },
 ];
+// A filter at strength t (0..1): every step, the wash and the effects move toward "no change".
+const FILTER_ID = { brightness: 1, contrast: 1, saturate: 1, grayscale: 0, sepia: 0, "hue-rotate": 0 };
+function scaleFilter(flt, t = 1) {
+  if (!flt || t >= 1) return flt;
+  t = Math.max(0, t);
+  const f = flt.f === "none" ? "none" : flt.f.replace(/([a-z-]+)\(([-\d.]+)(deg)?\)/g, (m, fn, v, u) => {
+    const id = FILTER_ID[fn] ?? 0; return `${fn}(${Math.round((id + (parseFloat(v) - id) * t) * 1e4) / 1e4}${u || ""})`;
+  });
+  const wash = flt.wash && flt.wash.replace(/,\s*([\d.]+)\)$/, (m, a) => `,${Math.round(parseFloat(a) * t * 1e4) / 1e4})`);
+  const fx = flt.fx && Object.fromEntries(Object.entries(flt.fx).map(([k, v]) => [k, k === "date" ? (t > 0 ? v : 0) : v * t]));
+  return { ...flt, f, wash, fx };
+}
+// The film grain: one fixed tile of soft gray noise (the same every time, so a photo and its
+// preview match), drawn with "overlay" so mid-gray changes nothing.
+let grainTileC = null;
+function grainTile() {
+  if (grainTileC) return grainTileC;
+  const n = 128, c = newCanvas(n, n), x = c.getContext("2d"), img = x.createImageData(n, n);
+  let s = 1234567;
+  const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  for (let i = 0; i < n * n; i++) {
+    const v = Math.max(0, Math.min(255, Math.round(128 + ((rnd() + rnd() + rnd()) / 3 - 0.5) * 255 * 0.55)));
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  grainTileC = c;
+  return c;
+}
+// Grain cells are this fraction of the photo's short side, so grain looks the same at any size.
+const GRAIN_CELL = 1 / 900;
+function filterDate(when = Date.now()) {
+  const d = new Date(when), p = (n) => String(n).padStart(2, "0");
+  return `'${p(d.getFullYear() % 100)} ${p(d.getMonth() + 1)} ${p(d.getDate())}`;
+}
+// Draws a filter's effects on top of an already filtered picture (w x h) in ctx.
+function paintFx(ctx, w, h, fx, when) {
+  if (!fx) return;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (fx.fade > 0) { ctx.globalCompositeOperation = "source-over"; ctx.fillStyle = `rgba(255,255,255,${fx.fade})`; ctx.fillRect(0, 0, w, h); }
+  if (fx.leak > 0) {
+    const R = Math.max(w, h) * 0.7, g = ctx.createRadialGradient(w * 1.02, h * 0.18, 0, w * 1.02, h * 0.18, R);
+    g.addColorStop(0, `rgba(255,120,40,${fx.leak})`); g.addColorStop(0.45, `rgba(255,70,90,${fx.leak * 0.45})`); g.addColorStop(1, "rgba(255,70,90,0)");
+    ctx.globalCompositeOperation = "screen"; ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  }
+  if (fx.vignette > 0) {
+    // Same as CSS radial-gradient(ellipse farthest-corner, transparent 55%, black v 100%).
+    ctx.globalCompositeOperation = "source-over";
+    ctx.translate(w / 2, h / 2); ctx.scale(w / 2 * Math.SQRT2, h / 2 * Math.SQRT2);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+    g.addColorStop(0.55, "rgba(0,0,0,0)"); g.addColorStop(1, `rgba(0,0,0,${fx.vignette})`);
+    ctx.fillStyle = g; ctx.fillRect(-1, -1, 2, 2);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  if (fx.grain > 0) {
+    const cell = Math.max(1, Math.min(w, h) * GRAIN_CELL), pat = ctx.createPattern(grainTile(), "repeat");
+    ctx.globalCompositeOperation = "overlay"; ctx.globalAlpha = Math.min(1, fx.grain);
+    ctx.scale(cell, cell); ctx.fillStyle = pat; ctx.fillRect(0, 0, w / cell, h / cell);
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+  }
+  if (fx.date) {
+    const s = Math.round(Math.min(w, h) * 0.042), m = Math.round(Math.min(w, h) * 0.05);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.font = `bold ${s}px "Courier New", ui-monospace, monospace`; ctx.textAlign = "right"; ctx.textBaseline = "alphabetic";
+    ctx.shadowColor = "rgba(255,70,0,0.85)"; ctx.shadowBlur = s * 0.35;
+    ctx.fillStyle = "rgba(255,160,70,0.95)"; ctx.fillText(filterDate(when), w - m, h - m);
+  }
+  ctx.restore();
+}
+// A filter on a canvas that already holds the plain picture: chain, then wash, then effects.
+function paintFilter(ctx, w, h, flt, draw, when) {
+  drawWith(ctx, flt.f, draw);
+  if (flt.wash) { ctx.globalCompositeOperation = "soft-light"; ctx.fillStyle = flt.wash; ctx.fillRect(0, 0, w, h); ctx.globalCompositeOperation = "source-over"; }
+  paintFx(ctx, w, h, flt.fx, when);
+}
 
 function gradient(ctx, w, h, stops) {
   const g = ctx.createLinearGradient(0, 0, 0, h);
@@ -1736,11 +1824,11 @@ async function applyCutout(baseSrc, resultSrc) {
 }
 
 // Draws a canvas or image with one of the photo filters baked in.
-function withFilterCanvas(srcEl, filterId, w = srcEl.width, h = srcEl.height) {
-  const flt = FILTERS.find((f) => f.id === filterId) || FILTERS[0];
+// amt (0..1) is the filter's strength.
+function withFilterCanvas(srcEl, filterId, w = srcEl.width, h = srcEl.height, amt = 1) {
+  const flt = scaleFilter(FILTERS.find((f) => f.id === filterId) || FILTERS[0], amt);
   const c = newCanvas(w, h), ctx = c.getContext("2d");
-  drawWith(ctx, flt.f, (y) => y.drawImage(srcEl, 0, 0, w, h));
-  if (flt.wash) { ctx.globalCompositeOperation = "soft-light"; ctx.fillStyle = flt.wash; ctx.fillRect(0, 0, w, h); }
+  paintFilter(ctx, w, h, flt, (y) => y.drawImage(srcEl, 0, 0, w, h));
   return c;
 }
 function withFilter(srcEl, w, h, filterId) { return withFilterCanvas(srcEl, filterId, w, h).toDataURL("image/jpeg", 0.92); }
@@ -1805,7 +1893,7 @@ async function applyLook(src, look) {
   const out = beautyTiled(c, look, Math.max(1, Math.max(c.width, c.height) / 2048));
   if (!out) throw new Error("This phone can't run My Look.");
   const res = newCanvas(c.width, c.height), ctx = res.getContext("2d");
-  ctx.drawImage(withFilterCanvas(out, look.filter), 0, 0);
+  ctx.drawImage(withFilterCanvas(out, look.filter, out.width, out.height, (look.filterAmt ?? 100) / 100), 0, 0);
   if (isPng(src)) { ctx.globalCompositeOperation = "destination-in"; ctx.drawImage(c, 0, 0); }
   return encode(res, src);
 }
@@ -1816,8 +1904,7 @@ const encode = (c, src) => (isPng(src) ? c.toDataURL("image/png") : c.toDataURL(
 // amt (0 to 1) blends the filtered picture over the original; 1 is the full filter.
 async function applyFilter(src, flt, amt = 1) {
   const img = await loadImg(src), c = canvasFor(img), ctx = c.getContext("2d");
-  drawWith(ctx, flt.f, (y) => y.drawImage(img, 0, 0, c.width, c.height));
-  if (flt.wash) { ctx.globalCompositeOperation = "soft-light"; ctx.fillStyle = flt.wash; ctx.fillRect(0, 0, c.width, c.height); ctx.globalCompositeOperation = "source-over"; }
+  paintFilter(ctx, c.width, c.height, flt, (y) => y.drawImage(img, 0, 0, c.width, c.height));
   if (amt >= 1) return encode(c, src);
   const out = newCanvas(c.width, c.height), o = out.getContext("2d");
   o.drawImage(img, 0, 0, c.width, c.height); o.globalAlpha = Math.max(0, amt); o.drawImage(c, 0, 0);

@@ -504,7 +504,7 @@ $("demoNote").addEventListener("click", () => say("AI sample: this portrait is A
 // More (⋯): Revert and Edit another photo, in a small menu above the button.
 function setMore(open) {
   $("moreMenu").hidden = !open; $("moreBtn").setAttribute("aria-expanded", String(open));
-  if (open) { $("otherPhotoBtn").hidden = !!ed.demo; const f = [...$("moreMenu").querySelectorAll("button")].find((b) => !b.disabled && !b.hidden); if (f) f.focus(); }
+  if (open) { $("otherPhotoBtn").hidden = !!ed.demo; $("shareMenuBtn").hidden = $("shareBtn").hidden; $("shareMenuBtn").disabled = $("shareBtn").disabled; const f = [...$("moreMenu").querySelectorAll("button")].find((b) => !b.disabled && !b.hidden && b.offsetParent); if (f) f.focus(); }
 }
 $("moreBtn").addEventListener("click", (e) => { e.stopPropagation(); setMore($("moreMenu").hidden); });
 $("moreMenu").addEventListener("click", () => setMore(false));
@@ -846,6 +846,9 @@ $("revertBtn").addEventListener("click", async () => {
   renderEditor(); say("Reverted to the original. Undo brings your edits back.");
 });
 $("shareBtn").addEventListener("click", () => saveEdit({ share: true }));
+$("shareMenuBtn").addEventListener("click", () => $("shareBtn").click());
+// Phones show a tool's note on one line; a tap shows all of it.
+$("panelNote").addEventListener("click", () => $("panelNote").classList.toggle("open"));
 // Compare starts with the divider down the middle of the face when one is known (the
 // landmarks found by a face tool) and in view, otherwise down the middle of the visible photo.
 function centerDividerOnFace() {
@@ -1773,6 +1776,7 @@ function panelState(t) {
     if (t.id === "colorize" && photoColorful) { apply.disabled = true; note = "Colorize is for black-and-white photos. This photo already has color."; }
     if (MASK_TOOLS.includes(t.id) && !strokes.some((x) => !x.erase) && !short) apply.disabled = true;
   }
+  if ($("panelNote").textContent !== note) $("panelNote").classList.remove("open");
   $("panelNote").textContent = note; fitDock();
 }
 
@@ -2181,7 +2185,7 @@ async function startAiEdit(t) {
       // The server answered, so the edit didn't start. It returns the credit itself if it had taken one.
       job = null; saveJob();
       // Switched off from the admin page since this tool was opened: nothing was charged.
-      if (err.featureOff) { say(err.message, true); refreshFeatures(true); return; }
+      if (err.featureOff) { if (sel === t.id) selectTool(null, { discard: true }); say(err.message, true); refreshFeatures(true); return; }
       // A premium tool on the free plan draws on the one-time trial, which never resets, so say that
       // rather than the server's "come back tomorrow".
       if (err.limit && trialTool(t)) err.message = "You've used your free premium credits. Go Pro or buy a credit pack to keep using premium AI tools, or use the everyday AI tools with your daily credits.";
@@ -2505,6 +2509,7 @@ async function saveEdit(opts) {
     const offer = CONFIG.publicUrl && !shareOffered && featureOn("share:app") ? { label: "Share Glow Studio", run: () => openShareCard(out.data) } : null;
     if (offer) shareOffered = true;
     say(savedText(where, items.length, exportNote(out)), false, offer);
+    if (!share && !ed.demo) introOffer("editor");
     return true;
   } catch (err) {
     if (err && err.name === "AbortError") return false;
@@ -2702,8 +2707,11 @@ function renderCreditsSheet() {
   const twoCredit = andList(aiNames((t) => costOf(t) === 2));
   if (!a) html = `<div class="cr-card"><p>Your balance will show once Glow Studio can reach its server.</p></div>`;
   else if (a.plan === "pro") {
-    html = card(a.remaining, `of ${a.quota} AI credits left`, "Glow Studio Pro includes 40 AI credits each week. Each credit comes back 7 days after you use it.",
-      "Unused credits don't carry over. The yearly plan also has a limit of 80 credits in any 30 days.");
+    html = a.inTrial
+      ? card(a.remaining, `of ${a.quota} AI credits left`, "Your free trial includes 10 AI credits. When your paid plan starts, you get 40 each week.",
+        "Every Pro tool works during the trial. Cancel in your App Store or Google Play subscriptions before it ends and you won't be charged.")
+      : card(a.remaining, `of ${a.quota} AI credits left`, "Glow Studio Pro includes 40 AI credits each week. Each credit comes back 7 days after you use it.",
+        "Unused credits don't carry over. The yearly plan also has a limit of 60 credits in any 30 days.");
     const until = store.get("glowPro"), d = until ? new Date(until) : null;
     if (d && !isNaN(d)) facts.push(fact("star", `Your plan renews or ends on ${d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}`,
       "Change or cancel it any time in your App Store or Google Play subscriptions."));
@@ -2873,8 +2881,8 @@ const PRESET_LOOKS = [
     lips: 40, blush: 35, brows: 30, lipShade: "#b5485d", blushShade: "#e86a8a" },
   { id: "glam", name: "Glam", smooth: 75, bright: 40, warm: 35, filter: "warm", eyes: 30, slim: 30, nose: 20,
     lips: 60, blush: 40, brows: 45, lipShade: "#c0392b", blushShade: "#ff7f98", browShade: "#3b2a20" },
-].map((l) => ({ ...LIVE_DEFAULTS, ...l }));
-const LOOK_KEYS = ["smooth", "bright", "warm", "filter", ...Object.keys(LIVE_DEFAULTS)];
+].map((l) => ({ ...LIVE_DEFAULTS, filterAmt: 100, ...l }));
+const LOOK_KEYS = ["smooth", "bright", "warm", "filter", "filterAmt", ...Object.keys(LIVE_DEFAULTS)];
 const beauty = { ...PRESET_LOOKS[1] };
 let myLooks = [];
 try { myLooks = JSON.parse(store.get("glowLooks") || "[]"); } catch {}
@@ -2887,10 +2895,11 @@ try {
   const l = allLooks().find((x) => x.id === lookId);
   Object.assign(beauty, l || JSON.parse(store.get("glowBeauty") || "{}"));
 } catch {}
+if (beauty.filterAmt == null) beauty.filterAmt = 100;   // looks saved before filter strength existed
 const lookName = () => (allLooks().find((l) => l.id === lookId) || { name: "Custom look" }).name;
 function saveBeauty() { store.set("glowBeauty", JSON.stringify(beauty)); store.set("glowLook", lookId); store.set("glowLooks", JSON.stringify(myLooks)); }
 // Looks saved before the face settings existed have none of them, so those start at zero.
-function useLook(l) { track("look", { id: String(l.id).startsWith("my") ? "my_look" : l.id }); lookId = l.id; Object.assign(beauty, LIVE_DEFAULTS, Object.fromEntries(LOOK_KEYS.filter((k) => k in l).map((k) => [k, l[k]]))); saveBeauty(); renderLooks(); }
+function useLook(l) { track("look", { id: String(l.id).startsWith("my") ? "my_look" : l.id }); lookId = l.id; Object.assign(beauty, LIVE_DEFAULTS, { filterAmt: 100 }, Object.fromEntries(LOOK_KEYS.filter((k) => k in l).map((k) => [k, l[k]]))); saveBeauty(); renderLooks(); }
 
 const cam = { stream: null, facing: store.get("glowFacing") || "user", gl: null, raf: 0, state: "", torch: false, shot: null, thumb: "", gen: 0, opened: 0 };
 const isOriginalLook = () => { const l = camLook(); return !l.smooth && !l.bright && !l.warm && l.filter === "none" && LIVE_KEYS.every((k) => !l[k]); };
@@ -2905,7 +2914,7 @@ function camLook() {
   if (noFilter) l.filter = "none";
   return l;
 }
-const SLIDERS = [["sSmooth", "smooth"], ["sBright", "bright"], ["sWarm", "warm"], ["sEyes", "eyes"], ["sSlim", "slim"], ["sNose", "nose"]];
+const SLIDERS = [["sSmooth", "smooth"], ["sBright", "bright"], ["sWarm", "warm"], ["sEyes", "eyes"], ["sSlim", "slim"], ["sNose", "nose"], ["sFilterAmt", "filterAmt"]];
 // Makeup shows one part at a time (one slider and its shades), so the preview stays large.
 const MAKEUP_PARTS = { lips: ["Lips", "lipShade"], blush: ["Blush", "blushShade"], brows: ["Brows", "browShade"] };
 let makeupPart = "lips";
@@ -2927,8 +2936,8 @@ function renderLooks() {
     return b;
   }));
   renderAdjNote();
-  const flt = FILTERS.find((f) => f.id === camLook().filter) || FILTERS[0];
-  $("camCanvas").style.filter = flt.f === "none" ? "" : flt.f;
+  $("sFilterAmt").closest(".slider").hidden = (beauty.filter || "none") === "none";
+  renderCamFx();
   const chip = (text, on, cls, fn) => {
     const b = document.createElement("button"); b.className = "look" + (cls ? " " + cls : ""); b.textContent = text;
     if (on != null) b.setAttribute("aria-pressed", String(on));
@@ -2977,6 +2986,7 @@ $("sMakeup").addEventListener("input", (e) => {
 SLIDERS.forEach(([id, k]) => $(id).addEventListener("input", (e) => {
   beauty[k] = +e.target.value; e.target.nextElementSibling.textContent = e.target.value; e.target.setAttribute("aria-valuetext", `${e.target.value} percent`);
   if (lookId !== "custom") { lookId = "custom"; renderLooks(); }
+  else if (k === "filterAmt") renderCamFx();
   saveBeauty();
 }));
 
@@ -3018,6 +3028,7 @@ function selectAdj(key) {
   $("adjReset1").addEventListener("click", () => {
     Platform.haptic();
     beauty[adjSel] = DEFAULT_LOOK[adjSel] ?? (adjSel === "filter" ? "none" : 0);
+    if (adjSel === "filter") beauty.filterAmt = 100;
     lookId = LOOK_KEYS.every((k) => DEFAULT_LOOK[k] === beauty[k]) ? DEFAULT_LOOK.id : "custom";
     saveBeauty(); renderLooks();
   });
@@ -3053,12 +3064,50 @@ function renderAdjNote() {
   if ($("adjNote").textContent !== msg) $("adjNote").textContent = msg;
   $("adjNote").hidden = !msg;
 }
+// The camera's filter at its strength, and its film effects drawn over the live preview with the
+// same numbers paintFx() uses for the photo. The native camera draws the color and wash itself.
+function camFilter(l = camLook()) { return scaleFilter(FILTERS.find((f) => f.id === l.filter) || FILTERS[0], (l.filterAmt ?? 100) / 100); }
+var grainURLs = null;   // var: renderCamFx() can run before this line during start-up
+function grainURL(native) {
+  if (!grainURLs) {
+    // The native preview sits behind the page, so blend modes can't reach it: there the grain is
+    // see-through specks (light and dark) instead of an overlay; the photo uses the real overlay.
+    const t = grainTile(), a = newCanvas(t.width, t.height), x = a.getContext("2d");
+    const d = t.getContext("2d").getImageData(0, 0, t.width, t.height), o = x.createImageData(t.width, t.height);
+    for (let i = 0; i < d.data.length; i += 4) {
+      const v = d.data[i], up = v > 128;
+      o.data[i] = o.data[i + 1] = o.data[i + 2] = up ? 255 : 0; o.data[i + 3] = Math.round(Math.abs(v - 128) * 0.9);
+    }
+    x.putImageData(o, 0, 0);
+    grainURLs = { web: t.toDataURL(), native: a.toDataURL() };
+  }
+  return native ? grainURLs.native : grainURLs.web;
+}
+function renderCamFx() {
+  const box = $("camFx"), l = camLook(), flt = camFilter(l);
+  const on = flt.id !== "none" && !cam.compare && !cam.shot && !!((cam.stream && cam.gl) || cam.native);
+  $("camCanvas").style.filter = on && flt.f !== "none" ? flt.f : "";
+  box.hidden = !on;
+  if (!on) return;
+  const fx = flt.fx || {}, vf = $("viewfinder").getBoundingClientRect(), short = Math.min(vf.width, vf.height) || 1;
+  const [wash, fade, leak, vig, grain, date] = box.children;
+  wash.style.background = flt.wash && !cam.native ? flt.wash : "transparent";
+  fade.style.background = fx.fade ? `rgba(255,255,255,${fx.fade})` : "transparent";
+  leak.style.background = fx.leak ? `radial-gradient(circle ${Math.round(Math.max(vf.width, vf.height) * 0.7)}px at 102% 18%, rgba(255,120,40,${fx.leak}), rgba(255,70,90,${fx.leak * 0.45}) 45%, rgba(255,70,90,0) 100%)` : "none";
+  vig.style.background = fx.vignette ? `radial-gradient(ellipse farthest-corner at center, rgba(0,0,0,0) 55%, rgba(0,0,0,${fx.vignette}) 100%)` : "none";
+  grain.style.backgroundImage = fx.grain ? `url(${grainURL(!!cam.native)})` : "none";
+  grain.style.opacity = String(Math.min(1, fx.grain || 0));
+  grain.style.backgroundSize = `${Math.max(1 / (devicePixelRatio || 1), short * GRAIN_CELL) * 128}px`;
+  date.textContent = fx.date ? filterDate() : "";
+  date.style.fontSize = `${short * 0.042}px`; date.style.right = `${short * 0.05}px`; date.style.bottom = `${short * 0.05 - short * 0.042 * 0.22}px`;
+}
+window.addEventListener("resize", () => { if (!$("camFx").hidden) renderCamFx(); });
 // Press and hold the preview to see the camera without the look.
 let compareTimer = 0;
-const endCompare = () => { clearTimeout(compareTimer); cam.compare = false; $("camCompare").hidden = true; };
+const endCompare = () => { clearTimeout(compareTimer); cam.compare = false; $("camCompare").hidden = true; renderCamFx(); };
 $("viewfinder").addEventListener("pointerdown", (e) => {
   if (cam.state !== "live" || cam.shot || !cam.gl || e.target.closest(".vf-state")) return;
-  compareTimer = setTimeout(() => { cam.compare = true; $("camCompare").hidden = false; }, 150);
+  compareTimer = setTimeout(() => { cam.compare = true; $("camCompare").hidden = false; renderCamFx(); }, 150);
 });
 ["pointerup", "pointercancel", "pointerleave"].forEach((n) => $("viewfinder").addEventListener(n, endCompare));
 
@@ -3135,7 +3184,7 @@ async function startCamera() {
   if (torch && cam.torch) Platform.camera.setTorch(cam.stream, true).catch(() => {});
   renderFlashBtn();
   $("camFlip").hidden = (await Platform.camera.count()) < 2;
-  drawFrame();
+  drawFrame(); renderCamFx();
 }
 function stopCamera() {
   cam.gen++;
@@ -3273,7 +3322,7 @@ $("shutter").addEventListener("click", async () => {
     }
     // The photo is what the screen showed: the full-screen preview's crop of the frame.
     const r = visibleRect(o.width, o.height), raw = cropTo(o, r);
-    const processed = looked ? cropTo(withFilterCanvas($("camCanvas"), camLook().filter, o.width, o.height), r).toDataURL("image/jpeg", 0.92) : null;
+    const processed = looked ? withFilterCanvas(cropTo($("camCanvas"), r), camLook().filter, r.w, r.h, (camLook().filterAmt ?? 100) / 100).toDataURL("image/jpeg", 0.92) : null;
     const stamp = Date.now();
     shot = { raw: raw.toDataURL("image/jpeg", 0.92), rawBlob: await canvasBlob(raw), processed, w: raw.width, h: raw.height,
       look: looked ? lookName() : null, stamp, saved: false, originalSaved: false, saving: null };
@@ -3304,7 +3353,7 @@ function cropTo(src, r) {
 }
 function renderReview() {
   const s = cam.shot;
-  $("reviewImg").hidden = !s; $("camCanvas").hidden = !!s;
+  $("reviewImg").hidden = !s; $("camCanvas").hidden = !!s; renderCamFx();
   $("liveControls").hidden = !!s; $("reviewControls").hidden = !s;
   $("camAI").hidden = !!s || !featureOn("camera:ai"); $("shotAIBtn").hidden = !s || !featureOn("camera:ai");
   $("nav").hidden = screen !== "cameraScreen" ? $("nav").hidden : !!s;
@@ -3664,17 +3713,39 @@ function setupPurchases() {
     if (packages.yearly) {
       const y = packages.yearly.product;
       $("priceYearly").textContent = `${y.priceString}/year`;
-      $("yearlyNote").textContent = y.pricePerMonthString ? `About ${y.pricePerMonthString} a month, billed yearly` : "Billed once a year";
+      yearlyTrial = await trialDays(y);
+      $("yearlyNote").textContent = yearlyTrial ? `${yearlyTrial} days free, then ${y.priceString} a year`
+        : y.pricePerMonthString ? `About ${y.pricePerMonthString} a month, billed yearly` : "Billed once a year";
     }
+    $("buyBtn").textContent = buyLabel();
     renderPlanNote();
     return true;
   })().catch((e) => { rcReady = null; console.warn(e); return false; });
   return rcReady;
 }
+// The yearly plan's free trial is set up in the stores (an introductory offer), not here: the app
+// only shows it when the store offers it to this person. Google only offers it to people who can
+// use it; Apple says so through the eligibility check. Returns the trial's length in days, or 0.
+let yearlyTrial = 0;
+async function trialDays(product) {
+  const intro = product && product.introPrice;
+  if (!intro || intro.price !== 0) return 0;
+  const unit = { DAY: 1, WEEK: 7, MONTH: 30 }[intro.periodUnit] || 0, days = unit * (intro.periodNumberOfUnits || 0);
+  if (!days) return 0;
+  if (window.Capacitor.getPlatform() === "ios") {
+    try {
+      const e = await purchases().checkTrialOrIntroductoryPriceEligibility({ productIdentifiers: [product.identifier] });
+      const st = e && e[product.identifier] && e[product.identifier].status;
+      if (st === 1 || st === 3 || st === "INTRO_ELIGIBILITY_STATUS_INELIGIBLE" || st === "INTRO_ELIGIBILITY_STATUS_NO_INTRO_OFFER_EXISTS") return 0;
+    } catch { return 0; }
+  }
+  return days;
+}
 function renderPlanNote() {
   const price = $(plan === "yearly" ? "priceYearly" : "priceWeekly").textContent.replace("/", " per ");
+  const trial = plan === "yearly" && yearlyTrial;
   $("pwNote").textContent = native
-    ? `${price}. Renews automatically every ${plan === "yearly" ? "year" : "week"} until you cancel. Cancel anytime in your App Store or Google Play settings at least 24 hours before renewal. Payment is charged to your store account.`
+    ? `${trial ? `Free for ${yearlyTrial} days, with 10 AI credits to try. Then ${price}` : price}. Renews automatically every ${plan === "yearly" ? "year" : "week"} until you cancel. Cancel anytime in your App Store or Google Play settings at least 24 hours before renewal. Payment is charged to your store account.`
     : "Glow Studio Pro is available in the Glow Studio app for iPhone and Android. The camera and on-device tools stay free here.";
 }
 function openPaywall() {
@@ -3685,6 +3756,20 @@ function openPaywall() {
   setupPurchases();
   track("paywall_view", { plan: account ? account.plan : "", screen });
   $("paywall").showModal();
+}
+// Once per install, at the first "wow" moment (the first Enhance result, or the first photo saved
+// from the editor), show the Pro screen. It closes like any sheet and nothing is locked. Only in the
+// phone app, where Pro can be bought, and never on top of another sheet or after the person moved on.
+function introOffer(where) {
+  if (!native || store.get("glowIntroOffer") || !featureOn("money:intro") || (account && account.plan === "pro")) return;
+  const from = screen;
+  setTimeout(async () => {
+    if (!(await setupPurchases())) return;   // the store isn't set up yet: nothing could be bought
+    if (store.get("glowIntroOffer") || screen !== from || topDialog() || (account && account.plan === "pro")) return;
+    store.set("glowIntroOffer", "1");
+    track("intro_offer", { where });
+    openPaywall();
+  }, where === "enhance" ? 2400 : 2800);
 }
 $("plans").addEventListener("click", (e) => {
   const b = e.target.closest(".plan"); if (!b) return;
@@ -3697,7 +3782,7 @@ $("plans").addEventListener("keydown", (e) => {
   e.preventDefault(); const other = document.querySelector(`.plan:not([data-plan="${plan}"])`); other.click(); other.focus();
 });
 $("pwPacks").addEventListener("click", () => { $("paywall").close(); openPacks(); });
-const buyLabel = () => (plan === "yearly" ? "Continue with yearly" : "Continue with weekly");
+const buyLabel = () => (plan === "yearly" ? (yearlyTrial ? `Start ${yearlyTrial}-day free trial` : "Continue with yearly") : "Continue with weekly");
 // The store tells our server through RevenueCat; check a few times until Pro shows up.
 async function afterPurchase() {
   for (let i = 0; i < 6; i++) {
@@ -3715,7 +3800,8 @@ $("buyBtn").addEventListener("click", async () => {
     await purchases().purchasePackage({ aPackage: packages[plan] });
     track("purchase", { plan });
     $("paywall").close();
-    say((await afterPurchase()) ? "Welcome to Glow Studio Pro. Your 40 weekly AI credits are ready." : "Purchase complete. Pro will switch on within a minute.");
+    say((await afterPurchase()) ? (account.inTrial ? "Your free trial has started. You have 10 AI credits to try every Pro tool."
+      : "Welcome to Glow Studio Pro. Your 40 weekly AI credits are ready.") : "Purchase complete. Pro will switch on within a minute.");
   } catch (err) {
     track("purchase_fail", { plan, cancelled: !!(err && err.userCancelled) });
     if (!(err && err.userCancelled)) say((err && err.message) || "Purchase didn't go through.", true);

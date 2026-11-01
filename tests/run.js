@@ -145,6 +145,30 @@ test('camera: selfie screen flash defaults to Auto, cycles On/Off, and lights th
   await p.click('#flashBtn'); eq(await p.evaluate(() => screenFlashMode()), 'auto', 'back to Auto');
 }, { start: 'camera' });
 
+test('camera filters: 13 filters, film effects over the preview and in the photo, Strength scales them', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  eq(await p.evaluate(() => FILTERS.map((f) => f.id)), ['none', 'glow', 'film', 'warm', 'soft', 'matte', 'clear', 'vivid', 'cool', 'digicam', 'disposable', 'instant', 'mono', 'noir'], 'the filter list');
+  eq(await p.evaluate(() => FILTERS.every((f) => f.f === 'none' || f.f.match(/\(/g).length <= 4)), true, 'every chain fits the native camera');
+  await p.evaluate(() => { $('adjustPanel').hidden = false; selectAdj('filter'); });
+  eq(await p.evaluate(() => [$('camFx').hidden, $('sFilterAmt').closest('.slider').hidden]), [true, true], 'no filter: no effects, no Strength');
+  await p.evaluate(() => [...$('camFilters').children].find((b) => b.textContent === 'Disposable').click());
+  const fx = await p.evaluate(() => { const c = $('camFx').children; return { hidden: $('camFx').hidden, date: c[5].textContent, grain: c[4].style.backgroundImage.startsWith('url('),
+    vig: c[3].style.background.includes('radial-gradient'), canvas: $('camCanvas').style.filter, amt: $('sFilterAmt').value, slider: $('sFilterAmt').closest('.slider').hidden }; });
+  eq([fx.hidden, /^'\d\d \d\d \d\d$/.test(fx.date), fx.grain, fx.vig, fx.canvas.includes('saturate(1.18)'), fx.amt, fx.slider], [false, true, true, true, true, '100', false], 'Disposable over the preview');
+  await p.evaluate(() => { $('sFilterAmt').value = 50; $('sFilterAmt').dispatchEvent(new Event('input')); });
+  eq(await p.evaluate(() => [beauty.filterAmt, $('camCanvas').style.filter.includes('saturate(1.09)'), $('camFx').children[3].style.background.includes('0.14)')]), [50, true, true], 'Strength 50 halves the filter and its effects');
+  await p.evaluate(() => { $('sFilterAmt').value = 100; $('sFilterAmt').dispatchEvent(new Event('input')); });
+  await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot && !!cam.shot.processed, null, { timeout: 15000 });
+  eq(await p.evaluate(() => $('camFx').hidden), true, 'effects leave with the live preview');
+  // The orange date stamp is in the photo's bottom-right corner.
+  const orange = await p.evaluate(async () => { const i = await loadImg(cam.shot.processed), c = newCanvas(i.naturalWidth, i.naturalHeight), x = c.getContext('2d'); x.drawImage(i, 0, 0);
+    const w = Math.round(c.width * 0.3), h = Math.round(Math.min(c.width, c.height) * 0.1), d = x.getImageData(c.width - w, c.height - h, w, h).data; let n = 0;
+    for (let k = 0; k < d.length; k += 4) if (d[k] > 200 && d[k + 1] > 90 && d[k + 1] < 200 && d[k + 2] < 120) n++; return n; });
+  assert(orange > 20, `date stamp in the photo (${orange} orange pixels)`);
+  eq(await p.evaluate(() => { const f = scaleFilter(FILTERS.find((x) => x.id === 'disposable'), 0); return [f.f, f.wash.endsWith(',0)'), f.fx.grain, f.fx.date]; }),
+    ['saturate(1) contrast(1) sepia(0)', true, 0, 0], 'Strength 0 is no change');
+}, { start: 'camera' });
+
 test('camera: streams stop on leaving, backgrounding and flipping, with no duplicates', async ({ p }) => {
   await p.goto('https://app.test/'); await camLive(p);
   eq(await p.evaluate(() => __liveTracks()), 1, 'one live track');
@@ -1024,8 +1048,8 @@ test('layout: stone (light) and ink (dark) surround, photo contained, edited vie
   eq(d.target, [44, 44], 'handle touch target'); assert(d.knob >= 24 && d.knob <= 28, 'visible knob ' + d.knob); eq(d.line, 2, '2px divider');
   assert(Math.abs(d.at - 0.75) < 0.03, 'handle about 75% down: ' + d.at);
   const seg = await p.evaluate(() => { const v = document.querySelector('.viewbar').getBoundingClientRect(), s = $('stage').getBoundingClientRect(), b = $('compareBtn').getBoundingClientRect();
-    return { below: v.top >= s.top && v.bottom <= s.bottom, h: Math.round(b.height), font: parseFloat(getComputedStyle($('compareBtn')).fontSize), one: Math.round(v.height) <= 52 }; });
-  eq([seg.below, seg.h >= 44, seg.one], [true, true, true], 'one compact utility row on the photo, 44px targets'); assert(seg.font >= 13 && seg.font <= 15, 'label size ' + seg.font);
+    return { below: v.top >= 0 && v.bottom <= s.top, h: Math.round(b.height), font: parseFloat(getComputedStyle($('compareBtn')).fontSize), one: Math.round(v.height) <= 52 }; });
+  eq([seg.below, seg.h >= 44, seg.one], [true, true, true], 'one compact utility row in the top bar, off the photo, 44px targets'); assert(seg.font >= 13 && seg.font <= 15, 'label size ' + seg.font);
   await p.focus('#handle'); await p.keyboard.press('ArrowLeft'); eq(await p.getAttribute('#handle', 'aria-valuenow'), '48', 'keyboard moves the divider');
   // Saved file is the photo alone: its own size, no canvas margins.
   await p.click('#applyBtn'); await idle(p); await p.click('#saveBtn'); await downloads(state, 1);
@@ -1413,10 +1437,10 @@ test('layout: on phones the idle editor reserves no panel space, and a closed to
   const sizes = {}, box = async (n) => { await settle(400); sizes[n] = await stageBox(p); };
   const gaps = () => p.evaluate(() => { const g = (s) => document.querySelector(s).getBoundingClientRect(), st = g('#stage'), vb = g('#editorScreen .viewbar'), tl = g('#editorScreen .side > .tools'), tb = g('#editorScreen .tabs');
     const ch = g('#subchips');
-    return { rowOnPhoto: vb.top >= st.top && vb.bottom <= st.bottom, photoToTools: Math.round(tl.top - st.bottom - ch.height), chipsOnTools: Math.round(tl.top - ch.bottom), toolsToTabs: Math.round(tb.top - tl.bottom), tabsToEnd: Math.round(innerHeight - tb.bottom),
+    return { rowOnPhoto: vb.top >= 0 && vb.bottom <= st.top, photoToTools: Math.round(tl.top - st.bottom - ch.height), chipsOnTools: Math.round(tl.top - ch.bottom), toolsToTabs: Math.round(tb.top - tl.bottom), tabsToEnd: Math.round(innerHeight - tb.bottom),
       toolsH: Math.round(tl.height), labels: [...document.querySelectorAll('#editorScreen .side > .tools .group-label')].filter((e) => e.offsetParent).length }; });
   const g = await gaps();
-  eq([g.rowOnPhoto, g.photoToTools, g.chipsOnTools, g.toolsToTabs, g.tabsToEnd, g.labels], [true, 0, 0, 0, 0, 0], 'utility pill floats on the photo; group chips, tool row and tabs stacked under it with no empty space or group labels: ' + JSON.stringify(g));
+  eq([g.rowOnPhoto, g.photoToTools, g.chipsOnTools, g.toolsToTabs, g.tabsToEnd, g.labels], [true, 0, 0, 0, 0, 0], 'utility row in the top bar, off the photo; group chips, tool row and tabs stacked under it with no empty space or group labels: ' + JSON.stringify(g));
   assert(g.toolsH <= 90, 'one compact tool row: ' + g.toolsH);
   await box('home');
   assert(sizes.home[1] >= 520, 'the photo takes the remaining height on a 390x844 phone: ' + sizes.home);
@@ -1650,12 +1674,35 @@ test('nav: group chips jump to their group, follow the row as it scrolls, and dr
   // A group whose tools are all switched off (Hair color, from the admin page) loses its chip.
   await p.click('.tab[data-cat="retouch"]');
   eq(await p.$$eval('#subchips .subchip', (x) => x.map((c) => c.dataset.chip)), ['auto', 'skin', 'face', 'makeup'], 'Hair chip gone with hair color off');
-  // A tool open keeps the chips; Search hides them.
+  // A tool open hides the chips (the photo keeps the room); closing it brings them back; Search hides them.
   await p.click('.tool[data-tool="fsmooth"]'); await idle(p);
-  assert(await p.isVisible('#subchips'), 'chips stay while a tool is open');
-  await p.click('#cancelBtn'); await p.click('#searchBtn');
+  assert(!(await p.isVisible('#subchips')), 'chips step aside while a tool is open');
+  await p.click('#cancelBtn'); await settle(200);
+  assert(await p.isVisible('#subchips'), 'chips back once the tool is closed');
+  await p.click('#searchBtn');
   assert(await p.isHidden('#subchips'), 'no chips in Search');
 }, { viewport: { width: 390, height: 844 }, features: { 'tool:hcolor': false } });
+
+test('layout: on phones the photo gets most of the screen in every editor tool and nothing covers it', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  const m = () => p.evaluate(() => { const i = $('before').getBoundingClientRect(), v = document.querySelector('#editorScreen .viewbar').getBoundingClientRect(), pn = $('panel').getBoundingClientRect();
+    return { share: i.width * i.height / (innerWidth * innerHeight), cover: v.bottom > i.top + 1 && v.top < i.bottom, underPanel: !$('panel').hidden && pn.top < i.bottom - 1, scroll: document.scrollingElement.scrollHeight > innerHeight + 1 }; });
+  const home = await m();
+  assert(home.share >= 0.5 && !home.cover && !home.scroll, 'browsing: ' + JSON.stringify(home));
+  const bad = [];
+  for (const id of ['fsmooth', 'flips', 'glowup', 'filter:glow', 'light', 'bgremove', 'bgscene', 'outfit', 'custom']) {
+    await tool(p, null, null, id); await settle(250);
+    const r = await m(); if (r.share < (['flips', 'glowup', 'bgscene', 'outfit'].includes(id) ? 0.4 : 0.5) || r.cover || r.underPanel || r.scroll) bad.push([id, r]);
+  }
+  eq(bad, [], 'every tool leaves the photo at least half the screen (40% for the tools with three rows of controls), uncovered');
+  // A tool's note shows one line; a tap shows all of it.
+  await tool(p, null, null, 'custom'); await settle(200);
+  const lines = () => p.evaluate(() => Math.round($('panelNote').getBoundingClientRect().height / parseFloat(getComputedStyle($('panelNote')).lineHeight)));
+  eq(await lines(), 1, 'one line'); await p.click('#panelNote'); assert((await lines()) >= 2, 'tap shows the whole note');
+  // Share moves into More on a 390px phone and still shares.
+  await p.click('#cancelBtn'); await p.click('#moreBtn');
+  eq(await p.evaluate(() => [getComputedStyle($('shareBtn')).display, $('shareMenuBtn').offsetParent !== null]), ['none', true], 'Share is in More');
+}, { viewport: { width: 390, height: 844 } });
 
 test('nav: Compare taps through split, original and back; holding shows the original; keys work', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
@@ -2584,6 +2631,81 @@ test('packs: in the phone app a pack is bought through the store and its credits
   } } };
 } });
 
+
+// ---------- Pricing 2026-11-01: yearly free trial, Pro screen at the first result (migration 015) ----------
+// RevenueCat stand-in for the phone app. window.__rc picks the platform and the trial answers.
+const rcInit = () => {
+  const o = window.__rcOpts || {};
+  window.Capacitor = { isNativePlatform: () => true, getPlatform: () => o.ios ? 'ios' : 'android', Plugins: { Purchases: {
+    configure: async () => {}, logIn: async () => {}, getProducts: async () => ({ products: [] }),
+    checkTrialOrIntroductoryPriceEligibility: async ({ productIdentifiers }) => Object.fromEntries(productIdentifiers.map((id) => [id, { status: o.iosStatus ?? 2 }])),
+    getOfferings: async () => ({ current: { availablePackages: [
+      { packageType: 'WEEKLY', product: { identifier: 'glow_pro_weekly', priceString: '$4.99' } },
+      { packageType: 'ANNUAL', product: { identifier: 'glow_pro_yearly', priceString: '$49.99', pricePerMonthString: '$4.17',
+        introPrice: o.noTrial ? null : { price: 0, priceString: '$0.00', periodUnit: 'DAY', periodNumberOfUnits: 3 } } }] } }),
+  } } };
+};
+const openPw = async (p) => { eq(await p.evaluate(async () => { CONFIG.revenuecatAndroid = 'goog_test'; CONFIG.revenuecatIos = 'appl_test'; rcReady = null; openPaywall(); return await rcReady; }), true, 'store set up'); };
+
+test('pricing: the yearly free trial shows its terms when the store offers it; weekly has none; the yearly cap reads 60', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
+  await openPw(p);
+  eq(await p.evaluate(() => [$('yearlyNote').textContent, $('buyBtn').textContent, $('pwNote').textContent.split('.')[0]]),
+    ['3 days free, then $49.99 a year', 'Start 3-day free trial', 'Free for 3 days, with 10 AI credits to try'], 'trial terms on yearly');
+  assert(/Then \$49\.99 per year\. Renews automatically every year/.test(await p.textContent('#pwNote')), 'price after the trial: ' + await p.textContent('#pwNote'));
+  await p.click('.plan[data-plan="weekly"]');
+  eq(await p.evaluate(() => [$('buyBtn').textContent, /Free for/.test($('pwNote').textContent)]), ['Continue with weekly', false], 'weekly: no trial');
+  assert((await p.textContent('.pw-free')).includes('up to 60 credits a month'), 'yearly cap 60');
+  eq(state.errs, [], 'no page errors');
+}, { init: rcInit });
+
+test('pricing: no trial wording when Apple says this person can\'t have it, or the store has no trial', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
+  await openPw(p);
+  eq(await p.evaluate(() => [$('yearlyNote').textContent, $('buyBtn').textContent, /Free for/.test($('pwNote').textContent)]),
+    ['About $4.17 a month, billed yearly', 'Continue with yearly', false], 'iPhone, used the trial before');
+}, { init: `window.__rcOpts = { ios: true, iosStatus: 1 }; (${rcInit})();` });
+
+test('pricing: a Pro trial account shows its 10 trial credits, not 40 a week', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
+  await p.evaluate(() => { account = { plan: 'pro', used: 2, quota: 10, remaining: 8, bonus: 0, inTrial: true }; renderCreditsSheet(); });
+  const t = await p.textContent('#creditsBody');
+  assert(/of 10 AI credits left/.test(t) && /free trial includes 10 AI credits/.test(t) && !/80 credits/.test(t), t);
+});
+
+test('pricing: the Pro screen opens once, by itself, after the first Enhance result in the phone app (store set up)', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => { CONFIG.revenuecatAndroid = 'goog_test'; rcReady = null; });
+  const sample = async () => {
+    await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+    await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  };
+  await sample();
+  eq(await p.evaluate(() => $('paywall').open), false, 'not on top of the reveal');
+  await p.waitForSelector('#paywall[open]', { timeout: 6000 });
+  await p.evaluate(() => $('paywall').close());
+  await p.evaluate(() => closeEnhResult()); await p.waitForFunction(() => screen === 'enhanceHome');
+  await sample(); await settle(3500);
+  eq(await p.evaluate(() => $('paywall').open), false, 'only once');
+  await p.evaluate(() => flushTelemetry()); await settle(500);
+  eq(state.events.filter((e) => e.name === 'intro_offer').length, 1, 'tracked once');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, files: demoFiles(), init: rcInit });
+
+test('pricing: no Pro screen by itself on the web', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  await settle(3500);
+  eq(await p.evaluate(() => $('paywall').open), false, 'web: no paywall');
+}, { start: 'enhance', camera: false, files: demoFiles() });
+test('pricing: no Pro screen by itself in the phone app before the store keys are added', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhSample'); await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
+  await settle(3500);
+  eq(await p.evaluate(() => [$('paywall').open, localStorage.getItem('glowIntroOffer')]), [false, null], 'no paywall, offer still pending');
+}, { start: 'enhance', camera: false, files: demoFiles(), init: rcInit });
 
 // ---------- Feature switches (features.js, migration 013) ----------
 const shownTools = (p) => p.evaluate(() => [...document.querySelectorAll('#tools .tool[data-tool]')].map((b) => b.dataset.tool));

@@ -19,7 +19,7 @@
 // The build number sent with each check, so a switch can require a newer app (min build).
 // Bump it (YYYYMMDD, or YYYYMMDD + one more digit for a second release that day) whenever a
 // release changes how a switchable feature behaves.
-const APP_BUILD = 202610329;
+const APP_BUILD = 202610332;
 
 // Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
 // another tool, or (body reshaping) didn't fit Glow Studio. Their code stays so saved drafts still
@@ -78,13 +78,10 @@ const FEATURE_AREAS = [
     ["tool:mylook", "My Look (camera looks)", true, "In Search."],
   ]],
   ["Editor · Adjust", [
-    ["edit:areas", "Full / Person / Background chips", true, "Lets every Adjust slider change only the person or only the background."],
-    ["tool:crop", "Crop and rotate", true], ["tool:exposure", "Exposure", true], ["tool:light", "Brightness", true], ["tool:contrast", "Contrast", true],
-    ["tool:highlights", "Highlights", true], ["tool:shadows", "Shadows", true], ["tool:whites", "Whites", true], ["tool:blacks", "Blacks", true],
-    ["tool:color", "Saturation", true], ["tool:vibrance", "Vibrance", true], ["tool:warmth", "Temperature", true], ["tool:tint", "Tint", true],
-    ["tool:texture", "Texture", true], ["tool:clarity", "Clarity", true], ["tool:dehaze", "Dehaze", true], ["tool:detail", "Sharpen", true],
-    ["tool:lnoise", "Reduce noise", true], ["tool:cnoise", "Reduce color noise", true],
-    ["tool:fade", "Fade", true], ["tool:vignette", "Vignette", true], ["tool:grain", "Grain", true],
+    ["tool:crop", "Crop and rotate", true], ["tool:light", "Light", true], ["tool:contrast", "Contrast", true],
+    ["tool:highlights", "Highlights", true], ["tool:shadows", "Shadows", true], ["tool:color", "Color", true],
+    ["tool:vibrance", "Vibrance", true], ["tool:warmth", "Warmth", true], ["tool:tint", "Tint", true],
+    ["tool:detail", "Detail", true], ["tool:fade", "Fade", true], ["tool:vignette", "Vignette", true], ["tool:grain", "Grain", true],
   ]],
   ["Editor · Background", [
     ["tool:bgblur", "Portrait blur", true], ["tool:bgremove", "Cutout", true], ["tool:bgcolor", "Color background", true],
@@ -99,6 +96,7 @@ const FEATURE_AREAS = [
   ["Money and sharing", [
     ["money:packs", "Credit packs", true, "Buying 10, 30 or 80 credits."],
     ["money:ads", "Watch an ad for a credit", true, "Free plan."],
+    ["money:intro", "Pro screen at the first result", true, "Once per install, after the first Enhance result or editor save. Phone app only."],
     ["share:app", "Share Glow Studio card", true, "The QR card offered after saving."],
   ]],
   ["Retired tools", RETIRED_TOOLS.map((id) => ["tool:" + id, RETIRED_NAMES[id] || id, false])],

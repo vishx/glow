@@ -21,7 +21,7 @@ const proEditOn = () => featureOn("enhance:pro") && featureOn("tool:pro");
 const ENH_COLORS = ["glow", "warm", "vivid", "soft", "cool", "film", "mono"];
 const ENH_TOGGLES = [["face", "Face Enhancer", "face", ["Disabled", "1", "2", "3"], 2], ["bg", "Background Enhancer", "upscale", ["Disabled", "1", "2", "3"], 2],
   ["retouch", "Face Retouch", "fsmooth", ["Disabled", "1", "2", "3"], 0],
-  ["colors", "Colors", "palette", ["Disabled", "Auto", ...ENH_COLORS.map((id) => FILTERS.find((f) => f.id === id).name)], 0],
+  ["colors", "Colors", "palette", ["Disabled", "Auto", ...ENH_COLORS.map((id) => (id === "warm" ? "Warm" : FILTERS.find((f) => f.id === id).name))], 0],
   ["blur", "Background Blur", "bgblur", ["Disabled", "Low", "Medium", "High"], 0]];
 const ENH_MIX = [0, 0.4, 1, 1], ENH_DETAIL = { face: 0.9, bg: 1.1 };   // level 3's extra detail, faces gentler
 // Face Retouch: the editor's own skin and eye steps, each level stronger (Glow Up's one-pass recipe).
@@ -589,6 +589,7 @@ function showEnhResult() {
     store.set("glow.compareZoomHint", "1");
     say(matchMedia("(pointer: coarse)").matches ? "Pinch or double-tap to zoom in" : "Scroll or double-click to zoom in");
   }, 1300);
+  introOffer("enhance");   // once per install: the Pro screen, after the reveal and the zoom hint
 }
 setIcon($("enhClose"), "close"); setIcon($("enhDownload"), "save"); setIcon($("enhKnob"), "compare");
 
