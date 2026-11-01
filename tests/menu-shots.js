@@ -9,7 +9,7 @@ async function run(name, opts) {
   const { browser, p } = await H.launch({ start: 'editor', ...opts });
   const shot = (n) => p.screenshot({ path: path.join(out, `${tag}-${name}-${n}.png`) });
   await p.goto('https://app.test/');
-  await p.click('#sampleBtn'); await p.waitForFunction(() => screen === 'editorScreen' && $('before').naturalWidth > 0); await p.waitForTimeout(900);
+  await p.click('#sampleBtn:visible, #qaSampleBtn:visible'); await p.waitForFunction(() => screen === 'editorScreen' && $('before').naturalWidth > 0); await p.waitForTimeout(900);
   const tabs = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')].filter((t) => !t.hidden).map((t) => t.dataset.cat));
   for (const c of tabs) { await p.click(`.tab[data-cat="${c}"]`); await p.waitForTimeout(400); await shot(c); }
   await p.click('.tab[data-cat="looks"]'); await p.waitForTimeout(200);

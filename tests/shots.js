@@ -23,7 +23,7 @@ const tag = `${scheme}-${W}x${Ht}` + (prep ? '-TESTASSET' : '');
   await p.goto('https://app.test/'); await p.waitForTimeout(800);
   for (let i = 1; i <= 3; i++) { await p.waitForTimeout(700); await shot(`onboarding-${i}`); if (i < 3) await p.click('#obActions .btn'); }
   await p.click('text=Choose a photo'); await p.waitForTimeout(600); await shot('editor-landing');
-  await p.click('#sampleBtn'); await p.waitForSelector('#editorScreen:not([hidden])'); await p.waitForTimeout(1200); await shot('sample');
+  await p.click('#sampleBtn:visible, #qaSampleBtn:visible'); await p.waitForSelector('#editorScreen:not([hidden])'); await p.waitForTimeout(1200); await shot('sample');
   const first = await p.$('#tools .tool'); if (first) { await first.click(); await p.waitForTimeout(2500); await shot('sample-tool'); }
   if (await p.isVisible('#cancelBtn')) { await p.click('#cancelBtn'); await p.waitForTimeout(300); }
   { await p.click('#stage'); await p.click('.views [data-view="split"]').catch(() => {}); await p.waitForTimeout(400); await shot('sample-compare'); }

@@ -75,6 +75,33 @@
   .ed-looks span:first-child { opacity: 1; }
 }
 
+/* ---------- Editor home: Quick actions ----------
+   Six photo tiles under Choose a photo (Photoshop Express-style home, kept to 3 x 2). The hero gives
+   up some height so the tiles show without scrolling on a phone. Tiles: real results on the sample. */
+#editorHome.has-qa .ed-hero { flex: 0 0 auto; height: clamp(150px, calc(100vh - 560px), 340px); min-height: 0; }
+#editorHome.has-qa .ed-hero .cap { padding-top: 40px; }
+.qa-sec { flex: none; }
+.qa-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); margin: 2px 2px var(--s3); }
+.qa-head h2 { margin: 0; font: 500 1.3125rem/1.75rem var(--font-display); font-variation-settings: "SOFT" 100; color: var(--text); }
+.qa-sample { border: 0; background: none; padding: 6px 0; min-height: 36px; color: var(--muted); font: 600 0.875rem/1.25rem var(--font); text-decoration: underline; text-decoration-color: transparent; }
+.qa-sample:hover { color: var(--text); text-decoration-color: currentColor; }
+.qa-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3) var(--s3); }
+.qa { display: grid; align-content: start; gap: 6px; padding: 0; border: 0; background: none; color: var(--text); text-align: center; font: 600 0.8125rem/1.125rem var(--font); -webkit-tap-highlight-color: transparent; }
+.qa-ph { position: relative; display: block; aspect-ratio: 1; border-radius: 20px; overflow: hidden; background: var(--surface-2); border: 1px solid var(--line);
+  transition: transform .18s cubic-bezier(.3, 1.4, .5, 1), box-shadow .2s; }
+.qa-ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.qa-ph i { position: absolute; left: 7px; bottom: 7px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: rgb(13 13 16 / .72); color: #ffe3a3; box-shadow: 0 0 0 1px rgb(255 217 138 / .35); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.qa-ph i svg { width: 17px; height: 17px; }
+.qa-ph em { position: absolute; right: 7px; top: 7px; padding: 2px 7px; border-radius: 999px; font: 700 0.625rem/0.9375rem var(--font); font-style: normal; letter-spacing: .04em;
+  background: linear-gradient(135deg, #ffe3a3, #f3b54a); color: #1a1206; }
+.qa:active .qa-ph { transform: scale(.96); }
+.qa:focus-visible { outline: none; }
+.qa:focus-visible .qa-ph { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px #f3b54a; }
+.qa-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (min-width: 720px) { .qa-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); } }
+@media (prefers-reduced-motion: reduce) { .qa-ph { transition: none; } }
+
 /* ---------- Pick sheet: the photo, the kind of edit, one big button ----------
    2026-10-31 redesign (competitor research: Remini, Lensa, Facetune, PhotoRoom, Picsart, EPIK).
    Phones get a full-screen page: the photo on a soft, blurred copy of itself (no grey bars), and a

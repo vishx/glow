@@ -13,7 +13,7 @@ const out = process.argv[2] || path.join(__dirname, 'out', 'sample-flow.webm');
   await q.goto('https://app.test/'); await pause(1200);
   const before = { used: env.state.used, posts: env.state.posts.length };
   const mark = reqs.length;
-  await q.click('#sampleBtn'); await q.waitForFunction(() => ed.demo && $('before').naturalWidth > 0); await pause(1500);
+  await q.click('#sampleBtn:visible, #qaSampleBtn:visible'); await q.waitForFunction(() => ed.demo && $('before').naturalWidth > 0); await pause(1500);
   for (const id of ['retouch', 'pro', 'relight', 'golden', 'hair_bob', 'toon3d']) {
     await q.click(`.tool[data-tool="${id}"]`); await q.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x, id); await pause(900);
     if (id === 'retouch' || id === 'relight') {

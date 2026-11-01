@@ -17,7 +17,7 @@ async function run(name, opts) {
   });
   const res = {};
   await p.goto('https://app.test/');
-  await p.click('#sampleBtn'); await p.waitForFunction(() => screen === 'editorScreen' && $('before').naturalWidth > 0); await p.waitForTimeout(900);
+  await p.click('#sampleBtn:visible, #qaSampleBtn:visible'); await p.waitForFunction(() => screen === 'editorScreen' && $('before').naturalWidth > 0); await p.waitForTimeout(900);
   await shot('sample'); res.sample = await photoBox();
   await p.click('.tab[data-cat="retouch"]'); await p.click('.subchip[data-chip="face"]'); await p.click('.tool[data-tool="fslim"]');
   await p.waitForFunction(() => !busyNow && reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 });

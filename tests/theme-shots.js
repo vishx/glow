@@ -11,7 +11,7 @@ async function run(scheme) {
   await p.goto('https://app.test/');
   await p.waitForTimeout(2500); await shot('1-enhance');
   await p.evaluate(() => go('editor')); await p.waitForTimeout(600);
-  await p.click('#sampleBtn'); await p.waitForFunction(() => screen === 'editorScreen' && $('before').naturalWidth > 0); await p.waitForTimeout(900);
+  await p.click('#sampleBtn:visible, #qaSampleBtn:visible'); await p.waitForFunction(() => screen === 'editorScreen' && $('before').naturalWidth > 0); await p.waitForTimeout(900);
   await p.click('.tab[data-cat="retouch"]').catch(() => {}); await p.waitForTimeout(400);
   await p.click('.tool[data-tool]').catch(() => {}); await p.waitForTimeout(900); await shot('2-editor');
   await p.evaluate(() => openPaywall()); await p.waitForTimeout(900); await shot('3-paywall');

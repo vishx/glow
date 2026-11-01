@@ -19,7 +19,7 @@
 // The build number sent with each check, so a switch can require a newer app (min build).
 // Bump it (YYYYMMDD, or YYYYMMDD + one more digit for a second release that day) whenever a
 // release changes how a switchable feature behaves.
-const APP_BUILD = 202610335;
+const APP_BUILD = 202610336;
 
 // Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
 // another tool, or (body reshaping) didn't fit Glow Studio. Their code stays so saved drafts still
@@ -43,6 +43,7 @@ const FEATURE_AREAS = [
   ["Main screens", [
     ["screen:camera", "Camera tab", true, "Hides the Camera tab and its shortcuts. The app opens on Enhance instead."],
     ["screen:editor", "Editor tab", true, "Hides the Editor tab and every Edit button that leads to it."],
+    ["editor:quick", "Quick actions on Editor home", true, "The photo tiles under Choose a photo. Each tile is also hidden when its tool is off."],
   ]],
   ["Enhance", [
     ["enhance:retouch", "Face Retouch switch", true, "On the Enhance result."],

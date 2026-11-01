@@ -267,6 +267,12 @@
         <button class="btn glow" id="pickBtn"><span data-icon="wand"></span>Choose a photo</button>
         <button class="btn quiet" id="sampleBtn">Try it on the sample · Free</button>
       </div>
+      <!-- Quick actions: one tap picks a photo and opens the editor in that tool (as Photoshop Express's
+           home). Tiles come from QUICK_ACTIONS in app.js; a tile whose tool is switched off is hidden. -->
+      <section class="qa-sec" id="quickActions" hidden aria-labelledby="qaTitle">
+        <div class="qa-head"><h2 id="qaTitle">Quick actions</h2><button class="qa-sample" id="qaSampleBtn">Try on the sample</button></div>
+        <div class="qa-grid" id="qaGrid"></div>
+      </section>
       <div class="enh-meta"><button id="homeCredits" hidden></button></div>
     </div>
   </section>

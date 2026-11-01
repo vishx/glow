@@ -387,14 +387,54 @@ async function openFile(f, name, opts = {}) {
   const r = await readPhoto(f, name || f.name);
   await openPhoto(r.work, r.original, { name: name || f.name, ...opts });
 }
-async function pickAndOpen() {
+async function pickAndOpen(toolId) {
   if (!(await confirmReplace())) return;
   const f = await Platform.pickPhoto("file");
   if (!f) return;
-  try { await openFile(f); } catch (err) { say(err.message, true); }
+  try { await openFile(f); } catch (err) { say(err.message, true); return; }
+  if (toolId) openToolAfterPick(toolId);
 }
-$("pickBtn").addEventListener("click", pickAndOpen);
+$("pickBtn").addEventListener("click", () => pickAndOpen());
 $("sampleBtn").addEventListener("click", openSample);
+$("qaSampleBtn").addEventListener("click", openSample);
+
+// ---------- Quick actions (Editor home) ----------
+// Photo tiles for the most wanted edits (as Photoshop Express, Meitu and Hypic show on their home):
+// a tap picks a photo and opens the editor straight in that tool, on its own tab. Six at most, so the
+// home stays calm. "tools" lists fallbacks: the first one that is switched on and can run is used.
+const QUICK_ACTIONS = [
+  { key: "smooth", label: "Smooth skin", icon: "fsmooth", tools: ["fsmooth"] },
+  { key: "looks", label: "Looks", icon: "looks", tools: ["filter:glow", "filter:film"] },
+  { key: "tryon", label: "Try on", icon: "outfit", tools: ["outfit"], ai: true },
+  { key: "newbg", label: "New background", icon: "bgscene", tools: ["bgscene", "bgphoto"], ai: true },
+  { key: "remove", label: "Remove", icon: "erase", tools: ["erase"], ai: true },
+  { key: "oldphoto", label: "Fix old photo", icon: "enhance", tools: ["enhance", "colorize"], ai: true },
+];
+const qaTool = (q) => q.tools.find((id) => TOOL[id] && toolOn(id) && (TOOL[id].kind !== "ai" || aiLive(id)));
+function renderQuickActions() {
+  const list = featureOn("editor:quick") ? QUICK_ACTIONS.filter(qaTool) : [];
+  $("quickActions").hidden = !list.length;
+  $("sampleBtn").hidden = !!list.length;   // the sample link moves next to the Quick actions title
+  $("editorHome").classList.toggle("has-qa", !!list.length);
+  const sig = list.map((q) => q.key + qaTool(q)).join();
+  const grid = $("qaGrid"); if (grid.dataset.sig === sig) return;
+  grid.dataset.sig = sig; grid.textContent = "";
+  list.forEach((q) => {
+    const id = qaTool(q), t = TOOL[id], ai = q.ai && TOOL[id].kind === "ai";
+    const b = document.createElement("button");
+    b.className = "qa"; b.dataset.qa = q.key;
+    b.setAttribute("aria-label", `${q.label}: choose a photo${ai ? ", AI, uses credits" : ""}`);
+    b.innerHTML = `<span class="qa-ph"><img src="/samples/demo-v2/quick/${q.key}.webp" alt="" loading="lazy" decoding="async">${ai ? "<em>AI</em>" : ""}<i>${icon(q.icon)}</i></span><span class="qa-name">${q.label}</span>`;
+    b.addEventListener("click", () => { try { track("quick_action", { action: q.key, tool: id }); } catch {} pickAndOpen(id); });
+    grid.append(b);
+  });
+}
+// Opens the editor on its own photo, then the tool on its tab.
+function openToolAfterPick(id) {
+  if (!id || !TOOL[id] || screen !== "editorScreen") return;
+  const home = tabFor(id); if (home) { cat = home[0]; store.set("glowCat", cat); }
+  selectTool(id);
+}
 
 // ---------- Try a sample: a free demo ----------
 // The sample is an AI-generated portrait. On-device tools work on it normally. AI tools show
@@ -579,6 +619,7 @@ function renderHome() {
     $("recoveredTitle").textContent = `Your ${recovered.title} result is ready`;
   }
   renderCredits();
+  renderQuickActions();
 }
 
 // ---------- Editor rendering ----------
@@ -3570,6 +3611,7 @@ function applyFeatures() {
   // The server's own "nothing was charged" message, shown a moment ago, already explains; keep it.
   if (sel && TOOL[sel] && !toolOn(sel) && !(job && job.tool === sel)) { const t = TOOL[sel]; selectTool(null, { discard: true }); if (Date.now() - featureOffSaidAt > 8000) say(`${t.title} isn't available right now.`); }
   if (screen === "editorScreen") { renderTabs(); renderTools(); renderPanel(); }
+  if (screen === "editorHome") renderQuickActions();
 }
 var featureOffSaidAt = 0;   // var: applyFeatures may run before this line on start-up
 Features.onChange(applyFeatures);

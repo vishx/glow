@@ -457,7 +457,7 @@ const demoManifest = (() => {
 const demoFiles = (extra = {}) => ({ '/samples/demo-v2/manifest.json': { json: demoManifest }, '/samples/demo-v2/test-pro.jpg': fx('demo-test-a.jpg'),
   '/samples/demo-v2/test-golden.jpg': fx('demo-test-b.jpg'), ...extra });
 async function openDemo(p) {
-  await p.goto('https://app.test/'); await p.click('#sampleBtn');
+  await p.goto('https://app.test/'); await p.click('#sampleBtn:visible, #qaSampleBtn:visible');
   await p.waitForFunction(() => screen === 'editorScreen' && ed.demo && $('before').naturalWidth > 0, null, { timeout: 15000 });
   await p.waitForFunction(() => demo && !demo.loading); await settle(300);
 }
@@ -1058,7 +1058,7 @@ async function stageBox(p) { return p.evaluate(() => { const r = $('stage').getB
 for (const [w, h] of [[390, 844], [320, 640], [412, 915]]) test(`layout: categories never resize the photo at ${w}×${h} (photo and sample)`, async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, fx('transparent.png'));
   for (const run of ['photo', 'sample']) {
-    if (run === 'sample') { await p.click('#backBtn'); await p.click('#sampleBtn'); await p.waitForFunction(() => ed.demo && $('before').naturalWidth > 0); }
+    if (run === 'sample') { await p.click('#backBtn'); await p.click('#sampleBtn:visible, #qaSampleBtn:visible'); await p.waitForFunction(() => ed.demo && $('before').naturalWidth > 0); }
     const boxes = {};
     for (const c of ['retouch', 'looks', 'edit', 'bg', 'ai']) { await p.click(`.tab[data-cat="${c}"]`); await settle(120); boxes[c] = await stageBox(p); }
     const first = JSON.stringify(boxes.retouch);
@@ -2966,6 +2966,36 @@ test('features: Enhance Batch off hides its link; switching it back on brings ev
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false, features: { 'enhance:batch': false } });
 
+
+// Quick actions on the Editor home: six photo tiles; each picks a photo and opens that tool on its tab.
+test('quick actions: six tiles on the Editor home, the sample link moves beside the title, a tile opens its tool on its tab', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => typeof go === 'function' && !!screen, null, { timeout: 15000 });
+  await p.evaluate(() => go('editor')); await p.waitForFunction(() => screen === 'editorHome'); await settle(300);
+  eq(await p.evaluate(() => [...document.querySelectorAll('#qaGrid .qa')].map((b) => b.dataset.qa)), ['smooth', 'looks', 'tryon', 'newbg', 'remove', 'oldphoto'], 'tiles');
+  eq(await p.evaluate(() => [$('quickActions').hidden, $('sampleBtn').hidden, $('qaSampleBtn').offsetParent !== null]), [false, true, true], 'sample link beside the title');
+  eq(await p.evaluate(() => [...document.querySelectorAll('#qaGrid .qa-ph em')].length), 4, 'four AI chips');
+  assert(await p.evaluate(() => [...document.querySelectorAll('#qaGrid img')].every((i) => i.complete && i.naturalWidth > 0)), 'tile images load');
+  // On a phone the whole grid fits above the tab bar without scrolling.
+  const fit = await p.evaluate(() => { const g = $('qaGrid').getBoundingClientRect(), n = $('nav').getBoundingClientRect(); return [Math.round(g.bottom), Math.round(n.top)]; });
+  assert(fit[0] <= fit[1], `grid ends above the tab bar (${fit})`);
+  for (const [qa, toolId, tab] of [['tryon', 'outfit', 'looks'], ['smooth', 'fsmooth', 'retouch'], ['remove', 'erase', 'ai']]) {
+    if (qa !== 'tryon') { await p.evaluate(() => { selectTool(null, { discard: true }); showScreen('editorHome'); }); await settle(200); }
+    const fc = p.waitForEvent('filechooser'); await p.click(`#qaGrid .qa[data-qa="${qa}"]`); await (await fc).setFiles(fx('tall-916.jpg'));
+    await p.waitForFunction((x) => screen === 'editorScreen' && sel === x, toolId, { timeout: 30000 });
+    eq(await p.evaluate(() => cat), tab, `${qa} opens on its tab`);
+    await idle(p);
+  }
+  eq(state.errs, [], 'no page errors');
+});
+
+test('quick actions: switched off, the tiles go and the sample button comes back; a tool switched off drops its tile', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => typeof go === 'function' && !!screen, null, { timeout: 15000 });
+  await p.evaluate(() => go('editor')); await p.waitForFunction(() => screen === 'editorHome' && Features.checkedAt > 0, null, { timeout: 10000 }); await settle(300);
+  eq(await p.evaluate(() => [$('quickActions').hidden, $('sampleBtn').hidden]), [true, false], 'all off');
+  state.features = { 'tool:outfit': false }; await p.evaluate(() => refreshFeatures(true)); await settle(300);
+  eq(await p.evaluate(() => [$('quickActions').hidden, [...document.querySelectorAll('#qaGrid .qa')].map((b) => b.dataset.qa).join()]), [false, 'smooth,looks,newbg,remove,oldphoto'], 'Try on tile gone');
+  eq(state.errs, [], 'no page errors');
+}, { features: { 'editor:quick': false } });
 
 (async () => {
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
