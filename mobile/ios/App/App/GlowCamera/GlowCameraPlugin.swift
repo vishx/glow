@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreMotion
 import Capacitor
 import MetalKit
 import UIKit
@@ -19,6 +20,7 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         CAPPluginMethod(name: "setTorch", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getLight", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "capture", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getOrientation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
     ]
     private static let stillMax: CGFloat = 4032
@@ -42,7 +44,7 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
     private var _mirror = true
     private var _light: Float = 255
     private var _awaitingFrame = false
-    private var _capture: (call: CAPPluginCall, look: Look, processed: Bool, aspect: Double, mirror: Bool)?
+    private var _capture: (call: CAPPluginCall, look: Look, processed: Bool, aspect: Double, mirror: Bool, deg: Int)?
     private func locked<T>(_ f: () -> T) -> T { frameLock.lock(); defer { frameLock.unlock() }; return f() }
     var look: Look { get { locked { _look } } set { locked { _look = newValue } } }
     var mirror: Bool { get { locked { _mirror } } set { locked { _mirror = newValue } } }
@@ -56,6 +58,52 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
     private var stillRenderer: BeautyRenderer?
     private var sentSeen = false, sentReady = false, sentFailed = false, forceFace = false
     private var faceSentAt: Double = 0
+
+    // How the phone is held: 0, 90, 180 or 270 degrees turned clockwise from upright (90 = its left
+    // side on top), the same numbers as Android. Read from the motion sensor, so it works even with
+    // the iPhone's rotation lock on, like the iPhone camera. The picture stays upright; only the
+    // icons turn, a photo taken sideways is saved sideways, and faces are looked for upright.
+    private let motion = CMMotionManager()
+    private var _devDeg = 0
+    private var devDeg: Int { get { locked { _devDeg } } set { locked { _devDeg = newValue } } }
+    /// Degrees (clockwise) to turn the upright, unmirrored frame so a face in it stands upright.
+    private func faceTurn() -> Int { let d = devDeg; return mirror ? (360 - d) % 360 : d }
+
+    /// Main queue only.
+    private func holdUpright(_ on: Bool) {
+        GlowBridgeViewController.portraitOnly = on
+        if let vc = bridge?.viewController {
+            if #available(iOS 16.0, *) {
+                vc.setNeedsUpdateOfSupportedInterfaceOrientations()
+                if on, let scene = vc.view.window?.windowScene {
+                    scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) { _ in }
+                }
+            } else {
+                UIViewController.attemptRotationToDeviceOrientation()
+            }
+        }
+        if on {
+            guard motion.isAccelerometerAvailable, !motion.isAccelerometerActive else { return }
+            motion.accelerometerUpdateInterval = 0.2
+            motion.startAccelerometerUpdates(to: OperationQueue.main) { [weak self] data, _ in
+                guard let self = self, let a = data?.acceleration else { return }
+                if abs(a.z) > 0.8 { return }   // lying flat: keep the last one
+                var o = Int((atan2(a.x, -a.y) * 180 / .pi).rounded())
+                o = (o + 360) % 360
+                let d = self.devDeg
+                let diff = abs(((o - d) % 360 + 540) % 360 - 180)
+                if diff < 60 { return }        // a dead zone, so it doesn't flicker near 45°
+                let nd = ((o + 45) / 90 % 4) * 90
+                if nd == d { return }
+                self.devDeg = nd
+                self.notifyListeners("orientation", data: ["deg": nd])
+            }
+        } else {
+            motion.stopAccelerometerUpdates()
+        }
+    }
+
+    @objc func getOrientation(_ call: CAPPluginCall) { call.resolve(["deg": devDeg]) }
 
     public override func load() {
         NotificationCenter.default.addObserver(forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: nil) { _ in
@@ -97,7 +145,8 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
             let my = self.sessionId
             self.pendingStart?.reject("Replaced by a newer start", "stopped")
             self.pendingStart = nil
-            guard self.showView() else { call.reject("Couldn't show the camera", "error"); return }
+            self.holdUpright(true)
+            guard self.showView() else { self.holdUpright(false); call.reject("Couldn't show the camera", "error"); return }
             self.sessionQueue.async {
                 let front = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
                 let back = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
@@ -178,6 +227,7 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
     private func stopAll() {
         sessionQueue.async { if self.session.isRunning { self.session.stopRunning() } }
         hideView()
+        holdUpright(false)
         tracker.reset()
         frameLock.lock(); frame = nil; frameLock.unlock()
     }
@@ -248,7 +298,7 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         if !look.needsFace {
             if tracker.snap().pts != nil { tracker.reset(); sendFace() }
         } else if tracker.canSend(now) {
-            tracker.detect(pb, W: W, H: H) { [weak self] in self?.sendFace() }
+            tracker.detect(pb, W: W, H: H, turn: faceTurn()) { [weak self] in self?.sendFace() }
         }
     }
 
@@ -311,7 +361,7 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
             let mir = self.mirror
             let busy: Bool = self.locked {
                 if self._capture != nil { return true }
-                self._capture = (call, lk, processed, aspect, mir); return false
+                self._capture = (call, lk, processed, aspect, mir, self._devDeg); return false
             }
             guard !busy else { call.reject("The camera isn't ready"); return }
             guard self.session.isRunning else { self.locked { self._capture = nil }; call.reject("The camera isn't ready"); return }
@@ -323,18 +373,18 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
     }
 
     public func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        guard let job: (call: CAPPluginCall, look: Look, processed: Bool, aspect: Double, mirror: Bool) = locked({ let j = _capture; _capture = nil; return j }) else { return }
+        guard let job: (call: CAPPluginCall, look: Look, processed: Bool, aspect: Double, mirror: Bool, deg: Int) = locked({ let j = _capture; _capture = nil; return j }) else { return }
         guard error == nil, let data = photo.fileDataRepresentation(), let ui = UIImage(data: data) else {
             job.call.reject("Couldn't take the photo."); return
         }
         captureQueue.async {
-            do { try self.finish(job.call, ui, job.look, job.processed, job.aspect, job.mirror) }
+            do { try self.finish(job.call, ui, job.look, job.processed, job.aspect, job.mirror, job.deg) }
             catch { job.call.reject("Couldn't take the photo.") }
         }
     }
 
     /// Upright, cropped to what the screen showed, mirrored like the preview; the look baked into a second copy.
-    private func finish(_ call: CAPPluginCall, _ ui: UIImage, _ lk: Look, _ processed: Bool, _ aspect: Double, _ mir: Bool) throws {
+    private func finish(_ call: CAPPluginCall, _ ui: UIImage, _ lk: Look, _ processed: Bool, _ aspect: Double, _ mir: Bool, _ deg: Int) throws {
         let s = min(1, GlowCameraPlugin.stillMax / max(ui.size.width, ui.size.height))
         var W = (ui.size.width * s).rounded(), H = (ui.size.height * s).rounded()
         var cw = W, ch = H
@@ -362,13 +412,14 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         let rawURL = dir.appendingPathComponent("glowcam-\(stamp)-raw.jpg")
         guard let rawData = raw.jpegData(compressionQuality: 0.92) else { throw NSError(domain: "GlowCamera", code: 3) }
         try rawData.write(to: rawURL)
-        var res: [String: Any] = ["raw": rawURL.path, "width": Int(W), "height": Int(H)]
+        // deg: how the phone was held; the page turns the photo to match.
+        var res: [String: Any] = ["raw": rawURL.path, "width": Int(W), "height": Int(H), "deg": deg]
         if processed, let cg = crop.cgImage {
             let sm = min(1, 960 / max(W, H))
             let small = UIGraphicsImageRenderer(size: CGSize(width: (W * sm).rounded(), height: (H * sm).rounded()), format: fmt).image { _ in
                 crop.draw(in: CGRect(x: 0, y: 0, width: (W * sm).rounded(), height: (H * sm).rounded()))
             }
-            let P = tracker.detectStill(small, W: Int(W), H: Int(H))
+            let P = tracker.detectStill(small, W: Int(W), H: Int(H), turn: mir ? (360 - deg) % 360 : deg)
             if stillRenderer == nil { stillRenderer = BeautyRenderer(tracker: tracker) }
             if let out = stillRenderer?.renderStill(cg, P: P, look: lk, mirror: mir),
                let data = UIImage(cgImage: out).jpegData(compressionQuality: 0.92) {

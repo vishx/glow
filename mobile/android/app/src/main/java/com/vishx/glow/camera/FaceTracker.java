@@ -2,6 +2,7 @@ package com.vishx.glow.camera;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Matrix;
 import android.os.SystemClock;
 import android.util.Log;
 import com.google.mediapipe.framework.image.BitmapImageBuilder;
@@ -70,21 +71,46 @@ final class FaceTracker {
         return ready && !busy && now - sentAt >= (s > 0 ? (hot ? 90 : 30) : (hot ? 400 : 200));
     }
 
-    /** Finds the face in a small upright copy of a W×H frame; the bitmap is recycled here. */
-    void detect(Bitmap upright, int frameW, int frameH, Listener l) {
+    /** Normalised points found in a copy turned `turn` degrees clockwise, back in the unturned picture. */
+    static float[] unturn(float[] n, int turn) {
+        if (n == null || turn == 0) return n;
+        float[] o = new float[n.length];
+        for (int i = 0; i < n.length; i += 2) {
+            float x = n[i], y = n[i + 1];
+            if (turn == 90) { o[i] = y; o[i + 1] = 1 - x; }
+            else if (turn == 180) { o[i] = 1 - x; o[i + 1] = 1 - y; }
+            else { o[i] = 1 - y; o[i + 1] = x; }   // 270
+        }
+        return o;
+    }
+    /** The bitmap turned `turn` degrees clockwise (the same one when 0); recycles the input when it makes a new one. */
+    static Bitmap turned(Bitmap b, int turn, boolean recycle) {
+        if (turn == 0) return b;
+        Matrix m = new Matrix();
+        m.postRotate(turn);
+        Bitmap t = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), m, true);
+        if (recycle && t != b) b.recycle();
+        return t;
+    }
+
+    /** Finds the face in a small upright copy of a W×H frame; the bitmap is recycled here.
+     *  turn: degrees clockwise the picture is turned first, so a face in a sideways-held phone is upright for the model. */
+    void detect(Bitmap upright0, int frameW, int frameH, int turn, Listener l) {
         busy = true;
         sentAt = SystemClock.uptimeMillis();
         exec.execute(() -> {
             float[] norm = null;
+            Bitmap upright = upright0;
             try {
+                upright = turned(upright0, turn, true);
                 long ts = Math.max(lastTs + 1, SystemClock.uptimeMillis());
                 lastTs = ts;
                 FaceLandmarkerResult r = video.detectForVideo(new BitmapImageBuilder(upright).build(), ts);
-                norm = first(r);
+                norm = unturn(first(r), turn);
             } catch (Throwable t) {
                 Log.w(TAG, "face detect", t);
             } finally {
-                upright.recycle();
+                if (!upright.isRecycled()) upright.recycle();
             }
             take(norm, frameW, frameH);
             busy = false;
@@ -140,11 +166,13 @@ final class FaceTracker {
     void forgetIfGone() { synchronized (lock) { if (seen == 0) pts = null; } }
 
     /** Finds the face in a still photo (a small copy is enough: the points come back as fractions). */
-    float[] detectStill(Bitmap small, int W, int H) {
+    float[] detectStill(Bitmap small0, int W, int H, int turn) {
         try {
             synchronized (this) {
                 if (still == null) still = make(RunningMode.IMAGE);
-                float[] n = first(still.detect(new BitmapImageBuilder(small).build()));
+                Bitmap small = turned(small0, turn, false);
+                float[] n = unturn(first(still.detect(new BitmapImageBuilder(small).build())), turn);
+                if (small != small0) small.recycle();
                 if (n == null) return null;
                 for (int i = 0; i < n.length; i += 2) { n[i] *= W; n[i + 1] *= H; }
                 return n;

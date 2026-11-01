@@ -139,6 +139,42 @@ test('camera: full-screen preview, and the photo is cropped to what the screen s
   assert(Math.abs(a - r.cw / r.ch) < 0.01, 'photo shape matches the preview: ' + [a, r.cw / r.ch]);
 }, { start: 'camera' });
 
+test('camera: held sideways, the web camera keeps the people in view (controls in a side column)', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  const r = await p.evaluate(() => {
+    const b = (id) => $(id).getBoundingClientRect(), vf = b('viewfinder'), cc = b('camControls');
+    const clickable = ['camTimer', 'camAI', 'camSettingsBtn', 'shutter', 'camGallery'].filter((id) => !$(id).hidden).every((id) => {
+      const q = b(id); return $(id).contains(document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2)); });
+    return { vfW: vf.width, vfH: vf.height, ccLeft: cc.left, ccTop: cc.top, clickable };
+  });
+  assert(r.ccLeft >= r.vfW * 0.55, 'controls sit in a right-hand column, leaving most of the picture clear: ' + JSON.stringify(r));
+  assert(r.ccTop >= 48, 'the controls column starts below the top bar: ' + r.ccTop);
+  assert(r.clickable, 'top bar and capture buttons are all tappable');
+  await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot);
+  const a = await p.evaluate(() => cam.shot.w / cam.shot.h);
+  assert(a > 1 && Math.abs(a - r.vfW / r.vfH) < 0.01, 'a landscape photo shaped like the screen: ' + [a, r.vfW / r.vfH]);
+}, { start: 'camera', viewport: { width: 844, height: 390 } });
+test('camera: phone app held sideways turns the icons the short way and saves the photo the way the phone was held', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  const r = await p.evaluate(async () => {
+    const rot = () => $('camFlip').style.getPropertyValue('--cam-rot'), seq = [];
+    for (const d of [90, 0, 270, 180, 90, 0]) { setCamDeg(d); seq.push(rot()); }
+    setCamDeg(0);
+    // A 4×2 picture with a red top-left pixel, turned 90°, 180° and 270° clockwise.
+    const c = newCanvas(4, 2), x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, 4, 2); x.fillStyle = '#f00'; x.fillRect(0, 0, 1, 1);
+    const src = c.toDataURL('image/png'), out = {};
+    for (const d of [90, 180, 270]) {
+      const t = await turnPhoto(src, d), px = t.getContext('2d').getImageData(0, 0, t.width, t.height).data, red = [];
+      for (let i = 0; i < px.length; i += 4) if (px[i] > 200 && px[i + 1] < 60) red.push([(i / 4) % t.width, Math.floor(i / 4 / t.width)]);
+      out[d] = { w: t.width, h: t.height, red };
+    }
+    return { seq, out };
+  });
+  eq(r.seq, ['-90deg', '0deg', '90deg', '180deg', '270deg', '360deg'], 'icons counter-turn, always by 90° at a time');
+  eq(r.out[90], { w: 2, h: 4, red: [[1, 0]] }, '90° clockwise: top-left goes to top-right');
+  eq(r.out[180], { w: 4, h: 2, red: [[3, 1]] }, '180°: top-left goes to bottom-right');
+  eq(r.out[270], { w: 2, h: 4, red: [[0, 3]] }, '270° clockwise: top-left goes to bottom-left');
+}, { start: 'camera' });
 test('camera: AI Enhance button on review runs Enhance for 1 credit, closing goes back to the camera', async ({ p, state }) => {
   await p.goto('https://app.test/'); await camLive(p);
   assert(await p.isVisible('#camAI'), 'AI switch visible'); eq(await p.getAttribute('#camAI', 'aria-pressed'), 'false', 'AI off by default');

@@ -3363,6 +3363,7 @@ function stopCamera() {
   if (cam.nativeOn) {
     cam.nativeOn = false; cam.native = null;
     document.documentElement.classList.remove("native-cam");
+    setCamDeg(0);
     NativeCam.stop().catch(() => {});
   }
   if (cam.stream) cam.stream.getTracks().forEach((t) => t.stop());
@@ -3385,6 +3386,28 @@ function hookNativeCam() {
     renderAdjNote();
   });
   NativeCam.addListener("error", (m) => reportError((m && m.text) || "Native camera error"));
+  NativeCam.addListener("orientation", (m) => setCamDeg(m && m.deg));
+}
+// How the phone is held (0, 90, 180, 270: degrees turned clockwise), like a phone's own camera:
+// the camera screen stays upright and only the icons turn to stay level; a photo taken sideways is
+// saved sideways. The page itself is held upright by the app while the camera is open.
+const CAM_TURN_IDS = ["flashBtn", "camTimer", "camAI", "camSettingsBtn", "camGallery", "camFlip", "camCount"];
+function setCamDeg(d) {
+  d = [0, 90, 180, 270].includes(d) ? d : 0;
+  if (cam.deg === d) return;
+  // The shortest way round (270 → 0 turns 90°, not 270°), so the icons don't spin the long way.
+  const prev = cam.iconRot || 0, want = d === 0 ? 0 : 360 - d;
+  const step = ((want - prev) % 360 + 540) % 360 - 180;
+  cam.deg = d; cam.iconRot = prev + step;
+  for (const id of CAM_TURN_IDS) { const el = $(id); if (el) el.style.setProperty("--cam-rot", `${cam.iconRot}deg`); }
+  document.documentElement.classList.toggle("cam-sideways", d !== 0);
+}
+// A photo turned `deg` degrees clockwise (to save it the way the phone was held).
+async function turnPhoto(src, deg) {
+  const img = await loadImg(src), w = img.naturalWidth, h = img.naturalHeight;
+  const side = deg === 90 || deg === 270, c = newCanvas(side ? h : w, side ? w : h), x = c.getContext("2d");
+  x.translate(c.width / 2, c.height / 2); x.rotate(deg * Math.PI / 180); x.drawImage(img, -w / 2, -h / 2);
+  return c;
 }
 async function startNativeCamera(gen) {
   hookNativeCam();
@@ -3410,6 +3433,7 @@ async function startNativeCamera(gen) {
     return;
   }
   cam.native = { w: r.width, h: r.height, faceCY: null, sent: "" }; renderCamFx();
+  NativeCam.getOrientation().then((o) => cam.native && setCamDeg(o.deg)).catch(() => {});
   document.documentElement.classList.add("native-cam");
   cam.opened++;
   camState("live");
@@ -3451,8 +3475,17 @@ async function nativeShot() {
   const vf = $("viewfinder").getBoundingClientRect(), looked = !isOriginalLook();
   const r = await NativeCam.capture({ ...nativeCamState({ posY: cam.posY == null ? 0.5 : cam.posY }), processed: looked, aspect: vf.width && vf.height ? vf.width / vf.height : 0 });
   const blobOf = async (path) => (await fetch(window.Capacitor.convertFileSrc(path))).blob();
-  const rawBlob = await blobOf(r.raw);
+  let rawBlob = await blobOf(r.raw);
   let processed = r.processed ? await fileData(await blobOf(r.processed)) : null;
+  // Held sideways: the camera took it upright (portrait), so turn it the way the phone was held
+  // (before the film effects, so the date stamp and light leak sit level in the saved photo).
+  const deg = [90, 180, 270].includes(r.deg) ? r.deg : 0;
+  let w = r.width, h = r.height;
+  if (deg) {
+    const rc = await turnPhoto(await fileData(rawBlob), deg);
+    rawBlob = await canvasBlob(rc, "image/jpeg", 0.92); w = rc.width; h = rc.height;
+    if (processed) processed = (await turnPhoto(processed, deg)).toDataURL("image/jpeg", 0.92);
+  }
   // The native camera bakes in the color and wash; the film effects (grain, date...) go on here.
   const fx = camFilter().fx;
   if (processed && fx && Object.values(fx).some((v) => v > 0)) {
@@ -3460,7 +3493,7 @@ async function nativeShot() {
     x.drawImage(img, 0, 0); paintFx(x, c.width, c.height, fx);
     processed = c.toDataURL("image/jpeg", 0.92);
   }
-  return { raw: await fileData(rawBlob), rawBlob, processed, w: r.width, h: r.height, look: processed ? lookName() : null,
+  return { raw: await fileData(rawBlob), rawBlob, processed, w, h, deg, look: processed ? lookName() : null,
     stamp: Date.now(), saved: false, originalSaved: false, saving: null };
 }
 async function nativeLight() { try { return (await NativeCam.getLight()).light; } catch { return 255; } }

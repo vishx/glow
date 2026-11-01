@@ -1,5 +1,6 @@
 import Foundation
 import CoreVideo
+import CoreImage
 import UIKit
 import MediaPipeTasksVision
 
@@ -58,15 +59,41 @@ final class FaceTracker {
         return ready && !busy && now - sentAt >= gap
     }
 
-    func detect(_ pb: CVPixelBuffer, W fw: Int, H fh: Int, _ onChange: @escaping () -> Void) {
+    private static let ci = CIContext(options: [.useSoftwareRenderer: false])
+    /// The picture turned `turn` degrees clockwise.
+    static func turned(_ im: CIImage, _ turn: Int) -> UIImage? {
+        // Core Image's y axis points up, so a clockwise turn on screen is a negative angle.
+        var r = im.transformed(by: CGAffineTransform(rotationAngle: -CGFloat(turn) * .pi / 180))
+        r = r.transformed(by: CGAffineTransform(translationX: -r.extent.origin.x, y: -r.extent.origin.y))
+        guard let cg = ci.createCGImage(r, from: CGRect(x: 0, y: 0, width: r.extent.width.rounded(), height: r.extent.height.rounded())) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+    /// Normalised points found in a copy turned `turn` degrees clockwise, back in the unturned picture.
+    static func unturn(_ n: [Float]?, _ turn: Int) -> [Float]? {
+        guard var o = n, turn != 0 else { return n }
+        for i in stride(from: 0, to: o.count, by: 2) {
+            let x = o[i], y = o[i + 1]
+            switch turn {
+            case 90: o[i] = y; o[i + 1] = 1 - x
+            case 180: o[i] = 1 - x; o[i + 1] = 1 - y
+            default: o[i] = 1 - y; o[i + 1] = x   // 270
+            }
+        }
+        return o
+    }
+
+    /// turn: degrees clockwise the picture is turned first, so a face in a sideways-held phone is upright for the model.
+    func detect(_ pb: CVPixelBuffer, W fw: Int, H fh: Int, turn: Int = 0, _ onChange: @escaping () -> Void) {
         busy = true
         sentAt = CACurrentMediaTime()
         queue.async {
             var norm: [Float]?
-            if let v = self.video, let img = try? MPImage(pixelBuffer: pb, orientation: .up) {
+            let img: MPImage? = turn == 0 ? (try? MPImage(pixelBuffer: pb, orientation: .up))
+                : FaceTracker.turned(CIImage(cvPixelBuffer: pb), turn).flatMap { try? MPImage(uiImage: $0) }
+            if let v = self.video, let img = img {
                 let ts = max(self.lastTs + 1, Int(CACurrentMediaTime() * 1000))
                 self.lastTs = ts
-                norm = FaceTracker.first(try? v.detect(videoFrame: img, timestampInMilliseconds: ts))
+                norm = FaceTracker.unturn(FaceTracker.first(try? v.detect(videoFrame: img, timestampInMilliseconds: ts)), turn)
             }
             self.take(norm, fw, fh)
             self.busy = false
@@ -111,10 +138,13 @@ final class FaceTracker {
     func snap() -> Snap { lock.lock(); defer { lock.unlock() }; return Snap(pts: pts, W: W, H: H, seen: seen) }
 
     /// Finds the face in a still photo; the points come back in the photo's pixels.
-    func detectStill(_ image: UIImage, W: Int, H: Int) -> [Float]? {
+    func detectStill(_ image: UIImage, W: Int, H: Int, turn: Int = 0) -> [Float]? {
         return queue.sync {
             if still == nil { still = try? make(.image) }
-            guard let s = still, let img = try? MPImage(uiImage: image), var n = FaceTracker.first(try? s.detect(image: img)) else { return nil }
+            var src = image
+            if turn != 0, let cg = image.cgImage, let t = FaceTracker.turned(CIImage(cgImage: cg), turn) { src = t }
+            guard let s = still, let img = try? MPImage(uiImage: src),
+                  var n = FaceTracker.unturn(FaceTracker.first(try? s.detect(image: img)), turn) else { return nil }
             for i in stride(from: 0, to: n.count, by: 2) { n[i] *= Float(W); n[i + 1] *= Float(H) }
             return n
         }

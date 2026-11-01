@@ -4,7 +4,10 @@ import android.Manifest;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.content.pm.ActivityInfo;
 import android.graphics.Matrix;
+import android.view.OrientationEventListener;
+import android.view.Surface;
 import android.opengl.GLSurfaceView;
 import android.os.Handler;
 import android.os.Looper;
@@ -96,6 +99,49 @@ public class GlowCameraPlugin extends Plugin {
     private long faceSentAt;
     private volatile boolean forceFace;
 
+    // How the phone is held, like a phone's own camera: the camera screen stays upright (portrait)
+    // and only the icons turn; a photo taken sideways is saved sideways (the page turns it), and
+    // faces are looked for the right way up. 0, 90, 180 or 270: degrees the phone is turned
+    // clockwise from upright (90 = its left side on top).
+    private volatile int devDeg = 0;
+    private OrientationEventListener tilt;
+    private Integer lockedFrom;   // the screen orientation to go back to when the camera closes
+
+    /** Degrees (clockwise) to turn the upright, unmirrored frame so a face in it stands upright. */
+    private int faceTurn() { int d = devDeg; return mirror ? (360 - d) % 360 : d; }
+
+    private void holdUpright(boolean on) {
+        android.app.Activity a = getActivity();
+        if (a == null) return;
+        if (on) {
+            if (lockedFrom == null) lockedFrom = a.getRequestedOrientation();
+            a.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+            if (tilt == null) {
+                tilt = new OrientationEventListener(getContext()) {
+                    @Override public void onOrientationChanged(int o) {
+                        if (o == ORIENTATION_UNKNOWN) return;   // lying flat: keep the last one
+                        int d = devDeg, diff = Math.abs(((o - d) % 360 + 540) % 360 - 180);
+                        if (diff < 60) return;                  // a dead zone, so it doesn't flicker near 45°
+                        int nd = ((o + 45) / 90 % 4) * 90;
+                        if (nd == d) return;
+                        devDeg = nd;
+                        JSObject e = new JSObject();
+                        e.put("deg", nd);
+                        notifyListeners("orientation", e);
+                    }
+                };
+            }
+            if (tilt.canDetectOrientation()) tilt.enable();
+        } else {
+            if (tilt != null) tilt.disable();
+            if (lockedFrom != null) { a.setRequestedOrientation(lockedFrom); lockedFrom = null; }
+        }
+    }
+
+    @PluginMethod public void getOrientation(PluginCall call) {
+        JSObject o = new JSObject(); o.put("deg", devDeg); call.resolve(o);
+    }
+
     @Override public void load() {
         tracker = new FaceTracker(getContext());
         // When the phone gets warm, face tracking runs less often so it cools down instead of slowing to a crawl.
@@ -131,6 +177,7 @@ public class GlowCameraPlugin extends Plugin {
             final int my = ++session;
             if (pendingStart != null) { pendingStart.reject("Replaced by a newer start", "stopped"); pendingStart = null; }
             try {
+                holdUpright(true);
                 showView();
             } catch (Throwable t) {
                 Log.e(TAG, "view", t);
@@ -158,7 +205,8 @@ public class GlowCameraPlugin extends Plugin {
                     ImageAnalysis.Builder ab = new ImageAnalysis.Builder()
                         .setResolutionSelector(previewRes)
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888);
+                        .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                        .setTargetRotation(Surface.ROTATION_0);   // frames and photos always come portrait-upright
                     // A steady 30 frames a second at most (60 only heats the phone); it may slow down in the dark for a brighter picture.
                     new Camera2Interop.Extender<>(ab).setCaptureRequestOption(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(15, 30));
                     ImageAnalysis analysis = ab.build();
@@ -170,6 +218,7 @@ public class GlowCameraPlugin extends Plugin {
                     imageCapture = new ImageCapture.Builder()
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                         .setResolutionSelector(stillRes)
+                        .setTargetRotation(Surface.ROTATION_0)
                         .build();
                     provider.unbindAll();
                     synchronized (frameLock) { hasFrame = false; frameNew = false; }
@@ -206,6 +255,7 @@ public class GlowCameraPlugin extends Plugin {
         camera = null;
         imageCapture = null;
         hideView();
+        holdUpright(false);
         tracker.reset();
         synchronized (frameLock) { hasFrame = false; frameNew = false; }
     }
@@ -292,7 +342,7 @@ public class GlowCameraPlugin extends Plugin {
                 if (tracker.snap().pts != null) { tracker.reset(); sendFace(); }
             } else if (tracker.canSend(now)) {
                 Bitmap small = smallUpright(w, h, rs, rot);
-                if (small != null) tracker.detect(small, W, H, this::sendFace);
+                if (small != null) tracker.detect(small, W, H, faceTurn(), this::sendFace);
             }
         } catch (Throwable t) {
             Log.w(TAG, "frame", t);
@@ -383,6 +433,7 @@ public class GlowCameraPlugin extends Plugin {
             if (ic == null || capturing) { call.reject("The camera isn't ready"); return; }
             capturing = true;
             final boolean mir = mirror;
+            final int deg = devDeg, turn = faceTurn();
             ic.takePicture(captureExec, new ImageCapture.OnImageCapturedCallback() {
                 @Override public void onCaptureSuccess(@NonNull ImageProxy image) {
                     byte[] jpeg;
@@ -400,7 +451,7 @@ public class GlowCameraPlugin extends Plugin {
                     } finally {
                         image.close();
                     }
-                    try { finish(call, jpeg, rot, mir, lk, processed, aspect); }
+                    try { finish(call, jpeg, rot, mir, lk, processed, aspect, deg, turn); }
                     catch (Throwable t) { Log.e(TAG, "capture", t); call.reject("Couldn't take the photo."); }
                     finally { capturing = false; }
                 }
@@ -414,7 +465,7 @@ public class GlowCameraPlugin extends Plugin {
     }
 
     /** Upright, cropped to what the screen showed, mirrored like the preview; the look baked into a second copy. */
-    private void finish(PluginCall call, byte[] jpeg, int rot, boolean mir, Look lk, boolean processed, double aspect) throws Exception {
+    private void finish(PluginCall call, byte[] jpeg, int rot, boolean mir, Look lk, boolean processed, double aspect, int deg, int turn) throws Exception {
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inJustDecodeBounds = true;
         BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length, o);
@@ -464,7 +515,7 @@ public class GlowCameraPlugin extends Plugin {
         if (processed) {
             float sm = Math.min(1f, 960f / Math.max(cw, ch));
             Bitmap small = Bitmap.createScaledBitmap(crop, Math.max(1, Math.round(cw * sm)), Math.max(1, Math.round(ch * sm)), true);
-            float[] P = tracker.detectStill(small, cw, ch);
+            float[] P = tracker.detectStill(small, cw, ch, turn);
             if (small != crop) small.recycle();
             final Bitmap[] out = new Bitmap[1];
             GLSurfaceView v = glView;
@@ -487,6 +538,7 @@ public class GlowCameraPlugin extends Plugin {
         if (procFile != null) res.put("processed", procFile.getAbsolutePath());
         res.put("width", cw);
         res.put("height", ch);
+        res.put("deg", deg);   // how the phone was held; the page turns the photo to match
         call.resolve(res);
     }
 
