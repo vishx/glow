@@ -34,6 +34,15 @@ jobs:
         working-directory: mobile/ios/App
         run: xcodebuild -list -workspace App.xcworkspace || true
 
+      - name: Check the camera's Metal shader compiles (the app compiles it at run time)
+        run: |
+          python3 - <<'PY'
+          import re
+          src = open("mobile/ios/App/App/GlowCamera/BeautyRenderer.swift").read()
+          open("/tmp/glow.metal", "w").write(re.search(r'static let source = """\n(.*?)\n    """', src, re.S).group(1))
+          PY
+          xcrun -sdk iphoneos metal -c /tmp/glow.metal -o /tmp/glow.air
+
       - name: Compile for the simulator
         working-directory: mobile/ios/App
         run: |
