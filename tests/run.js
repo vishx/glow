@@ -1316,8 +1316,11 @@ test('crop: Cancel restores, Apply exports exactly the framed area at full size,
   const same = await p.evaluate(async (file) => {
     const [a, b] = await Promise.all([loadImg(committed()), loadImg(file)]), w = a.naturalWidth, h = a.naturalHeight;
     const ca = newCanvas(w, h).getContext('2d'), cb = newCanvas(w, h).getContext('2d'); ca.drawImage(a, 0, 0); cb.drawImage(b, 0, 0, w, h);
-    const da = ca.getImageData(0, 0, w, h).data, db = cb.getImageData(0, 0, w, h).data; let sum = 0; for (let i = 0; i < da.length; i += 4) sum += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]);
-    return sum / (da.length / 2);
+    // Everything outside the badge's own box (plus its soft shadow) must match.
+    const m = markLayout(cb, w, h), bx = m.x - m.H * 0.5, by = m.y - m.H * 0.5;
+    const da = ca.getImageData(0, 0, w, h).data, db = cb.getImageData(0, 0, w, h).data; let sum = 0, n = 0;
+    for (let i = 0; i < da.length; i += 4) { const x = (i / 4) % w, y = Math.floor(i / 4 / w); if (x >= bx && y >= by) continue; sum += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]); n += 2; }
+    return sum / n;
   }, 'data:image/png;base64,' + fs.readFileSync(state.downloads[0].file).toString('base64'));
   assert(same < 3, 'saved file matches the preview pixel for pixel, apart from the free-plan Glow Studio badge (mean difference ' + same.toFixed(2) + ')');
   eq([state.posts.length, state.used], [0, 0], 'no AI request and no credit used');
