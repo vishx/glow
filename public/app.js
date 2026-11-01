@@ -3878,7 +3878,7 @@ let plan = "yearly", rcReady = null, rcUser = "";
 // deleted, or its sign-in expired and a new one was made), a purchase made under the old id would
 // reach the server for an account that no longer exists, and Pro would never switch on.
 function followAccount() {
-  if (!rcUser || !session || !session.user_id || session.user_id === rcUser) return;
+  if (!rcUser || !session || !session.user_id || session.user_id === rcUser || !purchases()) return;
   const id = session.user_id;
   purchases().logIn({ appUserID: id }).then(() => { rcUser = id; }).catch((e) => reportError("RevenueCat logIn failed", e && e.message));
 }
@@ -3931,7 +3931,7 @@ const WebRC = {
   async restorePurchases() { if (this.rc) await this.rc.getCustomerInfo(); },
   async managementURL() { try { return this.rc ? (await this.rc.getCustomerInfo()).managementURL : null; } catch { return null; } },
 };
-const purchases = () => (native ? plugins.Purchases : webCheckout() ? WebRC : null);
+const purchases = () => plugins.Purchases || (webCheckout() ? WebRC : null);
 function setupPurchases() {
   if (!purchases()) return Promise.resolve(false);
   if (!rcReady) rcReady = (async () => {
