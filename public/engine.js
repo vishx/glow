@@ -1836,7 +1836,7 @@ async function personAlpha(src, c) {
   const bx = faces.map(boxOf).map(([x, y, w, h]) => [x * W, y * H, w * W, h * H]);
   const big = Math.max(0, ...bx.map((b) => b[2])), main = bx.filter((b) => b[2] >= 0.55 * big);
   const alpha = main.length ? await peopleMatte(c, main) : await matte(src, c);
-  if (main.length === 1) await clipToBody(c, alpha);
+  if (main.length === 1) await clipToBody(c, alpha, main[0]);
   let on = 0, n = 0; for (let i = 0; i < alpha.length; i += 17) { on += alpha[i]; n++; }
   if (on / n < 0.01 || (!main.length && on / n > 0.97)) throw unavailable("No person found in this photo, so Person and Background can't be used. Full still works.");
   personCache.unshift({ src, w: W, h: H, alpha }); personCache.length = Math.min(personCache.length, 2);
@@ -1844,8 +1844,9 @@ async function personAlpha(src, c) {
 }
 // One person: the body model's own outline (made for full-length shots) trims what the selfie
 // segmenter wrongly joined to them, such as a pale floor or sofa beside a pale top. Its outline is
-// coarse, so it is grown a little and only ever takes away, never adds.
-async function clipToBody(c, alpha) {
+// coarse, so it is grown a little and only ever takes away, never adds. Around the head (face box
+// `fb`, pixels of c) the cutout is left alone, since the body model trims long hair.
+async function clipToBody(c, alpha, fb) {
   let res;
   // A small copy with sides a multiple of 4 (odd sizes crash MediaPipe's mask output).
   const sc = Math.min(1, 640 / Math.max(c.width, c.height)), small = newCanvas(Math.max(4, Math.round((c.width * sc) / 4) * 4), Math.max(4, Math.round((c.height * sc) / 4) * 4));
@@ -1862,14 +1863,46 @@ async function clipToBody(c, alpha) {
   const W = c.width, H = c.height, k = Math.min(1, 900 / Math.max(W, H)), w = Math.round(W * k), h = Math.round(H * k);
   const g = newCanvas(w, h), gx = g.getContext("2d", { willReadFrequently: true });
   gx.imageSmoothingQuality = "high"; gx.drawImage(mc, 0, 0, w, h);
-  // Grow: a blur, then anything a quarter covered counts as inside.
-  const grown = filtered(g, `blur(${Math.max(2, Math.round(w / 90))}px)`).getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  // Grow just past the body model's edge (its outline sits a little inside sleeves and hips).
+  const grown = filtered(g, `blur(${Math.max(1, Math.round(w / 140))}px)`).getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  const fw = fb ? Math.max(fb[2], fb[3]) : 0, hx0 = fb ? fb[0] + fb[2] / 2 - fw * 1.3 : 0, hx1 = fb ? fb[0] + fb[2] / 2 + fw * 1.3 : 0;
+  const hy1 = fb ? fb[1] + fb[3] * 1.9 : -1;   // down to the shoulders, where long hair ends
   for (let y = 0; y < H; y++) {
-    const gy = Math.min(h - 1, Math.floor(y * k)) * w;
+    const gy = Math.min(h - 1, Math.floor(y * k)) * w, head = y < hy1;
     for (let x = 0; x < W; x++) {
       const i = y * W + x; if (alpha[i] <= 0) continue;
-      alpha[i] *= smoothstep(0.08, 0.35, grown[(gy + Math.min(w - 1, Math.floor(x * k))) * 4 + 3] / 255);
+      const b = smoothstep(0.12, 0.4, grown[(gy + Math.min(w - 1, Math.floor(x * k))) * 4 + 3] / 255);
+      // Around the head the body outline only fades in, so hair beside the face is kept.
+      const keep = head && x > hx0 && x < hx1 ? 1 - smoothstep(hy1 - fw * 0.6, hy1, y) : 0;
+      alpha[i] *= b + (1 - b) * keep;
     }
+  }
+  // The body outline is coarse, so the trimmed edge is snapped back to the edges in the photo:
+  // the same edge-aware (guided) filter as the cutout, guided by brightness and colour together.
+  const sm = newCanvas(w, h), sx = sm.getContext("2d", { willReadFrequently: true });
+  sx.imageSmoothingQuality = "high"; sx.drawImage(c, 0, 0, w, h);
+  const sd = sx.getImageData(0, 0, w, h).data, I = new Float32Array(w * h), p = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const r = sd[i * 4], gg = sd[i * 4 + 1], bb = sd[i * 4 + 2];
+    I[i] = (lum(r, gg, bb) + (r - bb) * 0.8 + (gg - (r + bb) / 2) * 0.5) / 255;   // brightness plus warm/cool and green/magenta, so a grey top stands out from a cream wall
+  }
+  const ac = newCanvas(w, h), ax = ac.getContext("2d", { willReadFrequently: true }), ad = ax.createImageData(w, h);
+  const big = newCanvas(W, H), bgx = big.getContext("2d", { willReadFrequently: true }), bd = bgx.createImageData(W, H);
+  for (let i = 0; i < alpha.length; i++) bd.data[i * 4 + 3] = alpha[i] * 255;
+  bgx.putImageData(bd, 0, 0); ax.imageSmoothingQuality = "high"; ax.drawImage(big, 0, 0, w, h);
+  const shrunk = ax.getImageData(0, 0, w, h).data;
+  for (let i = 0; i < w * h; i++) p[i] = shrunk[i * 4 + 3] / 255;
+  const q = guided(I, p, w, h, Math.max(3, Math.round(w / 120)), 2e-4);
+  // Snapping can tighten an edge (never adds far outside it), but never cuts into what the body
+  // model is sure is them, such as a sleeve folded the same colour as the floor.
+  const core = gx.getImageData(0, 0, w, h).data;
+  for (let i = 0; i < w * h; i++) ad.data[i * 4 + 3] = Math.round(Math.max(smoothstep(0.25, 0.75, Math.min(p[i] + 0.25, q[i])), p[i] * smoothstep(0.55, 0.85, core[i * 4 + 3] / 255)) * 255);
+  ax.putImageData(ad, 0, 0);
+  bgx.clearRect(0, 0, W, H); bgx.imageSmoothingQuality = "high"; bgx.drawImage(ac, 0, 0, W, H);
+  const up = bgx.getImageData(0, 0, W, H).data;
+  for (let i = 0; i < alpha.length; i++) {
+    const y = (i / W) | 0, x = i - y * W, head = y < hy1 && x > hx0 && x < hx1;
+    if (!head) alpha[i] = up[i * 4 + 3] / 255;   // hair keeps the cutout's own fine edge
   }
 }
 // Small pictures for the Full / Person / Background chips, the chosen area tinted red
