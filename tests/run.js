@@ -92,6 +92,34 @@ test('camera: auto-save on saves each capture once, with the original only when 
   eq(state.downloads.length, 4, 'Original look saves one file');
 }, { start: 'camera', init: () => { localStorage.setItem('glowAutoSave', 'on'); localStorage.setItem('glowSaveOrig', 'on'); } });
 
+// 2026-11-01 (owner's choice): camera saves carry the Glow Studio mark too, by the same rule.
+// The saved camera file against the shot it came from: where they differ, and how big that area is.
+const camMarked = async (p, file) => {
+  const clean = await p.evaluate(() => cam.shot && (cam.shot.processed || cam.shot.raw));
+  const r = await diffBox(p, 'data:image/jpeg;base64,' + fileB64(file), clean);
+  return r.box && r.box[0] > r.w * 0.5 && r.box[1] > r.h * 0.85 ? 1 : 0;
+};
+test('camera: Save shows the mark note once and saves a marked photo', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  await p.click('#shutter'); await p.waitForSelector('#reviewControls:not([hidden])');
+  await p.click('#saveShotBtn'); await p.waitForSelector('#ask[open]');
+  eq(await p.textContent('#askTitle'), 'Free saves include a small Glow Studio badge', 'note before the first free camera save');
+  await p.click('#ask .btn:has-text("Save")'); const [d] = await downloads(state, 1);
+  assert(await camMarked(p, d.file) > 0.3, 'the saved camera photo has the dark badge pill in the corner');
+  const ev = await p.evaluate(() => { flushTelemetry(); }).then(() => settle(400)).then(() => state.events.filter((e) => e.name === 'save').map((e) => e.props && e.props.marked));
+  eq(ev.slice(-1), [true], 'tracked as marked');
+}, { start: 'camera', markIntro: true, init: () => { localStorage.setItem('glowAutoSave', 'off'); } });
+test('camera: auto-save marks quietly; Pro with the mark off saves clean', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  await p.click('#shutter'); const [d] = await downloads(state, 1);
+  eq(await p.evaluate(() => $('ask').open), false, 'auto-save never stops for a note');
+  assert(await camMarked(p, d.file) > 0.3, 'auto-saved photo is marked ');
+  await p.evaluate(() => { showUsage({ plan: 'pro', expires: new Date(Date.now() + 864e5).toISOString(), remaining: 40, quota: 40 }); store.set('glowMark', 'off'); });
+  await p.click('#retakeBtn').catch(() => {}); await camLive(p);
+  await p.click('#shutter'); const d2 = (await downloads(state, 2))[1];
+  eq(await camMarked(p, d2.file), 0, 'Pro with the mark off: clean');
+}, { start: 'camera', init: () => { localStorage.setItem('glowAutoSave', 'on'); } });
+
 // ---------- Camera lifecycle ----------
 // ---------- AI Enhance in the camera, full-screen preview ----------
 test('camera: full-screen preview, and the photo is cropped to what the screen showed', async ({ p }) => {
@@ -2410,6 +2438,16 @@ test('audit: the Pro offer from the free mark switch closes back to Settings', a
   await p.evaluate(() => goBack()); await p.waitForFunction(() => !$('paywall').open);
   eq(await p.evaluate(() => [$('settings').open, $('markToggle').checked]), [true, true], 'Settings still open, mark still on');
 }, { start: 'enhance', camera: false });
+
+// 2026-11-01: a release dropped tryon.js from the offline app shell, so Try on didn't load offline.
+test('audit: every script the app loads is in the offline app shell', async () => {
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8'), sw = fs.readFileSync(path.join(__dirname, '../public/sw.js'), 'utf8');
+  const shell = JSON.parse(sw.match(/const SHELL = (\[[\s\S]*?\]);/)[1]);
+  const scripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => '/' + m[1].replace(/^\//, '')).filter((s) => !/^\/\//.test(s) && !/^\/https?:/.test(s));
+  const css = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g)].map((m) => '/' + m[1].replace(/^\//, '')).filter((s) => !/^\/https?:/.test(s));
+  const missing = scripts.concat(css).filter((f) => !shell.includes(f));
+  eq(missing, [], 'missing from the shell');
+});
 
 // ---------- Runner ----------
 // ---------- Batch Enhance (Pro) ----------

@@ -3264,9 +3264,22 @@ function saveShot(s, auto, note = "") {
   items.push(s.processed ? { data: s.processed, name: `glow-studio-${s.stamp}` } : { blob: s.rawBlob, name: `glow-studio-${s.stamp}` });
   s.saving = (async () => {
     try {
+      // The Glow Studio mark goes on camera photos too (owner's choice 2026-11-01), by the same rule
+      // as every save: always on the free plan, on for Pro unless switched off. A tapped Save shows
+      // the one-time note; auto-save never stops for a dialog. "Also save the original" stays untouched.
+      let marked = false;
+      if (wantMark()) {
+        const main = items[items.length - 1], data = main.data || await blobToData(main.blob);
+        if (auto) { try { const m = await addMark(data, false); if (m) { items[items.length - 1] = { data: m.data, name: main.name }; marked = true; } } catch {} }
+        else {
+          const m = await markForSave(data, false);
+          if (!m) return false;   // the note was cancelled: nothing saved
+          if (m.marked) { items[items.length - 1] = { data: m.data, name: main.name }; marked = true; }
+        }
+      }
       // Auto-save never opens a share sheet on its own; browsers get a download.
       const where = await Platform.savePhotos(items, { download: auto });
-      track("save", { from: "camera", auto: !!auto, look: lookId, where: String(where || "") });
+      track("save", { from: "camera", auto: !!auto, look: lookId, marked, where: String(where || "") });
       s.saved = true; if (withOrig || !s.processed) s.originalSaved = true;
       if (cam.shot === s || ed.shotStamp === s.stamp) say(savedText(where, items.length, note));
       if (ed.shotStamp === s.stamp) {
