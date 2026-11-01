@@ -2533,6 +2533,19 @@ function renderCredits() {
   chip.setAttribute("aria-label", `${balanceText(a)}. Details`);
   $("homeCredits").innerHTML = icon("sparkle") + `<span>${balanceText(a)}</span>`;
 }
+// The AI tools people can use right now (switched on, and in the menu or the Enhance tab), by name,
+// so the credits sheet always matches the real prices and tools. Hair and portrait styles are named
+// as a group rather than one by one.
+const andList = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+function aiNames(keep) {
+  const inMenu = new Set(Object.values(CATS).flatMap((groups) => groups.flatMap((g) => g[2])));
+  const names = [];
+  TOOLS.filter((t) => t.kind === "ai" && keep(t) && toolOn(t.id) && (inMenu.has(t.id) || t.id === "enhance")).forEach((t) => {
+    const n = t.cat === "hair" ? "hairstyles" : t.cat === "styles" && t.id !== "outfit" ? "portrait styles" : ({ retouch: "AI retouch", faces: "Face repair", golden: "Golden hour" })[t.id] || t.label;
+    if (!names.includes(n)) names.push(n);
+  });
+  return names;
+}
 function renderCreditsSheet() {
   // A balance card on top, then a few short facts. The rules are unchanged; only the layout is.
   const a = account;
@@ -2540,6 +2553,7 @@ function renderCreditsSheet() {
   const card = (n, of, sub, note) => `<div class="cr-card"><div class="cr-num"><b>${n}</b><span>${of}</span></div>` +
     `<div class="cr-bar"><i style="width:${of ? Math.round(100 * Math.min(1, n / (+of.match(/\d+/)[0] || 1))) : 0}%"></i></div><p>${sub}</p>${note ? `<p class="cr-note">${note}</p>` : ""}</div>`;
   let html = "", facts = [];
+  const twoCredit = andList(aiNames((t) => costOf(t) === 2));
   if (!a) html = `<div class="cr-card"><p>Your balance will show once Glow Studio can reach its server.</p></div>`;
   else if (a.plan === "pro") {
     html = card(a.remaining, `of ${a.quota} AI credits left`, "Glow Studio Pro includes 40 AI credits each week. Each credit comes back 7 days after you use it.",
@@ -2551,9 +2565,9 @@ function renderCreditsSheet() {
     const r = nextUtcMidnight(), mins = Math.max(1, Math.round((r - Date.now()) / 60000));
     const left = mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
     html = card(a.remaining, `of ${a.quota} AI credits left today`, `Resets at ${fmtTime(r)} (in ${left}). Unused credits don't carry over.`,
-      a.trialLeft !== undefined ? "Daily credits work with Enhance, AI retouch, Remove and Colorize." : "");
+      a.trialLeft !== undefined ? `Daily credits work with ${andList(aiNames((t) => CHEAP_AI.includes(t.id)))}.` : "");
     if (a.trialLeft !== undefined) facts.push(fact("sparkle", `${a.trialLeft} free premium ${a.trialLeft === 1 ? "try" : "tries"} left`,
-      "Pro edit, Golden hour, outfits, Describe, Fill, AI scene and portrait styles share 3 free premium credits, once, not each day. Fill, AI scene, Describe and the portrait styles use 2."));
+      `${andList(aiNames((t) => !CHEAP_AI.includes(t.id)))} share 3 free premium credits, once, not each day.${twoCredit ? ` ${twoCredit} use 2.` : ""}`));
     if (native && plugins.AdMob && a.adsLeft > 0) facts.push(fact("star", "Out of credits?",
       `Watch a short ad for 1 more credit${a.trialLeft !== undefined ? " for the daily tools" : ""}, up to ${a.adsLeft} more today. Ads are always optional.`));
   }
@@ -2561,7 +2575,7 @@ function renderCreditsSheet() {
     `They never expire and are used after your ${a.plan === "pro" ? "weekly" : "free"} credits${a.plan === "pro" ? "" : ", on every AI tool"}.`));
   facts.push(fact("save", "Saving is free and unlimited", "On the free plan, saves carry a small Glow Studio mark."),
     fact("sliders", "On-device tools are always free", "Camera, filters, face, makeup, backgrounds, light and color. Undo and redo never use credits."),
-    fact("wand", `Most AI tools use 1 credit`, `Headshot, Fashion, Describe${CONFIG.pricingV2 ? ", Fill and AI scene" : " and AI scene"} use 2. Each tool shows its cost before you apply it.`),
+    fact("wand", twoCredit ? "Most AI tools use 1 credit" : "Each AI tool uses 1 credit", `${twoCredit ? `${twoCredit} use 2. ` : ""}Each tool shows its cost before you apply it.`),
     fact("revert", "Failed edits are refunded", "If the AI service reports an edit failed, its credit comes back automatically."));
   $("creditsBody").innerHTML = html + `<ul class="cr-facts">${facts.join("")}</ul>`;
   $("creditsPro").hidden = !!(a && a.plan === "pro");
@@ -3302,7 +3316,10 @@ async function showBuild() {
   } catch {}
   buildFp = fp || buildFp;
   const id = session && session.user_id;
-  $("buildId").textContent = `Build ${fp || "unknown"} · ${FEATURES} · ${location.host || "app"}${id ? ` · ID ${id.slice(0, 8)}` : ""}${Features.tester ? " · Tester" : ""}`;
+  // The phone app is served from its own files (host "localhost"), so name the platform instead.
+  const where = { android: "Android app", ios: "iPhone app" }[PLATFORM] || (native ? "Phone app" : location.host || "Web");
+  $("buildId").textContent = `Version ${APP_BUILD} (${fp || "unknown"}) · ${where}${id ? ` · ID ${id.slice(0, 8)}` : ""}${Features.tester ? " · Tester" : ""}`;
+  $("buildId").title = `${FEATURES}. Tap to copy your account ID.`;
 }
 $("camSettingsBtn").addEventListener("click", openSettings);
 $("homeSettingsBtn").addEventListener("click", openSettings);
@@ -3352,13 +3369,55 @@ $("shareApp").addEventListener("click", async (e) => {
   e.preventDefault();
   const data = { title: "Glow Studio", text: "I've been enhancing my photos with Glow Studio. Try it:", url: CONFIG.publicUrl };
   track("share_app");
-  try {
-    if (native && plugins.Share) { await plugins.Share.share(data); return; }
-    if (navigator.share) { await navigator.share(data); return; }
-  } catch (err) { if (err && err.name === "AbortError") return; }
+  // Once a share sheet has opened, it is the answer: Android reports a closed or cancelled sheet as an
+  // error (sometimes while the sheet is still showing), which used to put a "Link copied" toast on top of it.
+  // The link is copied only where no share sheet exists or it couldn't open at all.
+  if (native && plugins.Share) {
+    try { await plugins.Share.share(data); } catch (err) { if (!/cancel/i.test((err && err.message) || "")) console.warn("share", err); }
+    return;
+  }
+  if (navigator.share && (!navigator.canShare || navigator.canShare(data))) {
+    try { await navigator.share(data); return; } catch (err) { if (err && (err.name === "AbortError" || err.name === "InvalidStateError")) return; }
+  }
   try { await navigator.clipboard.writeText(CONFIG.publicUrl); say("Link copied. Paste it anywhere to share Glow Studio."); }
   catch { say(CONFIG.publicUrl); }
 });
+// Help, Privacy, Terms and Licenses open inside the app. In the phone app these pages are the
+// app's own files, so leaving the app's page for them (as plain links did) reloaded Glow Studio:
+// /support has no file of its own there (only the website maps it), so Help restarted the app, and
+// a plain-text page showed black text on the app's dark background. Here they open in a sheet that
+// follows the app's Light or Dark choice, and links to other sites open in the browser.
+function openDoc(href, title) {
+  const frame = $("docFrame");
+  $("docTitle").textContent = title;
+  frame.src = href;
+  $("settings").close(); $("docSheet").showModal();
+  track("open_doc", { page: href.replace(/^\/|\.html$/g, "") });
+}
+$("docFrame").addEventListener("load", () => {
+  let doc;
+  try { doc = $("docFrame").contentDocument; } catch { return; }
+  if (!doc || !doc.documentElement) return;
+  const t = store.get("glowTheme") || "system";
+  const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+  doc.documentElement.dataset.theme = dark ? "dark" : "light";
+  doc.documentElement.dataset.embed = "1";
+  const h1 = doc.querySelector("h1"); if (h1) $("docTitle").textContent = h1.textContent;
+  doc.addEventListener("click", (e) => {
+    const a = e.target.closest("a[href]"); if (!a) return;
+    const url = new URL(a.getAttribute("href"), doc.baseURI);
+    if (url.origin === location.origin && url.pathname !== "/" && url.pathname !== "/index.html") return;   // another help page: stays in the sheet
+    e.preventDefault();
+    if (url.origin === location.origin) { $("docSheet").close(); return; }   // "Glow Studio" home link: back to the app
+    if (url.protocol === "mailto:") { location.href = url.href; return; }
+    window.open(url.href, "_blank", "noopener");
+  });
+});
+$("docSheet").addEventListener("close", () => { $("docFrame").src = "about:blank"; });
+document.querySelectorAll("#settings [data-doc]").forEach((a) => a.addEventListener("click", (e) => {
+  if (e.ctrlKey || e.metaKey || e.shiftKey) return;   // the website: open in a new tab as asked
+  e.preventDefault(); openDoc(a.getAttribute("href"), a.dataset.doc);
+}));
 // Enhance defaults: each Result tool's starting level (enhance.js keeps them in glow.enhDefaults).
 function renderEnhPrefs() {
   const box = $("enhPrefs");
@@ -3395,6 +3454,7 @@ $("supportForm").addEventListener("submit", async (e) => {
   } catch (err) { say(err.message, true); }
   finally { $("supportSend").disabled = false; $("supportSend").textContent = "Send"; }
 });
+$("manageSubs").hidden = !native;
 $("manageSubs").addEventListener("click", (e) => {
   e.preventDefault();
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);

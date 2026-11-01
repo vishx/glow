@@ -972,3 +972,21 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
 .try-looks-label { flex: none; color: var(--muted); font-size: 0.75rem; font-weight: 700; margin-right: 2px; }
 .try-look { flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 12px; background: var(--surface-2) center top / cover no-repeat; }
 .try-look[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+
+/* ---------- Settings rows and the in-app help pages ---------- */
+.set-list { display: grid; border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; background: var(--surface); }
+.set-list a { display: flex; align-items: center; gap: var(--s3); min-height: 52px; padding: 0 var(--s3); color: var(--text); text-decoration: none; font-size: 0.9375rem; }
+.set-list a + a { border-top: 1px solid var(--line); }
+.set-list a[hidden] { display: none; }
+.set-list a[hidden] + a, .set-list a:first-child[hidden] + a { border-top: 0; }
+.set-list a::after { content: ""; margin-left: auto; width: 8px; height: 8px; border: solid var(--muted); border-width: 0 1.75px 1.75px 0; transform: rotate(-45deg); flex: none; }
+.set-list a:active { background: var(--surface-2, rgb(0 0 0 / 0.04)); }
+.set-list [data-icon] { display: inline-flex; color: var(--rose); }
+.set-list [data-icon] svg { width: 22px; height: 22px; }
+.set-list.plain a { min-height: 48px; }
+#settings .build-id { cursor: pointer; }
+dialog.doc-sheet { height: 92dvh; display: none; grid-template-rows: auto 1fr; padding-left: 0; padding-right: 0; padding-bottom: 0; overflow: hidden; }
+dialog.doc-sheet[open] { display: grid; }
+dialog.doc-sheet .sheet-head { padding: 0 var(--gutter); }
+#docFrame { width: 100%; height: 100%; border: 0; background: var(--surface); }
+@media (min-width: 600px) { dialog.doc-sheet { width: min(92vw, 640px); max-width: 640px; } }

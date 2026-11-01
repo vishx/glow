@@ -420,22 +420,36 @@
     <div class="links"><button id="enhPrefsReset">Reset to Glow Studio's defaults</button></div>
   </div>
   <div class="setting">
-    <div class="links">
-      <a href="#" id="subsInfo">Subscription and credits</a>
-      <a href="#" id="shareApp">Share Glow Studio</a>
-      <a href="#" id="suggestFeature">Suggest a feature</a>
+    <h3>Account</h3>
+    <div class="set-list">
+      <a href="#" id="subsInfo"><span data-icon="star"></span><span>AI credits and plan</span></a>
+      <a href="#" id="manageSubs"><span data-icon="pro"></span><span>Manage subscription</span></a>
+      <a href="#" id="shareApp"><span data-icon="share"></span><span>Share Glow Studio</span></a>
     </div>
-    <div class="links">
-      <a href="#" id="contactSupport">Contact support</a>
-      <a href="/support" target="_blank" rel="noopener">Help</a>
-      <a href="/privacy.html" target="_blank" rel="noopener">Privacy policy</a>
-      <a href="/terms.html" target="_blank" rel="noopener">Terms of use</a>
-      <a href="#" id="manageSubs">Manage subscription</a>
-      <a href="/licenses.txt" target="_blank" rel="noopener">Licenses</a>
+  </div>
+  <div class="setting">
+    <h3>Help</h3>
+    <div class="set-list">
+      <a href="/support.html" data-doc="Help and FAQ"><span data-icon="info"></span><span>Help and FAQ</span></a>
+      <a href="#" id="contactSupport"><span data-icon="edit"></span><span>Contact support</span></a>
+      <a href="#" id="suggestFeature"><span data-icon="sparkle"></span><span>Suggest a feature</span></a>
+    </div>
+  </div>
+  <div class="setting">
+    <h3>About</h3>
+    <div class="set-list plain">
+      <a href="/privacy.html" data-doc="Privacy policy"><span>Privacy policy</span></a>
+      <a href="/terms.html" data-doc="Terms of use"><span>Terms of use</span></a>
+      <a href="/licenses.html" data-doc="Licenses"><span>Licenses</span></a>
     </div>
     <div class="links"><a href="#" id="deleteAccount" class="danger">Delete my account and data</a></div>
-    <p class="fine build-id" id="buildId">Build: checking…</p>
+    <p class="fine build-id" id="buildId">Version: checking…</p>
   </div>
+</dialog>
+
+<dialog class="sheet doc-sheet" id="docSheet" aria-labelledby="docTitle">
+  <div class="sheet-head"><h2 class="t-section" id="docTitle">Help</h2><button class="icon-btn" data-close aria-label="Close"></button></div>
+  <iframe id="docFrame" title="Glow Studio document"></iframe>
 </dialog>
 
 <dialog class="sheet" id="supportSheet" aria-labelledby="supportTitle">

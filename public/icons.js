@@ -1,4 +1,4 @@
-// Glow duotone icons: 24px grid, 1.75 stroke, soft fill accents. A few remaining glyphs are from Lucide (ISC license, see licenses.txt).
+// Glow duotone icons: 24px grid, 1.75 stroke, soft fill accents. A few remaining glyphs are from Lucide (ISC license, see licenses.html).
 const ICONS = {
   "pro": "<rect x=\"3.5\" y=\"3.5\" width=\"17\" height=\"17\" rx=\"5\" fill=\"currentColor\" fill-opacity=\".22\" stroke=\"none\"/><rect x=\"3.5\" y=\"3.5\" width=\"17\" height=\"17\" rx=\"5\"/><path fill=\"currentColor\" stroke=\"none\" d=\"M12 7c0.90 3.10 1.90 4.10 5 5-3.10 0.90-4.10 1.90-5 5-0.90-3.10-1.90-4.10-5-5 3.10-0.90 4.10-1.90 5-5Z\"/><path fill=\"currentColor\" stroke=\"none\" d=\"M17 5.4c0.29 0.99 0.61 1.31 1.6 1.6-0.99 0.29-1.31 0.61-1.6 1.6-0.29-0.99-0.61-1.31-1.6-1.6 0.99-0.29 1.31-0.61 1.6-1.6Z\"/>",
   "mylook": "<path d=\"M12 20s-8-4.8-8-10.6A4.4 4.4 0 0 1 12 7a4.4 4.4 0 0 1 8 2.4C20 15.2 12 20 12 20Z\" fill=\"currentColor\" fill-opacity=\".22\" stroke=\"none\"/><path d=\"M12 20s-8-4.8-8-10.6A4.4 4.4 0 0 1 12 7a4.4 4.4 0 0 1 8 2.4C20 15.2 12 20 12 20Z\"/>",

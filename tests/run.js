@@ -748,6 +748,57 @@ test('settings: Enhance defaults, subscription details, share the app, and sugge
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false });
 
+// 2026-11-01: in the phone app Help restarted the app (/support has no file there) and Licenses
+// was black text on the dark background. Every page now opens in an in-app sheet that follows the
+// app's theme; Share never adds a "Link copied" toast once a share sheet opened; the credits sheet
+// names the real 2-credit tools.
+test('settings: Help, Privacy, Terms and Licenses open inside the app, readable in dark mode; share and credits text', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => { store.set('glowTheme', 'dark'); applyTheme(); });
+  const docs = [['Help and FAQ', 'Help and support', 'support'], ['Privacy policy', 'Privacy Policy', 'privacy'], ['Terms of use', 'Terms of Use', 'terms'], ['Licenses', 'Licenses', 'licenses']];
+  for (const [row, h1] of docs) {
+    await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
+    await p.click(`#settings [data-doc="${row}"]`); await p.waitForSelector('#docSheet[open]');
+    await p.waitForFunction((h1) => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.theme && d.querySelector('h1') && d.querySelector('h1').textContent === h1; }, h1);
+    const r = await p.evaluate(() => { const d = $('docFrame').contentDocument, cs = d.defaultView.getComputedStyle(d.body);
+      return [location.pathname, screen, $('docTitle').textContent, cs.color, cs.backgroundColor, d.documentElement.dataset.theme, d.defaultView.getComputedStyle(d.querySelector('.brand')).display]; });
+    eq(r[0], '/', `${row}: the app stays on its page`); eq(r[1], 'enhanceHome', `${row}: no restart`); eq(r[2], h1, `${row}: sheet title`);
+    eq([r[3], r[4], r[5], r[6]], ['rgb(246, 238, 241)', 'rgb(20, 16, 19)', 'dark', 'none'], `${row}: light text on dark, app header hidden`);
+    await p.click('#docSheet [data-close]');
+  }
+  // A link to another help page stays in the sheet; the Glow Studio home link closes it.
+  await p.click('#enhSettingsBtn'); await p.click('#settings [data-doc="Privacy policy"]');
+  await p.waitForFunction(() => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.embed; });
+  await p.evaluate(() => $('docFrame').contentDocument.querySelector('footer a[href="/support.html"]').click());
+  await p.waitForFunction(() => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.embed && /support/.test(d.location.pathname); });
+  eq(await p.textContent('#docTitle'), 'Help and support', 'footer link opens Help in the sheet');
+  await p.evaluate(() => { const a = $('docFrame').contentDocument.createElement('a'); a.href = '/'; $('docFrame').contentDocument.body.append(a); a.click(); });
+  await p.waitForFunction(() => !$('docSheet').open); eq(await p.evaluate(() => location.pathname), '/', 'home link closes the sheet');
+  // Credits sheet: the 2-credit tools are the real ones, and retired tools aren't named.
+  await p.evaluate(() => { account = { plan: 'free', remaining: 3, quota: 3, trialLeft: 3 }; renderCreditsSheet(); });
+  const txt = await p.textContent('#creditsBody');
+  assert(/Pro edit, portrait styles, Describe, AI scene and Fill use 2\./.test(txt), 'real 2-credit tools: ' + txt);
+  assert(/Golden hour, Try on, portrait styles/.test(txt) && !/Headshot|Fashion|outfits|Expand/.test(txt), 'no stale names: ' + txt);
+  assert(/Daily credits work with Enhance, AI retouch, Colorize and Remove\./.test(txt), 'daily tools: ' + txt);
+  eq(await p.evaluate(() => $('manageSubs').hidden), true, 'no store subscriptions on the web');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false });
+
+test('settings in the Android app: share sheet without a "Link copied" toast, build line names the app, Manage subscription shown', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => { $('toast').textContent = ''; });
+  await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
+  await p.click('#shareApp'); await settle(300);
+  eq(await p.evaluate(() => window.__shared && window.__shared.url), 'https://glow-photo-enhancer.vercel.app', 'the phone share sheet gets the link');
+  eq(await p.textContent('#toast'), '', 'no "Link copied" toast when the sheet reports it was closed');
+  await p.waitForFunction(() => /Version/.test($('buildId').textContent) && !/checking/.test($('buildId').textContent));
+  assert(/ · Android app/.test(await p.textContent('#buildId')) && !/localhost/.test(await p.textContent('#buildId')), 'names the app: ' + await p.textContent('#buildId'));
+  eq(await p.isVisible('#manageSubs'), true, 'Manage subscription in the phone app');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, init: () => {
+  window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: { Share: { share: async (d) => { window.__shared = d; throw new Error('Share canceled'); } } } };
+} });
+
 // 2026-10-31: a 1200x1600 photo ran Real-ESRGAN out of GPU memory; the credit came back but the
 // error toast sat behind the sheet and said "lost the connection", so nothing seemed to happen.
 const OOM = 'CUDA out of memory. Tried to allocate 3.66 GiB. GPU 0 has a total capacity of 14.56 GiB of which 3.28 GiB is free.';
@@ -1048,8 +1099,10 @@ test('retouch: Compare puts the divider on the face; Settings shows which build 
     return { x: d.left + d.width / 2, nose: f.left + P[1][0] * f.width, f: [f.left, f.right] }; });
   near(r.x, r.nose, 2, 'divider runs down the nose'); assert(r.x > r.f[0] && r.x < r.f[1], 'divider is on the photo');
   await p.click('#cancelBtn'); await p.click('#settingsBtn').catch(() => p.evaluate(() => openSettings()));
-  await p.waitForFunction(() => /Build/.test($('buildId').textContent) && !/checking/.test($('buildId').textContent));
-  assert(/reshape-v2 · crop-v2/.test(await p.textContent('#buildId')), 'build line names the features: ' + await p.textContent('#buildId'));
+  await p.waitForFunction(() => /Version/.test($('buildId').textContent) && !/checking/.test($('buildId').textContent));
+  const line = await p.textContent('#buildId');
+  assert(new RegExp(`^Version ${await p.evaluate(() => APP_BUILD)} \\([0-9a-f]{8}\\) · app\\.test`).test(line), 'build line names the version and fingerprint: ' + line);
+  assert(/reshape-v2 · crop-v2/.test(await p.getAttribute('#buildId', 'title')), 'features kept in the tooltip');
 });
 test('retouch: no trustworthy face shows an unavailable note instead of a guessed warp', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('coords-600x400.png'));

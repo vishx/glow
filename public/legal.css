@@ -19,3 +19,12 @@ details summary { cursor: pointer; font-weight: 600; }
 details p, details ol, details ul { margin: 8px 0 4px; }
 footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; }
 footer a { margin-right: 14px; }
+.legal-caps { font-size: 13px; color: var(--muted); }
+/* Shown inside the app (Settings › Help, Privacy, Terms, Licenses), the page follows the app's own
+   Light or Dark choice, which the app sets on the page as data-theme. */
+:root[data-theme="light"] { --bg: #fbf7f5; --surface: #fffdfc; --text: #1d181b; --muted: #6f6368; --line: #eadfdb; --rose: #b04468; --blush: #f6d9df; color-scheme: light; }
+:root[data-theme="dark"] { --bg: #141013; --surface: #1d171b; --text: #f6eef1; --muted: #b9aab1; --line: #3a2f35; --rose: #f2a5bb; --blush: rgb(242 165 187 / 0.18); color-scheme: dark; }
+:root[data-embed] .brand { display: none; }
+:root[data-embed] h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }   /* the sheet shows the title */
+:root[data-embed] main { padding-top: 8px; }
+html { background: var(--bg); }
