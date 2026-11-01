@@ -15,6 +15,7 @@ import android.os.Build;
 import android.os.PowerManager;
 import android.util.Range;
 import android.util.Size;
+import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import androidx.annotation.NonNull;
@@ -148,9 +149,11 @@ public class GlowCameraPlugin extends Plugin {
                     mirror = useFront;
                     cameraCount = (hasFront ? 1 : 0) + (hasBack ? 1 : 0);
 
+                    // Preview frames and photos are both 4:3, so they see the same part of the scene and the
+                    // photo's crop matches what the screen showed (a 16:9 preview sees a different slice).
                     ResolutionSelector previewRes = new ResolutionSelector.Builder()
-                        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
-                        .setResolutionStrategy(new ResolutionStrategy(new Size(1280, 720), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
+                        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                        .setResolutionStrategy(new ResolutionStrategy(new Size(1280, 960), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
                         .build();
                     ImageAnalysis.Builder ab = new ImageAnalysis.Builder()
                         .setResolutionSelector(previewRes)
@@ -223,6 +226,7 @@ public class GlowCameraPlugin extends Plugin {
             glView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
         }
         if (glView.getParent() == null) parent.addView(glView, 0, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        glView.setVisibility(View.VISIBLE);
         // The page is see-through on the camera screen (html.native-cam), so the picture shows behind it.
         web.setBackgroundColor(Color.TRANSPARENT);
     }
@@ -230,12 +234,8 @@ public class GlowCameraPlugin extends Plugin {
     private void hideView() {
         WebView web = getBridge().getWebView();
         web.setBackgroundColor(Color.parseColor("#121014"));
-        if (glView != null) {
-            ViewGroup p = (ViewGroup) glView.getParent();
-            if (p != null) p.removeView(glView);
-            glView = null;
-            renderer = null;
-        }
+        // Kept (just hidden) so the next start doesn't rebuild the view and recompile the shader.
+        if (glView != null) glView.setVisibility(View.GONE);
     }
 
     void rendererFailed(String why) {

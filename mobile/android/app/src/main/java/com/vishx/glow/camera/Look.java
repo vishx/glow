@@ -9,8 +9,9 @@ final class Look {
     // 0..1
     float smooth, bright, warm, eyes, slim, nose, lips, blush, brows;
     float[] lipShade = rgb("#d4787d"), blushShade = rgb("#f4a28c"), browShade = rgb("#5a4030");
-    /** The photo filter as a color matrix: three rows of r, g, b, offset (CSS filter chain, composed in JS). */
-    float[] color = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0 };
+    /** The photo filter as four color matrices applied in turn, each three rows of r, g, b, offset
+     *  (the CSS filter chain, built in JS); the result is kept in 0..1 after each, as CSS does. */
+    float[] color = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0 };
     /** The filter's soft-light color wash: r, g, b, alpha (0..1). */
     float[] wash = { 0, 0, 0, 0 };
     /** Hold-to-compare: the camera without the look. */

@@ -15,8 +15,8 @@ final class BeautyRenderer: NSObject, MTKViewDelegate {
     struct VOut { float4 pos [[position]]; float2 uv; };
     // u[0] crop; u[1] mirror, -, tapScale, plain; u[2] size.xy, slimR.xy; u[3] mpxA.xy, mpxB.xy;
     // u[4] smooth, bright, warm, faceOn; u[5] eyeL; u[6] eyeR; u[7..10] slim; u[11..12] nose;
-    // u[13] lips; u[14] blush; u[15] brows; u[16..18] color matrix rows; u[19] wash
-    struct U { float4 u[20]; };
+    // u[13] lips; u[14] blush; u[15] brows; u[16..27] 4 color matrices (3 rows each); u[28] wash
+    struct U { float4 u[29]; };
 
     vertex VOut vmain(uint vid [[vertex_id]], constant U& k [[buffer(0)]]) {
       float2 p = float2((vid & 1) ? 1.0 : -1.0, (vid & 2) ? 1.0 : -1.0);
@@ -84,8 +84,11 @@ final class BeautyRenderer: NSObject, MTKViewDelegate {
       col = pow(max(col, 0.0), float3(1.0 - k.u[4].y * 0.35));
       col += float3(0.06, 0.025, -0.03) * k.u[4].z;
       col = clamp(col, 0.0, 1.0);
-      col = clamp(float3(dot(k.u[16].xyz, col) + k.u[16].w, dot(k.u[17].xyz, col) + k.u[17].w, dot(k.u[18].xyz, col) + k.u[18].w), 0.0, 1.0);
-      col = mix(col, softLight(col, k.u[19].rgb), k.u[19].a);
+      for (int i = 0; i < 4; i++) {
+        float4 r0 = k.u[16 + i * 3], r1 = k.u[17 + i * 3], r2 = k.u[18 + i * 3];
+        col = clamp(float3(dot(r0.xyz, col) + r0.w, dot(r1.xyz, col) + r1.w, dot(r2.xyz, col) + r2.w), 0.0, 1.0);
+      }
+      col = mix(col, softLight(col, k.u[28].rgb), k.u[28].a);
       return float4(clamp(col, 0.0, 1.0), 1.0);
     }
     """
@@ -120,12 +123,32 @@ final class BeautyRenderer: NSObject, MTKViewDelegate {
         CVMetalTextureCacheCreate(nil, nil, d, nil, &cache)
     }
 
-    private func texture(_ m: FaceGeometry.Mask) -> MTLTexture? {
-        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: m.w, height: m.h, mipmapped: false)
+    // Mask textures are reused: three per mask in turn, so the one being filled isn't one the GPU may
+    // still be reading for an earlier frame; the blank mask (no face) is made once.
+    private var ring: [[MTLTexture]] = [[], []]
+    private var ringAt = 0
+    private var blankTex: MTLTexture?
+
+    private func makeTexture(_ w: Int, _ h: Int) -> MTLTexture? {
+        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: false)
         d.usage = .shaderRead
-        guard let t = device.makeTexture(descriptor: d) else { return nil }
-        m.bytes.withUnsafeBytes { t.replace(region: MTLRegionMake2D(0, 0, m.w, m.h), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: m.w * 4) }
-        return t
+        return device.makeTexture(descriptor: d)
+    }
+
+    private func texture(_ m: FaceGeometry.Mask, slot: Int) -> MTLTexture? {
+        let isBlank = m.w == FaceGeometry.blank.w && m.h == FaceGeometry.blank.h && m.bytes == FaceGeometry.blank.bytes
+        if isBlank, let t = blankTex { return t }
+        var t: MTLTexture?
+        if isBlank { t = makeTexture(m.w, m.h); blankTex = t }
+        else {
+            if ring[slot].count < 3 { if let n = makeTexture(m.w, m.h) { ring[slot].append(n) } }
+            let i = ringAt % max(1, ring[slot].count)
+            if i < ring[slot].count, ring[slot][i].width != m.w || ring[slot][i].height != m.h { if let n = makeTexture(m.w, m.h) { ring[slot][i] = n } }
+            t = i < ring[slot].count ? ring[slot][i] : nil
+        }
+        guard let tex = t else { return nil }
+        m.bytes.withUnsafeBytes { tex.replace(region: MTLRegionMake2D(0, 0, m.w, m.h), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: m.w * 4) }
+        return tex
     }
 
     func cameraTexture(_ pb: CVPixelBuffer) -> MTLTexture? {
@@ -146,7 +169,7 @@ final class BeautyRenderer: NSObject, MTKViewDelegate {
         let kk: Float = P != nil ? k : 0
         func shade(_ rgb: SIMD3<Float>, _ amt: Float, _ base: Float, _ span: Float) -> SIMD4<Float> { [rgb.x, rgb.y, rgb.z, amt > 0 ? base + span * amt : 0] }
         let c = look.color, w = look.wash
-        var u = [SIMD4<Float>](repeating: .zero, count: 20)
+        var u = [SIMD4<Float>](repeating: .zero, count: 29)
         u[0] = crop
         u[1] = [mirror ? 1 : 0, 0, max(1, Float(max(W, H)) / 1280), plain ? 1 : 0]
         u[2] = [Float(W), Float(H), geo.slimR.x, geo.slimR.y]
@@ -158,8 +181,8 @@ final class BeautyRenderer: NSObject, MTKViewDelegate {
         u[13] = shade(look.lipShade, look.lips * kk, 0.15, 0.45)
         u[14] = shade(look.blushShade, look.blush * kk, 0.1, 0.35)
         u[15] = shade(look.browShade, look.brows * kk, 0.1, 0.4)
-        u[16] = [c[0], c[1], c[2], c[3]]; u[17] = [c[4], c[5], c[6], c[7]]; u[18] = [c[8], c[9], c[10], c[11]]
-        u[19] = [w[0], w[1], w[2], w[3]]
+        for i in 0..<12 { u[16 + i] = [c[i * 4], c[i * 4 + 1], c[i * 4 + 2], c[i * 4 + 3]] }
+        u[28] = [w[0], w[1], w[2], w[3]]
         return (u, a, b)
     }
 
@@ -168,8 +191,9 @@ final class BeautyRenderer: NSObject, MTKViewDelegate {
         enc.setVertexBytes(&u, length: MemoryLayout<SIMD4<Float>>.stride * u.count, index: 0)
         enc.setFragmentBytes(&u, length: MemoryLayout<SIMD4<Float>>.stride * u.count, index: 0)
         enc.setFragmentTexture(tex, index: 0)
-        enc.setFragmentTexture(texture(a), index: 1)
-        enc.setFragmentTexture(texture(b), index: 2)
+        ringAt += 1
+        enc.setFragmentTexture(texture(a, slot: 0), index: 1)
+        enc.setFragmentTexture(texture(b, slot: 1), index: 2)
         enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
     }
 

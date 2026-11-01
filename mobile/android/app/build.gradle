@@ -18,7 +18,20 @@ android {
             noCompress 'task', 'tflite'
         }
     }
+    // Test builds are all signed with one fixed key (a throwaway, not the store key), so a new
+    // test build installs over the last one instead of failing with "App not installed".
+    signingConfigs {
+        glowTest {
+            storeFile file('glow-test.keystore')
+            storePassword 'glowtest'
+            keyAlias 'glowtest'
+            keyPassword 'glowtest'
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.glowTest
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

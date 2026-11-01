@@ -2894,7 +2894,7 @@ $("viewfinder").addEventListener("pointerdown", (e) => {
 
 function camState(kind) {
   // live = camera working; denied/error = someone who wanted the camera and couldn't use it.
-  if (kind !== cam.state && ["live", "denied", "error", "unavailable"].includes(kind)) track("camera", { state: kind, engine: cam.nativeOn ? "native" : "web" });
+  if (kind !== cam.state && ["live", "denied", "error", "unavailable"].includes(kind)) track("camera", { state: kind, engine: NativeCam ? "native" : "web" });
   cam.state = kind;
   const S = {
     prompt: ["camera", "Take photos with Glow Studio", "Glow Studio needs your camera to show a live preview. Photos stay on your device until you save or edit them.", "Turn on camera"],
@@ -3014,7 +3014,13 @@ async function startNativeCamera(gen) {
     camState(code === "denied" ? "denied" : code === "none" ? "none" : "busy");
     return;
   }
-  if (gen !== cam.gen || screen !== "cameraScreen" || cam.shot || document.hidden) { if (gen === cam.gen) stopCamera(); return; }
+  if (gen !== cam.gen || screen !== "cameraScreen" || cam.shot || document.hidden) {
+    if (gen === cam.gen) stopCamera();
+    // A start that finished after the camera was left (e.g. after the permission prompt): turn it off,
+    // unless a newer start now owns the camera.
+    else if (!cam.nativeOn) NativeCam.stop().catch(() => {});
+    return;
+  }
   cam.native = { w: r.width, h: r.height, faceCY: null, sent: "" };
   document.documentElement.classList.add("native-cam");
   cam.opened++;
@@ -3173,9 +3179,9 @@ $("camTimer").addEventListener("click", () => {
 });
 // Counts down on the photo before the shot. Resolves true to take it, false if cancelled or the camera stopped.
 async function camCountdown() {
+  if (cam.counting) { cam.counting.stop(); return false; }
   const n = timerSecs();
   if (!n) return true;
-  if (cam.counting) { cam.counting.stop(); return false; }
   const job = (cam.counting = { cancel: false }), gen = cam.gen, el = $("camCount");
   const stopped = new Promise((r) => { job.stop = () => { job.cancel = true; r(); }; });
   el.hidden = false;

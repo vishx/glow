@@ -35,16 +35,25 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
     private var device: AVCaptureDevice?
     private var configured = false
 
+    // Set and read from several queues (plugin calls, camera frames, drawing, photos), so behind a lock.
     private let frameLock = NSLock()
     private var frame: CVPixelBuffer?
-    var look = Look()
-    var mirror = true
-    private var pendingStart: CAPPluginCall?
+    private var _look = Look()
+    private var _mirror = true
+    private var _light: Float = 255
+    private var _awaitingFrame = false
+    private var _capture: (call: CAPPluginCall, look: Look, processed: Bool, aspect: Double, mirror: Bool)?
+    private func locked<T>(_ f: () -> T) -> T { frameLock.lock(); defer { frameLock.unlock() }; return f() }
+    var look: Look { get { locked { _look } } set { locked { _look = newValue } } }
+    var mirror: Bool { get { locked { _mirror } } set { locked { _mirror = newValue } } }
+    private var light: Float { get { locked { _light } } set { locked { _light = newValue } } }
+    /// Main queue only.
+    private var pendingStart: CAPPluginCall? { didSet { let w = pendingStart != nil; locked { _awaitingFrame = w } } }
     private var cameraCount = 1
-    private var light: Float = 255
-    private var lightAt: Double = 0
+    private var lightAt: Double = 0   // video queue only
     private var sessionId = 0
-    private var capture: (call: CAPPluginCall, look: Look, processed: Bool, aspect: Double, mirror: Bool)?
+    /// The renderer used for photos, made on first use and only touched on the photo queue.
+    private var stillRenderer: BeautyRenderer?
     private var sentSeen = false, sentReady = false, sentFailed = false, forceFace = false
     private var faceSentAt: Double = 0
 
@@ -202,10 +211,9 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
             web.isOpaque = true
             web.backgroundColor = UIColor(red: 0x12 / 255.0, green: 0x10 / 255.0, blue: 0x14 / 255.0, alpha: 1)
         }
+        // Kept (just taken off screen) so the next start doesn't rebuild the view and recompile the shader.
         mtkView?.isPaused = true
         mtkView?.removeFromSuperview()
-        mtkView = nil
-        renderer = nil
     }
 
     /// The viewfinder's box (fractions of the page) in drawable pixels, top-left origin.
@@ -226,14 +234,15 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         guard let pb = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         frameLock.lock(); frame = pb; frameLock.unlock()
         let W = CVPixelBufferGetWidth(pb), H = CVPixelBufferGetHeight(pb)
-        DispatchQueue.main.async {
+        // Only the first frame after a start needs the main queue (to answer the start call).
+        if locked({ _awaitingFrame }) { DispatchQueue.main.async {
             guard let c = self.pendingStart else { return }
             self.pendingStart = nil
             c.resolve(["width": W, "height": H, "torch": self.device?.hasTorch ?? false, "cameras": self.cameraCount,
                        "facing": self.mirror ? "user" : "environment"])
             self.forceFace = true
             self.sendFace()
-        }
+        } }
         let now = CACurrentMediaTime()
         if now - lightAt > 0.4 { lightAt = now; light = measureLight(pb) }
         if !look.needsFace {
@@ -299,8 +308,13 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         let processed = call.getBool("processed", true)
         let aspect = call.getDouble("aspect") ?? 0
         sessionQueue.async {
-            guard self.session.isRunning, self.capture == nil else { call.reject("The camera isn't ready"); return }
-            self.capture = (call, lk, processed, aspect, self.mirror)
+            let mir = self.mirror
+            let busy: Bool = self.locked {
+                if self._capture != nil { return true }
+                self._capture = (call, lk, processed, aspect, mir); return false
+            }
+            guard !busy else { call.reject("The camera isn't ready"); return }
+            guard self.session.isRunning else { self.locked { self._capture = nil }; call.reject("The camera isn't ready"); return }
             let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
             if #available(iOS 16.0, *) { settings.maxPhotoDimensions = self.photoOutput.maxPhotoDimensions }
             else { settings.isHighResolutionPhotoEnabled = true }
@@ -309,8 +323,7 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
     }
 
     public func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        guard let job = capture else { return }
-        capture = nil
+        guard let job: (call: CAPPluginCall, look: Look, processed: Bool, aspect: Double, mirror: Bool) = locked({ let j = _capture; _capture = nil; return j }) else { return }
         guard error == nil, let data = photo.fileDataRepresentation(), let ui = UIImage(data: data) else {
             job.call.reject("Couldn't take the photo."); return
         }
@@ -356,8 +369,8 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
                 crop.draw(in: CGRect(x: 0, y: 0, width: (W * sm).rounded(), height: (H * sm).rounded()))
             }
             let P = tracker.detectStill(small, W: Int(W), H: Int(H))
-            let r = renderer ?? BeautyRenderer(tracker: tracker)
-            if let out = r?.renderStill(cg, P: P, look: lk, mirror: mir),
+            if stillRenderer == nil { stillRenderer = BeautyRenderer(tracker: tracker) }
+            if let out = stillRenderer?.renderStill(cg, P: P, look: lk, mirror: mir),
                let data = UIImage(cgImage: out).jpegData(compressionQuality: 0.92) {
                 let url = dir.appendingPathComponent("glowcam-\(stamp).jpg")
                 try data.write(to: url)

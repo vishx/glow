@@ -6,7 +6,8 @@ struct Look {
     var lips: Float = 0, blush: Float = 0, brows: Float = 0
     var lipShade = Look.rgb("#d4787d"), blushShade = Look.rgb("#f4a28c"), browShade = Look.rgb("#5a4030")
     /// The photo filter: color matrix rows (r, g, b weights + offset) and a soft-light wash.
-    var color: [Float] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]
+    /// Four matrices applied in turn, clamped to 0..1 after each, as CSS filters are.
+    var color: [Float] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]
     var wash: [Float] = [0, 0, 0, 0]
     var compare = false
     var posY: Float = 0.5

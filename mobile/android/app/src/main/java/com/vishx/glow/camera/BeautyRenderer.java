@@ -47,7 +47,7 @@ final class BeautyRenderer implements GLSurfaceView.Renderer {
         uniform vec4 nose[2];
         uniform vec2 slimR;
         uniform vec4 lips, blush, brows;
-        uniform vec4 cr, cg, cb, wash;                                   // filter: color matrix rows, soft-light wash
+        uniform vec4 cm[12]; uniform vec4 wash;                          // filter: 4 color matrices (3 rows each), soft-light wash
 
         vec3 cam(vec2 q) {
           vec2 b = vec2(rot.x * q.x + rot.y * q.y, rot.z * q.x + rot.w * q.y) + rotOff;
@@ -108,7 +108,10 @@ final class BeautyRenderer implements GLSurfaceView.Renderer {
           col = pow(max(col, 0.0), vec3(1.0 - bright * 0.35));
           col += vec3(0.06, 0.025, -0.03) * warm;
           col = clamp(col, 0.0, 1.0);
-          col = clamp(vec3(dot(cr.xyz, col) + cr.w, dot(cg.xyz, col) + cg.w, dot(cb.xyz, col) + cb.w), 0.0, 1.0);
+          for (int i = 0; i < 4; i++) {
+            vec4 r0 = cm[i * 3], r1 = cm[i * 3 + 1], r2 = cm[i * 3 + 2];
+            col = clamp(vec3(dot(r0.xyz, col) + r0.w, dot(r1.xyz, col) + r1.w, dot(r2.xyz, col) + r2.w), 0.0, 1.0);
+          }
           col = mix(col, softLight(col, wash.rgb), wash.a);
           gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
         }
@@ -149,8 +152,11 @@ final class BeautyRenderer implements GLSurfaceView.Renderer {
         return t[0];
     }
 
+    private boolean masksBlank = false;
+
     @Override public void onSurfaceCreated(GL10 unused, EGLConfig config) {
         camTexW = camTexH = -1;
+        masksBlank = false;
         int vs = shader(GLES20.GL_VERTEX_SHADER, VERT), fs = shader(GLES20.GL_FRAGMENT_SHADER, FRAG);
         ok = vs != 0 && fs != 0;
         if (!ok) { host.rendererFailed("shader"); return; }
@@ -172,7 +178,7 @@ final class BeautyRenderer implements GLSurfaceView.Renderer {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0); texCam = texture(); texStill = texture();
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texCam);
         for (String n : new String[] { "crop", "mirror", "flipY", "rot", "rotOff", "bufScale", "size", "mpxA", "mpxB", "smooth_", "bright", "warm",
-            "faceOn", "plain", "tapScale", "eyeL", "eyeR", "slim", "nose", "slimR", "lips", "blush", "brows", "cr", "cg", "cb", "wash" })
+            "faceOn", "plain", "tapScale", "eyeL", "eyeR", "slim", "nose", "slimR", "lips", "blush", "brows", "cm[0]", "wash" })
             u.put(n, GLES20.glGetUniformLocation(prog, n));
         GLES20.glUniform1i(GLES20.glGetUniformLocation(prog, "tex"), 0);
         GLES20.glUniform1i(GLES20.glGetUniformLocation(prog, "mA"), 1);
@@ -272,10 +278,8 @@ final class BeautyRenderer implements GLSurfaceView.Renderer {
         uniform("bright", look.bright);
         uniform("warm", look.warm);
         uniform("faceOn", faceOn ? 1 : 0);
-        float[] c = look.color;
-        uniform("cr", c[0], c[1], c[2], c[3]);
-        uniform("cg", c[4], c[5], c[6], c[7]);
-        uniform("cb", c[8], c[9], c[10], c[11]);
+        Integer cmLoc = u.get("cm[0]");
+        if (cmLoc != null && cmLoc >= 0) GLES20.glUniform4fv(cmLoc, 12, look.color, 0);
         uniform("wash", look.wash[0], look.wash[1], look.wash[2], look.wash[3]);
         Bitmap a = geo.blank, b = geo.blank;
         if (faceOn && P != null) {
@@ -285,13 +289,18 @@ final class BeautyRenderer implements GLSurfaceView.Renderer {
         } else geo.clearShape();
         uniform("mpxA", 1f / a.getWidth(), 1f / a.getHeight());
         uniform("mpxB", 1f / b.getWidth(), 1f / b.getHeight());
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texA);
-        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, a, 0);
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE2);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texB);
-        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, b, 0);
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        // With no face the masks are blank: upload them once, not every frame.
+        boolean blank = a == geo.blank && b == geo.blank;
+        if (!blank || !masksBlank) {
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texA);
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, a, 0);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE2);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texB);
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, b, 0);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+            masksBlank = blank;
+        }
         float kk = P != null ? k : 0;
         shade("lips", look.lipShade, look.lips * kk, 0.15f, 0.45f);
         shade("blush", look.blushShade, look.blush * kk, 0.1f, 0.35f);

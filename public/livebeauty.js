@@ -320,13 +320,13 @@ const NativeCam = native && plugins.GlowCamera && ["android", "ios"].includes(wi
 const NATIVE_GL = { live: true, native: true };
 const NATIVE_LOOK_KEYS = ["smooth", "bright", "warm", "eyes", "slim", "nose", "lips", "blush", "brows", "lipShade", "blushShade", "browShade"];
 
-// A photo filter's canvas filter chain as one color matrix (rows r, g, b: three weights and an
-// offset), plus its soft-light wash, so the native shader draws the same filter.
+// A photo filter's canvas filter chain as up to four color matrices (rows r, g, b: three weights
+// and an offset), applied in turn with the result kept in 0..1 after each, as canvas filters do,
+// plus its soft-light wash, so the native shader draws the same filter.
+const FILTER_STEPS = 4;
 function filterMatrix(flt) {
-  let M = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]];
-  const then = (N, off = [0, 0, 0]) => {
-    M = N.map((row, i) => [0, 1, 2, 3].map((j) => row.reduce((s, n, k) => s + n * M[k][j], 0) + (j === 3 ? off[i] : 0)));
-  };
+  const steps = [];
+  const then = (N, off = [0, 0, 0]) => steps.push(N.map((row, i) => [...row, off[i]]));
   const sat = (s, w = [0.213, 0.715, 0.072]) => [0, 1, 2].map((i) => [0, 1, 2].map((j) => w[j] + (i === j ? 1 - w[j] : -w[j]) * s));
   for (const [, fn, raw] of String(flt.f || "none").matchAll(/([a-z-]+)\(([-\d.]+)/g)) {
     const v = parseFloat(raw);
@@ -346,7 +346,9 @@ function filterMatrix(flt) {
   }
   const w = /rgba\(([^)]+)\)/.exec(flt.wash || "");
   const wash = w ? w[1].split(",").map(Number).map((n, i) => (i < 3 ? n / 255 : n)) : [0, 0, 0, 0];
-  return { color: M.flat().map((n) => Math.round(n * 1e4) / 1e4), wash };
+  const I = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]];
+  while (steps.length < FILTER_STEPS) steps.push(I);
+  return { color: steps.slice(0, FILTER_STEPS).flat(2).map((n) => Math.round(n * 1e4) / 1e4), wash };
 }
 // What the native camera needs to draw look `l` (the camera's current look by default).
 function nativeCamState(extra = {}, l = camLook()) {
