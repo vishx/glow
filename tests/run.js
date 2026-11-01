@@ -1830,9 +1830,13 @@ test('try on: one tool with ideas, your photo or words; sends the part; keeps ev
   await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
   await p.waitForFunction(() => tryLooksNow().length === 1);
   eq(await p.evaluate(() => [job.look, tryLooksNow()[0].label]), ['Navy suit', 'Navy suit'], 'the look is named');
-  // Picking another idea while a look shows means "make another": the look closes, nothing is applied.
+  // While a look shows, the panel is just Your looks and the buttons, so the photo is big; the face is the model's own.
+  eq(await p.evaluate(() => [!!$('panelBody').querySelector('.try-card'), $('cancelBtn').textContent, $('panelNote').textContent, $('panel').classList.contains('try-compact'), !!job.keepFace]),
+    [false, 'Change', '', true, false], 'the result view is compact, without notes, and no face pasting');
+  // Change: the look closes (kept in Your looks), the pickers come back, nothing is applied.
+  await p.click('#cancelBtn'); await settle(200);
   await p.click('.try-card[data-idea="gown"]'); await settle(200);
-  eq(await p.evaluate(() => [job, ed.idx, tryLooksNow().length, $('applyBtn').textContent]), [null, 0, 1, 'Try on · 1 credit'], 'a new pick closes the look and offers a new try-on');
+  eq(await p.evaluate(() => [job, ed.idx, tryLooksNow().length, $('applyBtn').textContent]), [null, 0, 1, 'Try on · 1 credit'], 'Change closes the look and offers a new try-on');
   await p.click('.try-look'); await settle(200);
   eq(await p.evaluate(() => [job && job.look, reviewing()]), ['Navy suit', true], 'and the look is one tap away');
   // Discard keeps it in Your looks, without the "credit isn't returned" question.
@@ -1864,7 +1868,7 @@ test('try on: one tool with ideas, your photo or words; sends the part; keeps ev
   eq([body.prompt, body.part], ['a red satin slip dress', 'top'], 'words are sent as written, with the part picked before');
 });
 
-test('try on: a reframed AI result is lined up with the photo and her face goes on her new face (no double face)', async ({ p }) => {
+test('describe: a reframed AI result is lined up with the photo and her face goes on her new face (no double face)', async ({ p }) => {
   await p.goto('https://app.test/');
   const data = (f) => 'data:image/' + (f.endsWith('png') ? 'png' : 'jpeg') + ';base64,' + fs.readFileSync(f).toString('base64');
   // The fixture is the portrait as an edit model answers it: 2:3 instead of 3:4, shifted, new top color.

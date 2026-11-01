@@ -68,7 +68,7 @@ export const MODES: Record<string, Mode> = {
   // (`extra`), or words (`prompt`: an idea from the app's list, or her own description), and
   // which part to change (`part`). tryOnMode() below builds the instruction. Nano Banana 2 keeps
   // the garment's print and cut most faithfully; then Nano Banana, then IDM-VTON (photo only).
-  // The phone puts her own face back if the model moved it.
+  // The face is left as the model made it (pasting her own face back left a visible outline).
   outfit: {
     model: ["google/nano-banana-2", "google/nano-banana", "cuuupid/idm-vton"],
     input: { prompt: "", output_format: "jpg", resolution: "1K", aspect_ratio: "match_input_image" },
@@ -109,23 +109,23 @@ export const MODES: Record<string, Mode> = {
 
 // Try on: what to change, as the phone names it.
 export const TRY_PARTS = ["auto", "top", "bottom", "full"] as const;
+// Short and plain, like a person would ask Gemini ("Put a suit on this person. Don't change
+// anything else."): long lists of rules made the model redraw more of the photo, not less.
 const PART_RULE: Record<string, string> = {
-  auto: "Change only the clothing items shown in the outfit; any of the person's own clothes the outfit doesn't cover stay exactly as they are.",
-  top: "Change only the person's top layer (shirt, blouse, sweater or jacket). Keep their own trousers, skirt and shoes exactly as they are.",
-  bottom: "Change only the person's trousers, skirt or shorts. Keep their own top and shoes exactly as they are.",
-  full: "Change the person's whole outfit, from the neckline down, including shoes where they are visible.",
+  auto: "",
+  top: "Change only the top; keep their own trousers or skirt. ",
+  bottom: "Change only the trousers or skirt; keep their own top. ",
+  full: "",
 };
 const VTON_CATEGORY: Record<string, string> = { top: "upper_body", bottom: "lower_body", full: "dresses" };
-const TRY_KEEP = " Keep the same body shape and size, the same pose, hands, hair and background, and the same framing. " +
-  "The clothes must fit the person's body and pose naturally, with realistic folds, shadows and the photo's own light." + SAME;
+const TRY_KEEP = "Don't change anything else.";
 // The try-on edit for one request: a photo of the outfit (`extra`) or words for it (`words`).
 export function tryOnMode(base: Mode, part: unknown, words: string, hasPhoto: boolean): Mode {
   const p = TRY_PARTS.includes(part as any) ? part as string : "auto";
   const prompt = hasPhoto
-    ? "The first image is a photo of a person. The second image shows an outfit (it may be a product photo, a screenshot or worn by someone else). " +
-      "Dress the person from the first image in that outfit. Copy the garments exactly: color, pattern, print, fabric, cut, length, neckline, sleeves and details. " +
-      "Ignore the second image's person, face, body, pose and background. " + (words ? `The outfit: ${words}. ` : "") + PART_RULE[p] + TRY_KEEP
-    : `Dress the person in ${words}. ` + PART_RULE[p === "auto" ? "full" : p] + TRY_KEEP;
+    ? "Put the outfit from the second image on the person in the first image. Copy the clothes exactly. " +
+      "Use only the clothes from the second image, not its person or background. " + (words ? `The outfit: ${words}. ` : "") + PART_RULE[p] + TRY_KEEP
+    : `Put ${words} on this person. ` + PART_RULE[p] + TRY_KEEP;
   const input: Record<string, unknown> = { ...base.input, prompt };
   // Words alone need an image-edit model; the try-on model only works from an outfit photo.
   const models = (Array.isArray(base.model) ? base.model : [base.model]).filter((m) => hasPhoto || m !== "cuuupid/idm-vton");
