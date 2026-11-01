@@ -4,7 +4,7 @@ const H = require('./harness');
 const path = require('path'), fs = require('fs');
 const out = process.argv[2] || path.join(__dirname, 'out', 'tryon');
 fs.mkdirSync(out, { recursive: true });
-const PORTRAIT = path.join(__dirname, '../public/samples/demo-v2/original.png');
+const PORTRAIT = process.env.PORTRAIT || path.join(__dirname, '../public/samples/demo-v2/original.png');
 const OUTFIT = path.join(__dirname, 'fixtures/coords-600x400.png');
 (async () => {
   const { browser, p } = await H.launch({ start: 'editor', scheme: process.argv[3] || 'light' });
@@ -15,7 +15,7 @@ const OUTFIT = path.join(__dirname, 'fixtures/coords-600x400.png');
   await p.click('.tab[data-cat="looks"]'); await p.waitForTimeout(300); await shot('00-looks-tab');
   await p.click('.tool[data-tool="outfit"]'); await p.waitForFunction(() => tryOn.check !== null, null, { timeout: 30000 }); await p.waitForTimeout(300); await shot('01-ideas');
   await p.click('.try-card[data-idea="gown"]'); await p.click('.try-color[aria-label="Red"]'); await p.waitForTimeout(200); await shot('02-idea-color');
-  await p.click('#applyBtn'); await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 }); await p.waitForTimeout(500); await shot('03-result');
+  await p.click('#applyBtn'); await p.waitForTimeout(150); await shot('02b-working'); await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 }); await p.waitForTimeout(500); await shot('03-result');
   await p.click('#cancelBtn'); await p.waitForTimeout(300);
   if (!(await p.evaluate(() => sel === 'outfit'))) await p.click('.tool[data-tool="outfit"]');
   await p.click('.try-seg .opt:has-text("Your photo")'); await p.waitForTimeout(200); await shot('04-your-photo-empty');

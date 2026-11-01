@@ -1476,7 +1476,8 @@ function renderPanel(rebuild) {
   const t = sel && TOOL[sel];
   $("panel").hidden = !t;
   if (!t) { panelBuilt = null; fitDock(); return; }
-  if (rebuild || panelBuilt !== t.id) { buildPanel(t); panelBuilt = t.id; }
+  const key = t.id + (t.id === "outfit" && tryCompact() ? ":compact" : "");
+  if (rebuild || panelBuilt !== key) { buildPanel(t); panelBuilt = key; }
   panelState(t); fitDock();
 }
 // On phones the controls under the photo keep one fixed height (the dock), so the photo never
@@ -1486,6 +1487,9 @@ const dockFixed = () => matchMedia("(max-width: 959px)").matches && !matchMedia(
 function fitDock() {
   const es = $("editorScreen"), p = $("panel");
   es.classList.remove("no-tools");
+  p.classList.toggle("try-compact", sel === "outfit" && tryCompact());
+  // Try on has its own pickers, so the row of other tools steps aside and the photo gets the room.
+  if (sel === "outfit" && !ed.demo && !panelCollapsed && !p.hidden && dockFixed()) { es.classList.add("no-tools"); return; }
   if (!sel || panelCollapsed || p.hidden || !dockFixed()) return;
   if (p.scrollHeight > p.clientHeight + 1) es.classList.add("no-tools");
 }
@@ -1591,7 +1595,7 @@ function buildPanel(t) {
   }
 }
 function panelState(t) {
-  $("cancelBtn").textContent = reviewing() ? "Discard" : "Cancel";
+  $("cancelBtn").textContent = reviewing() ? (t.id === "outfit" && !ed.demo ? "Change" : "Discard") : "Cancel";
   if (ed.demo && t.id === "outfit") return tryDemoState();
   if (ed.demo && t.kind === "ai") return demoPanelState(t);
   const cost = costOf(t), chip = $("cost"), apply = $("applyBtn");
@@ -1623,7 +1627,7 @@ function panelState(t) {
     apply.textContent = "Apply"; apply.disabled = false;
     note = job.unblended ? "This device couldn't blend the result into your full-size photo, so the whole picture is at the size the AI returned. Discard to keep your photo as it was."
       : MASK_TOOLS.includes(t.id) ? "Only the marked area changed. It is blended into your full-size photo; the marked area itself is at the AI's size and may look softer up close."
-      : t.id === "outfit" ? "Tap Compare to see the original. Apply keeps it; Discard closes it, and it stays in Your looks."
+      : t.id === "outfit" ? ""
       : "Tap Compare to see the original. Apply keeps it; Discard drops it, and the credit isn't returned.";
   } else if (!aiLive(t.id)) {
     chip.textContent = "Not available yet"; chip.className = "chip";
@@ -1646,7 +1650,8 @@ function panelState(t) {
     }
     if (jobActive()) { apply.disabled = true; note = `Wait for ${job.title} to finish, or check its status above. Glow Studio runs one AI edit at a time so nothing is charged twice.`; }
     else if (resultReady()) { apply.disabled = true; note = `Apply or discard the ${job.title} result first (in the bar above).`; }
-    if (t.id === "outfit") { if (!short) { apply.textContent = apply.textContent.replace(/^Apply/, "Try on"); if (!tryRequest()) apply.disabled = true; } const tn = tryOnNote(); if (tn) note = tn; }
+    if (t.id === "outfit" && tryCompact()) note = "";
+    else if (t.id === "outfit") { if (!short) { apply.textContent = apply.textContent.replace(/^Apply/, "Try on"); if (!tryRequest()) apply.disabled = true; } const tn = tryOnNote(); if (tn) note = tn; }
     if (t.id === "custom" && !customText.trim()) apply.disabled = true;
     if (t.id === "glowup" && !short) { apply.textContent = apply.textContent.replace(/^(Apply|Run again)/, "Glow Up"); if (glow.ai === "custom" && !glow.words.trim()) apply.disabled = true; }
     if (t.id === "colorize" && photoColorful) { apply.disabled = true; note = "Colorize is for black-and-white photos. This photo already has color."; }
@@ -2042,7 +2047,7 @@ async function startAiEdit(t) {
       // Try on: an outfit photo, or words for one, and which part to change. Her face stays hers.
       const r = tryRequest(); if (!r) throw new Error("Pick an outfit first.");
       body = { image: await uploadable(base, aiMaxSide(t.id), aiMaxPixels(t.id)), mode: "outfit", extra: r.extra, prompt: r.prompt, part: r.part };
-      keep = { keepFace: true, look: r.label };
+      keep = { look: r.label };
     } else if (t.id === "expand") {
       const x = await expandInputs(base); body = { image: x.image, mode: "expand", mask: x.mask };
     } else body = { image: await uploadable(base, aiMaxSide(t.id), aiMaxPixels(t.id)), mode: t.id };

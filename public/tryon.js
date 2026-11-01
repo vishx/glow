@@ -70,7 +70,7 @@ async function tryCheck() {
   try {
     const boxes = await faceBoxes(base);
     if (!boxes.length) msg = "No person found. Try on works on a photo of you.";
-    else if (boxes.length > 1 && boxes[1].w * boxes[1].h > boxes[0].w * boxes[0].h * 0.5) msg = "Works best with one person in the photo. The largest person is dressed.";
+    else if (boxes.length > 1 && boxes[1].w * boxes[1].h > boxes[0].w * boxes[0].h * 0.7) msg = "Works best with one person in the photo. The largest person is dressed.";
     // How much of her is below the chin, in face heights: about 2 for a head-and-shoulders photo,
     // 3 to 4 from the waist up, 7 head to toe.
     else if ((1 - boxes[0].y - boxes[0].h) / boxes[0].h < 2.5) msg = "Little of your outfit shows here, so the AI guesses the rest. A waist-up photo works best.";
@@ -216,8 +216,12 @@ async function tryKeepLook(mine) {
   if (sel === "outfit") renderPanel(true);
 }
 
+// While a look is being made or shown, the panel shrinks to Your looks and the buttons, so the
+// photo gets the room (the pickers come back with Change).
+const tryCompact = () => !ed.demo && !!job && job.tool === "outfit" && job.session === ed.session && (reviewing() || jobActive());
 function tryOnPanel(body) {
   if (ed.demo) { tryIdeas(body); return; }
+  if (tryCompact()) { tryLooksRow(body); return; }
   trySeg(body);
   if (tryOn.src === "ideas") tryIdeas(body);
   else if (tryOn.src === "photo") { tryPhoto(body); tryParts(body); }
