@@ -1,0 +1,83 @@
+# Test APK for the "Add to home screen" prompt: this branch (live website + the prompt) merged with
+# the latest phone-app branch (native camera, test signing key) inside the runner, so the APK
+# installs over the previous test APK. The branch itself stays website-only.
+name: Android home screen prompt APK
+
+on:
+  push:
+    branches: [claude/project-thread-0v5tp5]
+    paths: [mobile/**, public/**, .github/workflows/android-home-prompt.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge the phone-app branch (native camera + signing key)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git fetch origin claude/project-thread-40lpfr
+          echo "BRANCH_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "APP_SHA=$(git rev-parse --short FETCH_HEAD)" >> "$GITHUB_ENV"
+          git merge --no-edit FETCH_HEAD
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Android SDK packages (the runner ships the SDK itself)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Build web assets and sync Capacitor
+        working-directory: mobile
+        run: |
+          npm ci
+          bash build-web.sh
+          npx cap sync android
+
+      - name: Build debug APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Name the APK
+        id: apk
+        run: |
+          SHA="$BRANCH_SHA"
+          NAME="glow-home-prompt-${SHA}.apk"
+          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk "$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          ls -l "$NAME"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glow-home-prompt-apk
+          path: ${{ steps.apk.outputs.name }}
+
+      - name: Publish as a pre-release (a download page for the phone)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="android-home-prompt-${{ steps.apk.outputs.sha }}"
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" "${{ steps.apk.outputs.name }}" \
+            --repo "$GITHUB_REPOSITORY" --target "$(git rev-parse HEAD)" --prerelease \
+            --title "Glow Studio test build: home screen prompt (${{ steps.apk.outputs.sha }})" \
+            --notes "Debug build for sideloading: live website + Add to home screen prompt (${{ steps.apk.outputs.sha }}) + phone app branch ${APP_SHA} (native camera). Not for the Play Store."
