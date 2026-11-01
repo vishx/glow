@@ -139,6 +139,21 @@ test('camera: full-screen preview, and the photo is cropped to what the screen s
   assert(Math.abs(a - r.cw / r.ch) < 0.01, 'photo shape matches the preview: ' + [a, r.cw / r.ch]);
 }, { start: 'camera' });
 
+test('camera: held sideways, the web camera keeps the people in view (controls in a side column)', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  const r = await p.evaluate(() => {
+    const b = (id) => $(id).getBoundingClientRect(), vf = b('viewfinder'), cc = b('camControls');
+    const clickable = ['camTimer', 'camAI', 'camSettingsBtn', 'shutter', 'camGallery'].filter((id) => $(id) && !$(id).hidden).every((id) => {
+      const q = b(id); return $(id).contains(document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2)); });
+    return { vfW: vf.width, vfH: vf.height, ccLeft: cc.left, ccTop: cc.top, clickable };
+  });
+  assert(r.ccLeft >= r.vfW * 0.55, 'controls sit in a right-hand column, leaving most of the picture clear: ' + JSON.stringify(r));
+  assert(r.ccTop >= 48, 'the controls column starts below the top bar: ' + r.ccTop);
+  assert(r.clickable, 'top bar and capture buttons are all tappable');
+  await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot);
+  const a = await p.evaluate(() => cam.shot.w / cam.shot.h);
+  assert(a > 1 && Math.abs(a - r.vfW / r.vfH) < 0.01, 'a landscape photo shaped like the screen: ' + [a, r.vfW / r.vfH]);
+}, { start: 'camera', viewport: { width: 844, height: 390 } });
 test('camera: AI Enhance button on review runs Enhance for 1 credit, closing goes back to the camera', async ({ p, state }) => {
   await p.goto('https://app.test/'); await camLive(p);
   assert(await p.isVisible('#camAI'), 'AI switch visible'); eq(await p.getAttribute('#camAI', 'aria-pressed'), 'false', 'AI off by default');
