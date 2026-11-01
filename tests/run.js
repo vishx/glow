@@ -2967,6 +2967,45 @@ test('features: Enhance Batch off hides its link; switching it back on brings ev
 }, { start: 'enhance', camera: false, features: { 'enhance:batch': false } });
 
 
+// ---------- Golden Hour: dark by default, gold moment, Recent row, before/after video ----------
+test('golden hour: dark by default on a light phone; System follows the phone; Light stays light', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const look = () => p.evaluate(() => [getComputedStyle(document.body).backgroundColor, document.querySelector('meta[name="theme-color"]').content]);
+  eq(await look(), ['rgb(13, 13, 16)', '#0d0d10'], 'dark on first open, browser bar too');
+  await p.evaluate(() => { store.set('glowTheme', 'system'); applyTheme(); }); eq((await look())[0], 'rgb(250, 247, 240)', 'System follows the light phone');
+  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await look(), ['rgb(250, 247, 240)', '#faf7f0'], 'Light');
+  await p.reload(); await p.waitForFunction(() => screen === 'enhanceHome'); eq((await look())[0], 'rgb(250, 247, 240)', 'choice kept after a reload');
+}, { start: 'enhance', camera: false, scheme: 'light' });
+
+test('golden hour: Enhance result plays the gold moment; saving adds it to Recent on both homes; Recent reopens it in the editor', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  eq(await p.isVisible('#enhanceHome .recents'), false, 'no Recent row before any save');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult', null, { timeout: 30000 });
+  eq(await p.evaluate(() => !!document.querySelector('#enhFrame .glow-burst')), true, 'gold moment on the result');
+  await p.click('#enhDownload'); await downloads(state, 1); await p.waitForFunction(() => screen === 'enhanceShare');
+  await p.waitForFunction(() => document.querySelectorAll('#enhanceHome .recent').length === 1);
+  eq(await p.evaluate(() => document.querySelectorAll('#editorHome .recent').length), 1, 'Recent on Editor home too');
+  await p.click('#enhShareDone'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhanceHome .recent'); await p.waitForFunction(() => screen === 'editorScreen' && hasPhoto());
+  await p.evaluate(() => go('enhance')); await p.click('#enhanceHome .recents-clear'); await p.waitForSelector('#ask[open]');
+  await p.click('#askActions button:has-text("Clear")'); await p.waitForFunction(() => document.querySelector('#enhanceHome .recents').hidden);
+}, { start: 'enhance', camera: false });
+
+test('golden hour: before & after video is made and shared (downloaded on a computer)', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult', null, { timeout: 30000 });
+  await p.click('#enhDownload'); await downloads(state, 1); await p.waitForFunction(() => screen === 'enhanceShare');
+  assert(await p.isVisible('#enhVideo'), 'video button shown');
+  await p.click('#enhVideo'); const d = await downloads(state, 2, 30000);
+  assert(/glow-studio-before-after-\d+\.(mp4|webm)$/.test(d[1].name), 'video file: ' + d[1].name);
+  assert(require('fs').statSync(d[1].file).size > 20000, 'video has content');
+  eq(await p.evaluate(() => document.querySelectorAll('#enhanceHome .recent').length), 1, 'the video is not added to Recent');
+}, { start: 'enhance', camera: false, mobile: false, touch: false });
+
 (async () => {
   fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
   const results = [];

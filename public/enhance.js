@@ -304,7 +304,7 @@ async function runEnhance() {
     setSheetWorking(false);
     if ($("enhSheet").open) $("enhSheet").close();
     showEnhResult();
-    Platform.haptic("heavy");
+    Platform.haptic("success");
     return true;
   } catch (err) {
     setSheetWorking(false);
@@ -582,6 +582,7 @@ function showEnhResult() {
   const f = $("enhFrame");
   f.classList.remove("reveal"); enhSetSplit(100);
   requestAnimationFrame(() => requestAnimationFrame(() => { f.classList.add("reveal"); enhSetSplit(50); setTimeout(() => f.classList.remove("reveal"), 950); }));
+  glowBurst(f);   // the Golden Hour moment
   $("enhDownload").classList.remove("ready"); void $("enhDownload").offsetWidth; $("enhDownload").classList.add("ready");
   $("alertLive").textContent = "Your enhanced photo is ready.";
   if (!store.get("glow.compareZoomHint")) setTimeout(() => {   // once, after the reveal
@@ -983,6 +984,7 @@ function showEnhShare() {
   $("enhShareImg").src = enh.saved.data;
   $("enhSavedText").textContent = SAVED_LABEL[enh.saved.where] || "Saved";
   $("enhAnother").hidden = !!enh.fromBatch;
+  $("enhVideo").hidden = !VIDEO_TYPE || !enh.base || !featureOn("share:video");
   $("enhAnother").innerHTML = enh.fromCamera ? "Take another" + icon("camera") : "Enhance another" + icon("sparkle");
   const st = $("enhSavedState"); st.style.animation = "none"; void st.offsetWidth; st.style.animation = "";
   showScreen("enhanceShare");
@@ -997,6 +999,77 @@ $("enhShareBtn").addEventListener("click", async () => {
   catch (err) { if (!(err && err.name === "AbortError")) say("Couldn't open sharing. Try again.", true); }
 });
 $("enhAnother").addEventListener("click", () => (enh.fromCamera ? enhExit() : enhancePick()));
+
+// ---------- Before & after video: a 5-second reveal to post on Reels, TikTok or Stories ----------
+// Recorded in the browser (canvas + MediaRecorder): MP4 where the phone can make it, WebM otherwise.
+const VIDEO_TYPE = (() => {
+  try { return typeof MediaRecorder !== "undefined" && typeof HTMLCanvasElement.prototype.captureStream === "function"
+    ? ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"].find((t) => MediaRecorder.isTypeSupported(t)) || "" : ""; } catch { return ""; }
+})();
+function drawReveal(x, W, H, before, after, split, mark) {
+  x.drawImage(after, 0, 0, W, H);
+  const cut = Math.round(W * split);
+  if (cut > 0) { x.save(); x.beginPath(); x.rect(0, 0, cut, H); x.clip(); x.drawImage(before, 0, 0, W, H); x.restore(); }
+  const u = W / 1080;
+  if (split > 0.004 && split < 0.996) {   // the gold divider with its glow
+    x.save(); x.shadowColor = "rgba(255, 210, 120, 0.95)"; x.shadowBlur = 28 * u; x.fillStyle = "#fff";
+    x.fillRect(cut - 2.5 * u, 0, 5 * u, H); x.restore();
+    x.beginPath(); x.arc(cut, H / 2, 30 * u, 0, Math.PI * 2); x.fillStyle = "#fff"; x.fill();
+    x.lineWidth = 6 * u; x.strokeStyle = "#f3b54a"; x.stroke();
+  }
+  const pill = (t, px, right) => {
+    x.font = `700 ${34 * u}px Figtree, system-ui, sans-serif`;
+    const w = x.measureText(t).width + 40 * u, h = 58 * u, X = right ? W - px - w : px, Y = 40 * u;
+    x.fillStyle = "rgba(13, 13, 16, 0.62)"; x.beginPath(); (x.roundRect ? x.roundRect(X, Y, w, h, h / 2) : x.rect(X, Y, w, h)); x.fill();
+    x.fillStyle = "#fff"; x.textBaseline = "middle"; x.fillText(t, X + 20 * u, Y + h / 2 + 1);
+  };
+  if (split > 0.08) pill("Before", 40 * u, false);
+  if (split < 0.92) pill("After", 40 * u, true);
+  if (mark) {
+    x.font = `600 ${40 * u}px Fraunces, Georgia, serif`;
+    const t = "Glow Studio", w = x.measureText(t).width + 48 * u, h = 72 * u, X = (W - w) / 2, Y = H - h - 44 * u;
+    x.fillStyle = "rgba(13, 13, 16, 0.62)"; x.beginPath(); (x.roundRect ? x.roundRect(X, Y, w, h, h / 2) : x.rect(X, Y, w, h)); x.fill();
+    x.fillStyle = "#ffe3a3"; x.textBaseline = "middle"; x.fillText(t, X + 24 * u, Y + h / 2 + 2);
+  }
+}
+// The split over time (1 = all Before): hold, reveal, hold, back to the middle.
+function revealAt(t) {
+  const ease = (k) => k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+  if (t < 0.7) return 1;
+  if (t < 2.5) return 1 - ease((t - 0.7) / 1.8);
+  if (t < 3.4) return 0;
+  if (t < 4.3) return 0.5 * ease((t - 3.4) / 0.9);
+  return 0.5;
+}
+async function makeRevealVideo(beforeUrl, afterUrl, mark) {
+  const [b, a] = await Promise.all([loadImg(beforeUrl), loadImg(afterUrl)]);
+  const s = Math.min(1, 1080 / a.naturalWidth, 1920 / a.naturalHeight);
+  const W = Math.round(a.naturalWidth * s / 2) * 2, H = Math.round(a.naturalHeight * s / 2) * 2;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const x = c.getContext("2d"); x.imageSmoothingQuality = "high";
+  drawReveal(x, W, H, b, a, 1, mark);
+  const rec = new MediaRecorder(c.captureStream(30), { mimeType: VIDEO_TYPE, videoBitsPerSecond: 8e6 });
+  const parts = []; rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) parts.push(ev.data); };
+  const done = new Promise((ok, fail) => { rec.onstop = ok; rec.onerror = (ev) => fail(ev.error || new Error("recording failed")); });
+  rec.start(250);
+  const t0 = performance.now(), LEN = 5;
+  await new Promise((ok) => { const tick = () => { const t = (performance.now() - t0) / 1000; drawReveal(x, W, H, b, a, revealAt(Math.min(t, LEN)), mark); if (t >= LEN) ok(); else requestAnimationFrame(tick); }; tick(); });
+  rec.stop(); await done;
+  return new Blob(parts, { type: VIDEO_TYPE.split(";")[0] });
+}
+$("enhVideo").addEventListener("click", async () => {
+  const btn = $("enhVideo");
+  if (btn.disabled || !enh.current || !enh.base) return;
+  btn.disabled = true; const label = btn.innerHTML; btn.textContent = "Making your video…";
+  try {
+    const blob = await makeRevealVideo(enh.base, enh.current, wantMark());
+    Platform.haptic("success");
+    const where = await Platform.shareVideo(blob, `glow-studio-before-after-${Date.now()}`);
+    track("share_video", { from: "enhance", where, type: blob.type });
+    if (where === "downloaded") say("Video downloaded. Post it from your Downloads.");
+  } catch (err) { if (!(err && err.name === "AbortError")) say("Couldn't make the video. Try again.", true); }
+  finally { btn.disabled = false; btn.innerHTML = label; }
+});
 $("enhEdit").addEventListener("click", editEnhanced);
 
 // Hands the enhanced photo to the editor as its first step, so Undo there goes back to the original.

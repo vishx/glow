@@ -237,12 +237,30 @@ $("retakeBtn").innerHTML = icon("retake") + "<span>Retake</span>";
 const fmtTime = (d) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
 // ---------- Theme ----------
+// Dark is the default (Golden Hour's gold reads best on dark); System and Light are in Settings.
+const themeChoice = () => store.get("glowTheme") || "dark";
 function applyTheme() {
-  const t = store.get("glowTheme") || "system";
+  const t = themeChoice();
   if (t === "system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme = t;
   document.querySelectorAll("#themeSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.theme === t)));
+  // The browser bar follows the app's look, not just the phone's.
+  const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => { m.content = dark ? "#0d0d10" : "#faf7f0"; });
 }
+try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme); } catch {}
 applyTheme();
+
+// Golden Hour moment: a gold light sweeps across `host` and a few sparkles pop (Enhance done, joining
+// Pro). Decorative only: pointer-events off, removed after it plays, skipped with reduced motion.
+function glowBurst(host = document.body) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches || !host) return;
+  const b = document.createElement("div");
+  b.className = "glow-burst" + (host === document.body ? " page" : ""); b.setAttribute("aria-hidden", "true");
+  for (const [x, y, d, s] of [[18, 26, 120, 1], [78, 18, 260, 0.8], [64, 70, 380, 1.1], [28, 78, 500, 0.7], [86, 52, 620, 0.9]]) {
+    const i = document.createElement("i"); i.style.cssText = `left:${x}%;top:${y}%;animation-delay:${d}ms;--s:${s}`; b.append(i);
+  }
+  host.append(b); setTimeout(() => b.remove(), 1600);
+}
 
 // ---------- Screens and navigation ----------
 let screen = "";
@@ -565,6 +583,35 @@ $("recoveredDiscard").addEventListener("click", async () => {
   if (!c) return;
   recovered = null; await Drafts.clearRecovered(); renderHome();
 });
+
+// ---------- Recent: the last photos saved, on both home screens (Recents in platform.js) ----------
+async function renderRecents() {
+  const list = await Recents.list().catch(() => []);
+  document.querySelectorAll(".recents").forEach((box) => {
+    box.hidden = !list.length;
+    const row = box.querySelector(".recents-row"); row.textContent = "";
+    for (const r of list) {
+      const b = document.createElement("button"); b.className = "recent"; b.setAttribute("role", "listitem");
+      b.setAttribute("aria-label", `Open ${r.name} in the editor`);
+      const img = document.createElement("img"); img.src = r.thumb; img.alt = ""; img.loading = "lazy"; b.append(img);
+      b.addEventListener("click", () => openRecent(r));
+      row.append(b);
+    }
+  });
+}
+async function openRecent(r) {
+  Platform.haptic();
+  if (!(await confirmReplace())) return;
+  try { setEditorReturn(null); await openFile(new File([r.blob], r.name, { type: r.blob.type || "image/jpeg" }), r.name); track("recent_open"); }
+  catch { say("Couldn't open that photo. It may have been cleared.", true); Recents.remove(r.id); }
+}
+document.querySelectorAll(".recents-clear").forEach((b) => b.addEventListener("click", async () => {
+  const c = await ask({ title: "Clear recent photos?", text: "This only clears the Recent row in Glow Studio. Photos you saved stay in your photo library.",
+    actions: [{ label: "Clear", value: "yes" }, { label: "Keep them", value: "", kind: "ghost" }] });
+  if (c) { await Recents.clear(); say("Recent cleared."); }
+}));
+document.addEventListener("recents-changed", renderRecents);
+renderRecents();
 
 function renderHome() {
   $("resumeCard").hidden = !hasPhoto();
@@ -3711,7 +3758,7 @@ $("docFrame").addEventListener("load", () => {
   let doc;
   try { doc = $("docFrame").contentDocument; } catch { return; }
   if (!doc || !doc.documentElement) return;
-  const t = store.get("glowTheme") || "system";
+  const t = themeChoice();
   const dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
   doc.documentElement.dataset.theme = dark ? "dark" : "light";
   doc.documentElement.dataset.embed = "1";
@@ -3893,6 +3940,7 @@ $("buyBtn").addEventListener("click", async () => {
     await purchases().purchasePackage({ aPackage: packages[plan] });
     track("purchase", { plan });
     $("paywall").close();
+    Platform.haptic("success"); glowBurst();
     say((await afterPurchase()) ? (account.inTrial ? "Your free trial has started. You have 10 AI credits to try every Pro tool."
       : "Welcome to Glow Studio Pro. Your 40 weekly AI credits are ready.") : "Purchase complete. Pro will switch on within a minute.");
   } catch (err) {
