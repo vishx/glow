@@ -6,97 +6,139 @@
 <meta name="robots" content="noindex, nofollow">
 <title>Glow Studio admin</title>
 <link rel="icon" href="/icon-192.png">
+<meta name="theme-color" content="#0d0d10">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500..600&display=swap" rel="stylesheet">
 <style>
-  :root { --bg: #faf7f0; --card: #ffffff; --text: #15140f; --muted: #64615c; --line: #e7e1d4; --rose: #8a5a10; --blush: #f3ece0;
-    --good: #2f7a52; --warn: #a8611a; --bad: #b3261e; --ink: #15140f; }
+  /* Golden Hour, the same gold-on-black look as the app. */
+  :root { color-scheme: dark;
+    --bg: #0d0d10; --card: #18181c; --card-2: #232328; --text: #f7f3ea; --muted: #a9a59c; --line: #2e2e34;
+    --rose: #f3c062; --blush: rgb(243 192 98 / 0.14); --gold: linear-gradient(135deg, #ffe3a3, #f3b54a); --on-gold: #1a1206;
+    --good: #9fd8b0; --warn: #f3b54a; --bad: #ffa3a3; --ink: #f7f3ea;
+    --good-bg: rgb(159 216 176 / 0.14); --bad-bg: rgb(255 163 163 / 0.14); --dirty: rgb(243 192 98 / 0.08);
+    --font: Figtree, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; --display: Fraunces, Georgia, serif; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 Figtree, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  header { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
-  header h1 { font: 600 22px/1 Fraunces, Georgia, serif; margin: 0; }
-  nav { display: flex; gap: 4px; flex-wrap: wrap; }
-  nav button { border: 0; background: none; padding: 8px 12px; border-radius: 999px; cursor: pointer; font: inherit; color: var(--muted); font-weight: 600; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+  header { display: flex; align-items: center; gap: 12px 16px; padding: 14px 20px 0; border-bottom: 1px solid var(--line);
+    background: rgb(13 13 16 / 0.86); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
+  header h1, .brand { font: 600 21px/1.1 var(--display); margin: 0; letter-spacing: -0.01em; }
+  .brand em, header h1 em { font-style: normal; background: var(--gold); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .head-actions { display: flex; gap: 8px; margin-left: auto; }
+  nav { order: 3; flex-basis: 100%; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: 0 -20px; padding: 2px 20px 10px; }
+  nav::-webkit-scrollbar { display: none; }
+  nav button { flex: none; border: 0; background: none; padding: 8px 14px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 14px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  nav button:hover { color: var(--text); }
   nav button[aria-current="page"] { background: var(--blush); color: var(--rose); }
-  .spacer { flex: 1; }
+  .spacer { display: none; }
   main { max-width: 1180px; margin: 0 auto; padding: 20px; }
   .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
-  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
-  .tile b { display: block; font-size: 26px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; }
+  .tile b { display: block; font-size: 26px; line-height: 1.2; font-weight: 600; font-variant-numeric: tabular-nums; }
   .tile span { color: var(--muted); font-size: 13px; }
   .tile.alert { border-color: var(--bad); }
   .tile.alert b { color: var(--bad); }
-  section.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 20px; overflow-x: auto; }
-  h2 { font-size: 17px; margin: 0 0 10px; }
+  section.card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 18px; margin-bottom: 20px; overflow-x: auto; }
+  h2 { font-size: 17px; font-weight: 600; margin: 0 0 12px; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
-  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
   td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
   a { color: var(--rose); }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
   .muted { color: var(--muted); }
-  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--line); }
-  .pill.pro { background: var(--blush); color: var(--rose); }
-  .pill.bad { background: #f9dedc; color: var(--bad); }
-  .pill.good { background: #dcefe3; color: var(--good); }
-  button.btn, a.btn { display: inline-block; border: 0; border-radius: 999px; padding: 8px 14px; background: var(--ink); color: #fff; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; }
-  button.btn.ghost { background: none; color: var(--text); border: 1px solid var(--line); }
-  button.btn.danger { background: var(--bad); }
-  button.link { border: 0; background: none; color: var(--rose); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
-  input, select, textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--text); }
-  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--card-2); color: var(--text); }
+  .pill.pro { background: var(--gold); color: var(--on-gold); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.good { background: var(--good-bg); color: var(--good); }
+  button.btn, a.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; border: 0; border-radius: 999px; padding: 8px 18px;
+    background: var(--gold); color: var(--on-gold); font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap;
+    box-shadow: 0 6px 20px -8px rgb(243 181 74 / 0.6); }
+  button.btn:active { transform: scale(0.97); }
+  button.btn.ghost { background: none; color: var(--text); border: 1px solid var(--line); box-shadow: none; }
+  button.btn.ghost:hover { border-color: var(--muted); }
+  button.btn.danger { background: var(--bad-bg); color: var(--bad); box-shadow: none; }
+  header button.btn { min-height: 34px; padding: 6px 14px; font-size: 14px; }
+  button.link { border: 0; background: none; color: var(--rose); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
+  input, select, textarea { font: inherit; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card-2); color: var(--text); }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--rose); outline-offset: 1px; border-color: transparent; }
+  input::placeholder { color: var(--muted); }
+  input[type=checkbox] { min-height: 0; width: 20px; height: 20px; margin: 0; padding: 0; accent-color: #f3b54a; flex: none; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
   .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
-  @media (max-width: 800px) { .grid2 { grid-template-columns: minmax(0, 1fr); } main { padding: 12px; } header { padding: 10px 12px; } }
+  @media (max-width: 800px) {
+    .grid2 { grid-template-columns: minmax(0, 1fr); gap: 0; } main { padding: 16px; }
+    header { padding: 10px 16px 0; } nav { margin: 0 -16px; padding: 2px 16px 8px; }
+    section.card { padding: 16px; border-radius: 18px; margin-bottom: 16px; }
+    .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .tile b { font-size: 22px; }
+    .row input:not([type=checkbox]) { flex: 1 1 140px; min-width: 0 !important; }
+  }
   td:first-child { white-space: nowrap; }
-  #login { max-width: 420px; margin: 12vh auto; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
-  #login input { width: 100%; margin: 12px 0; }
-  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 12px; display: none; z-index: 5; max-width: 90vw; }
-  #toast.bad { background: var(--bad); }
+  #login { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
+  #login[hidden] { display: none; }
+  .login-card { width: 100%; max-width: 400px; background: var(--card); border: 1px solid var(--line); border-radius: 24px; padding: 28px 24px; }
+  .login-mark { width: 52px; height: 52px; border-radius: 14px; display: block; margin-bottom: 18px; }
+  .login-card h1 { font: 600 28px/1.15 var(--display); margin: 0 0 8px; }
+  .login-card p { margin: 0 0 20px; }
+  .login-card input[type=password] { width: 100%; min-height: 48px; font-size: 16px; }
+  .check { display: flex; align-items: center; gap: 10px; margin: 16px 0 20px; color: var(--muted); cursor: pointer; }
+  .login-card .btn { width: 100%; min-height: 48px; font-size: 16px; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg); font-weight: 600; padding: 10px 18px; border-radius: 14px; display: none; z-index: 5; max-width: 90vw; }
+  #toast.bad { background: var(--bad); color: #2a0b0b; }
   .msg { white-space: pre-wrap; word-break: break-word; max-width: 520px; }
   .chart svg { width: 100%; height: auto; display: block; }
   .chart text { font-size: 11px; fill: var(--muted); }
   .legend { display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin-top: 6px; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
   .links a { margin-right: 14px; color: var(--rose); }
-  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; }
   dt { color: var(--muted); }
-  dd { margin: 0; }
+  dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
   table.feat { table-layout: fixed; }
   .feat td { vertical-align: middle; }
   .feat td:nth-child(1) { width: 30%; } .feat td:nth-child(2) { width: 38%; } .feat td:nth-child(4) { width: 90px; text-align: right; }
   button.btn:disabled { opacity: 0.3; cursor: default; }
   @media (max-width: 800px) {
     table.feat, .feat tbody, .feat tr, .feat td { display: block; width: auto !important; text-align: left !important; }
-    .feat tr { padding: 8px 0; border-bottom: 1px solid var(--line); } .feat td { border: 0; padding: 3px 0; }
+    .feat tr { padding: 10px 0; border-bottom: 1px solid var(--line); } .feat td { border: 0; padding: 3px 0; }
   }
   .feat td:first-child { white-space: normal; min-width: 180px; }
   .feat .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
-  .feat .seg button { border: 0; background: none; font: inherit; font-size: 13px; padding: 5px 10px; cursor: pointer; color: var(--muted); }
+  .feat .seg button { border: 0; background: none; font: inherit; font-size: 13px; padding: 6px 11px; cursor: pointer; color: var(--muted); }
   .feat .seg button + button { border-left: 1px solid var(--line); }
-  .feat .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
-  .feat .seg button[data-s="off"][aria-pressed="true"] { background: var(--bad); }
-  .feat .seg button[data-s="on"][aria-pressed="true"] { background: var(--good); }
-  .feat .seg button[data-s="testers"][aria-pressed="true"], .feat .seg button[data-s="rollout"][aria-pressed="true"] { background: var(--warn); }
-  .feat input[type=number] { width: 70px; padding: 4px 6px; }
+  .feat .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+  .feat .seg button[data-s="off"][aria-pressed="true"] { background: var(--bad); color: #2a0b0b; }
+  .feat .seg button[data-s="on"][aria-pressed="true"] { background: var(--good); color: #0b2414; }
+  .feat .seg button[data-s="testers"][aria-pressed="true"], .feat .seg button[data-s="rollout"][aria-pressed="true"] { background: var(--warn); color: var(--on-gold); }
+  .feat input[type=number] { width: 70px; min-height: 32px; padding: 4px 6px; }
   .feat .lim { font-size: 13px; }
   .feat .lim label { margin-right: 8px; white-space: nowrap; }
-  .feat tr.dirty { background: #fff6e6; }
+  .feat tr.dirty { background: var(--dirty); }
   .steps { margin: 0; padding-left: 20px; }
   .steps li { margin-bottom: 4px; }
+  .actions-help { margin: -4px 0 14px; font-size: 13px; }
 </style>
 </head>
 <body>
 <div id="login" hidden>
-  <h1 style="font: 600 26px/1.2 Fraunces, Georgia, serif; margin: 0 0 6px">Glow Studio admin</h1>
-  <p class="muted" style="margin:0">Enter the admin key (the ADMIN_KEY secret in Supabase).</p>
-  <form id="loginForm">
-    <input id="keyInput" type="password" autocomplete="current-password" placeholder="Admin key" required>
-    <label class="muted" style="display:block;margin-bottom:12px"><input type="checkbox" id="remember"> Remember on this device</label>
-    <button class="btn" type="submit">Open</button>
-  </form>
+  <div class="login-card">
+    <img class="login-mark" src="/icon-192.png" alt="">
+    <h1>Glow Studio <em style="font-style:normal;background:var(--gold);-webkit-background-clip:text;background-clip:text;color:transparent">admin</em></h1>
+    <p class="muted">Enter your admin key. It's the ADMIN_KEY secret in Supabase.</p>
+    <form id="loginForm">
+      <input id="keyInput" type="password" autocomplete="current-password" placeholder="Admin key" aria-label="Admin key" required>
+      <label class="check"><input type="checkbox" id="remember"> Remember on this device</label>
+      <button class="btn" type="submit">Open</button>
+    </form>
+  </div>
 </div>
 
 <div id="app" hidden>
   <header>
-    <h1>Glow Studio admin</h1>
+    <h1>Glow Studio <em>admin</em></h1>
     <nav id="tabs">
       <button data-tab="overview" aria-current="page">Overview</button>
       <button data-tab="features">Features</button>
@@ -107,9 +149,10 @@
       <button data-tab="abuse">Blocking</button>
       <button data-tab="log">Change log</button>
     </nav>
-    <span class="spacer"></span>
-    <button class="btn ghost" id="refresh">Refresh</button>
-    <button class="btn ghost" id="logout">Sign out</button>
+    <div class="head-actions">
+      <button class="btn ghost" id="refresh">Refresh</button>
+      <button class="btn ghost" id="logout">Sign out</button>
+    </div>
   </header>
   <main id="view"></main>
 </div>
@@ -191,16 +234,16 @@ function chart(daily) {
   const maxC = Math.max(0.01, ...days.map((d) => Number(d.ai_cost))), maxR = Math.max(1, ...days.map((d) => d.ai_runs));
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", `0 0 ${W} ${H + 24}`);
-  let s = `<line x1="${pad}" y1="${H}" x2="${W - pad}" y2="${H}" stroke="#e7e1d4"/>`;
+  let s = `<line x1="${pad}" y1="${H}" x2="${W - pad}" y2="${H}" stroke="#2e2e34"/>`;
   days.forEach((d, i) => {
     const x = pad + i * bw, hr = (d.ai_runs / maxR) * (H - 20), hc = (Number(d.ai_cost) / maxC) * (H - 20);
-    s += `<rect x="${x + bw * 0.12}" y="${H - hr}" width="${bw * 0.36}" height="${hr}" rx="2" fill="#d8ccc8"><title>${d.day}: ${d.ai_runs} AI runs</title></rect>`;
-    s += `<rect x="${x + bw * 0.52}" y="${H - hc}" width="${bw * 0.36}" height="${hc}" rx="2" fill="#8a5a10"><title>${d.day}: ${money(d.ai_cost)} est. AI cost</title></rect>`;
+    s += `<rect x="${x + bw * 0.12}" y="${H - hr}" width="${bw * 0.36}" height="${hr}" rx="2" fill="#5a5850"><title>${d.day}: ${d.ai_runs} AI runs</title></rect>`;
+    s += `<rect x="${x + bw * 0.52}" y="${H - hc}" width="${bw * 0.36}" height="${hc}" rx="2" fill="#f3c062"><title>${d.day}: ${money(d.ai_cost)} est. AI cost</title></rect>`;
     if (i % Math.ceil(days.length / 10) === 0 || i === days.length - 1) s += `<text x="${x + bw / 2}" y="${H + 16}" text-anchor="middle">${d.day.slice(5)}</text>`;
   });
   s += `<text x="${pad}" y="12">max ${maxR} runs · ${money(maxC)}</text>`;
   svg.innerHTML = s;
-  return h("div", { class: "chart" }, svg, h("div", { class: "legend" }, h("span", {}, h("i", { style: "background:#d8ccc8" }), "AI runs"), h("span", {}, h("i", { style: "background:#8a5a10" }), "Estimated AI cost")));
+  return h("div", { class: "chart" }, svg, h("div", { class: "legend" }, h("span", {}, h("i", { style: "background:#5a5850" }), "AI runs"), h("span", {}, h("i", { style: "background:#f3c062" }), "Estimated AI cost")));
 }
 
 // Plain names for the events the app reports (anything not listed shows its raw name).
