@@ -823,7 +823,7 @@ test('settings: Help, Privacy, Terms and Licenses open inside the app, readable 
     const r = await p.evaluate(() => { const d = $('docFrame').contentDocument, cs = d.defaultView.getComputedStyle(d.body);
       return [location.pathname, screen, $('docTitle').textContent, cs.color, cs.backgroundColor, d.documentElement.dataset.theme, d.defaultView.getComputedStyle(d.querySelector('.brand')).display]; });
     eq(r[0], '/', `${row}: the app stays on its page`); eq(r[1], 'enhanceHome', `${row}: no restart`); eq(r[2], h1, `${row}: sheet title`);
-    eq([r[3], r[4], r[5], r[6]], ['rgb(245, 244, 242)', 'rgb(18, 18, 20)', 'dark', 'none'], `${row}: light text on dark, app header hidden`);
+    eq([r[3], r[4], r[5], r[6]], ['rgb(247, 243, 234)', 'rgb(13, 13, 16)', 'dark', 'none'], `${row}: light text on dark, app header hidden`);
     await p.click('#docSheet [data-close]');
   }
   // A link to another help page stays in the sheet; the Glow Studio home link closes it.
@@ -1070,8 +1070,8 @@ for (const [w, h] of [[390, 844], [320, 640], [412, 915]]) test(`layout: categor
 test('layout: stone (light) and ink (dark) surround, photo contained, edited view first, compare only after an edit', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, fx('phone-12mp-exif6.jpg'));
   const bg = () => p.evaluate(() => getComputedStyle($('stage')).backgroundColor);
-  eq(await bg(), 'rgb(18, 18, 20)', 'dark: ink');
-  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(247, 246, 243)', 'light: stone');
+  eq(await bg(), 'rgb(13, 13, 16)', 'dark: ink');
+  await p.evaluate(() => { store.set('glowTheme', 'light'); applyTheme(); }); eq(await bg(), 'rgb(250, 247, 240)', 'light: ivory');
   const st = await p.evaluate(() => ({ view: $('stage').dataset.view, disabled: [$('compareBtn').disabled, $('revertBtn').disabled], radius: getComputedStyle($('stage')).borderTopLeftRadius,
     fit: getComputedStyle($('before')).objectFit, frame: (() => { const f = $('view').getBoundingClientRect(), s = $('stage').getBoundingClientRect(); return f.width <= s.width + 0.5 && f.height <= s.height + 0.5 && Math.abs(f.width / f.height - ed.original.w / ed.original.h) < 0.02; })() }));
   eq(st, { view: 'edited', disabled: [true, true], radius: '16px', fit: 'contain', frame: true }, 'before any edit (rounded, with a small margin)');

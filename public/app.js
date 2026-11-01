@@ -1925,6 +1925,9 @@ function setBusy(on, text, note) {
 }
 
 $("applyBtn").addEventListener("click", applyCurrent);
+// Golden Hour: Apply glows gold when it runs an AI edit or leads to Pro (its label then names credits or Pro).
+{ const a = $("applyBtn"); const tint = () => a.classList.toggle("glow", /credit|Go Pro/i.test(a.textContent));
+  new MutationObserver(tint).observe(a, { childList: true, characterData: true, subtree: true }); tint(); }
 async function applyCurrent() {
   const t = sel && TOOL[sel]; if (!t || busyNow) return;
   // Sample: prepared previews are already showing. Nothing is generated or charged.
@@ -2707,15 +2710,15 @@ async function makeShareCard(photo) {
   await markFonts();
   const img = await loadImg(photo), W = 1080, F = 280, k = Math.min(W / img.naturalWidth, 1350 / img.naturalHeight);
   const pw = Math.round(img.naturalWidth * k), ph = Math.round(img.naturalHeight * k), c = newCanvas(W, ph + F), ctx = c.getContext("2d");
-  ctx.fillStyle = "#f5f4f2"; ctx.fillRect(0, 0, W, ph + F);
+  ctx.fillStyle = "#f7f3ea"; ctx.fillRect(0, 0, W, ph + F);
   ctx.drawImage(img, Math.round((W - pw) / 2), 0, pw, ph);
   const q = window.qrcode(0, "M"); q.addData(CONFIG.publicUrl); q.make();
   const n = q.getModuleCount(), cell = Math.floor(200 / (n + 8)), qs = cell * (n + 8), qx = 48, qy = ph + Math.round((F - qs) / 2);
-  ctx.fillStyle = "#ffffff"; ctx.fillRect(qx, qy, qs, qs); ctx.fillStyle = "#17171a";
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(qx, qy, qs, qs); ctx.fillStyle = "#15140f";
   for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (q.isDark(r, col)) ctx.fillRect(qx + (col + 4) * cell, qy + (r + 4) * cell, cell, cell);
   const tx = qx + qs + 40;
-  ctx.fillStyle = "#17171a"; ctx.font = MARK_SERIF(76); ctx.fillText("Try Glow Studio", tx, ph + F / 2 + 4);
-  ctx.fillStyle = "#5f5d59"; ctx.font = MARK_SANS(30); ctx.fillText(PUBLIC_HOST, tx, ph + F / 2 + 52);
+  ctx.fillStyle = "#15140f"; ctx.font = MARK_SERIF(76); ctx.fillText("Try Glow Studio", tx, ph + F / 2 + 4);
+  ctx.fillStyle = "#625d52"; ctx.font = MARK_SANS(30); ctx.fillText(PUBLIC_HOST, tx, ph + F / 2 + 52);
   return c.toDataURL("image/jpeg", 0.92);
 }
 async function openShareCard(photo) {

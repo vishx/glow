@@ -1,33 +1,36 @@
-/* Glow Studio design system: Stone & Ink (warm neutral surfaces, ink-black actions, champagne only for Pro and AI). Shared by Camera, Editor, onboarding and sheets. */
+/* Glow Studio design system: Golden Hour (deep ink surfaces, pearl text, one warm gold light for the main action, Pro and AI). Shared by Camera, Editor, onboarding and sheets. */
 
 /* Tokens. Dark is the default; light follows the system unless the user picks one in Settings.
    --line is for decorative dividers only; --control (3:1 or better on every surface) outlines
    anything you can press, drag or type into. */
 :root, .dark {
   color-scheme: dark;
-  --bg: #121214; --surface: #1b1b1e; --surface-2: #242428; --line: #36363c; --control: #86868e;
-  --text: #f5f4f2; --muted: #b0aeaa; --accent: #f5f4f2; --on-accent: #17171a;
+  --bg: #0d0d10; --surface: #18181c; --surface-2: #232328; --line: #2e2e34; --control: #86868e;
+  --text: #f7f3ea; --muted: #a9a59c; --accent: #f7f3ea; --on-accent: #15140f;
   --tint: rgb(255 255 255 / 0.07); --free: #9fd8b0; --danger: #ffa3a3; --scrim: rgb(14 14 16 / 0.72);
-  --checker-a: #26262a; --checker-b: #1b1b1e; --viewer: #121214; --blush: rgb(255 255 255 / 0.10);
-  --rose: #d8bd8a; --glass: rgb(27 27 30 / 0.62); --toast-bg: #f5f4f2; --toast-fg: #17171a;
+  --checker-a: #26262a; --checker-b: #18181c; --viewer: #0d0d10; --blush: rgb(255 255 255 / 0.10);
+  --rose: #f3c062; --glass: rgb(24 24 28 / 0.62); --toast-bg: #f7f3ea; --toast-fg: #15140f;
+  --cta: linear-gradient(135deg, #ffe3a3, #f3b54a); --cta-fg: #1a1206; --cta-glow: 0 0 0 1px rgb(255 217 138 / 0.35), 0 8px 26px -6px rgb(243 181 74 / 0.55);
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
-    --bg: #f7f6f3; --surface: #ffffff; --surface-2: #efede9; --line: #e4e1dc; --control: #85817b;
-    --text: #17171a; --muted: #5f5d59; --accent: #17171a; --on-accent: #ffffff;
+    --bg: #faf7f0; --surface: #ffffff; --surface-2: #f0ebe0; --line: #e7e1d4; --control: #85817b;
+    --text: #15140f; --muted: #625d52; --accent: #15140f; --on-accent: #ffffff;
     --tint: rgb(23 23 26 / 0.06); --free: #2c6e48; --danger: #b3261e; --scrim: rgb(23 23 26 / 0.45);
-    --checker-a: #ebe8e3; --checker-b: #ffffff; --viewer: #f7f6f3; --blush: #ecebe7;
-    --rose: #7a5c28; --glass: rgb(255 255 255 / 0.74); --toast-bg: #17171a; --toast-fg: #f7f6f3;
+    --checker-a: #efe9de; --checker-b: #ffffff; --viewer: #faf7f0; --blush: #f3ece0;
+    --rose: #8a5a10; --glass: rgb(255 255 255 / 0.74); --toast-bg: #15140f; --toast-fg: #faf7f0;
+    --cta: #15140f; --cta-fg: #ffe3a3; --cta-glow: 0 8px 22px -8px rgb(217 150 46 / 0.55);
   }
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f7f6f3; --surface: #ffffff; --surface-2: #efede9; --line: #e4e1dc; --control: #85817b;
-  --text: #17171a; --muted: #5f5d59; --accent: #17171a; --on-accent: #ffffff;
+  --bg: #faf7f0; --surface: #ffffff; --surface-2: #f0ebe0; --line: #e7e1d4; --control: #85817b;
+  --text: #15140f; --muted: #625d52; --accent: #15140f; --on-accent: #ffffff;
   --tint: rgb(23 23 26 / 0.06); --free: #2c6e48; --danger: #b3261e; --scrim: rgb(23 23 26 / 0.45);
-  --checker-a: #ebe8e3; --checker-b: #ffffff; --viewer: #f7f6f3; --blush: #ecebe7;
-  --rose: #7a5c28; --glass: rgb(255 255 255 / 0.74); --toast-bg: #17171a; --toast-fg: #f7f6f3;
+  --checker-a: #efe9de; --checker-b: #ffffff; --viewer: #faf7f0; --blush: #f3ece0;
+  --rose: #8a5a10; --glass: rgb(255 255 255 / 0.74); --toast-bg: #15140f; --toast-fg: #faf7f0;
+  --cta: #15140f; --cta-fg: #ffe3a3; --cta-glow: 0 8px 22px -8px rgb(217 150 46 / 0.55);
 }
 :root {
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
@@ -36,7 +39,7 @@
   --t-select: 140ms; --t-press-down: 80ms; --t-press-up: 120ms; --t-sheet: 260ms; --t-result: 180ms;
   --font: Figtree, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-display: Fraunces, "Iowan Old Style", Georgia, serif;
-  --champagne: linear-gradient(120deg, #f1e1c2, #d8bd8a);
+  --champagne: linear-gradient(120deg, #ffe3a3, #f3b54a);
   --nav-h: 64px;
 }
 @media (min-width: 600px) { :root { --gutter: 24px; } }
@@ -84,6 +87,9 @@ a { color: var(--accent); }
 .btn:active { transform: scale(0.98); transition-duration: var(--t-press-down); }
 .btn.ghost { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1px var(--control); }
 .btn.quiet { background: var(--surface-2); color: var(--text); }
+/* Golden Hour: the gold light is kept for the actions that make a photo glow (choose a photo, Enhance) and for Pro. */
+.btn.glow { background: var(--cta); color: var(--cta-fg); box-shadow: var(--cta-glow); }
+.btn.glow:disabled { opacity: 1; background: var(--surface-2); color: var(--muted); box-shadow: none; }
 .btn.small { min-height: 44px; width: auto; font-size: 0.9375rem; }
 .btn:disabled { opacity: 0.5; cursor: default; transform: none; }
 .btn svg { width: 20px; height: 20px; }
@@ -227,10 +233,10 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 /* 26px visible knob inside a 44px target, three-quarters of the way down, clear of faces. */
 .handle { position: absolute; top: 75%; left: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border: 0; padding: 0; border-radius: 50%;
   background: none; display: grid; place-items: center; pointer-events: auto; cursor: ew-resize; touch-action: none; }
-.handle i { width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 6px #0007; display: grid; place-items: center; color: #17171a; }
+.handle i { width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 6px #0007; display: grid; place-items: center; color: #15140f; }
 .handle i svg { width: 16px; height: 16px; }
 .handle:focus-visible { outline: none; }
-.handle:focus-visible i { box-shadow: 0 0 0 2px #17171a, 0 0 0 4px #d8bd8a; }
+.handle:focus-visible i { box-shadow: 0 0 0 2px #15140f, 0 0 0 4px #f3c062; }
 .stage:not([data-view="split"]) .divider, .stage:not(.has-after) .divider { display: none; }
 .tag { position: absolute; top: var(--s2); padding: 2px var(--s2); border-radius: 8px; background: rgb(18 18 20 / 0.72); color: #fff;
   font-size: 0.75rem; line-height: 1.125rem; font-weight: 600; pointer-events: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -244,7 +250,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(
 .stage.cropping .viewer-toggle, .stage:not(.has-photo) .viewer-toggle { display: none; }
 /* The sample's disclosure: a small "AI sample" badge on the photo's top-left corner. */
 .sample-badge { position: absolute; top: var(--s2); left: var(--s2); z-index: 3; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 var(--s3);
-  border: 0; border-radius: 16px; background: rgb(250 249 246 / 0.92); color: var(--accent, #17171a); font-size: 0.8125rem; font-weight: 600; }
+  border: 0; border-radius: 16px; background: rgb(250 249 246 / 0.92); color: var(--accent, #15140f); font-size: 0.8125rem; font-weight: 600; }
 .sample-badge::after { content: ""; position: absolute; inset: -6px; }   /* 44px touch target */
 .sample-badge svg { width: 14px; height: 14px; }
 .sample-badge[hidden], .stage.cropping .sample-badge { display: none; }
@@ -649,7 +655,7 @@ dialog .stack { display: grid; gap: var(--s3); margin-top: var(--s4); }
 
 /* The editor's wordmark carries a small blush sparkle, as in the mockup. */
 .wordmark .spark { display: inline-block; width: 0.42em; height: 0.42em; margin-left: 2px; vertical-align: 0.55em;
-  background: #d8bd8a; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }
+  background: #f3c062; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }
 #saveBtn { background: var(--accent); }
 /* A small Save pill, as in the mockup; the invisible ::after keeps a 44px touch target. */
 #editorScreen #saveBtn { position: relative; min-height: 34px; padding: 0 var(--s4); border-radius: 17px; font-size: 0.9375rem; }
@@ -700,7 +706,7 @@ a, .link-btn, .links a, .links button, .toast-act { color: var(--rose); }
 .tool[aria-pressed="true"] { background: none; box-shadow: none; color: var(--text); }
 .tool[aria-pressed="true"] .well { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
 .tool[aria-pressed="true"] .well::before { left: auto; right: -6px; bottom: auto; top: -6px; z-index: 1; }
-.tool .cost { background: var(--champagne); box-shadow: none; color: #17171a; border-radius: 999px; }
+.tool .cost { background: var(--champagne); box-shadow: none; color: #15140f; border-radius: 999px; }
 
 /* Tabs: text-first, the open one sits on a blush pill; no hairline above. */
 .tabs { border-top: 0; }
@@ -733,7 +739,7 @@ dialog.pw { padding-top: 0; overflow-x: hidden; }
 @keyframes pw-wipe { 0%, 12% { clip-path: inset(0 0 0 85%); } 50%, 62% { clip-path: inset(0 0 0 15%); } 100% { clip-path: inset(0 0 0 85%); } }
 @keyframes pw-seam { 0%, 12% { left: 85%; } 50%, 62% { left: 15%; } 100% { left: 85%; } }
 .pw-x { position: absolute; top: var(--s3); right: var(--s3); z-index: 2; border-radius: 50%; background: var(--glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
-.pw-chip { display: inline-block; margin-top: calc(-1 * var(--s5)); position: relative; padding: 4px 12px; border-radius: 999px; background: var(--champagne); color: #17171a;
+.pw-chip { display: inline-block; margin-top: calc(-1 * var(--s5)); position: relative; padding: 4px 12px; border-radius: 999px; background: var(--champagne); color: #15140f;
   font-size: 0.6875rem; line-height: 1rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
 dialog.pw .t-h { margin: var(--s2) 0 var(--s3); font-size: 2rem; line-height: 2.25rem; }
 dialog.pw .perks { color: var(--text); font-weight: 500; }
@@ -752,7 +758,7 @@ dialog.pw #buyBtn::after { content: ""; position: absolute; inset: 0; background
   transform: translateX(-100%); animation: pw-shine 3.4s ease-in-out 1s infinite; }
 @keyframes pw-shine { 0% { transform: translateX(-100%); } 40%, 100% { transform: translateX(100%); } }
 dialog.pw #adBtn { margin-top: var(--s3); }
-dialog.pw .pw-packs { display: block; margin: var(--s3) auto 0; padding: var(--s2); min-height: 44px; color: var(--muted); font-size: 0.875rem; }
+dialog.pw .pw-packs { display: block; margin: var(--s3) auto 0; padding: var(--s2); min-height: 44px; border: 0; background: none; color: var(--muted); font-size: 0.875rem; }
 dialog.pw .pw-packs u { color: var(--text); text-underline-offset: 3px; }
 .packs-sub { margin: 0 0 var(--s4); color: var(--muted); }
 .packs { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s3); }
@@ -773,7 +779,7 @@ dialog.pw .links { justify-content: center; }
 @media (prefers-reduced-motion: reduce) { .pw-hero .pw-a { clip-path: inset(0 0 0 50%); } .pw-seam { left: 50%; } }
 
 /* Fixed-light chips on the photo keep ink text in both themes; the selected-tool check uses rose. */
-.sample-badge { color: #17171a; }
+.sample-badge { color: #15140f; }
 .tool[aria-pressed="true"] .well::before { background-color: var(--rose); }
 /* Quieter utility row and glass zoom buttons. (The photo sits on the page itself: --viewer matches --bg.) */
 .util-row .sep, .utils .sep, i.sep { opacity: 0; }
@@ -841,7 +847,7 @@ dialog.pw .links { justify-content: center; }
 .busy::before { content: ""; position: absolute; inset: -20% -60%; background: linear-gradient(105deg, transparent 38%, rgb(255 250 240 / 0.28) 50%, transparent 62%);
   animation: glow-sweep 1.8s cubic-bezier(.4, 0, .2, 1) infinite; pointer-events: none; }
 .busy > div { position: relative; padding: var(--s3) var(--s4); border-radius: 20px; background: rgb(14 14 16 / 0.55); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
-.busy .spinner { border-color: rgb(255 255 255 / 0.25); border-top-color: #d8bd8a; }
+.busy .spinner { border-color: rgb(255 255 255 / 0.25); border-top-color: #f3c062; }
 @keyframes glow-sweep { from { transform: translateX(-45%); } to { transform: translateX(45%); } }
 
 /* Saved: a quiet blush pill, with a sparkle the moment it lands. */

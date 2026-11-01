@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Glow Studio</title>
 <meta name="description" content="Glow Studio: a beauty camera and photo editor.">
-<meta name="theme-color" content="#121214" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d10" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#faf7f0" media="(prefers-color-scheme: light)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -50,7 +50,7 @@
         <div class="cap"><h1>Enhance</h1><p>Sharper faces and cleaner detail in one tap.</p></div>
       </div>
       <div class="enh-cta">
-        <button class="btn" id="enhPick"><span data-icon="sparkle"></span>Choose a photo</button>
+        <button class="btn glow" id="enhPick"><span data-icon="sparkle"></span>Choose a photo</button>
         <button class="btn quiet" id="enhSample">Try it on the sample · Free</button>
         <button class="link-btn enh-batch-link" id="enhBatchPick"><span data-icon="gallery"></span>Enhance up to 10 at once<span class="pro-chip">Pro</span></button>
       </div>
@@ -122,7 +122,7 @@
       </div>
     </div>
     <div class="enh-share-foot">
-      <button class="btn" id="enhAnother">Enhance another<span data-icon="sparkle"></span></button>
+      <button class="btn glow" id="enhAnother">Enhance another<span data-icon="sparkle"></span></button>
       <button class="link-btn" id="enhEdit">Edit more in the editor</button>
     </div>
   </section>
@@ -136,7 +136,7 @@
       <p>Edit a photo you love, or try Glow Studio on the sample first.</p>
     </div>
     <div class="ob-actions" id="obActions">
-      <button class="btn" id="obPick">Choose a photo</button>
+      <button class="btn glow" id="obPick">Choose a photo</button>
       <button class="btn quiet" id="obSample">Try the sample</button>
       <button class="link-btn ob-cam" id="obCamera"><span data-icon="camera"></span>Take a photo</button>
     </div>
@@ -264,7 +264,7 @@
         <div class="cap"><h1>Edit</h1><p>Retouch, looks, makeup and outfits.</p></div>
       </div>
       <div class="enh-cta">
-        <button class="btn" id="pickBtn"><span data-icon="wand"></span>Choose a photo</button>
+        <button class="btn glow" id="pickBtn"><span data-icon="wand"></span>Choose a photo</button>
         <button class="btn quiet" id="sampleBtn">Try it on the sample · Free</button>
       </div>
       <div class="enh-meta"><button id="homeCredits" hidden></button></div>
@@ -400,7 +400,7 @@
   <div class="plan-card">
     <p id="planLine">Free plan</p>
     <div class="row">
-      <button class="btn" id="goProBtn">See Glow Studio Pro</button>
+      <button class="btn glow" id="goProBtn">See Glow Studio Pro</button>
       <button class="btn ghost" id="restoreBtn" aria-label="Restore purchases">Restore</button>
     </div>
   </div>
@@ -488,7 +488,7 @@
   <div class="sheet-head"><h2 class="t-section" id="creditsTitle">AI credits</h2><button class="icon-btn" data-close aria-label="Close"></button></div>
   <div id="creditsBody"></div>
   <div class="stack">
-    <button class="btn" id="creditsPro">See Glow Studio Pro</button>
+    <button class="btn glow" id="creditsPro">See Glow Studio Pro</button>
     <button class="btn ghost" id="creditsPacks">Buy a credit pack</button>
   </div>
 </dialog>
@@ -519,7 +519,7 @@
     <button class="plan" role="radio" aria-checked="true" data-plan="yearly"><em>Save 81%</em><b>Yearly</b><span class="price" id="priceYearly">$49.99/year</span><small id="yearlyNote">About $4.17 a month, billed yearly</small></button>
     <button class="plan" role="radio" aria-checked="false" data-plan="weekly"><b>Weekly</b><span class="price" id="priceWeekly">$4.99/week</span><small>Billed every week</small></button>
   </div>
-  <button class="btn" id="buyBtn">Continue with yearly</button>
+  <button class="btn glow" id="buyBtn">Continue with yearly</button>
   <button class="btn ghost" id="adBtn" hidden>Watch a short ad for 1 AI credit</button>
   <button class="pw-packs" id="pwPacks">Just need a few? <u>Buy a credit pack</u></button>
   <p class="pw-free">Yearly gives up to 60 credits a month. Camera, filters and on-device tools stay free for everyone.</p>
