@@ -289,6 +289,9 @@ export async function modelInfo(model: string | string[]): Promise<ModelInfo> {
   return (versionCache[model] = { model, version: KNOWN[model]?.official ? null : v?.id ?? null, imageKey, maskKey, props, imageList, open: !v || !Object.keys(props).length });
 }
 
+// Replicate / Google answers for an input or output the model's safety filter turned down.
+export const flagged = (e: unknown) => /flagged as sensitive|\(E005\)|IMAGE_SAFETY|unsafe content/i.test(String(e ?? ""));
+
 export const lastOutput = (o: unknown) => (Array.isArray(o) ? o[o.length - 1] : o) ?? null;
 
 // Starts one edit on Replicate and waits up to a minute for it. Charging is the caller's job.
@@ -309,6 +312,9 @@ export async function startPrediction(cfg: Mode, args: { image: string; mask?: s
     const p = await runOn(info, cfg, args, wait);
     last = { p, info };
     if (p.status !== "failed") return last;
+    // A safety refusal is about the photo or outfit, not the model: the next model would only
+    // refuse too (or be throttled), so stop here and say so honestly.
+    if (flagged(p.error)) { console.log("model declined (safety)", model, p.id, p.error ?? ""); return last; }
     console.log("model failed, trying the next", model, p.id, p.error ?? "");
   }
   if (last) return last;

@@ -6,7 +6,7 @@
 // refund the server confirmed. Needs migration 006 (ai_usage.client_request_id).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { okRefs, unsafePrompt, cleanPrompt, ENHANCE_HD, FACE_SHEET, HttpError, lastOutput, MODES, okFaceSheet, okHd, okTiles, rep, tryOnMode, startPrediction, TOKEN } from "./pipeline.ts";
+import { flagged, okRefs, unsafePrompt, cleanPrompt, ENHANCE_HD, FACE_SHEET, HttpError, lastOutput, MODES, okFaceSheet, okHd, okTiles, rep, tryOnMode, startPrediction, TOKEN } from "./pipeline.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -45,7 +45,8 @@ async function finish(id: number, status: string, error: unknown = null) {
 const DONE = new Set(["succeeded", "failed", "canceled"]);
 // The model's own error (kept as it is for the admin page) in words for the app.
 const told = (p: { status: string; error?: unknown }) =>
-  p.status === "failed" ? "The AI couldn't edit this photo. Please try again, or try another photo." : p.error ?? null;
+  p.status === "failed" && flagged(p.error) ? "This photo or outfit can't be used. Glow Studio doesn't make revealing or sexual edits."
+  : p.status === "failed" ? "The AI couldn't edit this photo. Please try again, or try another photo." : p.error ?? null;
 // How long a finished Enhance waits for its face sheet (group photos) before it's answered without it.
 const FACES_WAIT_MS = 90_000;
 
