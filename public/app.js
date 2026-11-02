@@ -1777,15 +1777,42 @@ function renderPanel(rebuild) {
 // On phones the controls under the photo keep one fixed height (the dock), so the photo never
 // changes size as tools open, close or change. A tool whose controls need the whole dock
 // hides the row of neighbouring tools instead of pushing the photo up.
+let sheetFor = null;
 const dockFixed = () => matchMedia("(max-width: 959px)").matches && !matchMedia("(min-width: 560px) and (max-height: 560px) and (orientation: landscape)").matches;
+// When a tool's controls don't fit the dock, a grip on the panel lifts it over the lower part of
+// the photo (Lightroom style): the photo keeps its size and place underneath.
+const dockPortrait = () => matchMedia("(max-width: 959px) and (min-height: 601px)").matches;
+function sheetUp(on) {
+  const es = $("editorScreen"), g = $("dockGrip");
+  es.classList.toggle("sheet-up", !!on);
+  if (g) { g.setAttribute("aria-expanded", String(!!on)); g.setAttribute("aria-label", on ? "Show fewer controls" : "Show all controls"); }
+}
+(() => {
+  const g = document.createElement("button"); g.type = "button"; g.id = "dockGrip"; g.className = "dock-grip"; g.hidden = true;
+  g.setAttribute("aria-controls", "panelBody"); g.innerHTML = "<i></i>";
+  let y0 = null;
+  g.addEventListener("pointerdown", (e) => { y0 = e.clientY; });
+  g.addEventListener("pointerup", (e) => { const dy = y0 == null ? 0 : e.clientY - y0; y0 = null;
+    if (Math.abs(dy) > 12) { sheetUp(dy < 0); g.dataset.swiped = "1"; } });
+  g.addEventListener("click", () => { if (g.dataset.swiped) { delete g.dataset.swiped; return; } sheetUp(!$("editorScreen").classList.contains("sheet-up")); });
+  $("panel").prepend(g); sheetUp(false);
+})();
 function fitDock() {
-  const es = $("editorScreen"), p = $("panel");
-  es.classList.remove("no-tools");
+  const es = $("editorScreen"), p = $("panel"), grip = $("dockGrip");
+  const can = !!sel && !p.hidden && !p.classList.contains("live") && dockPortrait();
+  if (!can) sheetUp(false); else if (sheetFor !== sel) { sheetFor = sel; sheetUp(false); }
+  if (!sel) sheetFor = null;
+  const up = es.classList.contains("sheet-up");
+  es.classList.remove("no-tools", "sheet-up");   // measure at the dock's normal height
   p.classList.toggle("try-compact", sel === "outfit" && tryCompact());
+  const b = $("panelBody");
   // Try on has its own pickers, so the row of other tools steps aside and the photo gets the room.
-  if (sel === "outfit" && !ed.demo && !panelCollapsed && !p.hidden && dockFixed()) { es.classList.add("no-tools"); return; }
-  if (!sel || panelCollapsed || p.hidden || !dockFixed()) return;
-  if (p.scrollHeight > p.clientHeight + 1) es.classList.add("no-tools");
+  if (sel === "outfit" && !ed.demo && !panelCollapsed && !p.hidden && dockFixed()) es.classList.add("no-tools");
+  else if (sel && !panelCollapsed && !p.hidden && dockFixed() && (p.scrollHeight > p.clientHeight + 1 || (b && b.scrollHeight > b.clientHeight + 1))) es.classList.add("no-tools");
+  // The grip shows when the controls still don't fit the dock.
+  const over = can && b && b.scrollHeight > b.clientHeight + 1;
+  if (up && can) es.classList.add("sheet-up");
+  if (grip) grip.hidden = !(over || (up && can));
 }
 function buildPanel(t) {
   $("toolName").textContent = t.title; $("toolName").tabIndex = -1;

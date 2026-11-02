@@ -1572,3 +1572,83 @@ dialog.studio-view .studio-row { padding: var(--s3) var(--gutter) calc(var(--sa-
 .studio-field input { width: 100%; min-height: 44px; padding: 0 var(--s3); border-radius: var(--r-well); border: 1px solid var(--control); background: var(--surface); color: var(--text); font: inherit; }
 .studio-vars { margin-top: var(--s2); }
 .studio-pick .studio-sample { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: calc(var(--r-well) - 4px); margin-bottom: var(--s2); background: var(--surface-2); }
+
+/* ---------- Premium editor layout (phones, portrait) ----------
+   Like Lightroom, Facetune and VSCO: the controls live in one dock of a fixed height, so the photo
+   is the same size while browsing and in every tool. An open tool swaps what is inside the dock
+   (its controls scroll inside it) instead of growing it. Photo actions sit in the top bar, never on
+   the photo. Option chips scroll sideways, one row per group. */
+@media (max-width: 959px) and (min-height: 601px) {
+  #editorScreen { --dock: clamp(12.5rem, 26dvh, 14.5rem); }
+  /* #app already sits below the status bar, so the toolbar needs no second inset. */
+  #editorScreen:not(.viewer-expanded) .viewbar { top: 2px; }
+  #editorScreen .side { flex: none; height: calc(var(--dock) + var(--sa-bottom)); max-height: none; min-height: 0; }
+  #editorScreen.panel-collapsed .side { height: calc(var(--dock) + var(--sa-bottom)); }
+  #editorScreen:not(.editing-tool):not(.tools-open) .side > .tabs { margin-top: auto; }
+  #editorScreen:not(.editing-tool) .side > .tools { display: flex; align-items: center; }
+  /* The fixed dock makes Hide controls pointless: the photo is already as big as it gets. */
+  #editorScreen #collapseBtn { display: none; }
+  #editorScreen .side > .panel.collapsed .panel-note, #editorScreen .side > .panel.collapsed .panel-body { display: revert; }
+  /* An open tool: title row, its controls (scrolling, faded at the edges), then Cancel ✕ and the action. */
+  #editorScreen .side > .panel:not(.live) { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+    margin: 0; padding: 0 var(--gutter) calc(var(--s2) + var(--sa-bottom)); border-radius: 22px 22px 0 0; border-top: 0;
+    background: var(--surface); box-shadow: 0 -1px 0 var(--line); }
+  #editorScreen .side > .panel:not(.live) .panel-head { flex: none; min-height: 44px; }
+  #editorScreen .side > .panel:not(.live) .panel-head h2 { font-size: 1rem; line-height: 1.25rem; font-weight: 650; letter-spacing: 0.01em; }
+  #editorScreen .side > .panel:not(.live) .panel-note { flex: none; }
+  #editorScreen .side > .panel:not(.live) .panel-body { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; overscroll-behavior: contain;
+    align-content: start; grid-auto-rows: max-content; padding: 2px 0 var(--s2); scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(transparent 0, #000 6px, #000 calc(100% - 14px), transparent);
+    mask-image: linear-gradient(transparent 0, #000 6px, #000 calc(100% - 14px), transparent); }
+  #editorScreen .side > .panel:not(.live) .panel-body::-webkit-scrollbar { display: none; }
+  #editorScreen .side > .panel:not(.live) .panel-actions { flex: none; margin-top: 0; padding-top: var(--s1); grid-template-columns: 44px 1fr; gap: var(--s3); align-items: center; }
+  #editorScreen .side > .panel:not(.live) #cancelBtn { position: relative; width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: 50%;
+    font-size: 0; color: var(--text); box-shadow: inset 0 0 0 1px var(--line); background: transparent; }
+  #editorScreen .side > .panel:not(.live) #cancelBtn::before { content: ""; position: absolute; inset: 0; margin: auto; width: 18px; height: 18px; background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E") center / contain no-repeat; }
+  #editorScreen .side > .panel:not(.live) #applyBtn { min-height: 44px; border-radius: 22px; font-size: 0.9375rem; font-weight: 700; background: var(--cta); color: var(--cta-fg); box-shadow: var(--cta-glow); }
+  #editorScreen .side > .panel:not(.live) #applyBtn:disabled { background: var(--surface-2); color: var(--muted); box-shadow: none; opacity: 1; }
+  /* The tool row steps aside while a tool's own controls need the room (see fitDock). */
+  #editorScreen.editing-tool:has(.panel:not(.live):not([hidden])) .side > .tools { border-top: 0; }
+  /* Glow Up: each group is one row (name, then chips that scroll sideways), not a wall of chips. */
+  #editorScreen .panel-body .glow-group { grid-template-columns: minmax(3rem, max-content) minmax(0, 1fr); align-items: center; gap: var(--s2); }
+  #editorScreen .panel-body .glow-label { font-size: 0.6875rem; line-height: 0.875rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+  #editorScreen .panel-body .glow-opts { flex-wrap: nowrap; overflow-x: auto; margin-right: calc(-1 * var(--gutter)); padding-right: var(--gutter);
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+  #editorScreen .panel-body:has(.glow-group) { gap: 2px; }
+}
+/* Option chips in the editor: a 36px pill drawn inside a 44px touch target, quiet until chosen,
+   then outlined and lettered in gold (Golden Hour). */
+#editorScreen .panel .opt { border: 4px solid transparent; background-clip: padding-box; border-radius: 22px; padding: 0 12px; font-size: 0.8125rem; font-weight: 600;
+  background-color: var(--surface-2); color: var(--text); }
+#editorScreen .panel .opt[aria-pressed="true"] { background-color: color-mix(in srgb, var(--rose) 16%, var(--surface)); color: var(--rose); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rose) 70%, transparent); }
+#editorScreen .panel .opt.check::before { width: 12px; height: 12px; }
+/* Badges on the photo: small dark glass, so they read as labels and not as buttons fighting the toolbar. */
+#editorScreen .sample-badge { min-height: 28px; padding: 0 10px; gap: 5px; border-radius: 14px; font-size: 0.75rem; font-weight: 600;
+  background: rgb(14 14 16 / 0.5); color: #fff; -webkit-backdrop-filter: blur(12px) saturate(1.3); backdrop-filter: blur(12px) saturate(1.3); }
+#editorScreen .sample-badge svg { color: #f3c062; width: 13px; height: 13px; }
+#editorScreen .frame .tag { min-height: 24px; display: inline-flex; align-items: center; border-radius: 12px; padding: 0 9px; font-size: 0.6875rem; letter-spacing: 0.02em;
+  background: rgb(14 14 16 / 0.5); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+#editorScreen .frame .tag:empty { display: none; }
+#editorScreen .viewer-toggle { color: #fff; }
+#editorScreen .viewer-toggle::before { inset: 8px; background: rgb(14 14 16 / 0.45); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+#editorScreen .viewer-toggle svg { width: 16px; height: 16px; }
+/* The grip: shown when a tool's controls don't fit the dock. It lifts the panel over the lower part
+   of the photo; the photo keeps its size and place underneath, and the grip puts it back. */
+.dock-grip { display: none; }
+@media (max-width: 959px) and (min-height: 601px) {
+  #editorScreen .side > .panel:not(.live) { position: relative; }
+  #editorScreen .dock-grip:not([hidden]) { display: grid; place-items: center; flex: none; width: 64px; height: 22px; margin: 0 auto -6px; padding: 0; border: 0; background: none; touch-action: none; position: relative; }
+  #editorScreen .dock-grip::after { content: ""; position: absolute; inset: -11px -20px -4px; }   /* 44px touch target */
+  #editorScreen .dock-grip i { width: 36px; height: 4px; border-radius: 2px; background: var(--control); opacity: 0.7; transition: transform var(--t-select); }
+  #editorScreen.sheet-up .dock-grip i { background: var(--rose); opacity: 1; }
+  #editorScreen.sheet-up .canvas-col { margin-bottom: calc(var(--dock) + var(--sa-bottom)); }
+  #editorScreen.sheet-up .side { position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; height: auto; min-height: calc(var(--dock) + var(--sa-bottom)); max-height: calc(min(66dvh, var(--dock) + 280px) + var(--sa-bottom)); }
+  #editorScreen.sheet-up .side > .panel:not(.live) { flex: 1 1 auto; }
+  #editorScreen.sheet-up .side > .panel:not(.live) { box-shadow: 0 -12px 40px rgb(0 0 0 / 0.35), 0 -1px 0 var(--line);
+    background: color-mix(in srgb, var(--surface) 92%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2); }
+  #editorScreen.sheet-up .side > .tools, #editorScreen.sheet-up .side > .subchips, #editorScreen.sheet-up .side > .tabs { display: none; }
+  @media (prefers-reduced-motion: no-preference) { #editorScreen.sheet-up .side > .panel { animation: sheet-rise 220ms cubic-bezier(.2, .8, .2, 1); } }
+}
+@keyframes sheet-rise { from { transform: translateY(40px); opacity: 0.6; } to { transform: none; opacity: 1; } }

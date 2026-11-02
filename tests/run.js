@@ -1728,7 +1728,7 @@ test('filters: a Strength slider blends the filter; 100 is the full filter and t
     return { op: ed.hist[ed.idx].op.amt, ratio: de / df }; });
   eq(r.op, 0.4, 'strength recorded in the edit'); near(r.ratio, 0.4, 0.08, 'saved file is 40% of the filter');
 }, { viewport: { width: 390, height: 844 } });
-test('layout: on phones the idle editor reserves no panel space, and a closed tool gives its room back to the photo', async ({ p }) => {
+test('layout: on phones the controls dock has one fixed height, so the photo keeps its size in every tool', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   const sizes = {}, box = async (n) => { await settle(400); sizes[n] = await stageBox(p); };
   const gaps = () => p.evaluate(() => { const g = (s) => document.querySelector(s).getBoundingClientRect(), st = g('#stage'), vb = g('#editorScreen .viewbar'), tl = g('#editorScreen .side > .tools'), tb = g('#editorScreen .tabs');
@@ -1736,17 +1736,39 @@ test('layout: on phones the idle editor reserves no panel space, and a closed to
     return { rowOnPhoto: vb.top >= 0 && vb.bottom <= st.top, photoToTools: Math.round(tl.top - st.bottom - ch.height), chipsOnTools: Math.round(tl.top - ch.bottom), toolsToTabs: Math.round(tb.top - tl.bottom), tabsToEnd: Math.round(innerHeight - tb.bottom),
       toolsH: Math.round(tl.height), labels: [...document.querySelectorAll('#editorScreen .side > .tools .group-label')].filter((e) => e.offsetParent).length }; });
   const g = await gaps();
-  eq([g.rowOnPhoto, g.photoToTools, g.chipsOnTools, g.toolsToTabs, g.tabsToEnd, g.labels], [true, 0, 0, 0, 0, 0], 'utility row in the top bar, off the photo; group chips, tool row and tabs stacked under it with no empty space or group labels: ' + JSON.stringify(g));
+  eq([g.rowOnPhoto, g.photoToTools, g.chipsOnTools, g.tabsToEnd, g.labels], [true, 0, 0, 0, 0], 'utility row in the top bar, off the photo; group chips, tool row and tabs stacked under it with no group labels: ' + JSON.stringify(g));
+  assert(g.toolsToTabs >= 0 && g.toolsToTabs <= 36, 'only a little air between the tool row and the tabs: ' + g.toolsToTabs);
   assert(g.toolsH <= 90, 'one compact tool row: ' + g.toolsH);
   await box('home');
-  assert(sizes.home[1] >= 520, 'the photo takes the remaining height on a 390x844 phone: ' + sizes.home);
+  assert(sizes.home[1] >= 490, 'the photo takes the remaining height on a 390x844 phone: ' + sizes.home);
   await tool(p, 'retouch', 'face', 'fslim'); await p.waitForFunction(() => reshapeNote && reshapeNote.msg === '', null, { timeout: 30000 }); await box('face shape');
-  assert(sizes['face shape'][1] < sizes.home[1], 'an open tool takes room for its controls');
+  eq(sizes['face shape'], sizes.home, 'an open tool does not shrink the photo');
   await p.click('#cancelBtn'); await box('cancelled');
   await tool(p, 'edit', 'crop', 'crop'); await p.waitForFunction(() => !!cr); await box('crop');
   await p.click('#cancelBtn'); await box('closed');
-  for (const n of ['cancelled', 'closed']) eq(sizes[n], sizes.home, 'closing gives the room back: ' + n);
+  for (const n of ['cancelled', 'crop', 'closed']) eq(sizes[n], sizes.home, 'the photo keeps its size: ' + n);
 }, { viewport: { width: 390, height: 844 } });
+test('layout: with a status bar, the photo actions stay in the top bar, Glow Up keeps the photo size, and its grip lifts the controls over the photo', async ({ p }) => {
+  await p.goto('https://app.test/');
+  await p.evaluate(() => { document.documentElement.style.setProperty('--safe-area-inset-top', '40px'); document.documentElement.style.setProperty('--safe-area-inset-bottom', '24px'); });
+  await openDemo(p); await settle(600);
+  const m = () => p.evaluate(() => { const g = (e) => e.getBoundingClientRect(), tb = g(document.querySelector('#editorScreen .topbar')), vb = g(document.querySelector('#editorScreen .viewbar')), st = g($('stage')), bd = g($('demoNote'));
+    const act = $('panel').hidden ? null : g(document.querySelector('.panel-actions')), body = $('panel').hidden ? null : g($('panelBody'));
+    return { inBar: vb.top >= tb.top - 1 && vb.bottom <= tb.bottom + 1, offBadge: vb.bottom <= bd.top, stage: [Math.round(st.top), Math.round(st.height)], bodyAbove: !act || body.bottom <= act.top + 1 }; });
+  const a = await m();
+  eq([a.inBar, a.offBadge], [true, true], 'Undo, Redo, Compare and More sit in the top bar, clear of the AI sample badge');
+  await tool(p, 'retouch', 'auto', 'glowup'); await settle(500);
+  const b = await m();
+  eq(b.stage, a.stage, 'Glow Up does not shrink the photo'); assert(b.bodyAbove, 'chips never run under Cancel and Apply');
+  assert(await p.isVisible('#dockGrip'), 'a grip shows when the controls need more room');
+  await p.click('#dockGrip'); await settle(400);
+  const c = await m();
+  eq(c.stage, a.stage, 'lifting the controls leaves the photo in place'); eq(await p.getAttribute('#dockGrip', 'aria-expanded'), 'true', 'lifted state is announced');
+  assert(await p.evaluate(() => $('panelBody').scrollHeight <= $('panelBody').clientHeight + 1 || $('panelBody').clientHeight > 200), 'lifted panel shows the checklist');
+  await p.click('#dockGrip'); await settle(300);
+  eq(await p.getAttribute('#dockGrip', 'aria-expanded'), 'false', 'and back down');
+  await p.click('#cancelBtn'); await settle(300); eq((await m()).stage, a.stage, 'same size after closing');
+}, { viewport: { width: 411, height: 891 } });
 test('layout: the default Beauty row is Glow Up, Auto, Retouch, Smooth, Blemish under chips Auto, Skin, Face, Makeup, Hair', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   const r = await p.evaluate(() => { const box = document.querySelector('#editorScreen .side > .tools').getBoundingClientRect();
@@ -1786,11 +1808,10 @@ test('layout: photo-first editor, collapsible panel, no sideways scroll on small
   const save = await p.evaluate(() => { const b = $('saveBtn'), r = b.getBoundingClientRect(), af = getComputedStyle(b, '::after'); return r.height - parseFloat(af.top) - parseFloat(af.bottom); });
   assert(save >= 44, 'Save touch target ' + save);
   assert(a.head <= 48, 'compact header ' + a.head); assert(a.apply, 'Apply reachable'); eq(a.small, [], 'touch targets at least 44px'); eq(a.sideways, false, 'no sideways scroll');
-  await p.click('#collapseBtn'); await settle(150);
-  const b = await m();
-  assert(b.stage > a.stage + 60, `collapsing gives the photo room: ${a.stage} -> ${b.stage}`); assert(b.apply, 'Apply still reachable');
-  eq(await p.getAttribute('#collapseBtn', 'aria-expanded'), 'false', 'collapse state is announced');
-  await p.click('#collapseBtn'); await settle(150); near((await m()).stage, a.stage, 1, 'expands again');
+  // The dock has one fixed height, so there is nothing to collapse: the photo is the same size as while browsing.
+  eq(await p.isVisible('#collapseBtn'), false, 'no Hide controls button on a phone');
+  await p.evaluate(() => $('cancelBtn').click()); await settle(250);
+  near((await m()).stage, a.stage, 1, 'photo the same size with and without a tool open');
 }, { viewport: { width: 320, height: 640 } });
 
 // ---------- Glow mark on free saves, Share Glow card, full view ----------
