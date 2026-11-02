@@ -3105,7 +3105,7 @@ function trialReminder() {
 const REFILL_NOTE_ID = 7302;
 function refillReminder() {
   const a = account, LN = plugins.LocalNotifications;
-  if (!LN || !a || a.plan === "pro" || a.remaining > 0 || store.get("glowRefillNote") === "off") return;
+  if (!LN || !a || a.plan === "pro" || a.remaining > 0 || store.get("glowRefillOff") === "on") return;
   const at = nextUtcMidnight(), key = String(at.getTime ? at.getTime() : at);
   if (store.get("glowRefillNote") === key) return;
   store.set("glowRefillNote", key);
@@ -3114,7 +3114,11 @@ function refillReminder() {
 }
 const fmtDate = (d) => d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
 // Credit history (honest billing): every AI use, refund, pack and ad credit of the last 60 days.
+const STUDIO_NAMES = { oldphoto: "Old photo repair", groupfix: "Group fix", motion: "Photo to motion" };
 function historyName(mode) {
+  const st = typeof studioItem === "function" && studioItem(mode);
+  if (st) return mode.startsWith("trend_") ? `Trend: ${st.name}` : mode.startsWith("hs_") ? `Headshot: ${st.name}` : mode.startsWith("hair_") ? `Hairstyle: ${st.name}` : st.name;
+  if (STUDIO_NAMES[mode]) return STUDIO_NAMES[mode];
   const t = TOOL[mode] || (mode === "enhance" ? { label: "Enhance" } : mode === "pro" ? { label: "Pro Edit" } : null);
   return t ? t.label : String(mode || "AI edit").replace(/^hair_/, "Hairstyle: ").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
@@ -4313,6 +4317,17 @@ $("markToggle").addEventListener("change", (e) => {
 });
 $("saveFormat").addEventListener("change", (e) => { store.set("glowSaveFormat", e.target.value); track("setting", { save_format: e.target.value }); });
 $("saveSize").addEventListener("change", (e) => { store.set("glowSaveSize", e.target.value); track("setting", { save_size: e.target.value }); });
+// Reminders (phone app): "free credits are back" can be turned off; the trial-ends reminder can't
+// (it's what keeps the trial honest), but the store's own email still comes either way.
+if ($("refillToggle")) {
+  $("remindersSetting").hidden = !(native && plugins.LocalNotifications);
+  $("refillToggle").checked = store.get("glowRefillOff") !== "on";
+  $("refillToggle").addEventListener("change", (e) => {
+    store.set("glowRefillOff", e.target.checked ? "" : "on");
+    if (!e.target.checked && plugins.LocalNotifications) { plugins.LocalNotifications.cancel({ notifications: [{ id: REFILL_NOTE_ID }] }).catch(() => {}); store.set("glowRefillNote", ""); }
+    track("setting", { refill_reminder: e.target.checked });
+  });
+}
 $("saveOrigToggle").addEventListener("change", (e) => { store.set("glowSaveOrig", e.target.checked ? "on" : "off"); track("setting", { save_original: e.target.checked }); });
 $("autoSaveToggle").addEventListener("change", (e) => { store.set("glowAutoSave", e.target.checked ? "on" : "off"); track("setting", { auto_save: e.target.checked }); });
 $("autoSaveHelp").textContent = native && plugins.Media

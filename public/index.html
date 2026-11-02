@@ -17,12 +17,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght,SOFT,WONK@9..144,400..600,0..100,0..1&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=80">
+<link rel="stylesheet" href="styles.css?v=81">
 <script>/* Dark is the default look (gold reads best on dark); Light and System stay in Settings. Set before first paint. */
 /* Golden Hour made Dark the default: a look picked before it (Light/System) is cleared once, so everyone starts on Dark; a later pick in Settings sticks. */
 try { if (localStorage.getItem("glowThemeV") !== "2") { localStorage.removeItem("glowTheme"); localStorage.setItem("glowThemeV", "2"); } } catch (e) {}
 try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system") document.documentElement.dataset.theme = gt; } catch (e) { document.documentElement.dataset.theme = "dark"; }</script>
-<link rel="stylesheet" href="enhance.css?v=80">
+<link rel="stylesheet" href="enhance.css?v=81">
 </head>
 <body>
 <!-- Launch animation: the icon's lens opens and the app shows through (enhance.js removes it). -->
@@ -478,6 +478,10 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
       <option value="full">Full size</option><option value="2048">Large (2048 px)</option><option value="1080">Social (1080 px)</option></select></label>
     <p class="fine" id="saveFormatHelp" style="margin:0">For edited and enhanced photos. Originals are always saved untouched.</p>
   </div>
+  <div class="setting" id="remindersSetting" hidden>
+    <label class="toggle">Tell me when free AI credits are back <input type="checkbox" role="switch" id="refillToggle" aria-describedby="refillHelp"></label>
+    <p class="fine" id="refillHelp" style="margin:0">One notification, only after you've used them all. A Pro trial always gets a reminder the day before it ends.</p>
+  </div>
   <div class="setting">
     <label class="toggle">Glow Studio mark on saved photos <input type="checkbox" role="switch" id="markToggle" aria-describedby="markHelp"></label>
     <p class="fine" id="markHelp" style="margin:0"></p>
@@ -688,17 +692,17 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
   <div class="stack" id="askActions"></div>
 </dialog>
 
-<script src="liveupdate.js?v=80"></script>
-<script src="features.js?v=80"></script>
-<script src="icons.js?v=80"></script>
-<script src="platform.js?v=80"></script>
-<script src="engine.js?v=80"></script>
-<script src="livebeauty.js?v=80"></script>
-<script src="app.js?v=80"></script>
-<script src="camerapro.js?v=80"></script>
-<script src="tryon.js?v=80"></script>
-<script src="enhance.js?v=80"></script>
-<script src="studio.js?v=80"></script>
-<script src="homescreen.js?v=80"></script>
+<script src="liveupdate.js?v=81"></script>
+<script src="features.js?v=81"></script>
+<script src="icons.js?v=81"></script>
+<script src="platform.js?v=81"></script>
+<script src="engine.js?v=81"></script>
+<script src="livebeauty.js?v=81"></script>
+<script src="app.js?v=81"></script>
+<script src="camerapro.js?v=81"></script>
+<script src="tryon.js?v=81"></script>
+<script src="enhance.js?v=81"></script>
+<script src="studio.js?v=81"></script>
+<script src="homescreen.js?v=81"></script>
 </body>
 </html>

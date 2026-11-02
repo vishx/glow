@@ -19,7 +19,7 @@
 // The build number sent with each check, so a switch can require a newer app (min build).
 // Bump it (YYYYMMDD, or YYYYMMDD + one more digit for a second release that day) whenever a
 // release changes how a switchable feature behaves.
-const APP_BUILD = 202610352;
+const APP_BUILD = 202610353;
 
 // Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
 // another tool, or (body reshaping) didn't fit Glow Studio. Their code stays so saved drafts still
@@ -64,6 +64,12 @@ const FEATURE_AREAS = [
     ["enhance:texture", "Natural texture switch", true, "On the Enhance result: keeps real skin texture on restored faces."],
     ["enhance:batch", "Batch Enhance (Pro)", true, "Enhance up to 10 photos at once."],
     ["enhance:pro", "Pro Edit choice", true, "A photographer-style edit, 2 credits. Also needs Editor · Pro edit on (same AI)."],
+  ]],
+  ["Studio trends", [
+    ["studio:trend:figurine", "Trend: Mini Me figurine", true], ["studio:trend:yearbook", "Trend: Yearbook '98", true],
+    ["studio:trend:poster", "Trend: Movie poster", true], ["studio:trend:polaroid", "Trend: Instant film", true],
+    ["studio:trend:thennow", "Trend: Then & Now", true], ["studio:trend:snow", "Trend: First snow", true, "Seasonal: shows 15 Nov to 28 Feb."],
+    ["studio:trend:holiday", "Trend: Holiday card", true, "Seasonal: shows 15 Nov to 6 Jan."],
   ]],
   ["Camera", [
     ["camera:ai", "AI Enhance on photos", true, "The AI switch and the AI Enhance button after a shot."],

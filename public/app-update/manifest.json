@@ -1,11 +1,11 @@
 {
- "version": "202610352-fcd66d7eb9",
- "build": 202610352,
+ "version": "202610353-d18177e366",
+ "build": 202610353,
  "minNative": {
   "android": 4,
   "ios": 2
  },
- "created": "2026-11-02T17:46:37.183Z",
+ "created": "2026-11-02T18:38:51.662Z",
  "files": [
   {
    "file_name": "admin.html",
@@ -14,7 +14,7 @@
   },
   {
    "file_name": "app.js",
-   "file_hash": "e698c1752bb71cc55b1f6b77b22b24827a4800bb70a2592b9d32a84658582a7a",
+   "file_hash": "aa3d1c60e6cf6b1c9c3734565fa5fde87e9a77ca1e09174f61b9234d36e0f32a",
    "download_url": "https://glow-photo-enhancer.vercel.app/app.js"
   },
   {
@@ -29,7 +29,7 @@
   },
   {
    "file_name": "engine.js",
-   "file_hash": "5147737163bf20434cb9afcc5764c6b284671fe5876c8b01b390325fec50b56d",
+   "file_hash": "ba79db893bbea4d3c05aa4c41840992d16806d9d188652773a87730751da3b39",
    "download_url": "https://glow-photo-enhancer.vercel.app/engine.js"
   },
   {
@@ -39,7 +39,7 @@
   },
   {
    "file_name": "enhance.js",
-   "file_hash": "cbb1c236a10db503e331a89035ae5f9ded17c02a433e40c30812e8f972470434",
+   "file_hash": "630cbfac0716df867eed7a65172c412c1cafcb7ba85c9cb2263457555a32c280",
    "download_url": "https://glow-photo-enhancer.vercel.app/enhance.js"
   },
   {
@@ -54,7 +54,7 @@
   },
   {
    "file_name": "features.js",
-   "file_hash": "222e0c55e9d3c5abf0d9d5f156ae17a11f6e167da983f36b26f512d250c498f5",
+   "file_hash": "83a544c91932b1682b67b8d33a3ff288e5b02a64662d449d689faf14c25919ad",
    "download_url": "https://glow-photo-enhancer.vercel.app/features.js"
   },
   {
@@ -89,7 +89,7 @@
   },
   {
    "file_name": "index.html",
-   "file_hash": "38602bf42164d1c09f3e8a420347ea7fb5168bca977659edcfdfc150900effd4",
+   "file_hash": "380498379084c9ed6433bab026baa0cd6badf16b31aba19b35b6b812ed13a83f",
    "download_url": "https://glow-photo-enhancer.vercel.app/index.html"
   },
   {
@@ -343,8 +343,13 @@
    "download_url": "https://glow-photo-enhancer.vercel.app/splash/sparkle.webp"
   },
   {
+   "file_name": "studio.js",
+   "file_hash": "973c7bf94d8e9af39beec619dc4605a04a37bbaed9e5c5ba638a92bca13f66d2",
+   "download_url": "https://glow-photo-enhancer.vercel.app/studio.js"
+  },
+  {
    "file_name": "styles.css",
-   "file_hash": "39999051ec7bcb7abc558531d6ff0dab36f65675b659a7f9c9d317a30f34f194",
+   "file_hash": "ce46adbddea9fbd1ac1c475f116ed21f38bc4bb10efceca2917d223b400c459f",
    "download_url": "https://glow-photo-enhancer.vercel.app/styles.css"
   },
   {
@@ -354,7 +359,7 @@
   },
   {
    "file_name": "sw.js",
-   "file_hash": "c9314a6708aec076966bb3980211a354af595c525dc163bcf494cd55878737bd",
+   "file_hash": "9e71102dd21350056e0c9432096e6d9b83bbcea3f5cec6a596598868bff87685",
    "download_url": "https://glow-photo-enhancer.vercel.app/sw.js"
   },
   {
@@ -373,6 +378,11 @@
    "download_url": "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite"
   },
   {
+   "file_name": "vendor/efficientdet_lite0.tflite",
+   "file_hash": "4b59100025bea1235a84c1038879a6cccc9f6c49f5e41144e91e74d99e780993",
+   "download_url": "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite"
+  },
+  {
    "file_name": "vendor/face_landmarker.task",
    "file_hash": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
    "download_url": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
@@ -381,6 +391,11 @@
    "file_name": "vendor/hair_segmenter.tflite",
    "file_hash": "2628cf3ce5f695f604cbea2841e00befcaa3624bf80caf3664bef2656d59bf84",
    "download_url": "https://storage.googleapis.com/mediapipe-models/image_segmenter/hair_segmenter/float32/latest/hair_segmenter.tflite"
+  },
+  {
+   "file_name": "vendor/magic_touch.tflite",
+   "file_hash": "e24338a717c1b7ad8d159666677ef400babb7f33b8ad60c4d96db4ecf694cd25",
+   "download_url": "https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite"
   },
   {
    "file_name": "vendor/mediapipe/vision_bundle.cjs",

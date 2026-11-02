@@ -49,7 +49,7 @@ const STUDIO_KINDS = {
 const STUDIO_FEATURE = { trends: "studio:trends", headshots: "studio:headshots", hair: "studio:hair", oldphoto: "studio:oldphoto", groupfix: "studio:groupfix", motion: "studio:motion", me: "studio:me" };
 const MOTION_COST = 4, OLD_COST = 2, GROUP_COST = 2;
 
-const studio = { kind: null, photo: null, extra: null, refs: [], picked: new Set(), results: [], running: false, motion: "breeze", stop: null };
+const studio = { kind: null, photo: null, extra: null, refs: [], picked: new Set(), results: [], running: false, motion: "breeze", motionText: "", variations: 1, stop: null };
 
 // ---------- Weekly ritual: what's new, what's in season ----------
 const dayKey = (d) => `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -61,10 +61,12 @@ function inSeason(t, now = new Date()) {
 const isNew = (t, now = Date.now()) => t.added && now - Date.parse(t.added) < 7 * 86400000;
 // The week's featured trend rotates through what's in season, so there's always a fresh drop.
 function trendOfWeek(now = new Date()) {
-  const list = TRENDS.filter((t) => inSeason(t, now)), week = Math.floor(now.getTime() / (7 * 86400000));
+  const list = trendsShown(now), week = Math.floor(now.getTime() / (7 * 86400000));
+  if (!list.length) return null;
   return list.find((t) => t.season) || list[week % list.length];
 }
-const trendsShown = () => TRENDS.filter((t) => inSeason(t) && featureOn("studio:trend:" + t.mode.slice(6)));
+// Each trend has its own switch on the admin page (Studio trends), so one that misbehaves can be pulled alone.
+const trendsShown = (now = new Date()) => TRENDS.filter((t) => inSeason(t, now) && featureOn("studio:trend:" + t.mode.slice(6)));
 
 // ---------- Me: reference selfies ----------
 const ME_MAX = 3;
@@ -80,10 +82,23 @@ async function addMePhotos() {
   const files = await Platform.pickPhotos("files");
   const list = await loadMe();
   for (const f of files.slice(0, ME_MAX - list.length)) {
-    try { const r = await readPhoto(f, f.name); list.push(await uploadable(r.work, 1024, 1_000_000)); } catch (e) { say(e.message, true); }
+    try {
+      const r = await readPhoto(f, f.name), n = await faceCount(r.work);
+      // A selfie that shows no face, or several, would steer the AI wrong: say so instead of keeping it.
+      if (n === 0) { say("No face found in that photo. Use a clear selfie facing the camera.", true); continue; }
+      if (n > 1) { say("That photo has more than one face. Use a selfie of just you.", true); continue; }
+      list.push(await uploadable(r.work, 1024, 1_000_000));
+    } catch (e) { say(e.message, true); }
   }
   await Drafts.write("mePhotos", list).catch(() => {});
   track("me_photos", { count: list.length });
+}
+
+async function faceCount(src) {
+  try {
+    const img = await loadImg(src), c = canvasFor(img, 1024); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return (await findAllFaces(detectCopy(c), 4)).length;
+  } catch { return -1; }   // the face finder couldn't run (offline, old phone): keep the selfie
 }
 
 // ---------- Entry points ----------
@@ -95,7 +110,7 @@ function renderStudioStrip() {
     if (!featureOn(STUDIO_FEATURE[k])) continue;
     const b = document.createElement("button");
     b.className = "studio-card"; b.dataset.kind = k; b.setAttribute("role", "listitem");
-    const tag = k === "trends" && wk ? `<span class="studio-new">New: ${esc(wk.name)}</span>` : "";
+    const tag = k === "trends" && wk ? `<span class="studio-new">${isNew(wk) ? "New" : wk.season ? "In season" : "This week"}: ${esc(wk.name)}</span>` : "";
     b.innerHTML = `<span class="studio-ic">${icon(s.icon)}</span><b>${esc(s.title)}</b><small>${esc(s.sub)}</small>${tag}`;
     b.addEventListener("click", () => openStudio(k));
     strip.append(b);
@@ -104,8 +119,14 @@ function renderStudioStrip() {
 }
 
 async function openStudio(kind) {
-  if (studio.running) { $("studio").showModal(); return; }
-  Object.assign(studio, { kind, results: [], picked: new Set(), extra: null, refs: [], running: false });
+  if (studio.running) {
+    if (kind !== studio.kind) say(`Still making your ${STUDIO_KINDS[studio.kind].title}. Try again when it's done.`);
+    if (!$("studio").open) $("studio").showModal();
+    return;
+  }
+  // Coming back to the same tool shows what was made (paid results are never thrown away by closing the sheet).
+  if (kind === studio.kind && studio.results.some((r) => r.status === "done")) { if (!$("studio").open) $("studio").showModal(); renderStudio(); return; }
+  Object.assign(studio, { kind, results: [], picked: new Set(), extra: null, refs: [], running: false, motionText: "" });
   if (kind === "headshots") HEADSHOTS.forEach((t) => studio.picked.add(t.mode));
   if (kind === "hair") ["hair_waves", "hair_bob", "hair_pixie", "hair_curls", "hair_buzz", "hair_fade"].forEach((m) => studio.picked.add(m));
   if (kind === "trends") { const w = trendOfWeek(); if (w) studio.picked.add(w.mode); }
@@ -121,7 +142,7 @@ const costOfPick = () => {
   if (studio.kind === "motion") return MOTION_COST;
   if (studio.kind === "oldphoto") return OLD_COST;
   if (studio.kind === "groupfix") return GROUP_COST;
-  return [...studio.picked].reduce((n, m) => n + (studioItem(m)?.cost || 0), 0);
+  return [...studio.picked].reduce((n, m) => n + (studioItem(m)?.cost || 0), 0) * (studio.kind === "headshots" ? studio.variations : 1);
 };
 const studioItem = (mode) => [...TRENDS, ...HEADSHOTS, ...HAIRSTYLES].find((t) => t.mode === mode);
 const needsExtra = () => studio.kind === "trends" && [...studio.picked].some((m) => studioItem(m)?.extra);
@@ -161,7 +182,18 @@ function renderStudio() {
 
   // 2. What to make.
   if (k === "trends") body.append(choices(trendsShown(), "one"));
-  if (k === "headshots") body.append(choices(HEADSHOTS, "many"));
+  if (k === "headshots") {
+    body.append(choices(HEADSHOTS, "many"));
+    // More than one take per style, as headshot apps give: pick the best of each.
+    const row = document.createElement("div"); row.className = "opts studio-vars"; row.setAttribute("role", "radiogroup"); row.setAttribute("aria-label", "Takes per style");
+    for (const n of [1, 2]) {
+      const b = document.createElement("button"); b.className = "opt"; b.textContent = n === 1 ? "1 take each" : "2 takes each";
+      b.setAttribute("role", "radio"); b.setAttribute("aria-checked", String(studio.variations === n)); b.setAttribute("aria-pressed", String(studio.variations === n));
+      b.addEventListener("click", () => { studio.variations = n; renderStudio(); });
+      row.append(b);
+    }
+    body.append(sectionTitle("Takes", "Two takes give you a choice of each look"), row);
+  }
   if (k === "hair") {
     body.append(sectionTitle("AI hairstyles", "1 credit each, pick up to 6"), choices(HAIRSTYLES, "many", 6),
       sectionTitle("Free on your phone", "No credits: hair colors and makeup looks"));
@@ -181,6 +213,13 @@ function renderStudio() {
       row.append(b);
     }
     body.append(row);
+    // Or her own words for the motion (the server turns down unsafe requests before charging).
+    const l = document.createElement("label"); l.className = "studio-field";
+    const inp = document.createElement("input"); inp.type = "text"; inp.id = "motionText"; inp.maxLength = 120; inp.autocomplete = "off";
+    inp.placeholder = "Or describe it, e.g. turns and smiles at the camera"; inp.value = studio.motionText || "";
+    inp.addEventListener("input", () => { studio.motionText = inp.value; });
+    l.append(Object.assign(document.createElement("span"), { className: "sr-only", textContent: "Describe the motion (optional)" }), inp);
+    body.append(l);
   }
   if (["trends", "headshots", "hair"].includes(k)) body.append(meNote());
   if (k === "groupfix") body.append(note("Works best with everyone facing the camera. Extra shots of the same moment give each person's best eyes and smile."));
@@ -280,17 +319,27 @@ async function runStudio() {
     const have = account.plan === "pro" ? account.remaining : (account.trialLeft || 0) + (account.bonus || 0);
     if (have < cost) { $("studio").close(); if (isPro()) openPaywall(); else openPacks(); return; }
   }
-  const items = k === "motion" ? [{ mode: "motion", name: MOTIONS.find((m) => m[0] === studio.motion)[1], cost: MOTION_COST, video: true }]
+  const own = cleanText(studio.motionText);
+  const items = k === "motion" ? [{ mode: "motion", name: own ? "Your motion" : MOTIONS.find((m) => m[0] === studio.motion)[1], cost: MOTION_COST, video: true,
+      prompt: own || MOTIONS.find((m) => m[0] === studio.motion)[2] }]
     : k === "oldphoto" ? [{ mode: "oldphoto", name: "Repaired", cost: OLD_COST, check: true }]
     : k === "groupfix" ? [{ mode: "groupfix", name: "Group fix", cost: GROUP_COST }]
+    : k === "headshots" && studio.variations > 1 ? [...studio.picked].flatMap((m) => [1, 2].map((n) => ({ ...studioItem(m), name: `${studioItem(m).name} ${n}` })))
     : [...studio.picked].map((m) => ({ ...studioItem(m) }));
   studio.running = true;
   studio.results = items.map((t) => ({ ...t, status: "working" }));
   renderStudio();
   track("studio_run", { kind: k, count: items.length, cost });
-  const image = await uploadable(studio.photo, k === "motion" ? 1280 : 1536, k === "motion" ? 1_000_000 : 2_400_000);
-  const refs = k === "groupfix" ? studio.refs.filter(Boolean) : (await meRefs());
-  const extra = needsExtra() && studio.extra ? await uploadable(studio.extra, 1280, 1_100_000) : undefined;
+  let image, refs, extra;
+  try {
+    image = await uploadable(studio.photo, k === "motion" ? 1280 : 1536, k === "motion" ? 1_000_000 : 2_400_000);
+    refs = k === "groupfix" ? studio.refs.filter(Boolean) : (await meRefs());
+    extra = needsExtra() && studio.extra ? await uploadable(studio.extra, 1280, 1_100_000) : undefined;
+  } catch (err) {
+    // Nothing was sent, so nothing was charged.
+    studio.results.forEach((r) => { r.status = "failed"; r.error = "Couldn't prepare the photo. Nothing was charged."; });
+    studio.running = false; renderStudioIfOpen(); say(err.message || "Couldn't prepare the photo.", true); return;
+  }
   // Two at a time: quick, without tripping the AI provider's limits on a low balance.
   let next = 0;
   const worker = async () => {
@@ -298,7 +347,7 @@ async function runStudio() {
       const r = studio.results[next++];
       try {
         const body = { image, refs: r.me || k === "groupfix" ? (refs.length ? refs : undefined) : undefined, extra: studioItem(r.mode)?.extra ? extra : undefined,
-          prompt: r.video ? MOTIONS.find((m) => m[0] === studio.motion)[2] : undefined };
+          prompt: r.video ? r.prompt : undefined };
         const out = await studioJob(r, body);
         r.requestId = out.requestId; r.startedAt = Date.now();
         if (r.video) { r.url = typeof out.url === "string" ? out.url : null; if (!r.url) throw new Error("The clip couldn't be made."); }
@@ -312,14 +361,14 @@ async function runStudio() {
       renderStudioIfOpen();
     }
   };
-  await Promise.all([worker(), worker()]);
-  studio.running = false;
+  try { await Promise.all([worker(), worker()]); } finally { studio.running = false; }
   refreshAccount();
   renderStudioIfOpen();
   const ok = studio.results.filter((r) => r.status === "done").length;
   if (!$("studio").open) say(ok ? `Your ${STUDIO_KINDS[k].title} ${ok === 1 ? "is" : "are"} ready.` : "Studio couldn't finish. Your credits were returned.", !ok, ok ? { label: "Open", run: () => $("studio").showModal() } : null);
   if (ok) Platform.haptic("success");
 }
+const cleanText = (v) => String(v || "").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
 const renderStudioIfOpen = () => { if ($("studio").open && !["me"].includes(studio.kind)) renderStudio(); };
 
 // The face before and after, as a few proportions measured between landmarks (eye spacing, nose,
@@ -412,6 +461,24 @@ function openStudioResult(i) {
   if (r.video) add("Save the clip", () => saveClip(r), "btn glow");
   else {
     add("Save", () => saveStudio([r]), "btn glow");
+    add("Share", () => saveStudio([r], true));
+    // Before and after: hold the picture (or this button) to see the photo it was made from.
+    if (studio.photo) {
+      const img = pic.querySelector("img"), show = (on) => {
+        // Same box while holding, so the buttons don't move out from under the finger.
+        if (on) { const b = img.getBoundingClientRect(); Object.assign(img.style, { width: b.width + "px", height: b.height + "px", objectFit: "contain" }); }
+        else Object.assign(img.style, { width: "", height: "", objectFit: "" });
+        img.src = on ? studio.photo : r.data; cmp.setAttribute("aria-pressed", String(on));
+      };
+      const cmp = document.createElement("button"); cmp.className = "btn quiet"; cmp.textContent = "Hold to compare"; cmp.setAttribute("aria-pressed", "false");
+      for (const el of [cmp, img]) {
+        el.addEventListener("pointerdown", (e) => { e.preventDefault(); show(true); });
+        for (const ev of ["pointerup", "pointerleave", "pointercancel"]) el.addEventListener(ev, () => show(false));
+      }
+      cmp.addEventListener("keydown", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); show(true); } });
+      cmp.addEventListener("keyup", () => show(false));
+      acts.append(cmp);
+    }
     add("Edit", async () => { v.close(); $("studio").close(); const p = await readPhoto(dataToBlob(r.data), r.name + ".jpg"); await openPhoto(p.work, p.original, { name: r.name }); });
   }
   // "Face changed? Try again free": once per result, within 15 minutes (the server checks too).
@@ -431,13 +498,17 @@ async function retryStudio(slot) {
     const refs = studio.kind === "groupfix" ? studio.refs.filter(Boolean) : await meRefs();
     const body = { image: await uploadable(studio.photo, slot.video ? 1280 : 1536, slot.video ? 1_000_000 : 2_400_000), refs: (slot.me || studio.kind === "groupfix") && refs.length ? refs : undefined,
       extra: studioItem(slot.mode)?.extra && studio.extra ? await uploadable(studio.extra, 1280, 1_100_000) : undefined,
-      prompt: slot.video ? MOTIONS.find((m) => m[0] === studio.motion)[2] : undefined, retry_of: slot.retryOf };
+      prompt: slot.video ? slot.prompt : undefined, retry_of: slot.retryOf };
     const out = await studioJob(slot, body);
     slot.requestId = out.requestId; slot.startedAt = Date.now();
     if (slot.video) slot.url = out.url; else slot.data = await enhResultData(out.url);
     slot.status = "done";
     if (slot.check && !slot.video) slot.drift = await faceDrift(studio.photo, slot.data).catch(() => 0);
-  } catch (err) { slot.status = "failed"; slot.error = err.message; }
+  } catch (err) {
+    slot.status = "failed"; slot.error = err.message;
+    // Nothing started on the server, so the free retry wasn't used: offer it again on the original.
+    if (err.answered) { const o = studio.results.find((x) => x.requestId === slot.retryOf); if (o) o.retried = false; }
+  }
   studio.running = false; refreshAccount(); renderStudioIfOpen();
 }
 
@@ -447,11 +518,12 @@ async function studioSaveItem(r, i) {
   const data = wantMark() ? (await addMark(r.data)).data : r.data;
   return { data, name, clean: r.data };
 }
-async function saveStudio(list) {
+async function saveStudio(list, share = false) {
   try {
     const items = await Promise.all(list.map(studioSaveItem));
-    const where = await Platform.savePhotos(items);
-    track("save", { from: "studio", kind: studio.kind, count: items.length, marked: wantMark() });
+    const where = await Platform.savePhotos(items, share ? { share: true } : {});
+    track(share ? "share" : "save", { from: "studio", kind: studio.kind, count: items.length, marked: wantMark() });
+    list.forEach((r) => { r.saved = true; });
     say(where === "photos" ? `Saved ${items.length === 1 ? "to Photos" : `${items.length} photos to Photos`}.` : where === "shared" ? "Ready to save or share." : "Saved.");
   } catch (err) { if (err && err.name !== "AbortError") say(err.message || "Couldn't save.", true); }
 }

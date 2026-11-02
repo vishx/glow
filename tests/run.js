@@ -3048,6 +3048,52 @@ test('eraser: tap selects a person in one touch, Find distractions runs on the p
   eq(state.posts.includes('erase'), true, 'Remove ran with the tapped selection');
 }, { start: 'editor', camera: false });
 
+test('studio audit: two takes per headshot, own motion words, results kept, compare and share, selfie checks, history names', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && !!account);
+  // Me: a photo with no face, or with two, isn't kept.
+  await p.click('.studio-card[data-kind="me"]'); await p.waitForSelector('#studio[open]');
+  let fc = p.waitForEvent('filechooser'); await p.click('#studioBody .studio-slot'); await (await fc).setFiles(path.join(__dirname, 'fixtures/coords-600x400.png'));
+  await p.waitForFunction(() => /No face found/.test($('alertLive').textContent + document.body.innerText));
+  fc = p.waitForEvent('filechooser'); await p.click('#studioBody .studio-slot'); await (await fc).setFiles(path.join(__dirname, 'fixtures/group-two.jpg'));
+  await p.waitForFunction(() => /more than one face/.test($('alertLive').textContent + document.body.innerText));
+  eq(await p.$$eval('#studioBody .studio-slot.filled', (x) => x.length), 0, 'neither photo kept as a selfie');
+  await p.click('#studioFoot .btn');
+  // Headshots: two takes each doubles the jobs and the cost, and names them 1 and 2.
+  await p.click('.studio-card[data-kind="headshots"]'); await p.waitForSelector('#studio[open]');
+  fc = p.waitForEvent('filechooser'); await p.click('#studioBody .studio-slot'); await (await fc).setFiles(PORTRAIT);
+  await p.click('.studio-pick[data-mode="hs_creative"]'); await p.click('.studio-pick[data-mode="hs_dating"]');
+  await p.click('.studio-vars .opt:has-text("2 takes each")');
+  await p.waitForFunction(() => /8 credits/.test($('studioGo').textContent));
+  await p.click('#studioGo');
+  await p.waitForFunction(() => document.querySelectorAll('.studio-res.done').length === 4, null, { timeout: 60000 });
+  eq(await p.$$eval('.studio-res.done .studio-lbl', (x) => x.map((e) => e.textContent)), ['Office 1', 'Office 2', 'Passport 1', 'Passport 2'], 'two takes of each style');
+  // Closing and opening it again keeps what was made.
+  await p.click('#studioClose'); await p.click('.studio-card[data-kind="headshots"]');
+  eq(await p.$$eval('.studio-res.done', (x) => x.length), 4, 'results kept after closing the sheet');
+  // One result: Share, and hold to compare with the photo it came from.
+  await p.click('.studio-res.done'); await p.waitForSelector('#studioView[open]');
+  eq(await p.$$eval('#studioViewActs .btn', (x) => x.map((b) => b.textContent)).then((t) => ['Share', 'Hold to compare'].every((w) => t.includes(w))), true, 'Share and compare offered');
+  const after = await p.$eval('#studioViewPic img', (i) => i.src);
+  const b = await p.$('#studioViewActs .btn:has-text("Hold to compare")'), box = await b.boundingBox();
+  await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await p.mouse.down();
+  eq(await p.evaluate(() => $('studioViewPic').querySelector('img').src === studio.photo), true, 'holding shows the original');
+  await p.mouse.up();
+  eq(await p.$eval('#studioViewPic img', (i) => i.src), after, 'letting go shows the result again');
+  await p.click('#studioViewClose'); await p.click('#studioFoot .link-btn:has-text("Start over")'); await p.click('#studioClose');
+  // Motion: her own words are sent instead of a preset.
+  await p.click('.studio-card[data-kind="motion"]'); await p.waitForSelector('#studio[open]');
+  fc = p.waitForEvent('filechooser'); await p.click('#studioBody .studio-slot'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#studioBody .studio-slot img'); await p.fill('#motionText', 'turns and waves at the camera'); await p.click('#studioGo');
+  await p.waitForSelector('.studio-res.done', { timeout: 60000 });
+  const m = state.aiBodies.filter((x) => x.mode === 'motion').pop();
+  eq(m.prompt, 'turns and waves at the camera', 'her own words go to the server');
+  // History names Studio runs properly; the week's trend follows the per-trend switches.
+  eq(await p.evaluate(() => ['trend_figurine', 'hs_office', 'hair_fade', 'oldphoto', 'motion'].map(historyName)),
+    ['Trend: Mini Me figurine', 'Headshot: Office', 'Hairstyle: Skin fade', 'Old photo repair', 'Photo to motion'], 'readable names in credit history');
+  eq(await p.evaluate(() => { const all = trendsShown().map((t) => t.mode), w = trendOfWeek(); return !!w && all.includes(w.mode); }), true, 'featured trend is one that is shown');
+  eq(await p.evaluate(() => FEATURE_DEFAULTS['studio:trend:figurine']), true, 'each trend has an admin switch');
+}, { start: 'enhance', camera: false, plan: 'pro', quota: 60 });
+
 test('controls: closing the sheet while Enhance works stops waiting and keeps the job to check later', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
@@ -3060,6 +3106,18 @@ test('controls: closing the sheet while Enhance works stops waiting and keeps th
   eq(kept, true, 'job kept for Check now');
   eq(state.posts.length, 1, 'one POST');
 }, { start: 'enhance', camera: false, ai: { post: 'processing', polls: ['processing'] } });
+
+test('release: the phone app update list matches this release (build number, every shell file, current hashes)', async () => {
+  const fs = require('fs'), crypto = require('crypto'), pub = path.join(__dirname, '../public');
+  const man = JSON.parse(fs.readFileSync(path.join(pub, 'app-update/manifest.json'), 'utf8'));
+  const build = Number(/const APP_BUILD = (\d+);/.exec(fs.readFileSync(path.join(pub, 'features.js'), 'utf8'))[1]);
+  eq(man.build, build, 'manifest made for this build (run: cd mobile && bash build-web.sh && node live-update.mjs)');
+  for (const f of ['index.html', 'app.js', 'studio.js', 'enhance.js', 'features.js', 'styles.css', 'sw.js']) {
+    const row = man.files.find((x) => x.file_name === f); assert(row, `${f} is in the update list`);
+    const h = crypto.createHash('sha256').update(fs.readFileSync(path.join(pub, f))).digest('hex');
+    eq(row.file_hash, h, `${f} hash is current`);
+  }
+});
 
 test('audit2: every script and stylesheet is asked for with the release number (no mixing old and new files)', async () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8'), sw = fs.readFileSync(path.join(__dirname, '..', 'public', 'sw.js'), 'utf8');
