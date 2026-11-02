@@ -463,19 +463,19 @@ const VIEWS = {
   async users(id) {
     if (id) return userDetail(id);
     const out = h("div", {});
-    const q = h("input", { placeholder: "Account ID (or its first characters)", style: "min-width:300px", "aria-label": "Account ID" });
+    const q = h("input", { placeholder: "Account ID, name or email", style: "min-width:300px", "aria-label": "Account ID, name or email" });
     const list = h("div", {});
     const load = async () => {
       const rows = await api("users", { q: q.value });
       list.replaceChildren(table([
-        { t: "Account", f: (r) => userLink(r.user_id) }, { t: "Joined", f: (r) => when(r.created_at) }, { t: "Last seen", f: (r) => when(r.last_seen) },
+        { t: "Account", f: (r) => h("span", {}, userLink(r.user_id), r.contact_name || r.contact_email ? h("div", { class: "muted", style: "font-size:13px" }, r.contact_name || "", r.contact_name && r.contact_email ? " · " : "", r.contact_email || "") : "") }, { t: "Joined", f: (r) => when(r.created_at) }, { t: "Last seen", f: (r) => when(r.last_seen) },
         { t: "Plan", f: (r) => h("span", {}, planPill(r.plan, r.plan_period), r.tester ? " " : "", r.tester ? h("span", { class: "pill good", title: r.tester_label || "" }, "Tester") : "", r.blocked ? " " : "", r.blocked ? h("span", { class: "pill bad" }, "Blocked") : "") },
         { t: "Extra", n: 1, f: (r) => r.bonus_credits || "" }, { t: "AI 7d", n: 1, f: (r) => r.runs_7d }, { t: "Credits 7d", n: 1, f: (r) => r.credits_7d }, { t: "AI total", n: 1, f: (r) => r.runs_total },
       ], rows, "No accounts match."));
     };
     q.addEventListener("keydown", (e) => { if (e.key === "Enter") load().catch((err) => toast(err.message, true)); });
     out.append(h("section", { class: "card" }, h("h2", {}, "Find an account"),
-      h("p", { class: "muted", style: "margin-top:0" }, "Customers find their account ID in Glow Studio > Settings > Contact support. Support messages link here directly."),
+      h("p", { class: "muted", style: "margin-top:0" }, "Search by the start of an account ID, or by a name or email. People's name and email are saved on their account when they use Contact support. Support messages link here directly."),
       h("div", { class: "row" }, q, h("button", { class: "btn", onclick: () => load().catch((err) => toast(err.message, true)) }, "Search")), list));
     await load();
     return out;
@@ -490,7 +490,7 @@ const VIEWS = {
       table([
         { t: "When", f: (r) => when(r.created_at) }, { t: "Topic", f: (r) => r.topic },
         { t: "Message", f: (r) => h("div", { class: "msg" }, r.message, r.note ? h("div", { class: "muted" }, "Note: " + r.note) : "") },
-        { t: "From", f: (r) => [r.email ? h("a", { href: "mailto:" + r.email + "?subject=" + encodeURIComponent("Your Glow Studio support message") }, r.email) : h("span", { class: "muted" }, "no email"), h("br"), r.user_id ? userLink(r.user_id) : ""] },
+        { t: "From", f: (r) => [r.name ? h("div", {}, r.name) : "", r.email ? h("a", { href: "mailto:" + r.email + "?subject=" + encodeURIComponent("Your Glow Studio support message") }, r.email) : h("span", { class: "muted" }, "no email"), h("br"), r.user_id ? userLink(r.user_id) : ""] },
         { t: "App", cls: "muted", f: (r) => Object.entries(r.context || {}).map(([k, v]) => `${k}: ${v}`).join(", ") },
         { t: "", f: (r) => h("button", { class: "btn ghost", onclick: async () => {
             const note = r.status === "open" ? await ask({ title: "Close this support message?", what: "It moves to Closed. You can reopen it any time.",
@@ -567,6 +567,15 @@ async function userDetail(id) {
   const d = await api("user", { user: id });
   const p = d.profile || {}, a = d.allowance || {};
   const until = (n) => new Date(Date.now() + n * 864e5).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  const editContact = async () => {
+    const name = await ask({ title: "Name for this account", what: "Saved on the account so you can recognise and search for this person. Contact support fills it in by itself; use this for someone who emailed you directly.",
+      field: { label: "Full name", placeholder: "e.g. Jane Smith", value: p.contact_name || "" }, ok: "Next" });
+    if (name === null) return;
+    const email = await ask({ title: "Email for this account", what: "Used only to reply to this person.",
+      field: { label: "Email", placeholder: "you@example.com", value: p.contact_email || "" }, ok: "Save" });
+    if (email === null) return;
+    act("setContact", { name, email }, () => "Name and email saved.");
+  };
   const act = async (action, args, done) => {
     try { const r = await api(action, { user: id, ...args }); toast(done(r)); show("users/" + id); } catch (e) { toast(e.message, true); }
   };
@@ -575,8 +584,11 @@ async function userDetail(id) {
   return [
     h("p", {}, h("button", { class: "link", onclick: () => show("users") }, "← All accounts")),
     h("div", { class: "grid2" },
-      h("section", { class: "card" }, h("h2", {}, `Account ${short(d.account.id)}`),
+      h("section", { class: "card" }, h("h2", {}, p.contact_name || `Account ${short(d.account.id)}`),
         h("dl", {},
+          h("dt", {}, "Name"), h("dd", {}, p.contact_name || h("span", { class: "muted" }, "Not given")),
+          h("dt", {}, "Email"), h("dd", {}, p.contact_email ? h("a", { href: "mailto:" + p.contact_email }, p.contact_email) : h("span", { class: "muted" }, "Not given"),
+            " ", h("button", { class: "link", onclick: () => editContact() }, p.contact_name || p.contact_email ? "edit" : "add")),
           h("dt", {}, "ID"), h("dd", { class: "mono" }, d.account.id, " ", h("button", { class: "link", onclick: () => navigator.clipboard.writeText(d.account.id).then(() => toast("Copied.")) }, "copy")),
           h("dt", {}, "Joined"), h("dd", {}, when(d.account.created_at)),
           h("dt", {}, "Last seen"), h("dd", {}, when(d.account.last_seen)),

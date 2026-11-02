@@ -86,7 +86,7 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
 
   // Each account also says whether it's a tester, so the Users and Features pages always agree.
   async users(a) {
-    const rows = must(await admin.rpc("admin_users", { p_query: text(a.q, 36), p_limit: 50 })) as { user_id: string }[];
+    const rows = must(await admin.rpc("admin_users", { p_query: text(a.q, 100), p_limit: 50 })) as { user_id: string }[];
     const ids = rows.map((r) => r.user_id);
     const { data: t } = ids.length ? await admin.from("feature_testers").select("user_id, label").in("user_id", ids) : { data: [] };
     const testers = new Map((t ?? []).map((r: { user_id: string; label: string | null }) => [r.user_id, r.label ?? ""]));
@@ -144,6 +144,17 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
     must(await admin.from("profiles").update({ plan: "free", plan_expires_at: null }).eq("id", id));
     await audit("remove_pro", id, { reason: text(a.reason) });
     return { plan: "free" };
+  },
+
+  // Name and email for an account, typed by the owner (for example from an email the customer sent
+  // outside the app). Contact support fills these in by itself. Empty clears them.
+  async setContact(a) {
+    const id = userId(a.user), name = text(a.name, 120).replace(/\s+/g, " ") || null, email = text(a.email, 200) || null;
+    if (email && !/^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(email)) throw new HttpError("That email address doesn't look right.");
+    must(await admin.from("profiles").upsert({ id }, { onConflict: "id", ignoreDuplicates: true }));
+    must(await admin.from("profiles").update({ contact_name: name, contact_email: email, contact_updated_at: new Date().toISOString() }).eq("id", id));
+    await audit("set_contact", id, { name, email });
+    return { contact_name: name, contact_email: email };
   },
 
   async block(a) {

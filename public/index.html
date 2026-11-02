@@ -519,7 +519,10 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
     <label>Message
       <textarea id="supportMessage" rows="5" maxlength="4000" required placeholder="Tell us what happened."></textarea>
     </label>
-    <label>Your email, so we can reply (optional)
+    <label><span id="supportNameLabel">Your full name</span>
+      <input id="supportName" type="text" autocomplete="name" maxlength="120" placeholder="First and last name">
+    </label>
+    <label><span id="supportEmailLabel">Your email, so we can reply</span>
       <input id="supportEmail" type="email" autocomplete="email" maxlength="200" placeholder="you@example.com">
     </label>
     <p class="fine" id="supportAccount"></p>

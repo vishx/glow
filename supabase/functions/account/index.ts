@@ -1,5 +1,5 @@
 // GET: the signed-in user's plan and how many AI edits they have left.
-// POST { support }: a message from the app's Contact support form (needs migration 009).
+// POST { support }: a message from the app's Contact support form (needs migration 009; 016 saves name and email on the account).
 // DELETE: permanently deletes the user's account and data (required by the App Store).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -45,6 +45,7 @@ Deno.serve(async (req) => {
     const message = typeof s?.message === "string" ? s.message.trim().slice(0, 4000) : "";
     if (!message) return json({ error: "Write a message first." }, 400);
     const email = typeof s.email === "string" && /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(s.email.trim()) ? s.email.trim() : null;
+    const name = typeof s.name === "string" ? s.name.trim().replace(/\s+/g, " ").slice(0, 120) || null : null;
     const topic = ["billing", "ai", "bug", "privacy", "other"].includes(s.topic) ? s.topic : "other";
     // A handful a day is plenty for a real person; more is someone flooding the inbox.
     const { count } = await admin.from("support_requests").select("id", { count: "exact", head: true })
@@ -52,8 +53,20 @@ Deno.serve(async (req) => {
     if ((count ?? 0) >= 5) return json({ error: "We've got your messages. We'll reply as soon as we can." }, 429);
     const ctx = s.context && typeof s.context === "object" ? s.context : {};
     const context = Object.fromEntries(Object.entries(ctx).slice(0, 12).map(([k, v]) => [String(k).slice(0, 40), String(v).slice(0, 200)]));
-    const { error } = await admin.from("support_requests").insert({ user_id: user.id, email, topic, message, context });
+    let { error } = await admin.from("support_requests").insert({ user_id: user.id, email, name, topic, message, context });
+    // Before migration 016 there's no name column: send the message without it.
+    if (error && /name/i.test(error.message)) ({ error } = await admin.from("support_requests").insert({ user_id: user.id, email, topic, message, context }));
     if (error) return json({ error: "Couldn't send your message. Please try again." }, 500);
+    // The name and email are saved on the account (migration 016), so the admin page shows who it
+    // belongs to and can find it by name or email. The latest ones replace earlier ones.
+    if (name || email) {
+      await admin.from("profiles").upsert({ id: user.id }, { onConflict: "id", ignoreDuplicates: true });
+      const patch: Record<string, unknown> = { contact_updated_at: new Date().toISOString() };
+      if (name) patch.contact_name = name;
+      if (email) patch.contact_email = email;
+      const { error: cErr } = await admin.from("profiles").update(patch).eq("id", user.id);
+      if (cErr) console.error("contact", cErr.message);
+    }
     return json({ sent: true });
   }
 

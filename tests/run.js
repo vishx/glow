@@ -997,6 +997,36 @@ test('settings: Help, Privacy, Terms and Licenses open inside the app, readable 
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false });
 
+// 2026-11-02: Contact support asks for full name and email (saved on the account by the server);
+// an idea keeps them optional; the Help page's Contact support button opens the form in the app.
+test('contact support: name and email required, sent with the message, remembered; Help button opens the form', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
+  await p.click('#contactSupport'); await p.waitForSelector('#supportSheet[open]');
+  eq(await p.evaluate(() => [$('supportName').required, $('supportEmail').required]), [true, true], 'both required for support');
+  await p.fill('#supportMessage', 'My credits did not come back');
+  await p.evaluate(() => $('supportForm').requestSubmit());
+  await p.waitForTimeout(200); eq(state.support.length, 0, 'not sent without a name and email');
+  await p.fill('#supportName', '  Jane   Smith '); await p.fill('#supportEmail', 'jane@example.com');
+  await p.click('#supportSend'); await p.waitForFunction(() => !$('supportSheet').open);
+  eq([state.support[0].name, state.support[0].email, state.support[0].message], ['Jane Smith', 'jane@example.com', 'My credits did not come back'], 'name and email sent');
+  await p.click('#suggestFeature'); await p.waitForSelector('#supportSheet[open]');
+  eq(await p.evaluate(() => [$('supportName').required, $('supportEmail').required, $('supportName').value, $('supportEmail').value]), [false, false, 'Jane Smith', 'jane@example.com'], 'idea: optional, filled from last time');
+  await p.click('#supportSheet [data-close]');
+  await p.click('#settings [data-doc="Help and FAQ"]');
+  await p.waitForFunction(() => { const d = $('docFrame').contentDocument; return d && d.documentElement && d.documentElement.dataset.embed && d.querySelector('[data-contact]'); });
+  eq(await p.evaluate(() => $('docFrame').contentDocument.body.textContent.includes('@gmail.com')), false, 'Help page shows the form, not the email address');
+  await p.evaluate(() => $('docFrame').contentDocument.querySelector('[data-contact]').click());
+  await p.waitForSelector('#supportSheet[open]'); eq(await p.evaluate(() => [$('docSheet').open, $('supportTitle').textContent]), [false, 'Contact support'], 'Help button opens Contact support');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false });
+
+test('contact support: the website link /?contact opens the form', async ({ p, state }) => {
+  await p.goto('https://app.test/?contact'); await p.waitForSelector('#supportSheet[open]', { timeout: 5000 });
+  eq(await p.evaluate(() => [location.search, $('supportTitle').textContent]), ['', 'Contact support'], 'form open, address cleaned');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false });
+
 // 2026-11-01: closing a page opened from Settings (Help, credits, Contact support...) closed Settings too.
 test('settings: pages opened from Settings close back to Settings, where you were', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');

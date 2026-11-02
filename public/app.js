@@ -4020,9 +4020,21 @@ function openSupport(idea) {
   $("supportTitle").textContent = idea ? "Suggest a feature" : "Contact support";
   $("supportTopic").closest("label").hidden = idea;
   $("supportMessage").placeholder = idea ? "What would make Glow Studio better for you?" : "Tell us what happened.";
+  // Name and email are needed to reply to a support message (they're saved with the account);
+  // for an idea they're optional. Filled in from last time.
+  $("supportName").required = $("supportEmail").required = !idea;
+  $("supportNameLabel").textContent = idea ? "Your name (optional)" : "Your full name";
+  $("supportEmailLabel").textContent = idea ? "Your email (optional)" : "Your email, so we can reply";
+  if (!$("supportName").value) $("supportName").value = store.get("glow.supportName") || "";
+  if (!$("supportEmail").value) $("supportEmail").value = store.get("glow.supportEmail") || "";
   $("supportSheet").showModal();
 }
 $("contactSupport").addEventListener("click", (e) => { e.preventDefault(); openSupport(false); });
+// The Help page's "Contact support" button on the website opens the app at /?contact, straight into the form.
+if (new URLSearchParams(location.search).has("contact")) {
+  history.replaceState(null, "", location.pathname + location.hash);
+  setTimeout(() => { if (!$("supportSheet").open) openSupport(false); }, 700);
+}
 $("suggestFeature").addEventListener("click", (e) => { e.preventDefault(); openSupport(true); });
 $("subsInfo").addEventListener("click", (e) => { e.preventDefault(); openCredits(); });
 // Share Glow Studio: the app's address through the phone's share sheet, or copied where there is none.
@@ -4067,6 +4079,7 @@ $("docFrame").addEventListener("load", () => {
   const h1 = doc.querySelector("h1"); if (h1) $("docTitle").textContent = h1.textContent;
   doc.addEventListener("click", (e) => {
     const a = e.target.closest("a[href]"); if (!a) return;
+    if (a.hasAttribute("data-contact")) { e.preventDefault(); $("docSheet").close(); openSupport(false); return; }   // Help page's Contact support button
     const url = new URL(a.getAttribute("href"), doc.baseURI);
     if (url.origin === location.origin && url.pathname !== "/" && url.pathname !== "/index.html") return;   // another help page: stays in the sheet
     e.preventDefault();
@@ -4102,17 +4115,21 @@ $("enhPrefsList").addEventListener("change", (e) => {
 $("enhPrefsReset").addEventListener("click", () => { store.set("glow.enhDefaults", "{}"); renderEnhPrefs(); say("Enhance tools are back to their standard levels."); });
 $("supportForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const message = $("supportMessage").value.trim();
+  const message = $("supportMessage").value.trim(), name = $("supportName").value.trim().replace(/\s+/g, " "), email = $("supportEmail").value.trim();
   if (!message) return;
+  if (!supportIdea && name.length < 2) { say("Please add your full name so we know who we're replying to.", true); $("supportName").focus(); return; }
+  if ((email || !supportIdea) && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { say("Please check your email address so we can reply.", true); $("supportEmail").focus(); return; }
   $("supportSend").disabled = true; $("supportSend").textContent = "Sending…";
   try {
     const context = { plan: (account && account.plan) || "", credits: account ? account.remaining : "", platform: PLATFORM, build: buildFp, screen,
       device: navigator.userAgent.replace(/\s*\([^)]*\)\s*/, " ").slice(0, 120) };
-    await call("account", { method: "POST", body: JSON.stringify({ support: { topic: supportIdea ? "other" : $("supportTopic").value, message: supportIdea ? "[Idea] " + message : message, email: $("supportEmail").value.trim(), context } }) });
+    await call("account", { method: "POST", body: JSON.stringify({ support: { topic: supportIdea ? "other" : $("supportTopic").value, message: supportIdea ? "[Idea] " + message : message, name, email, context } }) });
+    if (name) { store.set("glow.supportName", name); $("supportName").value = name; }
+    if (email) store.set("glow.supportEmail", email);
     track("support_sent", { topic: $("supportTopic").value });
     $("supportMessage").value = "";
     $("supportSheet").close();
-    say($("supportEmail").value.trim() ? "Sent. We'll reply by email." : "Sent. Thanks for telling us.");
+    say(email ? "Sent. We'll reply by email." : "Sent. Thanks for telling us.");
   } catch (err) { say(err.message, true); }
   finally { $("supportSend").disabled = false; $("supportSend").textContent = "Send"; }
 });
