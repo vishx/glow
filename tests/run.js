@@ -1040,7 +1040,7 @@ test('your messages: support replies show in the app; reply back and rate', asyn
   await p.fill('#msgsBody .convo:first-child textarea', 'Thanks, works now');
   await p.click('#msgsBody .convo:first-child .acts .btn');
   await p.waitForFunction(() => $('msgsBody').textContent.includes('works now'));
-  eq(state.supportReplies, [{ id: 7, message: 'Thanks, works now' }], 'follow-up sent to the conversation');
+  eq(state.supportReplies, [{ id: 7, message: 'Thanks, works now', images: [] }], 'follow-up sent to the conversation');
   await p.evaluate(() => document.querySelectorAll('#msgsBody details')[1].open = true);
   await p.click('#msgsBody .convo:nth-child(2) .rate button');
   await p.waitForFunction(() => /Glad we could help/.test($('msgsBody').textContent));
@@ -1052,6 +1052,36 @@ test('your messages: hidden when there are no conversations', async ({ p, state 
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
   eq(await p.evaluate(() => [$('myMessages').hidden, $('enhSettingsBtn').classList.contains('has-dot')]), [true, false], 'no row, no dot');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false });
+
+// 2026-11-02: screenshots on support messages (migration 018), shown back in the conversation, and
+// the reply email's "Open Your messages" link (/?messages).
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+test('your messages: screenshots go with a message and show in the conversation', async ({ p, state }) => {
+  const t = new Date().toISOString();
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.evaluate(() => openSupport(false));
+  await p.waitForSelector('#supportSheet[open]');
+  await p.setInputFiles('#supportSheet .shots input[type=file]', { name: 'shot.png', mimeType: 'image/png', buffer: PNG });
+  await p.waitForSelector('#supportSheet .shot img');
+  await p.fill('#supportMessage', 'Try on looks wrong'); await p.fill('#supportName', 'Jane Smith'); await p.fill('#supportEmail', 'jane@example.com');
+  await p.click('#supportSend');
+  await p.waitForFunction(() => !$('supportSheet').open);
+  eq(state.support.length, 1, 'sent');
+  eq([state.support[0].images.length, /^data:image\/jpeg;base64,/.test(state.support[0].images[0])], [1, true], 'one JPEG screenshot sent');
+  eq(await p.evaluate(() => document.querySelectorAll('#supportSheet .shot').length), 0, 'picker cleared after sending');
+  // Back in Your messages the screenshot shows in the bubble; a reply can carry one too.
+  state.convos = [{ id: 9, topic: 'ai', status: 'pending', created_at: t, rating: null, unread: true,
+    messages: [{ from: 'you', body: 'Try on looks wrong', at: t, images: ['data:image/png;base64,' + PNG.toString('base64')] }, { from: 'support', body: 'Thanks, checking.', at: t, images: [] }] }];
+  state.supportBadge = { any: true, unread: 1 };
+  await p.goto('https://app.test/?messages'); await p.waitForSelector('#msgsSheet[open] .convo', { timeout: 6000 });
+  eq(await p.evaluate(() => [location.search, document.querySelectorAll('#msgsBody .b-shots img').length]), ['', 1], '/?messages opens Your messages; screenshot shown');
+  await p.setInputFiles('#msgsBody .convo .shots input[type=file]', { name: 'shot.png', mimeType: 'image/png', buffer: PNG });
+  await p.waitForSelector('#msgsBody .shot img');
+  await p.click('#msgsBody .convo .acts .btn');
+  await p.waitForFunction(() => $('msgsBody').textContent.includes('(Screenshot)'));
+  eq([state.supportReplies.length, state.supportReplies[0].message, state.supportReplies[0].images.length], [1, '(Screenshot)', 1], 'screenshot-only reply sent');
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false });
 

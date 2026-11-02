@@ -170,6 +170,10 @@
   .bubble { max-width: 88%; padding: 10px 14px; border-radius: 16px; background: var(--card-2); }
   .bubble.admin { justify-self: end; background: rgb(243 192 98 / 0.12); border: 1px solid rgb(243 192 98 / 0.3); }
   .bubble.note { justify-self: stretch; max-width: none; background: none; border: 1px dashed var(--warn); }
+  .bubble .shots { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .bubble .shots img { width: 120px; height: 120px; object-fit: cover; border-radius: 10px; display: block; border: 1px solid var(--line); }
+  .seen { justify-self: end; margin: -4px 4px 0; font-size: 12px; color: var(--ok, #7fc98f); }
+  .seen.muted { color: var(--muted); }
   .bubble-head { font-size: 12.5px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
   .bubble .msg { max-width: none; }
   .bubble .ctx { font-weight: 400; margin-top: 2px; }
@@ -739,13 +743,23 @@ async function supportConversation(id) {
   const upd = (args, msg) => api("supportUpdate", { id, ...args }).then(() => { if (msg) toast(msg); refresh(); }, (e) => toast(e.message, true));
 
   // ----- the conversation -----
-  const bubble = (who, body, at, extra) => h("div", { class: "bubble " + who },
+  const files = d.files || {};
+  const shots = (paths) => (paths || []).filter((p) => files[p]).length
+    ? h("div", { class: "shots" }, paths.filter((p) => files[p]).map((p) => h("a", { href: files[p], target: "_blank", rel: "noopener", title: "Open full size" }, h("img", { src: files[p], alt: "Screenshot", loading: "lazy" }))))
+    : "";
+  const bubble = (who, body, at, extra, paths) => h("div", { class: "bubble " + who },
     h("div", { class: "bubble-head" }, who === "customer" ? (name || "Customer") : who === "note" ? "Private note" : "You", " · ", when(at), extra || ""),
-    h("div", { class: "msg" }, body));
+    h("div", { class: "msg" }, body), shots(paths));
+  const sentHow = (m) => m.email_status === "sent" ? " · in app + emailed" : m.email_status === "failed" ? " · in app (email failed)" : m.via === "email" ? " · in app + email" : " · in app";
+  // "Seen": the customer opened Your messages after your last reply.
+  const lastAdmin = [...d.messages].reverse().find((m) => m.author === "admin");
+  const seen = lastAdmin && r.user_seen_at && r.user_seen_at >= lastAdmin.created_at
+    ? h("p", { class: "seen" }, "Seen " + when(r.user_seen_at))
+    : lastAdmin ? h("p", { class: "seen muted" }, "Not seen yet") : "";
   const thread = h("div", { class: "thread" },
-    bubble("customer", r.message, r.created_at, r.context && Object.keys(r.context).length ? h("div", { class: "ctx" }, contextLine(r.context)) : ""),
+    bubble("customer", r.message, r.created_at, r.context && Object.keys(r.context).length ? h("div", { class: "ctx" }, contextLine(r.context)) : "", r.attachments),
     r.note ? bubble("note", r.note, r.closed_at || r.created_at) : "",
-    d.messages.map((m) => bubble(m.author, m.body, m.created_at, m.author === "admin" ? h("span", { class: "muted" }, m.via === "email" ? " · in app + email" : " · in app") : "")),
+    d.messages.flatMap((m) => [bubble(m.author, m.body, m.created_at, m.author === "admin" ? h("span", { class: "muted" }, sentHow(m)) : "", m.attachments), m === lastAdmin ? seen : ""]),
     r.rating ? h("p", { class: "muted", style: "text-align:center" }, `${r.rating > 0 ? "👍 Happy" : "👎 Not happy"} with the answer · ${when(r.rating_at)}`) : "");
 
   // ----- reply box -----
@@ -762,7 +776,9 @@ async function supportConversation(id) {
   const tabs = h("div", { class: "seg-tabs small" },
     h("button", { "aria-selected": "true", onclick: (e) => setMode("reply", e.target) }, "Reply"),
     h("button", { "aria-selected": "false", onclick: (e) => setMode("note", e.target) }, "Private note"));
-  const mailRow = h("label", { class: "check-inline" }, sendMail, email ? ` Also open an email to ${email}` : " No email on this account (the reply still shows in their app)");
+  // With Resend set up (d.emailReady) the server emails the reply itself; otherwise the page opens a mail to send by hand.
+  const mailRow = h("label", { class: "check-inline" }, sendMail, !email ? " No email on this account (the reply still shows in their app)"
+    : d.emailReady ? ` Also email it to ${email}` : ` Also open an email to ${email}`);
   const sendWait = h("button", { class: "btn", onclick: () => send("pending") }, "Send");
   const sendClose = h("button", { class: "btn ghost", onclick: () => send("closed") }, "Send and close");
   const saveNote = h("button", { class: "btn", hidden: true, onclick: async () => {
@@ -778,11 +794,17 @@ async function supportConversation(id) {
   async function send(status) {
     const body = box.value.trim();
     if (!body) return toast("Write a reply first.", true);
-    const viaMail = sendMail.checked && !!email;
+    const viaMail = sendMail.checked && !!email && !d.emailReady;
+    const autoMail = sendMail.checked && !!email && !!d.emailReady;
     // Open the mail first (a browser only allows it straight after the tap), then save the reply.
     if (viaMail) window.open(`mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(`Re: your Glow Studio message (#${id})`)}&body=${encodeURIComponent(body + `\n\n(You can also read and answer this in Glow Studio: Settings, Your messages.)`)}`, "_blank");
     sendWait.disabled = sendClose.disabled = true;
-    try { await api("supportReply", { id, body, via: viaMail ? "email" : "app", status }); toast(status === "closed" ? "Sent and closed." : "Sent. It shows in their app."); refresh(); }
+    try {
+      const res = await api("supportReply", { id, body, via: viaMail ? "email" : "app", sendEmail: autoMail, status });
+      if (autoMail && res && res.emailed === false) toast(`Saved in their app, but the email didn't send: ${res.emailError || "unknown error"}`, true);
+      else toast(status === "closed" ? (autoMail ? "Sent, emailed and closed." : "Sent and closed.") : autoMail ? "Sent to their app and emailed." : "Sent. It shows in their app.");
+      refresh();
+    }
     catch (e) { toast(e.message, true); sendWait.disabled = sendClose.disabled = false; }
   }
   const composer = h("section", { class: "card composer" }, tabs, box,

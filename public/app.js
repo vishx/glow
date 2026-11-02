@@ -4048,6 +4048,42 @@ function showSupportBadge() {
 }
 const SUPPORT_TOPICS = { billing: "Subscription or payment", ai: "AI tool or credits", bug: "Something isn't working", privacy: "My data or privacy", other: "Your message" };
 function mk(tag, cls, text) { const el = document.createElement(tag); if (cls) el.className = cls; if (text != null) el.textContent = text; return el; }
+// Screenshots on a support message (migration 018): up to 3, shrunk to 1600px JPEG before sending, so a
+// phone screenshot is a few hundred KB. Returns the "Add a screenshot" control and its chosen images.
+function shotPicker() {
+  const MAX = 3, shots = [];
+  const wrap = mk("div", "shots"), row = mk("div", "shot-row");
+  const input = mk("input"); input.type = "file"; input.accept = "image/*"; input.multiple = true; input.hidden = true;
+  const add = mk("button", "link-btn shot-add"); add.type = "button";
+  add.append(Object.assign(mk("span"), { innerHTML: icon("gallery") }), "Add a screenshot");
+  add.addEventListener("click", () => input.click());
+  const draw = () => {
+    row.replaceChildren(...shots.map((url, i) => {
+      const t = mk("div", "shot"), img = mk("img"); img.src = url; img.alt = `Screenshot ${i + 1}`;
+      const x = mk("button", "shot-x", "×"); x.type = "button"; x.setAttribute("aria-label", `Remove screenshot ${i + 1}`);
+      x.addEventListener("click", () => { shots.splice(i, 1); draw(); });
+      t.append(img, x); return t;
+    }));
+    add.hidden = shots.length >= MAX;
+  };
+  input.addEventListener("change", async () => {
+    for (const f of [...input.files].slice(0, MAX - shots.length)) {
+      try { shots.push(await shrinkShot(f)); } catch { say("Couldn't read that image. Try a screenshot (PNG or JPEG).", true); }
+    }
+    input.value = ""; draw();
+  });
+  wrap.append(row, add, input);
+  return { el: wrap, get: () => shots.slice(), clear: () => { shots.length = 0; draw(); } };
+}
+async function shrinkShot(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height); if (bmp.close) bmp.close();
+  return c.toDataURL("image/jpeg", 0.82);
+}
+const supportShots = shotPicker();
+$("supportShots").replaceWith(supportShots.el);
 async function openMessages() {
   if ($("settings").open) $("settings").close();
   const body = $("msgsBody");
@@ -4068,7 +4104,15 @@ function renderMessages(d) {
     const replied = c.messages.some((m) => m.from === "support");
     sum.append(mk("span", "st" + (c.unread ? " new" : ""), c.unread ? "New reply" : c.status === "closed" ? "Answered" : replied ? "Replied" : "Sent, we'll reply soon"));
     const bubbles = mk("div", "bubbles");
-    for (const m of c.messages) { const b = mk("div", "b " + m.from); b.append(mk("small", null, `${m.from === "support" ? "Glow Studio support" : "You"} · ${day(m.at)}`), m.body); bubbles.append(b); }
+    for (const m of c.messages) {
+      const b = mk("div", "b " + m.from); b.append(mk("small", null, `${m.from === "support" ? "Glow Studio support" : "You"} · ${day(m.at)}`), m.body);
+      if (m.images && m.images.length) {
+        const g = mk("div", "b-shots");
+        for (const u of m.images) { const a = mk("a"); a.href = u; a.target = "_blank"; a.rel = "noopener"; const img = mk("img"); img.src = u; img.alt = "Screenshot"; img.loading = "lazy"; a.append(img); g.append(a); }
+        b.append(g);
+      }
+      bubbles.append(b);
+    }
     det.append(sum, bubbles);
     if (c.status === "closed" && replied && !c.rating) {
       const rate = mk("div", "rate", "Did this answer help?");
@@ -4085,14 +4129,16 @@ function renderMessages(d) {
     const box = mk("textarea"); box.maxLength = 4000; box.placeholder = c.status === "closed" ? "Still need help? Write back here." : "Write a reply";
     box.setAttribute("aria-label", "Reply to Glow Studio support");
     const send = mk("button", "btn", "Send"); send.type = "button";
+    const pick = shotPicker();
     send.addEventListener("click", async () => {
-      const message = box.value.trim();
+      const images = pick.get();
+      const message = box.value.trim() || (images.length ? "(Screenshot)" : "");
       if (!message) { box.focus(); return; }
       send.disabled = true; send.textContent = "Sending…";
-      try { renderMessages(await call("account", { method: "POST", body: JSON.stringify({ supportReply: { id: c.id, message } }) })); say("Sent. We'll reply here."); }
+      try { renderMessages(await call("account", { method: "POST", body: JSON.stringify({ supportReply: { id: c.id, message, images } }) })); say("Sent. We'll reply here."); }
       catch (e) { say(e.message, true); send.disabled = false; send.textContent = "Send"; }
     });
-    const acts = mk("div", "acts"); acts.append(send);
+    const acts = mk("div", "acts"); acts.append(pick.el, send);
     det.append(box, acts);
     return det;
   }));
@@ -4101,6 +4147,11 @@ function renderMessages(d) {
 if (new URLSearchParams(location.search).has("contact")) {
   history.replaceState(null, "", location.pathname + location.hash);
   setTimeout(() => { if (!$("supportSheet").open) openSupport(false); }, 700);
+}
+// The "Open Your messages" button in a reply email opens the app at /?messages.
+if (new URLSearchParams(location.search).has("messages")) {
+  history.replaceState(null, "", location.pathname + location.hash);
+  setTimeout(() => { if (!$("msgsSheet").open) openMessages(); }, 900);
 }
 $("suggestFeature").addEventListener("click", (e) => { e.preventDefault(); openSupport(true); });
 $("subsInfo").addEventListener("click", (e) => { e.preventDefault(); openCredits(); });
@@ -4191,7 +4242,8 @@ $("supportForm").addEventListener("submit", async (e) => {
     const context = { plan: (account && account.plan) || "", credits: account ? account.remaining : "", platform: PLATFORM, build: buildFp, screen,
       device: navigator.userAgent.replace(/\s*\([^)]*\)\s*/, " ").slice(0, 120), app: APP_BUILD,
       lang: navigator.language || "", tz: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; } })() };
-    await call("account", { method: "POST", body: JSON.stringify({ support: { topic: supportIdea ? "other" : $("supportTopic").value, message: supportIdea ? "[Idea] " + message : message, name, email, context } }) });
+    await call("account", { method: "POST", body: JSON.stringify({ support: { topic: supportIdea ? "other" : $("supportTopic").value, message: supportIdea ? "[Idea] " + message : message, name, email, context, images: supportShots.get() } }) });
+    supportShots.clear();
     if (name) { store.set("glow.supportName", name); $("supportName").value = name; }
     if (email) store.set("glow.supportEmail", email);
     track("support_sent", { topic: $("supportTopic").value });

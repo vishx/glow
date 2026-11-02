@@ -1431,3 +1431,16 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
 .msgs .rate { display: flex; gap: var(--s2); align-items: center; margin-top: var(--s3); color: var(--muted); font-size: 0.875rem; flex-wrap: wrap; }
 .msgs .rate button { min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--text); font: inherit; cursor: pointer; }
 .msgs .empty { color: var(--muted); }
+/* Screenshots on a support message. */
+.shots { display: grid; gap: var(--s2); }
+.shot-row { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.shot-row:empty { display: none; }
+.shot { position: relative; width: 64px; height: 64px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+.shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.shot-x { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 16px; line-height: 1; cursor: pointer; }
+.shot-add { display: inline-flex; align-items: center; gap: 6px; justify-self: start; min-height: 40px; }
+.shot-add[hidden] { display: none; }
+.shot-add svg { width: 20px; height: 20px; }
+.msgs .acts .shots { margin-right: auto; }
+.msgs .b-shots { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.msgs .b-shots img { width: 96px; height: 96px; object-fit: cover; border-radius: 10px; display: block; }

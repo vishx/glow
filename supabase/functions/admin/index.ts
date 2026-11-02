@@ -25,6 +25,39 @@ async function same(a: string, b: string) {
   for (let i = 0; i < x.length; i++) d |= x[i] ^ y[i];
   return d === 0;
 }
+// ---------- Reply emails (Resend) ----------
+// Off until the owner adds the RESEND_API_KEY and SUPPORT_EMAIL_FROM secrets (e.g. "Glow Studio <support@yourdomain.com>",
+// on a domain verified in Resend). SUPPORT_EMAIL_REPLY_TO is optional; without it the email asks the customer to answer in the app.
+const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+const EMAIL_FROM = Deno.env.get("SUPPORT_EMAIL_FROM") ?? "";
+const EMAIL_REPLY_TO = Deno.env.get("SUPPORT_EMAIL_REPLY_TO") ?? "";
+const APP_URL = (Deno.env.get("PUBLIC_APP_URL") ?? "https://glow-photo-enhancer.vercel.app").replace(/\/$/, "");
+const emailReady = () => !!(RESEND_KEY && EMAIL_FROM);
+const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+async function sendReplyEmail(to: string, name: string, id: number, body: string): Promise<{ ok: boolean; error: string }> {
+  const open = `${APP_URL}/?messages`;
+  const footer = EMAIL_REPLY_TO ? "You can reply to this email, or answer in the app: Settings, Your messages."
+    : "Please don't reply to this email. To answer, open Glow Studio and go to Settings, Your messages.";
+  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
+<p style="font-size:13px;color:#8a7a55;letter-spacing:.04em;text-transform:uppercase;margin:0 0 16px">Glow Studio support</p>
+<div style="font-size:15px;line-height:1.55;white-space:pre-wrap">${esc(body)}</div>
+<p style="margin:28px 0"><a href="${open}" style="background:#d4a64a;color:#111;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:600;font-size:14px">Open Your messages</a></p>
+<p style="font-size:12px;color:#777;line-height:1.5">${footer}<br>Conversation #${id}</p></div>`;
+  const textBody = `${body}\n\n${footer}\nOpen Your messages: ${open}\nConversation #${id}`;
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: EMAIL_FROM, to: [name ? `${name.replace(/[<>",]/g, "")} <${to}>` : to], subject: `Re: your Glow Studio message (#${id})`,
+        html, text: textBody, ...(EMAIL_REPLY_TO ? { reply_to: EMAIL_REPLY_TO } : {}) }),
+    });
+    if (res.ok) return { ok: true, error: "" };
+    const err = await res.json().catch(() => ({}));
+    console.error("resend", res.status, err);
+    return { ok: false, error: String(err?.message || `Email service error ${res.status}`).slice(0, 200) };
+  } catch (e) { return { ok: false, error: String(e).slice(0, 200) }; }
+}
+
 const must = <T>(r: { data: T; error: { message: string } | null }) => {
   if (r.error) throw new Error(r.error.message);
   return r.data;
@@ -258,6 +291,7 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
           contact_name: p?.contact_name ?? null, contact_email: p?.contact_email ?? null, last: last.get(r.id) ?? null, replies: count.get(r.id) ?? 0 };
       }),
       stats: stats.error ? null : stats.data,
+      emailReady: emailReady(),
     };
   },
 
@@ -274,25 +308,49 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
       uid ? admin.from("support_requests").select("id, topic, message, status, created_at").eq("user_id", uid).neq("id", id).order("created_at", { ascending: false }).limit(10) : { data: [] },
       uid ? admin.from("admin_audit").select("*").eq("target", uid).order("created_at", { ascending: false }).limit(20) : { data: [] },
     ]);
-    return { request: r, messages: must(msgs), customer, others: others.data ?? [], log: log.data ?? [] };
+    const messages = must(msgs) as { attachments?: string[] }[];
+    // Screenshots (migration 018) as links that work for an hour.
+    const paths = [...((r.attachments as string[] | undefined) ?? []), ...messages.flatMap((m) => m.attachments ?? [])];
+    let files: Record<string, string> = {};
+    if (paths.length) {
+      const { data } = await admin.storage.from("support-files").createSignedUrls(paths, 3600);
+      files = Object.fromEntries((data ?? []).filter((x) => x.signedUrl && x.path).map((x) => [x.path!, x.signedUrl as string]));
+    }
+    return { request: r, messages, files, customer, others: others.data ?? [], log: log.data ?? [], emailReady: emailReady() };
   },
 
-  // A reply. It's shown to the customer in the app (Settings > Your messages); via "email" also records
-  // that the admin page opened a mail to them. Status after: pending (waiting on them) by default, or closed.
+  // A reply. It's shown to the customer in the app (Settings > Your messages). With sendEmail it's also
+  // emailed to them through Resend (when RESEND_API_KEY and SUPPORT_EMAIL_FROM are set); via "email"
+  // without that records that the admin page opened a mail to them instead.
+  // Status after: pending (waiting on them) by default, or closed.
   async supportReply(a) {
     const id = Math.trunc(Number(a.id)), body = text(a.body, 4000);
     if (!body) throw new HttpError("Write a reply first.");
-    const via = a.via === "email" ? "email" : "app";
     const status = a.status === "closed" ? "closed" : a.status === "open" ? "open" : "pending";
-    const { data: r } = await admin.from("support_requests").select("id, user_id, first_reply_at").eq("id", id).maybeSingle();
+    const { data: r } = await admin.from("support_requests").select("*").eq("id", id).maybeSingle();
     if (!r) throw new HttpError("That support message doesn't exist any more.");
+    let via = a.via === "email" ? "email" : "app";
+    let emailed: boolean | null = null, emailError = "";
+    if (a.sendEmail && emailReady()) {
+      const { data: p } = r.user_id ? await admin.from("profiles").select("*").eq("id", r.user_id).maybeSingle() : { data: null };
+      const to = String(p?.contact_email || r.email || "");
+      const name = String(p?.contact_name || r.name || "");
+      if (to) {
+        ({ ok: emailed, error: emailError } = await sendReplyEmail(to, name, id, body));
+        if (emailed) via = "email";
+      } else { emailed = false; emailError = "No email on this account."; }
+    }
     const now = new Date().toISOString();
-    must(await admin.from("support_messages").insert({ request_id: id, author: "admin", body, via }));
+    const row: Record<string, unknown> = { request_id: id, author: "admin", body, via };
+    if (emailed !== null) row.email_status = emailed ? "sent" : "failed";
+    let ins = await admin.from("support_messages").insert(row);
+    if (ins.error && /email_status/.test(ins.error.message)) { delete row.email_status; ins = await admin.from("support_messages").insert(row); }
+    must(ins);
     const patch: Record<string, unknown> = { status, last_reply_at: now, updated_at: now, closed_at: status === "closed" ? now : null };
     if (!r.first_reply_at) patch.first_reply_at = now;
     must(await admin.from("support_requests").update(patch).eq("id", id));
-    await audit("support_reply", r.user_id ?? String(id), { request: id, via, status, chars: body.length });
-    return { id, status };
+    await audit("support_reply", r.user_id ?? String(id), { request: id, via, status, chars: body.length, emailed });
+    return { id, status, emailed, emailError };
   },
 
   // A private note on the conversation, never shown to the customer.

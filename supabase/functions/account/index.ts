@@ -3,7 +3,8 @@
 // POST { supportList }: the person's own support conversations with every reply (marks replies seen).
 // POST { supportReply: { id, message } }: the person answers back in a conversation (reopens it).
 // POST { supportRate: { id, rating } }: thumbs up (1) or down (-1) on a closed conversation.
-// (These three need migration 017.)
+// (These three need migration 017.) Messages and replies can carry up to 3 screenshots as data: URLs in
+// "images" (migration 018; saved in the private support-files bucket, shown back through expiring links).
 // DELETE: permanently deletes the user's account and data (required by the App Store).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -32,6 +33,7 @@ Deno.serve(async (req) => {
     // AI runs are kept for cost reports but lose the link to the person (migration 010).
     await admin.from("ai_usage").update({ ip: null }).eq("user_id", user.id);
     await admin.from("subscription_events").update({ user_id: null }).eq("user_id", user.id);
+    await deleteSupportFiles(user.id);
     const { error } = await admin.auth.admin.deleteUser(user.id);
     if (error) return json({ error: error.message }, 500);
     const pro = p?.plan === "pro" && (!p.plan_expires_at || new Date(p.plan_expires_at) > new Date());
@@ -64,10 +66,12 @@ Deno.serve(async (req) => {
     if ((count ?? 0) >= 5) return json({ error: "We've got your messages. We'll reply as soon as we can." }, 429);
     const ctx = s.context && typeof s.context === "object" ? s.context : {};
     const context = Object.fromEntries(Object.entries(ctx).slice(0, 12).map(([k, v]) => [String(k).slice(0, 40), String(v).slice(0, 200)]));
-    let { error } = await admin.from("support_requests").insert({ user_id: user.id, email, name, topic, message, context });
+    let { data: made, error } = await admin.from("support_requests").insert({ user_id: user.id, email, name, topic, message, context }).select("id").single();
     // Before migration 016 there's no name column: send the message without it.
-    if (error && /name/i.test(error.message)) ({ error } = await admin.from("support_requests").insert({ user_id: user.id, email, topic, message, context }));
+    if (error && /name/i.test(error.message)) ({ data: made, error } = await admin.from("support_requests").insert({ user_id: user.id, email, topic, message, context }).select("id").single());
     if (error) return json({ error: "Couldn't send your message. Please try again." }, 500);
+    const files = made ? await saveImages(user.id, made.id, s.images) : [];
+    if (files.length) await admin.from("support_requests").update({ attachments: files }).eq("id", made!.id);
     // The name and email are saved on the account (migration 016), so the admin page shows who it
     // belongs to and can find it by name or email. The latest ones replace earlier ones.
     if (name || email) {
@@ -111,7 +115,7 @@ Deno.serve(async (req) => {
 });
 
 // ---------- Support conversations (migration 017) ----------
-type Req = { id: number; topic: string; message: string; status: string; created_at: string; last_reply_at: string | null; user_seen_at: string | null; rating: number | null };
+type Req = { id: number; topic: string; message: string; status: string; created_at: string; last_reply_at: string | null; user_seen_at: string | null; rating: number | null; attachments?: string[] };
 // How many conversations have a reply the person hasn't seen, and whether they have any at all
 // (the app shows "Your messages" in Settings only then). Quietly nothing before migration 017.
 async function supportUnread(uid: string) {
@@ -122,27 +126,29 @@ async function supportUnread(uid: string) {
 }
 
 async function supportList(uid: string) {
-  const { data: reqs, error } = await admin.from("support_requests")
-    .select("id, topic, message, status, created_at, last_reply_at, user_seen_at, rating").eq("user_id", uid).order("created_at", { ascending: false }).limit(20);
+  // select("*") so this keeps working before migration 018 adds attachments.
+  const { data: reqs, error } = await admin.from("support_requests").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(20);
   if (error) return { conversations: [], unavailable: true };
   const ids = (reqs as Req[]).map((r) => r.id);
   // Private notes are never sent to the app.
   const { data: msgs } = ids.length
-    ? await admin.from("support_messages").select("request_id, author, body, created_at").in("request_id", ids).neq("author", "note").order("created_at")
+    ? await admin.from("support_messages").select("*").in("request_id", ids).neq("author", "note").order("created_at")
     : { data: [] };
+  const urls = await signFiles([...(reqs as Req[]).flatMap((r) => r.attachments ?? []), ...(msgs ?? []).flatMap((m) => m.attachments ?? [])]);
+  const imgs = (paths?: string[]) => (paths ?? []).map((p) => urls[p]).filter(Boolean);
   const now = new Date().toISOString();
   const unseen = (reqs as Req[]).filter((r) => r.last_reply_at && (!r.user_seen_at || r.last_reply_at > r.user_seen_at)).map((r) => r.id);
   if (unseen.length) await admin.from("support_requests").update({ user_seen_at: now }).in("id", unseen);
   return {
     conversations: (reqs as Req[]).map((r) => ({
       id: r.id, topic: r.topic, status: r.status, created_at: r.created_at, rating: r.rating, unread: unseen.includes(r.id),
-      messages: [{ from: "you", body: r.message, at: r.created_at },
-        ...(msgs ?? []).filter((m) => m.request_id === r.id).map((m) => ({ from: m.author === "admin" ? "support" : "you", body: m.body, at: m.created_at }))],
+      messages: [{ from: "you", body: r.message, at: r.created_at, images: imgs(r.attachments) },
+        ...(msgs ?? []).filter((m) => m.request_id === r.id).map((m) => ({ from: m.author === "admin" ? "support" : "you", body: m.body, at: m.created_at, images: imgs(m.attachments) }))],
     })),
   };
 }
 
-async function supportFollowUp(uid: string, b: { id?: unknown; message?: unknown }) {
+async function supportFollowUp(uid: string, b: { id?: unknown; message?: unknown; images?: unknown }) {
   const id = Math.trunc(Number(b?.id));
   const message = typeof b?.message === "string" ? b.message.trim().slice(0, 4000) : "";
   if (!message) return json({ error: "Write a message first." }, 400);
@@ -153,8 +159,52 @@ async function supportFollowUp(uid: string, b: { id?: unknown; message?: unknown
   const { count } = await admin.from("support_messages").select("id", { count: "exact", head: true }).eq("request_id", id).eq("author", "customer").gte("created_at", since);
   if ((count ?? 0) >= 10) return json({ error: "We've got your messages. We'll reply as soon as we can." }, 429);
   const now = new Date().toISOString();
-  const { error } = await admin.from("support_messages").insert({ request_id: id, author: "customer", body: message, via: "app" });
+  const { data: m, error } = await admin.from("support_messages").insert({ request_id: id, author: "customer", body: message, via: "app" }).select("id").single();
   if (error) return json({ error: "Couldn't send your message. Please try again." }, 500);
+  const files = await saveImages(uid, id, b.images);
+  if (files.length) await admin.from("support_messages").update({ attachments: files }).eq("id", m.id);
   await admin.from("support_requests").update({ status: "open", closed_at: null, last_customer_at: now, updated_at: now, rating: null, rating_at: null }).eq("id", id);
   return json(await supportList(uid));
+}
+
+// ---------- Screenshots (migration 018) ----------
+// Up to 3 images per message, sent by the app as data: URLs (it shrinks them first). Kept in the private
+// support-files bucket under <account>/<conversation>/. A bad or oversized image is skipped, never an error:
+// the message itself always goes through.
+const BUCKET = "support-files";
+const TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+async function saveImages(uid: string, reqId: number, images: unknown): Promise<string[]> {
+  if (!Array.isArray(images)) return [];
+  const out: string[] = [];
+  for (const img of images.slice(0, 3)) {
+    const m = typeof img === "string" ? /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(img) : null;
+    if (!m) continue;
+    let bytes: Uint8Array;
+    try { bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0)); } catch { continue; }
+    if (bytes.length < 100 || bytes.length > 3 * 1024 * 1024) continue;
+    const path = `${uid}/${reqId}/${crypto.randomUUID()}.${TYPES[m[1]]}`;
+    const { error } = await admin.storage.from(BUCKET).upload(path, bytes, { contentType: m[1] });
+    if (error) { console.error("support image", error.message); continue; }
+    out.push(path);
+  }
+  return out;
+}
+// Links that work for an hour, so the images never sit at a public address.
+async function signFiles(paths: string[]): Promise<Record<string, string>> {
+  if (!paths.length) return {};
+  const { data, error } = await admin.storage.from(BUCKET).createSignedUrls(paths, 3600);
+  if (error || !data) return {};
+  return Object.fromEntries(data.filter((d) => d.signedUrl && d.path).map((d) => [d.path!, d.signedUrl as string]));
+}
+// On account deletion: every screenshot the person sent goes too.
+async function deleteSupportFiles(uid: string) {
+  try {
+    const { data: folders } = await admin.storage.from(BUCKET).list(uid, { limit: 1000 });
+    for (const f of folders ?? []) {
+      const { data: files } = await admin.storage.from(BUCKET).list(`${uid}/${f.name}`, { limit: 1000 });
+      const paths = (files ?? []).map((x) => `${uid}/${f.name}/${x.name}`);
+      if (paths.length) await admin.storage.from(BUCKET).remove(paths);
+    }
+    await admin.from("support_requests").update({ attachments: [] }).eq("user_id", uid);
+  } catch (e) { console.error("support files delete", e); }
 }
