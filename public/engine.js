@@ -1730,7 +1730,7 @@ async function backdrop(src, bg, o = {}) {
 // The blur then grows with distance: in a full-length photo the floor is sharp at their feet and
 // softer toward the horizon, and everything above that is the far background. Levels 1–3 are
 // Low, Medium and High, and even High keeps the room recognizable.
-const BLUR_LEVELS = [0, 0.0022, 0.0036, 0.0055];   // blur radius, as a share of the photo's width
+const BLUR_LEVELS = [0, 0.0022, 0.0036, 0.0055, 0.0085];   // blur radius, as a share of the photo's width (4: the editor's Strong)
 async function portraitBlur(src, level = 2) {
   const img = await loadImg(src), c = canvasFor(img), cx = c.getContext("2d", { willReadFrequently: true });
   cx.drawImage(img, 0, 0, c.width, c.height);
@@ -1903,7 +1903,13 @@ function drawBeauty(g, w, h, mirror, b) {
 
 // "My Look" for gallery photos: the same beauty filter as the camera, run once on a still photo.
 // The shader's reach grows with the photo, so a full-size save looks like the 2048px preview.
-async function applyLook(src, look) {
+async function applyLook(src, look, amt = 1) {
+  if (amt < 1) {   // Strength: the look blended over the photo, like a filter's
+    const [full, img] = await Promise.all([applyLook(src, look, 1).then(loadImg), loadImg(src)]);
+    const c = newCanvas(full.naturalWidth, full.naturalHeight), x = c.getContext("2d");
+    x.drawImage(img, 0, 0, c.width, c.height); x.globalAlpha = Math.max(0, amt); x.drawImage(full, 0, 0);
+    return encode(c, src);
+  }
   const img = await loadImg(src), c = canvasFor(img);
   c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
   const out = beautyTiled(c, look, Math.max(1, Math.max(c.width, c.height) / 2048));
@@ -2288,14 +2294,28 @@ async function adjustCanvas(src, kind, v) {
 // Rotates by quarter turns, then cuts out `r`, given as fractions of the rotated picture, so
 // the same crop fits the working copy and the full-size original. A fixed shape (`aspect`,
 // width / height) is kept exact in whole pixels.
-async function cropRect(src, turns, r, aspect) {
+// Straighten (a small angle, -45..45 degrees) and flips, on top of quarter turns. The picture keeps
+// its quarter-turned size (RW x RH): a straightened photo is enlarged just enough to fill it, so no
+// blank corners show (like every phone editor). Used by the crop preview and the full-size export.
+function straightenScale(RW, RH, deg) {
+  const a = Math.abs(deg || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+  return Math.max((RW * c + RH * s) / RW, (RW * s + RH * c) / RH);
+}
+function drawOriented(ctx, img, RW, RH, q, o = {}) {
+  const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height, k = straightenScale(RW, RH, o.angle);
+  ctx.translate(RW / 2, RH / 2);
+  if (o.angle) ctx.rotate((o.angle * Math.PI) / 180);
+  ctx.scale(k * (o.flipH ? -1 : 1), k * (o.flipV ? -1 : 1));
+  ctx.rotate((q * Math.PI) / 2); ctx.drawImage(img, -W / 2, -H / 2);
+}
+async function cropRect(src, turns, r, aspect, o = {}) {
   const img = await loadImg(src), W = img.naturalWidth, H = img.naturalHeight, q = ((turns % 4) + 4) % 4;
   const RW = q % 2 ? H : W, RH = q % 2 ? W : H, x = r.x * RW, y = r.y * RH, w = r.w * RW, h = r.h * RH;
   const cw = Math.max(1, Math.round(w)), ch = Math.max(1, Math.min(Math.ceil(h), Math.round(aspect > 0 ? cw / aspect : h)));
   const c = newCanvas(cw, ch), ctx = c.getContext("2d");
   ctx.imageSmoothingQuality = "high";
   ctx.scale(cw / w, ch / h); ctx.translate(-x, -y);
-  ctx.translate(RW / 2, RH / 2); ctx.rotate((q * Math.PI) / 2); ctx.drawImage(img, -W / 2, -H / 2);
+  drawOriented(ctx, img, RW, RH, q, o);
   return encode(c, src);
 }
 // Crop to an aspect ratio around the centre, then rotate by quarter turns.

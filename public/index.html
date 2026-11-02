@@ -470,6 +470,13 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
     <p class="fine" id="saveOrigHelp" style="margin:0">Keep the untouched, full-size photo next to your edit.</p>
   </div>
   <div class="setting">
+    <label class="toggle">Save as <select id="saveFormat" aria-describedby="saveFormatHelp">
+      <option value="jpg">JPEG, best quality</option><option value="jpg85">JPEG, smaller file</option><option value="png">PNG, lossless</option></select></label>
+    <label class="toggle">Photo size <select id="saveSize">
+      <option value="full">Full size</option><option value="2048">Large (2048 px)</option><option value="1080">Social (1080 px)</option></select></label>
+    <p class="fine" id="saveFormatHelp" style="margin:0">For edited and enhanced photos. Originals are always saved untouched.</p>
+  </div>
+  <div class="setting">
     <label class="toggle">Glow Studio mark on saved photos <input type="checkbox" role="switch" id="markToggle" aria-describedby="markHelp"></label>
     <p class="fine" id="markHelp" style="margin:0"></p>
   </div>

@@ -2900,6 +2900,73 @@ test('audit2: saved photos keep the original date taken', async ({ p }) => {
   eq(r, ['', '2019:07:04 12:34:56', true], 'date written and read back');
 });
 
+// 2026-11-02 missing controls.
+test('controls: crop flips and straightens (the flipped corner moves; a straightened crop has no blank corners)', async ({ p }) => {
+  await p.goto('https://app.test/');
+  const r = await p.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 200; c.height = 100; const x = c.getContext('2d');
+    x.fillStyle = '#ffffff'; x.fillRect(0, 0, 200, 100); x.fillStyle = '#ff0000'; x.fillRect(0, 0, 40, 40);
+    const src = c.toDataURL('image/png'), full = { x: 0, y: 0, w: 1, h: 1 };
+    const px = async (d, X, Y) => { const im = await loadImg(d), k = document.createElement('canvas'); k.width = im.naturalWidth; k.height = im.naturalHeight; const g = k.getContext('2d'); g.drawImage(im, 0, 0); return [...g.getImageData(X, Y, 1, 1).data.slice(0, 4)]; };
+    const flipped = await cropRect(src, 0, full, 0, { flipH: true }), tilted = await cropRect(src, 0, full, 0, { angle: 10 });
+    return { plainL: await px(src, 5, 5), flipR: await px(flipped, 195, 5), flipL: await px(flipped, 5, 5), corner: await px(tilted, 199, 99), size: (await loadImg(tilted)).naturalWidth };
+  });
+  eq(r.plainL.slice(0, 3), [255, 0, 0], 'red top-left before');
+  eq(r.flipR[0] > 200 && r.flipR[1] < 60, true, 'red moved to the top-right after Flip ↔');
+  eq(r.flipL[1] > 200, true, 'top-left is white after the flip');
+  eq(r.corner[3], 255, 'straightened corner is filled, not blank');
+  eq(r.size, 200, 'straighten keeps the photo size');
+});
+
+test('controls: blur levels, any background color, and My Look strength exist in the engine', async ({ p }) => {
+  await p.goto('https://app.test/');
+  eq(await p.evaluate(() => [BLUR_LEVELS.length >= 5, typeof applyLook === 'function' && applyLook.length >= 2, BLUR_PICKS.map((b) => b.label || b[0]).length]), [true, true, 4], 'four blur strengths, look strength');
+});
+
+test('controls: Save as and Photo size apply to edited photos only', async ({ p }) => {
+  await p.goto('https://app.test/');
+  const r = await p.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 3000; c.height = 2000; c.getContext('2d').fillRect(0, 0, 10, 10);
+    const b = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.9));
+    const same = await asSaved(b);
+    store.set('glowSaveFormat', 'png'); store.set('glowSaveSize', '1080');
+    const out = await asSaved(b), bm = await createImageBitmap(out);
+    store.set('glowSaveFormat', 'jpg'); store.set('glowSaveSize', 'full');
+    return [same === b, out.type, bm.width, bm.height, !!$('saveFormat'), !!$('saveSize')];
+  });
+  eq(r, [true, 'image/png', 1080, 720, true, true], 'defaults untouched; PNG at 1080 when chosen');
+});
+
+test('controls: the new editor controls show and work (straighten, flip, blur strength, color well, undo stroke, look strength)', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('coords-600x400.png'));
+  const shot = (n) => p.screenshot({ path: path.join(__dirname, 'out', `controls-${n}.png`) });
+  await tool(p, 'edit', 'crop', 'crop');
+  eq(await p.evaluate(() => [!!$('cropStraighten'), document.querySelectorAll('.crop-flips .opt').length]), [true, 2], 'straighten slider and two flips');
+  await p.click('.crop-flips .opt >> nth=0'); await settle(200);
+  await p.evaluate(() => { const s = $('cropStraighten'); s.value = 50; s.dispatchEvent(new Event('input', { bubbles: true })); s.dispatchEvent(new Event('change', { bubbles: true })); }); await settle(300);
+  eq(await p.evaluate(() => [cr.flipH, Math.round(cr.angle * 10)]), [true, 50], 'flip and 5 degrees held');
+  await shot('crop'); await applyTool(p);
+  eq(await p.evaluate(() => { const o = ed.hist[ed.idx].op; return [o.flipH, o.angle]; }), [true, 5], 'crop step keeps them');
+  const ids = await p.evaluate(() => ({ look: Object.values(TOOL).find((t) => t.kind === 'look')?.id, brush: ['remove', 'erase', 'fill'].find((x) => TOOL[x]) }));
+  if (ids.look) { await tool(p, 'looks', '', ids.look); eq(await p.evaluate(() => !![...document.querySelectorAll('#panel .slider, #panel label')].find((x) => /Strength/.test(x.textContent))), true, 'look strength slider'); await shot('look'); }
+  if (await p.evaluate(() => !!TOOL.bgcolor && !TOOL.bgcolor.off)) { await tool(p, 'background', '', 'bgcolor'); eq(await p.evaluate(() => !!document.querySelector('.color-well input[type=color]')), true, 'color well'); await shot('bgcolor'); }
+  if (await p.evaluate(() => !!TOOL.bgblur)) { await tool(p, 'background', '', 'bgblur'); eq(await p.evaluate(() => [...document.querySelectorAll('#panel .opt')].map((b) => b.textContent).filter((t) => /Light|Medium|Strong|Max/.test(t)).length), 4, 'four blur strengths'); await shot('bgblur'); }
+  if (ids.brush) { await tool(p, 'edit', '', ids.brush); eq(await p.evaluate(() => $('undoStroke') && $('undoStroke').disabled), true, 'undo stroke, off until a stroke'); await shot('brush'); }
+}, { start: 'editor', camera: false });
+
+test('controls: closing the sheet while Enhance works stops waiting and keeps the job to check later', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => enh.busy && enh.pending && enh.pending.id, null, { timeout: 60000 });
+  eq(await p.evaluate(() => $('enhSheetClose').disabled), false, 'close works while busy');
+  await p.click('#enhSheetClose');
+  await p.waitForFunction(() => !$('enhSheet').open && !enh.busy);
+  const kept = await p.evaluate(() => Drafts.read('enhJob').then((j) => !!(j && j.pending)));
+  eq(kept, true, 'job kept for Check now');
+  eq(state.posts.length, 1, 'one POST');
+}, { start: 'enhance', camera: false, ai: { post: 'processing', polls: ['processing'] } });
+
 // 2026-11-01 audit of the Pro mark switch: the Enhance tab follows it too, and the paywall the free
 // switch opens closes back to Settings.
 test('audit: Enhance saves follow the mark switch for Pro (on by default, off when switched off)', async ({ p, state }) => {

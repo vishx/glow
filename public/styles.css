@@ -1472,3 +1472,10 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
 .reply-card .reply-go { min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--cta); color: var(--cta-fg); font: inherit; font-weight: 700; font-size: 0.875rem; cursor: pointer; }
 .reply-card .reply-x { width: 36px; height: 36px; border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; border-radius: 50%; }
 @media (prefers-reduced-motion: reduce) { .reply-card { transition: none; } }
+
+/* 2026-11-02 missing controls: any-color chip (Color background) and the crop's flip chips. */
+.opt.color-well { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.opt.color-well i { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.2); }
+.opt.color-well input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.crop-flips { margin-top: 4px; }
+#settings .setting select { min-height: 36px; max-width: 55%; padding: 0 var(--s2); border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2, transparent); color: inherit; font: inherit; font-size: 0.875rem; }

@@ -80,7 +80,7 @@ tool("outfit", "Try on", "Try on", "ai", "styles", { hint: "Pick an idea, your o
 // AI step (Enhance, a new background, or her own words) runs first, then the free steps on top.
 tool("glowup", "Glow Up", "Glow Up", "glowup", "fix", { hint: "Tick what you want. AI is optional." });
 tool("custom", "Describe", "Describe an edit", "ai", "fix", { hint: "Say what to change. Her face is kept as hers." });
-tool("bgcolor", "Color", "Color background", "bg", "bg", { hint: "A plain studio color behind her." });
+tool("bgcolor", "Color", "Color background", "bg", "bg", { hint: "A plain studio color behind you." });
 tool("bgphoto", "Photo", "Your background", "bg", "bg", { hint: "Pick any photo as the background. She is matched to its light and color." });
 // AI backgrounds: a scene painted around her (only the background is repainted; she stays her own
 // pixels), and an HD cutout whose edges follow single hair strands.
@@ -606,7 +606,7 @@ async function saveDraft() {
   if (ed.demo) return;                 // the sample is never kept as a project, and opening it keeps your draft
   if (!hasPhoto()) return Drafts.clear();
   try {
-    await Drafts.put({ v: 2, original: ed.original, hist: ed.hist.slice(0, ed.idx + 1), idx: ed.idx, floor: ed.floor, savedIdx: ed.savedIdx,
+    await Drafts.put({ v: 2, original: ed.original, hist: ed.hist, idx: ed.idx, floor: ed.floor, savedIdx: ed.savedIdx,
       originalSaved: ed.originalSaved, name: ed.name, session: ed.session, ts: Date.now() });
     draftWarn = false;
   } catch { draftWarn = true; }
@@ -615,7 +615,8 @@ window.addEventListener("beforeunload", (e) => { if (draftWarn && unsaved()) { e
 async function restoreDraft() {
   const d = await Drafts.get();
   if (d && d.v === 2 && d.hist && d.hist.length) {
-    Object.assign(ed, { original: d.original, hist: d.hist, idx: d.idx, floor: d.floor || 0, savedIdx: d.savedIdx, originalSaved: !!d.originalSaved,
+    // The whole history is kept (Redo still works after reopening); idx is where the user was.
+    Object.assign(ed, { original: d.original, hist: d.hist, idx: Math.min(d.idx, d.hist.length - 1), floor: d.floor || 0, savedIdx: d.savedIdx, originalSaved: !!d.originalSaved,
       name: d.name || "Photo", session: d.session || newSession() });
   }
   recovered = await Drafts.getRecovered();
@@ -707,7 +708,10 @@ function renderEditor() {
   const st = $("stage"), brushing = maskOn();
   const after = reviewing() ? job.result.data : ed.pending ? ed.pending.data : ed.idx > 0 ? committed() : null;
   const b = $("before"), a = $("after");
-  const wantBefore = brushing ? committed() : ed.hist[0].data;
+  // With a tool's preview or an AI result showing, Compare shows what THIS step changes (the
+  // picture before it); with nothing pending it compares against the original photo.
+  const stepCompare = !brushing && ed.idx > 0 && (!!ed.pending || reviewing());
+  const wantBefore = brushing || stepCompare ? committed() : ed.hist[0].data;
   if (b.getAttribute("src") !== wantBefore) { b.classList.remove("alpha"); b.onload = () => { markAlpha(b); layoutFrame(); }; b.src = wantBefore; }
   if (after && !brushing) {
     if (a.getAttribute("src") !== after) {
@@ -733,7 +737,7 @@ function renderEditor() {
   const prepared = !ed.pending && ed.idx > 0 && ed.hist[ed.idx].op && ed.hist[ed.idx].op.demo;
   const editedName = ed.pending ? "Preview" : prepared ? "Prepared preview" : "Edited";
   const view = st.dataset.view;
-  $("tagLeft").textContent = hasAfter && (view === "split" || view === "original") ? "Original" : "";
+  $("tagLeft").textContent = hasAfter && (view === "split" || view === "original") ? (stepCompare ? "Before" : "Original") : "";
   $("tagRight").textContent = hasAfter && view === "split" ? editedName : hasAfter && view === "edited" && editedName !== "Edited" ? editedName : "";
   $("demoBar").hidden = !ed.demo; $("demoNote").hidden = !ed.demo; $("shareBtn").hidden = !!ed.demo;
   setSplit(ed.split);
@@ -1490,12 +1494,15 @@ function glowRecipe() {
 let bgPhoto = null, bgBlur = false, scenePick = "studio", sceneText = "";
 // Color background: four studio colors, each with a soft light falloff like a paper backdrop.
 const BG_COLORS = [["Ivory", "ivory", "#f7f1ea"], ["White", "white", "#ffffff"], ["Blush", "blush", "#f3dde2"], ["Black", "black", "#1a1518"]];
-let bgColorPick = "ivory";
+let bgColorPick = "ivory", bgBlurLevel = 2;
+const BLUR_PICKS = [["Light", 1], ["Medium", 2], ["Strong", 3], ["Max", 4]];
+// A preset id, or any "#rrggbb" picked with the color well.
 const colorFill = (id) => (ctx, w, h) => {
-  const hex = (BG_COLORS.find((c) => c[1] === id) || BG_COLORS[0])[2];
+  const hex = /^#[0-9a-f]{6}$/i.test(id || "") ? id : (BG_COLORS.find((c) => c[1] === id) || BG_COLORS[0])[2];
+  const n = parseInt(hex.slice(1), 16), dark = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) < 70;
   ctx.fillStyle = hex; ctx.fillRect(0, 0, w, h);
   const g = ctx.createRadialGradient(w / 2, h * 0.35, 0, w / 2, h * 0.35, Math.max(w, h) * 0.8);
-  g.addColorStop(0, id === "black" ? "rgb(255 255 255 / 0.07)" : "rgb(255 255 255 / 0.35)"); g.addColorStop(1, "rgb(0 0 0 / 0.06)");
+  g.addColorStop(0, dark ? "rgb(255 255 255 / 0.07)" : "rgb(255 255 255 / 0.35)"); g.addColorStop(1, "rgb(0 0 0 / 0.06)");
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
 };
 const SCENES = [["Studio", "studio", "a clean professional photo studio backdrop in soft warm beige with a gentle light gradient"],
@@ -1839,6 +1846,18 @@ function buildPanel(t) {
     const zi = z.querySelector("input"); zi.id = "cropZoom"; zi.setAttribute("aria-valuetext", `${(zi.value / 100).toFixed(1)} times`);
     zi.addEventListener("input", () => zi.setAttribute("aria-valuetext", `${(zi.value / 100).toFixed(1)} times`));
     body.append(z);
+    // Straighten: -45..45 degrees in tenths, 0 in the middle (a tap on the value resets it).
+    const st = slider("Straighten", -450, 450, Math.round((cr.angle || 0) * 10), (v) => setOrient({ angle: v / 10 }), () => {},
+      (v) => (v > 0 ? "+" : "") + (v / 10).toFixed(1) + "°");
+    st.querySelector("input").id = "cropStraighten"; st.classList.add("straighten");
+    body.append(st);
+    const flips = document.createElement("div"); flips.className = "opts crop-flips"; flips.setAttribute("role", "group"); flips.setAttribute("aria-label", "Flip");
+    for (const [label, axis, on] of [["Flip ↔", "h", cr.flipH], ["Flip ↕", "v", cr.flipV]]) {
+      const b = document.createElement("button"); b.className = "opt"; b.textContent = label; b.setAttribute("aria-pressed", String(!!on));
+      b.addEventListener("click", () => { flipCrop(axis); b.setAttribute("aria-pressed", String(axis === "h" ? !!cr.flipH : !!cr.flipV)); panelState(TOOL.crop); });
+      flips.append(b);
+    }
+    body.append(flips);
     // Rotate and Reset sit in the panel's title row, so the crop controls stay short.
     const rot = document.createElement("button"); rot.className = "icon-btn head-extra"; rot.innerHTML = icon("rotate"); rot.setAttribute("aria-label", "Rotate 90°");
     rot.addEventListener("click", rotateCrop);
@@ -1847,6 +1866,9 @@ function buildPanel(t) {
     $("collapseBtn").before(rot, rs);
   } else if (t.kind === "look") {
     body.append(options(editorLooks().map((l) => [l.name, l.id]), (v) => v === lookPick, (v) => { lookPick = v; renderPanel(true); preview(); }));
+    body.append(slider("Strength", 0, 100, filterAmt, (v) => {
+      filterAmt = v; clearTimeout(adjustTimer); adjustTimer = setTimeout(preview, 160);
+    }, (v) => { filterAmt = v; clearTimeout(adjustTimer); preview(); }));
   } else if (t.kind === "glowup") {
     glowPanel(body);
   } else if (t.id === "custom" && !ed.demo) {
@@ -1867,7 +1889,18 @@ function buildPanel(t) {
     body.append(options([["Sharp", false], ["Soft blur", true]], (v) => v === bgBlur, (v) => { bgBlur = v; renderPanel(true); preview(); }));
   } else if (t.id === "bgcolor") {
     const row = options(BG_COLORS.map(([label, id]) => [label, id]), (v) => v === bgColorPick, (v) => { bgColorPick = v; renderPanel(true); preview(); });
-    row.setAttribute("role", "group"); row.setAttribute("aria-label", "Background color"); body.append(row);
+    row.setAttribute("role", "group"); row.setAttribute("aria-label", "Background color");
+    // Any color: the system color well, shown as one more chip.
+    const custom = /^#/.test(bgColorPick);
+    const well = document.createElement("label"); well.className = "opt color-well"; well.setAttribute("aria-pressed", String(custom));
+    const inp = document.createElement("input"); inp.type = "color"; inp.value = custom ? bgColorPick : "#c9b8a6"; inp.setAttribute("aria-label", "Pick any background color");
+    const dot = document.createElement("i"); dot.style.background = inp.value;
+    inp.addEventListener("input", () => { dot.style.background = inp.value; });
+    inp.addEventListener("change", () => { bgColorPick = inp.value; renderPanel(true); preview(); });
+    well.append(dot, "Any color", inp); row.append(well); body.append(row);
+  } else if (t.id === "bgblur") {
+    const row = options(BLUR_PICKS, (v) => v === bgBlurLevel, (v) => { bgBlurLevel = v; renderPanel(true); preview(); });
+    row.setAttribute("role", "group"); row.setAttribute("aria-label", "Blur strength"); body.append(row);
   } else if (t.id === "bgscene" && !ed.demo) {
     const row = options(SCENES.map(([label, id]) => [label, id]), (v) => v === scenePick, (v) => { scenePick = v; renderPanel(true); });
     row.setAttribute("role", "group"); row.setAttribute("aria-label", "Scene"); body.append(row);
@@ -1897,10 +1930,15 @@ function buildPanel(t) {
     const rs = document.createElement("button"); rs.className = "link-btn head-extra"; rs.id = "clearMarks"; rs.textContent = "Reset";
     rs.setAttribute("aria-label", "Clear all marks");
     rs.addEventListener("click", () => { strokes = []; drawStrokes(); renderPanel(); });
-    $("collapseBtn").before(rs);
+    // Undo the last stroke only (eraser strokes too), instead of starting the marks again.
+    const un = document.createElement("button"); un.className = "icon-btn head-extra"; un.id = "undoStroke";
+    un.innerHTML = icon("undo"); un.setAttribute("aria-label", "Undo last stroke"); un.disabled = !strokes.length;
+    un.addEventListener("click", () => { strokes.pop(); drawStrokes(); renderPanel(); });
+    $("collapseBtn").before(un, rs);
   }
 }
 function panelState(t) {
+  const us = $("undoStroke"); if (us) us.disabled = !strokes.length;
   $("cancelBtn").textContent = reviewing() ? (t.id === "outfit" && !ed.demo ? "Change" : "Discard") : "Cancel";
   if (ed.demo && t.id === "outfit") return tryDemoState();
   if (ed.demo && t.kind === "ai") return demoPanelState(t);
@@ -1978,8 +2016,10 @@ function opFor(t) {
   if (t.kind === "adjust") { op.value = toolAmt[t.id]; if (adjArea !== "full" && areasOn()) { op.area = adjArea; if (areaEdits.length) op.edits = areaEdits.map((e) => ({ ...e, pts: e.pts.map((q) => [...q]) })); } }
   if (t.kind === "filter" && filterAmt < 100) op.amt = filterAmt / 100;
   if (t.kind === "look") op.look = { ...(editorLooks().find((l) => l.id === lookPick) || PRESET_LOOKS[1]) };
+  if (t.kind === "look" && filterAmt < 100) op.amt = filterAmt / 100;
   if (t.id === "bgphoto") { op.bg = bgPhoto; op.bgBlur = bgBlur; }
   if (t.id === "bgcolor") op.bgColor = bgColorPick;
+  if (t.id === "bgblur" && bgBlurLevel !== 2) op.level = bgBlurLevel;
   if (t.id === "glowup") {
     op.glow = glowRecipe(); op.shades = { ...faceSet.shade }; op.styles = { ...faceSet.style };
     if (faceSel.boxes.length > 1) { const b = faceSel.boxes[faceSel.i]; op.face = [b.cx, b.cy]; }
@@ -2005,13 +2045,13 @@ async function computeOp(op, base) {
   if (t.kind === "filter") return applyFilter(base, t.filter, op.amt ?? 1);
   if (t.kind === "adjust") return op.value ? adjust(base, t.id, op.value, op.area || "full", op.edits) : null;
   if (t.kind === "crop") {
-    if (op.rect) return cropRect(base, op.turns, op.rect, op.aspect);
+    if (op.rect) return cropRect(base, op.turns, op.rect, op.aspect, { angle: op.angle || 0, flipH: !!op.flipH, flipV: !!op.flipV });
     return op.ratio || op.turns % 4 ? cropRotate(base, op.ratio, op.turns) : null; // steps saved before interactive crop
   }
-  if (t.kind === "look") return applyLook(base, op.look);
+  if (t.kind === "look") return applyLook(base, op.look, op.amt ?? 1);
   if (t.kind === "bg") {
     if (t.id === "bgremove") return cutout(base);
-    if (t.id === "bgblur") return backdrop(base, "blur");
+    if (t.id === "bgblur") return backdrop(base, "blur", { level: op.level ?? 2 });
     if (t.id === "bgphoto") return op.bg ? backdrop(base, op.bg, { match: true, blur: op.bgBlur }) : null;
     if (t.id === "bgcolor") return backdrop(base, colorFill(op.bgColor));
     return backdrop(base, BG_FILLS[t.id]);
@@ -2111,13 +2151,15 @@ async function checkReshape(id) {
 const CROP_MARGIN = 20, CROP_MIN = 48, ZOOM_MAX = 8;
 const aspectOf = (a) => (a === "free" ? 0 : a === 0 ? cr.W / cr.H : a);
 function maxRect(asp) { return cr.W / cr.H > asp ? { w: cr.H * asp, h: cr.H } : { w: cr.W, h: cr.W / asp }; }
-function rotatedCanvas(img, turns) {
+function rotatedCanvas(img, turns, o) {
   const q = ((turns % 4) + 4) % 4, W = img.naturalWidth, H = img.naturalHeight, c = newCanvas(q % 2 ? H : W, q % 2 ? W : H), x = c.getContext("2d");
-  x.translate(c.width / 2, c.height / 2); x.rotate((q * Math.PI) / 2); x.drawImage(img, -W / 2, -H / 2);
+  x.imageSmoothingQuality = "high";
+  drawOriented(x, img, c.width, c.height, q, o);
   return c;
 }
+const cropOrient = () => ({ angle: cr.angle || 0, flipH: !!cr.flipH, flipV: !!cr.flipV });
 function setTurns(turns) {
-  cr.turns = turns; cr.canvas = rotatedCanvas(cr.img, turns); cr.W = cr.canvas.width; cr.H = cr.canvas.height;
+  cr.turns = turns; cr.canvas = rotatedCanvas(cr.img, turns, cropOrient()); cr.W = cr.canvas.width; cr.H = cr.canvas.height;
   const ci = $("cropImg"); ci.width = cr.W; ci.height = cr.H; ci.getContext("2d").drawImage(cr.canvas, 0, 0);
 }
 async function openCrop() {
@@ -2128,7 +2170,7 @@ async function openCrop() {
   const base = reuse ? ed.hist[bi].data : committed(), id = sel;
   const img = await loadImg(base);
   if (sel !== id) return;
-  cr = { base, baseIdx: reuse ? bi : null, img, aspect: 0, hint: true };
+  cr = { base, baseIdx: reuse ? bi : null, img, aspect: 0, hint: true, angle: reuse ? o.angle || 0 : 0, flipH: reuse && !!o.flipH, flipV: reuse && !!o.flipV };
   setTurns(reuse ? o.turns : 0);
   if (reuse) { cr.aspect = o.aspectKey ?? "free"; cr.rect = { x: o.rect.x * cr.W, y: o.rect.y * cr.H, w: o.rect.w * cr.W, h: o.rect.h * cr.H }; }
   else cr.rect = { x: 0, y: 0, w: cr.W, h: cr.H };
@@ -2138,8 +2180,8 @@ async function openCrop() {
   renderPanel(true); renderCrop();
 }
 function closeCrop() { cr = null; $("cropView").hidden = true; $("stage").classList.remove("cropping"); }
-const cropKey = () => JSON.stringify([cr.turns % 4, cr.aspect, ...["x", "y", "w", "h"].map((k) => Math.round(cr.rect[k]))]);
-const cropChanged = () => !!cr && (cropKey() !== cr.start || (cr.baseIdx === null && (cr.turns % 4 || cr.rect.w < cr.W - 0.5 || cr.rect.h < cr.H - 0.5)));
+const cropKey = () => JSON.stringify([cr.turns % 4, cr.aspect, cr.angle || 0, !!cr.flipH, !!cr.flipV, ...["x", "y", "w", "h"].map((k) => Math.round(cr.rect[k]))]);
+const cropChanged = () => !!cr && (cropKey() !== cr.start || (cr.baseIdx === null && (cr.turns % 4 || cr.angle || cr.flipH || cr.flipV || cr.rect.w < cr.W - 0.5 || cr.rect.h < cr.H - 0.5)));
 // Where things are on screen: frame F (stage pixels), scale k (screen px per photo px) and
 // the photo's top-left t. Derived from the crop, except while a handle is being dragged.
 function cropView() {
@@ -2197,7 +2239,14 @@ function rotateCrop() {
   clampCrop(); renderCrop();
   $("alertLive").textContent = `Rotated to ${(cr.turns % 4) * 90} degrees.`;
 }
+// Straighten and flip redraw the picture at the same size, so the frame stays where it is.
+function setOrient(o) { Object.assign(cr, o); setTurns(cr.turns); renderCrop(); }
+function flipCrop(axis) {
+  setOrient(axis === "h" ? { flipH: !cr.flipH } : { flipV: !cr.flipV });
+  $("alertLive").textContent = axis === "h" ? "Flipped left to right." : "Flipped upside down.";
+}
 function resetCrop() {
+  cr.angle = 0; cr.flipH = false; cr.flipV = false;
   setTurns(0); cr.aspect = 0; cr.rect = { x: 0, y: 0, w: cr.W, h: cr.H };
   settleCrop(); renderPanel(true); renderCrop(); $("alertLive").textContent = "Framing reset.";
 }
@@ -2298,6 +2347,9 @@ function resizeCrop(h, g, x, y) {
 function cropOp() {
   const r = cr.rect, asp = cr.aspect === "free" ? 0 : r.w / r.h;
   const op = { tool: "crop", turns: cr.turns % 4, rect: { x: r.x / cr.W, y: r.y / cr.H, w: r.w / cr.W, h: r.h / cr.H }, aspect: asp, aspectKey: cr.aspect };
+  if (cr.angle) op.angle = cr.angle;
+  if (cr.flipH) op.flipH = true;
+  if (cr.flipV) op.flipV = true;
   if (cr.baseIdx !== null) op.base = cr.baseIdx;
   return op;
 }
@@ -4002,6 +4054,7 @@ $("buildId").addEventListener("click", async () => {
 function openSettings() {
   refreshAccount(); renderEnhPrefs();
   $("saveOrigToggle").checked = store.get("glowSaveOrig") === "on";
+  $("saveFormat").value = store.get("glowSaveFormat") || "jpg"; $("saveSize").value = store.get("glowSaveSize") || "full";
   renderMarkSetting();
   $("autoSaveToggle").checked = autoSaveOn();
   applyTheme(); showBuild();
@@ -4048,6 +4101,8 @@ $("markToggle").addEventListener("change", (e) => {
   track("setting", { mark: e.target.checked });
   say(e.target.checked ? "Saved photos will include the Glow Studio badge." : "Saved photos won't include the Glow Studio badge.");
 });
+$("saveFormat").addEventListener("change", (e) => { store.set("glowSaveFormat", e.target.value); track("setting", { save_format: e.target.value }); });
+$("saveSize").addEventListener("change", (e) => { store.set("glowSaveSize", e.target.value); track("setting", { save_size: e.target.value }); });
 $("saveOrigToggle").addEventListener("change", (e) => { store.set("glowSaveOrig", e.target.checked ? "on" : "off"); track("setting", { save_original: e.target.checked }); });
 $("autoSaveToggle").addEventListener("change", (e) => { store.set("glowAutoSave", e.target.checked ? "on" : "off"); track("setting", { auto_save: e.target.checked }); });
 $("autoSaveHelp").textContent = native && plugins.Media

@@ -263,7 +263,8 @@ function setSheetWorking(on, text) {
   enh.busy = on;
   const sh = $("enhSheet");
   sh.classList.toggle("working", on);
-  $("enhGo").classList.toggle("busy", on); $("enhGo").disabled = on; $("enhSheetClose").disabled = on;
+  $("enhGo").classList.toggle("busy", on); $("enhGo").disabled = on;
+  $("enhSheetClose").setAttribute("aria-label", on && !enh.demo ? "Stop waiting" : "Close");
   $("enhProg").setAttribute("aria-hidden", String(!on));
   clearInterval(prog.timer);
   if (on) {
@@ -291,8 +292,21 @@ async function sheetReveal(data) {
   void im.offsetWidth; im.classList.add("in");
   await sleep(700);
 }
-$("enhSheetClose").addEventListener("click", () => $("enhSheet").close());
-$("enhSheet").addEventListener("cancel", (e) => { if (enh.busy) e.preventDefault(); });
+// Closing while Enhance works stops waiting. Before the photo is sent nothing is charged; once it
+// is sent the job keeps running on the server and is kept, so "Check now" fetches it for free.
+function stopEnh() {
+  if (!enh.busy || !enh.tok) return false;
+  enh.tok.off = true; enh.tok = null;
+  setSheetWorking(false);
+  if (enh.pending) {
+    keepEnhJob();
+    say("Enhance keeps working. Checking is free and never charges twice.", false, { label: "Check now", run: () => Drafts.read("enhJob").then((j) => j && j.pending && resumeEnh(j)) });
+  } else say("Enhance cancelled. No AI credit was used.");
+  track("ai_cancel", { sent: !!enh.pending });
+  return true;
+}
+$("enhSheetClose").addEventListener("click", () => { stopEnh(); $("enhSheet").close(); });
+$("enhSheet").addEventListener("cancel", (e) => { if (enh.busy && enh.demo) e.preventDefault(); else stopEnh(); });
 $("enhGo").addEventListener("click", () => {
   if (!enh.demo && !enh.pending && account && proLeft(account) < (enhStyle() === PRO_MODE ? PRO_COST : 1)) { if (isPro() || enhStyle() !== PRO_MODE) openPaywall(); else openPacks(); return; }
   runEnhance();
@@ -301,7 +315,7 @@ $("enhGo").addEventListener("click", () => {
 const proLeft = (a) => (enhStyle() !== PRO_MODE || a.plan === "pro" ? a.remaining : (a.trialLeft || 0) + (a.bonus || 0));
 async function runEnhance() {
   if (enh.busy) return;
-  const mine = enh.src;
+  const mine = enh.src, tok = enh.tok = {};
   // Faces are cut from the untouched file at full size; a camera shot's file is the raw frame
   // (before its look), so its faces come from the picture itself.
   enh.cropFrom = enh.fromCamera ? null : enh.original;
@@ -315,7 +329,7 @@ async function runEnhance() {
     if (enh.demo) { await sleep(700); enhLabel(pro ? "Editing like a pro…" : "Enhancing…"); await sleep(2600); url = pro ? ENH_SAMPLE.pro : ENH_SAMPLE.result; }   // a prepared result: no request, no credit
     else if (pro) url = await proEditRequest(enh, enh.src, enhLabel, enh.fromCamera ? "camera" : "enhance");
     else url = await enhanceRequest(enh, enh.src, enhLabel, enh.fromCamera ? "camera" : "enhance");
-    if (!url || enh.src !== mine) return;
+    if (!url || enh.src !== mine || tok.off) return;
     setSheetWorking(true, "Almost there…");
     let full;
     const facesUrl = enh.pending && enh.pending.faces;
@@ -334,6 +348,7 @@ async function runEnhance() {
       catch (e) { reportError("Pro Edit finish failed: " + (e && e.message)); }
     } else full = await putFacesBack(full, enh.sheet, facesUrl);
     // The toggles work on a 2048px copy; the untouched result is kept for saving at full size.
+    if (tok.off) return;
     enh.ai = await shrinkData(full, 2048); enh.full = full; enh.pending = null; Drafts.remove("enhJob");
     if (!enh.demo) refreshAccount();
     await prepareResult();
@@ -344,6 +359,7 @@ async function runEnhance() {
     Platform.haptic("success");
     return true;
   } catch (err) {
+    if (tok.off) return;
     setSheetWorking(false);
     if (enh.pending) keepEnhJob(); else if (!enh.demo) Drafts.remove("enhJob");
     if (err.limit) { say(err.message, true); if (!err.blocked && !isPro()) openPaywall(); }
@@ -369,6 +385,7 @@ async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from =
     // which one the charge buys and falls back to `image` if neither fits.
     const first = maxPixels === aiMaxPixels(ENH_MODE), plus = first ? await enhancePlus(src).catch(() => ({})) : {};
     h.sheet = await faceSheet(src, h.cropFrom).catch(() => null);
+    stopped(h);
     h.pending = { requestId, id: null, layout: plus.layout || null };
     try {
       track("ai_start", { mode: ENH_MODE, from, hd: !!plus.hd, tiles: plus.tiles ? plus.tiles.length : 0 });
@@ -394,6 +411,7 @@ async function proEditRequest(h, src, onLabel, from) {
   if (!h.pending) {
     const image = await uploadable(src, aiMaxSide(PRO_MODE), aiMaxPixels(PRO_MODE)), requestId = rid();
     h.sheet = await faceSheet(src, h.cropFrom, true).catch(() => null);
+    stopped(h);
     h.pending = { requestId, id: null, mode: PRO_MODE };
     try {
       track("ai_start", { mode: PRO_MODE, from });
@@ -413,6 +431,8 @@ async function proEditRequest(h, src, onLabel, from) {
   }
   return followEnhance(h, null, onLabel, from);
 }
+// Throws once the person stopped waiting (the sheet's close button); the job, if sent, is kept.
+function stopped(h) { if (h.tok && h.tok.off) { const e = new Error(""); e.stopped = true; throw e; } }
 function lostConnection() { const e = new Error("Glow Studio lost the connection. Tap Check again; it won't charge you twice."); e.lost = true; return e; }
 async function followEnhance(h, first, onLabel, from) {
   const p = h.pending, started = Date.now();
@@ -440,6 +460,7 @@ async function followEnhance(h, first, onLabel, from) {
     if (res && res.status === "starting") onLabel("Warming up…");
     else if (res) onLabel(p.mode === PRO_MODE ? "Editing like a pro…" : "Enhancing…");
     await sleep(1500);
+    stopped(h);
     const q = p.id ? "id=" + encodeURIComponent(p.id) : "request=" + encodeURIComponent(p.requestId);
     try { res = await call("enhance?" + q, { method: "GET", timeout: 30000 }); if (res.id) p.id = res.id; misses = 0; }
     catch (err) {

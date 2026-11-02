@@ -1,11 +1,11 @@
 {
- "version": "202610351-30c94e16f2",
- "build": 202610351,
+ "version": "202610352-280ddafc9b",
+ "build": 202610352,
  "minNative": {
   "android": 4,
   "ios": 2
  },
- "created": "2026-11-02T16:46:50.757Z",
+ "created": "2026-11-02T17:35:45.997Z",
  "files": [
   {
    "file_name": "admin.html",
@@ -14,7 +14,7 @@
   },
   {
    "file_name": "app.js",
-   "file_hash": "4f48be34ca394342c0b02e6a9e370960d92e6ff5df693f387eaf88822d9e9e91",
+   "file_hash": "e7414959b1bc7e0f881a10c5b24b6ead2176924fa745d327b02d0e98fd72ce8a",
    "download_url": "https://glow-photo-enhancer.vercel.app/app.js"
   },
   {
@@ -29,7 +29,7 @@
   },
   {
    "file_name": "engine.js",
-   "file_hash": "4cfc391051e04526a90c403d34fe478487ff47c8b64366ea48ef15d3155f8108",
+   "file_hash": "5942f4073b9733945f13aa9e3654d92b22ebabd3820736ed711e01ebdc7fac05",
    "download_url": "https://glow-photo-enhancer.vercel.app/engine.js"
   },
   {
@@ -39,7 +39,7 @@
   },
   {
    "file_name": "enhance.js",
-   "file_hash": "c5ee01494bfed60b85e36c5de2a47426d2bbc5981e0dfcd09899476c2bd7c76a",
+   "file_hash": "6a2890fbd5f962f4a94c0019f57720b440a549bb82a98203517bb0bf7bf4ff53",
    "download_url": "https://glow-photo-enhancer.vercel.app/enhance.js"
   },
   {
@@ -54,7 +54,7 @@
   },
   {
    "file_name": "features.js",
-   "file_hash": "4690d1f7de901b5552912fbd0887b66e38920f121d2247f56b00587ed43d2710",
+   "file_hash": "2d14bbf6d5b666a4b20d8a45406ce0872509177524afc6e34c912ddabf617937",
    "download_url": "https://glow-photo-enhancer.vercel.app/features.js"
   },
   {
@@ -89,7 +89,7 @@
   },
   {
    "file_name": "index.html",
-   "file_hash": "7825563aecdd21042a8a6938224c3a9857f203356f8be0123b9161df705d219a",
+   "file_hash": "0bba74eae54f0bfba0b1265648db9e8e6e8b7ddb24d2fea135b186f1be96321a",
    "download_url": "https://glow-photo-enhancer.vercel.app/index.html"
   },
   {
@@ -119,7 +119,7 @@
   },
   {
    "file_name": "platform.js",
-   "file_hash": "b1c45ea2abf71a5e12247bfb20e1bfa49f8a193bc0ededbe353c917ad14fa687",
+   "file_hash": "ce233606a554c27c4b065521005d0972002738e6eec944f2d5747839a41aafce",
    "download_url": "https://glow-photo-enhancer.vercel.app/platform.js"
   },
   {
@@ -344,7 +344,7 @@
   },
   {
    "file_name": "styles.css",
-   "file_hash": "318a26f458f4a0464b536de8c560dbf8deaef8d805d984a71638a4a5ccabbf4f",
+   "file_hash": "0b9170a02188a23d3a9337d84d9cd3d34b92d87c530603c163fd10999df0ac56",
    "download_url": "https://glow-photo-enhancer.vercel.app/styles.css"
   },
   {
@@ -354,7 +354,7 @@
   },
   {
    "file_name": "sw.js",
-   "file_hash": "a9d223363bf3564e2d925a2a44a7390a84334648c76b02671c324595f8a3114d",
+   "file_hash": "6f22feb476161f6516ea04cb6792d0f54376d35d56ba3f173827f8122116ef8f",
    "download_url": "https://glow-photo-enhancer.vercel.app/sw.js"
   },
   {

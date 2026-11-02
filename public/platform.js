@@ -52,6 +52,24 @@ async function withPhotoDate(blob, date) {
   } catch { return blob; }
 }
 
+// Settings > Save as / Photo size, for edited and enhanced photos (never the untouched originals).
+// A transparent PNG stays PNG whatever the format, so a cutout never gets a black background.
+async function asSaved(blob) {
+  const fmt = store.get("glowSaveFormat") || "jpg", size = store.get("glowSaveSize") || "full";
+  const png = blob.type === "image/png";
+  if (fmt === "jpg" && size === "full") return blob;
+  try {
+    const bm = await createImageBitmap(blob), max = size === "full" ? Infinity : Number(size);
+    const k = Math.min(1, max / Math.max(bm.width, bm.height));
+    const wantPng = fmt === "png" || png;
+    if (k === 1 && (wantPng === png) && fmt !== "jpg85") { if (bm.close) bm.close(); return blob; }
+    const c = document.createElement("canvas"); c.width = Math.round(bm.width * k); c.height = Math.round(bm.height * k);
+    const x = c.getContext("2d"); x.imageSmoothingQuality = "high"; x.drawImage(bm, 0, 0, c.width, c.height); if (bm.close) bm.close();
+    const out = await new Promise((ok) => c.toBlob(ok, wantPng ? "image/png" : "image/jpeg", fmt === "jpg85" ? 0.85 : 0.95));
+    return out || blob;
+  } catch { return blob; }
+}
+
 const Platform = {
   // Opens the system photo picker. Resolves with the File, or null if the user backs out.
   pickPhoto(inputId = "file") {
@@ -106,6 +124,7 @@ const Platform = {
   async savePhotos(items, opts = {}) {
     const files = await Promise.all(items.map(async (it) => {
       let blob = it.blob || (await (await fetch(it.data)).blob());
+      if (!it.raw && !/original/.test(it.name)) blob = await asSaved(blob);
       if (it.date) blob = await withPhotoDate(blob, it.date);
       const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
       return new File([blob], `${it.name}.${ext}`, { type: blob.type || "image/jpeg" });
