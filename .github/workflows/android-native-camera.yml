@@ -4,7 +4,7 @@ name: Android native camera APK
 
 on:
   push:
-    branches: [claude/project-thread-bnuul9, claude/project-thread-l2q9h2, claude/project-thread-40lpfr, claude/project-thread-yogj2a, claude/project-thread-rucp5v]
+    branches: [claude/project-thread-bnuul9, claude/project-thread-l2q9h2, claude/project-thread-40lpfr, claude/project-thread-yogj2a, claude/project-thread-rucp5v, claude/project-thread-7wgy1f]
     paths: [mobile/**, public/**, .github/workflows/android-native-camera.yml]
   workflow_dispatch:
 
