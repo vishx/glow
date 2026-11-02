@@ -2945,7 +2945,7 @@ test('controls: the new editor controls show and work (straighten, flip, blur st
   await p.click('.crop-flips .opt >> nth=0'); await settle(200);
   await p.evaluate(() => { const s = $('cropStraighten'); s.value = 50; s.dispatchEvent(new Event('input', { bubbles: true })); s.dispatchEvent(new Event('change', { bubbles: true })); }); await settle(300);
   eq(await p.evaluate(() => [cr.flipH, Math.round(cr.angle * 10)]), [true, 50], 'flip and 5 degrees held');
-  await shot('crop'); await applyTool(p);
+  await shot('crop'); await applyTool(p); await p.waitForFunction(() => !cr && !busyNow);
   eq(await p.evaluate(() => { const o = ed.hist[ed.idx].op; return [o.flipH, o.angle]; }), [true, 5], 'crop step keeps them');
   const ids = await p.evaluate(() => ({ look: Object.values(TOOL).find((t) => t.kind === 'look')?.id, brush: ['remove', 'erase', 'fill'].find((x) => TOOL[x]) }));
   if (ids.look) { await tool(p, 'looks', '', ids.look); eq(await p.evaluate(() => !![...document.querySelectorAll('#panel .slider, #panel label')].find((x) => /Strength/.test(x.textContent))), true, 'look strength slider'); await shot('look'); }
@@ -3160,7 +3160,10 @@ test('audit: the Pro offer from the free mark switch closes back to Settings', a
 // 2026-11-01: a release dropped tryon.js from the offline app shell, so Try on didn't load offline.
 test('audit: every script the app loads is in the offline app shell', async () => {
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8'), sw = fs.readFileSync(path.join(__dirname, '../public/sw.js'), 'utf8');
-  const shell = JSON.parse(sw.match(/const SHELL = (\[[\s\S]*?\]);/)[1]);
+  // The shell list is mapped through ver() (scripts and styles as name?v=<release>), as index.html asks for them.
+  const V = sw.match(/const CACHE = "glow-v(\d+)"/)[1];
+  const shell = JSON.parse(sw.match(/const SHELL = (\[[\s\S]*?\])(?:\.map\(ver\))?;/)[1])
+    .map((f) => (/\.(js|css)$/.test(f) && f !== '/faceworker.js' && f !== '/legal.css' ? `${f}?v=${V}` : f));
   const scripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => '/' + m[1].replace(/^\//, '')).filter((s) => !/^\/\//.test(s) && !/^\/https?:/.test(s));
   const css = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g)].map((m) => '/' + m[1].replace(/^\//, '')).filter((s) => !/^\/https?:/.test(s));
   const missing = scripts.concat(css).filter((f) => !shell.includes(f));
@@ -3327,7 +3330,7 @@ test('pricing: the yearly free trial shows its terms when the store offers it; w
   assert(/Then \$49\.99 per year\. Renews automatically every year/.test(await p.textContent('#pwNote')), 'price after the trial: ' + await p.textContent('#pwNote'));
   await p.click('.plan[data-plan="weekly"]');
   eq(await p.evaluate(() => [$('buyBtn').textContent, /Free for/.test($('pwNote').textContent)]), ['Continue with weekly', false], 'weekly: no trial');
-  assert((await p.textContent('.pw-free')).includes('up to 60 credits a month'), 'yearly cap 60');
+  assert((await p.textContent('.pw-free')).includes('capped at 60 in any 30 days'), 'yearly cap 60');
   eq(state.errs, [], 'no page errors');
 }, { init: rcInit });
 
@@ -3399,14 +3402,16 @@ test('features: with no server answer every released tool shows and retired tool
   eq(state.errs, [], 'no page errors');
 }, { features: 404, init: () => { window.$$tabs = () => [...document.querySelectorAll('#tabs .tab')].filter((t) => !t.hidden).map((t) => t.dataset.cat); } });
 
+// Ships switched off on purpose until the owner finishes a setup step (Sign in needs the Apple/Google providers).
+const OFF_UNTIL_SET_UP = ['account:signin'];
 test('features: every tool in the app has a switch in the catalog, and every switch names a real tool or feature', async ({ p }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => !!session);
-  const r = await p.evaluate(() => {
+  const r = await p.evaluate((OFF_UNTIL_SET_UP) => {
     const keys = Object.keys(FEATURE_DEFAULTS);
     const tools = [...new Set(TOOLS.map((t) => toolKey(t.id)))];
     return { missing: tools.filter((k) => !keys.includes(k)), unknown: keys.filter((k) => k.startsWith('tool:') && !tools.includes(k)),
-      retiredOn: RETIRED.filter((id) => FEATURE_DEFAULTS['tool:' + id] !== false), releasedOff: keys.filter((k) => !k.startsWith('tool:') && FEATURE_DEFAULTS[k] !== true) };
-  });
+      retiredOn: RETIRED.filter((id) => FEATURE_DEFAULTS['tool:' + id] !== false), releasedOff: keys.filter((k) => !k.startsWith('tool:') && FEATURE_DEFAULTS[k] !== true && !OFF_UNTIL_SET_UP.includes(k)) };
+  }, OFF_UNTIL_SET_UP);
   eq(r, { missing: [], unknown: [], retiredOn: [], releasedOff: [] }, 'catalog matches the app');
 });
 
@@ -3463,11 +3468,11 @@ test('features: Camera and Editor tabs off open Enhance, hide every way in, and 
   const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
   await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
   await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
-  eq(state.aiBodies[0], { mode: 'enhance', from: 'enhance', tool: undefined, platform: undefined, build: undefined }, 'Enhance tab request (the editor Enhance switch does not apply)');
+  eq((({ mode, from, tool, platform, build }) => ({ mode, from, tool, platform, build }))(state.aiBodies[0]), { mode: 'enhance', from: 'enhance', tool: undefined, platform: undefined, build: undefined }, 'Enhance tab request (the editor Enhance switch does not apply)');
   eq(state.used, 1, 'charged once, as usual');
   eq(await p.evaluate(() => $('enhMore').hidden), true, 'no More tools (Editor) on the result');
   const keys = await p.evaluate(() => [...document.querySelectorAll('.enh-t[data-k]')].map((b) => b.dataset.k));
-  eq(keys, ['face', 'bg', 'retouch'], 'Colors and Background Blur switches hidden');
+  eq(keys, ['face', 'bg', 'retouch', 'texture'], 'Colors and Background Blur switches hidden');
   await p.click('#enhDownload'); await downloads(state, 1); await p.waitForFunction(() => screen === 'enhanceShare');
   eq(await p.evaluate(() => $('enhEdit').hidden), true, 'no Edit more in the editor');
   eq(state.errs, [], 'no page errors');

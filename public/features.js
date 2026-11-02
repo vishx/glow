@@ -88,6 +88,7 @@ const FEATURE_AREAS = [
     ["tool:flashes", "Lashes", true], ["tool:fliner", "Eyeliner", true], ["tool:fshadow", "Eyeshadow", true],
     ["tool:fbrows", "Brows", true], ["tool:feyecolor", "Eye color", true], ["tool:fcontour", "Contour", true],
     ["tool:fhighlight", "Highlighter", true], ["tool:fbronzer", "Bronzer", true], ["tool:hcolor", "Hair color", true],
+    ["tool:bposture", "Posture (subtle body)", true, "In Search, capped to a natural range."], ["tool:btailor", "Tailor fit (subtle body)", true, "In Search, capped to a natural range."],
   ]],
   ["Editor · Looks", [
     ["tool:filters", "Filters (all)", true],
