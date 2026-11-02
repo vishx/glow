@@ -1,6 +1,9 @@
 {
   "trend_figurine": {
-    "status": "failed"
+    "status": "ok",
+    "model": "google/nano-banana-2",
+    "prediction": "q8q1jwg7kdrmt0d1kq2sbspzb8",
+    "secs": 9.202978431
   },
   "trend_yearbook": {
     "status": "ok",
