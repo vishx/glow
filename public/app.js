@@ -3965,7 +3965,10 @@ async function showBuild() {
   const id = session && session.user_id;
   // The phone app is served from its own files (host "localhost"), so name the platform instead.
   const where = { android: "Android app", ios: "iPhone app" }[PLATFORM] || (native ? "Phone app" : "Web");
-  $("buildId").textContent = `Version ${APP_BUILD} (${fp || "unknown"}) · ${where}${id ? ` · ID ${id.slice(0, 8)}` : ""}${Features.tester ? " · Tester" : ""}`;
+  // Phone app: whether these screens came with the app or by live update, and what the updater is doing.
+  const lu = typeof LiveUpdate !== "undefined" && LiveUpdate.native ? LiveUpdate.state : null;
+  const luText = lu && lu.source ? ` · ${lu.source === "live update" ? "Live update" : "Built in"}${lu.status ? " (" + lu.status + ")" : ""}` : "";
+  $("buildId").textContent = `Version ${APP_BUILD} (${fp || "unknown"}) · ${where}${luText}${id ? ` · ID ${id.slice(0, 8)}` : ""}${Features.tester ? " · Tester" : ""}`;
   $("buildId").title = `${FEATURES}. Tap to copy your account ID.`;
 }
 $("camSettingsBtn").addEventListener("click", openSettings);
@@ -4671,4 +4674,6 @@ function startApp() {
 }
 startApp();
 track("app_open", { dest: START_DEST, last: store.get("glowLastDest") || "" });
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+// The website's offline cache. The phone app has its files on the phone (and gets new ones by live
+// update, liveupdate.js), so it doesn't use it.
+if (!native && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

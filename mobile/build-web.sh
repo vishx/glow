@@ -5,6 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 rm -rf www && mkdir -p www/vendor/mediapipe/wasm
 cp -R ../public/. www/
+rm -rf www/app-update   # the live-update manifest is for the website, not the bundle
 cp node_modules/@mediapipe/tasks-vision/vision_bundle.mjs www/vendor/mediapipe/
 cp node_modules/@mediapipe/tasks-vision/vision_bundle.cjs www/vendor/mediapipe/   # for the live camera's face worker
 cp node_modules/@mediapipe/tasks-vision/wasm/* www/vendor/mediapipe/wasm/
@@ -18,4 +19,6 @@ curl -fsSL -o www/vendor/pose_landmarker_lite.task \
   https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task
 curl -fsSL -o www/vendor/hair_segmenter.tflite \
   https://storage.googleapis.com/mediapipe-models/image_segmenter/hair_segmenter/float32/latest/hair_segmenter.tflite
+# The version id of these built-in screens, so live updates know what the phone already has.
+node live-update.mjs --builtin
 echo "www/ is ready"
