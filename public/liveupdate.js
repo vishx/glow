@@ -27,6 +27,8 @@ const LiveUpdate = (() => {
   const log = (...a) => { try { console.info("[live update]", ...a); } catch {} };
   let current = null, checking = null, nativeBuild = 0;
   const state = { version: "", source: "", status: "" };   // for Settings and diagnostics
+  // The last check's answer is kept, so Settings still shows it when a reopen skips the check.
+  const setStatus = (t) => { state.status = t; write({ status: t }); };
 
   // At start: if a downloaded version is waiting, switch to it now, before anyone has started doing
   // anything (the launch animation covers the reload).
@@ -40,7 +42,7 @@ const LiveUpdate = (() => {
         // We switched to it last time and the plugin had to go back: never try that version again.
         log("version failed to start, staying on", current && current.version, "instead of", s.pending.version);
         write({ pending: null, trying: "", bad: [...(s.bad || []), s.pending.version].slice(-10) });
-        state.status = "rolled back";
+        setStatus("rolled back");
       } else if (s.pending && current && current.id !== s.pending.id && !onBuiltinTooNew(s)) {
         const list = (await U.list()).bundles || [];
         const b = list.find((x) => x.id === s.pending.id && x.status !== "error" && x.status !== "deleting");
@@ -60,7 +62,7 @@ const LiveUpdate = (() => {
       await U.notifyAppReady();
       current = (await U.current()).bundle;
       const s = read();
-      if (s.pending && current && current.id === s.pending.id) write({ pending: null, trying: "" });
+      if (s.pending && current && current.id === s.pending.id) write({ pending: null, trying: "", status: "up to date" });
       const info = cap.Plugins.App ? await cap.Plugins.App.getInfo() : {};
       nativeBuild = Number(info.build) || 0;
       if (!current || current.id === "builtin") {
@@ -71,6 +73,7 @@ const LiveUpdate = (() => {
         state.version = v.version || String(APP_BUILD); state.source = "built in";
       } else { state.version = current.version; state.source = "live update"; }
       log("running", state.version, "(" + state.source + "), app build", nativeBuild);
+      if (!state.status) state.status = read().status || "";
     } catch (e) { log("ready", e && e.message); }
     setTimeout(() => check(), 2500);
     if (cap.Plugins.App) cap.Plugins.App.addListener("appStateChange", ({ isActive }) => { if (isActive) { check(); applyIfCalm(); } else away = Date.now(); });
@@ -94,20 +97,20 @@ const LiveUpdate = (() => {
         const platform = cap.getPlatform();
         const need = Number(m.minNative && m.minNative[platform]) || 0;
         const running = current && current.id !== "builtin" ? current.version : (s.builtin && s.builtin.version) || "";
-        if (m.version === running) { state.status = "up to date"; return; }
-        if ((s.bad || []).includes(m.version)) { state.status = "skipped a version that failed"; return; }
-        if (s.builtin && m.build < s.builtin.build) { state.status = "the installed app is newer"; return; }
-        if (need && nativeBuild && nativeBuild < need) { state.status = "needs an app update"; askStoreUpdate(); return; }
+        if (m.version === running) { setStatus("up to date"); return; }
+        if ((s.bad || []).includes(m.version)) { setStatus("skipped a version that failed"); return; }
+        if (s.builtin && m.build < s.builtin.build) { setStatus("the installed app is newer"); return; }
+        if (need && nativeBuild && nativeBuild < need) { setStatus("needs an app update"); askStoreUpdate(); return; }
         if (s.pending && s.pending.version === m.version) { applyIfCalm(); return; }
-        state.status = "downloading";
+        setStatus("downloading");
         log("downloading", m.version, "over", running);
         const b = await U.download({ url: MANIFEST, version: m.version, manifest: m.files });
         write({ pending: { id: b.id, version: m.version, build: m.build } });
-        state.status = "ready for next open";
+        setStatus("ready for next open");
         try { if (typeof track === "function") track("live_update_ready", { from: running, to: m.version }); } catch {}
         cleanup(b.id);
         applyIfCalm();
-      } catch (e) { state.status = "check failed"; log("check", e && e.message); }
+      } catch (e) { setStatus("check failed"); log("check", e && e.message); }
       finally { checking = null; }
     })();
     return checking;

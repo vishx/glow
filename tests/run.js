@@ -3578,6 +3578,11 @@ test('live update: paused from the admin page, phones do not check', async ({ p 
   await p.goto('https://app.test/'); await p.waitForFunction(() => window.__lu.ready === 1); await settle(4500);
   eq([hits.n, await p.evaluate(() => window.__lu.downloads.length)], [0, 0], 'no check, no download');
 }, { start: 'enhance', camera: false, init: luApp({ saved: { } }), features: { 'app:liveupdate': false } });
+test('live update: reopening within a minute skips the check but Settings still shows the last answer', async ({ p }) => {
+  const hits = await luServe(p, luManifest('202610399-new'));
+  await p.goto('https://app.test/'); await p.waitForFunction(() => window.__lu.ready === 1); await settle(3500);
+  eq([hits.n, await p.evaluate(() => LiveUpdate.state.status)], [0, 'up to date'], 'last answer kept');
+}, { start: 'enhance', camera: false, init: luApp({ saved: { checkedAt: 9e12, status: 'up to date' } }) });
 test('live update: the website never checks and keeps its offline cache', async ({ p }) => {
   const hits = await luServe(p, luManifest('202610399-new'));
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome'); await settle(4000);
