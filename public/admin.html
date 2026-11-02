@@ -39,6 +39,18 @@
   .tile span { color: var(--muted); font-size: 13px; }
   .tile.alert { border-color: var(--bad); }
   .tile.alert b { color: var(--bad); }
+  /* Tappable tiles: the whole card opens the page with the detail behind the number. */
+  button.tile { position: relative; display: block; width: 100%; text-align: left; font: inherit; color: var(--text); cursor: pointer; padding-right: 34px;
+    transition: border-color .15s, background-color .15s, transform .1s; -webkit-tap-highlight-color: transparent; }
+  button.tile::after { content: ""; position: absolute; top: 18px; right: 15px; width: 7px; height: 7px; border: solid var(--rose); border-width: 2px 2px 0 0;
+    transform: rotate(45deg); opacity: .55; transition: opacity .15s, right .15s; }
+  button.tile:hover, button.tile:focus-visible { border-color: rgb(243 192 98 / 0.55); background-color: #1d1b18; }
+  button.tile:hover::after, button.tile:focus-visible::after { opacity: 1; right: 12px; }
+  button.tile:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
+  button.tile:active { transform: scale(.985); }
+  button.tile.alert:hover, button.tile.alert:focus-visible { border-color: var(--bad); }
+  .flash { animation: flash 1.6s ease-out; }
+  @keyframes flash { 0%, 30% { border-color: var(--rose); box-shadow: 0 0 0 3px rgb(243 192 98 / 0.25); } 100% { box-shadow: 0 0 0 3px transparent; } }
   section.card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 18px; margin-bottom: 20px; overflow-x: auto; }
   h2 { font-size: 17px; font-weight: 600; margin: 0 0 12px; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
@@ -393,22 +405,27 @@ const VIEWS = {
     const today = o.daily[0] || {}, week = o.daily.slice(0, 7);
     const sum = (k) => week.reduce((n, d) => n + Number(d[k] || 0), 0);
     const failRate = today.ai_runs ? Math.round((today.ai_failed / today.ai_runs) * 100) : 0;
-    const tile = (v, label, alert) => h("div", { class: "tile" + (alert ? " alert" : "") }, h("b", {}, v), h("span", {}, label));
+    // go: a tab to open ("support/open"), or "#id" to scroll to a section further down this page.
+    const tile = (v, label, alert, go, hint) => go
+      ? h("button", { type: "button", class: "tile" + (alert ? " alert" : ""), title: hint, "aria-label": `${v} ${label}. ${hint}`,
+          onclick: () => (go[0] === "#" ? jump(go.slice(1)) : show(go)) }, h("b", {}, v), h("span", {}, label))
+      : h("div", { class: "tile" + (alert ? " alert" : "") }, h("b", {}, v), h("span", {}, label));
+    const jump = (id) => { const el = $(id); if (!el) return; el.scrollIntoView({ behavior: "smooth", block: "start" }); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); };
     return [
       h("div", { class: "tiles" },
-        tile(o.plans.accounts, "Accounts"),
-        tile(o.plans.pro_weekly + o.plans.pro_yearly + o.plans.pro_other, `Pro now (${o.plans.pro_weekly} weekly, ${o.plans.pro_yearly} yearly${o.plans.pro_other ? `, ${o.plans.pro_other} free` : ""})`),
-        tile(money(o.revenue.last30), "Revenue, 30 days (from RevenueCat)"),
-        tile(money(o.revenue.monthlyGross), "Est. monthly revenue (list price)"),
-        tile(money(today.ai_cost), "Est. AI cost today"),
-        tile(money(sum("ai_cost")), "Est. AI cost, 7 days"),
-        tile(today.ai_runs ?? 0, `AI runs today (${failRate}% failed)`, failRate >= 20 && today.ai_runs >= 5),
-        tile(o.openSupport, "Open support messages", o.openSupport > 0),
-        tile(o.errors24h, "App errors, 24 hours", o.errors24h >= 25),
-        tile(sum("deletions"), "Accounts deleted, 7 days"),
+        tile(o.plans.accounts, "Accounts", false, "users", "Open Users"),
+        tile(o.plans.pro_weekly + o.plans.pro_yearly + o.plans.pro_other, `Pro now (${o.plans.pro_weekly} weekly, ${o.plans.pro_yearly} yearly${o.plans.pro_other ? `, ${o.plans.pro_other} free` : ""})`, false, "users/pro", "See the Pro accounts"),
+        tile(money(o.revenue.last30), "Revenue, 30 days (from RevenueCat)", false, "subs", "Open Subscriptions"),
+        tile(money(o.revenue.monthlyGross), "Est. monthly revenue (list price)", false, "users/pro", "See the Pro accounts it's based on"),
+        tile(money(today.ai_cost), "Est. AI cost today", false, "#aiTools", "Jump to AI tools below"),
+        tile(money(sum("ai_cost")), "Est. AI cost, 7 days", false, "#aiTools", "Jump to AI tools below"),
+        tile(today.ai_runs ?? 0, `AI runs today (${failRate}% failed)`, failRate >= 20 && today.ai_runs >= 5, "#aiQuality", "Jump to AI quality below"),
+        tile(o.openSupport, "Open support messages", o.openSupport > 0, "support/open", "Open Support"),
+        tile(o.errors24h, "App errors, 24 hours", o.errors24h >= 25, "errors", "Open App errors"),
+        tile(sum("deletions"), "Accounts deleted, 7 days", false, "#dayByDay", "Jump to Day by day below"),
       ),
       h("section", { class: "card" }, h("h2", {}, "Last 14 days"), chart(o.daily)),
-      h("section", { class: "card" }, h("h2", {}, "Day by day"), table([
+      h("section", { class: "card", id: "dayByDay" }, h("h2", {}, "Day by day"), table([
           { t: "Day", f: (d) => d.day.slice(5) }, { t: "New", n: 1, f: (d) => d.new_users }, { t: "Active", n: 1, f: (d) => d.active_users },
           { t: "AI runs", n: 1, f: (d) => d.ai_runs }, { t: "Failed", n: 1, f: (d) => d.ai_failed }, { t: "Credits", n: 1, f: (d) => d.credits },
           { t: "AI cost", n: 1, f: (d) => money(d.ai_cost) }, { t: "Paywall", n: 1, f: (d) => d.paywall_views }, { t: "Buys", n: 1, f: (d) => d.purchases },
@@ -421,7 +438,7 @@ const VIEWS = {
             { t: "Step", f: (r) => String(r.label).replace(/\bGlow\b(?! Studio)/, "Glow Studio") }, { t: "People", n: 1, f: (r) => r.users },
             { t: "", n: 1, cls: "muted", f: (r) => (o.funnel[0]?.users ? Math.round((r.users / o.funnel[0].users) * 100) + "%" : "") },
           ], o.funnel)),
-        h("section", { class: "card" }, h("h2", {}, "AI quality, last 7 days"),
+        h("section", { class: "card", id: "aiQuality" }, h("h2", {}, "AI quality, last 7 days"),
           h("p", { class: "muted", style: "margin-top:0" }, "Failed runs are refunded automatically. Time is from tap to finished result."),
           table([
             { t: "Tool", f: (r) => r.mode }, { t: "Runs", n: 1, f: (r) => r.runs },
@@ -437,7 +454,7 @@ const VIEWS = {
           { t: "People", n: 1, f: (r) => r.users }, { t: "Most common", cls: "muted", f: (r) => r.top_detail || "" },
         ], o.features)),
       h("div", { class: "grid2" },
-          h("section", { class: "card" }, h("h2", {}, "AI tools, last 7 days"), table([
+          h("section", { class: "card", id: "aiTools" }, h("h2", {}, "AI tools, last 7 days"), table([
             { t: "Tool", f: (r) => r.mode }, { t: "Runs", n: 1, f: (r) => r.runs }, { t: "Failed", n: 1, f: (r) => r.failed },
             { t: "Credits", n: 1, f: (r) => r.credits }, { t: "Est. cost", n: 1, f: (r) => money(r.ai_cost) },
           ], o.tools)),
@@ -461,20 +478,24 @@ const VIEWS = {
   },
 
   async users(id) {
-    if (id) return userDetail(id);
+    const proOnly = id === "pro";
+    if (id && !proOnly) return userDetail(id);
     const out = h("div", {});
     const q = h("input", { placeholder: "Account ID, name or email", style: "min-width:300px", "aria-label": "Account ID, name or email" });
     const list = h("div", {});
     const load = async () => {
-      const rows = await api("users", { q: q.value });
+      // The server filters by plan too (and looks past the newest 50); filtering here as well keeps this right either way.
+      const rows = (await api("users", { q: q.value, plan: proOnly ? "pro" : undefined })).filter((r) => !proOnly || r.plan === "pro");
       list.replaceChildren(table([
         { t: "Account", f: (r) => h("span", {}, userLink(r.user_id), r.contact_name || r.contact_email ? h("div", { class: "muted", style: "font-size:13px" }, r.contact_name || "", r.contact_name && r.contact_email ? " · " : "", r.contact_email || "") : "") }, { t: "Joined", f: (r) => when(r.created_at) }, { t: "Last seen", f: (r) => when(r.last_seen) },
         { t: "Plan", f: (r) => h("span", {}, planPill(r.plan, r.plan_period), r.tester ? " " : "", r.tester ? h("span", { class: "pill good", title: r.tester_label || "" }, "Tester") : "", r.blocked ? " " : "", r.blocked ? h("span", { class: "pill bad" }, "Blocked") : "") },
         { t: "Extra", n: 1, f: (r) => r.bonus_credits || "" }, { t: "AI 7d", n: 1, f: (r) => r.runs_7d }, { t: "Credits 7d", n: 1, f: (r) => r.credits_7d }, { t: "AI total", n: 1, f: (r) => r.runs_total },
-      ], rows, "No accounts match."));
+      ], rows, proOnly ? "No Pro accounts match." : "No accounts match."));
     };
     q.addEventListener("keydown", (e) => { if (e.key === "Enter") load().catch((err) => toast(err.message, true)); });
-    out.append(h("section", { class: "card" }, h("h2", {}, "Find an account"),
+    const only = h("select", { "aria-label": "Show", onchange: (e) => show(e.target.value === "pro" ? "users/pro" : "users") },
+      h("option", { value: "" }, "All accounts"), h("option", { value: "pro", selected: proOnly }, "Pro only"));
+    out.append(h("section", { class: "card" }, h("div", { class: "row" }, h("h2", { style: "margin:0" }, proOnly ? "Pro accounts" : "Find an account"), h("span", { class: "spacer" }), only),
       h("p", { class: "muted", style: "margin-top:0" }, "Search by the start of an account ID, or by a name or email. People's name and email are saved on their account when they use Contact support. Support messages link here directly."),
       h("div", { class: "row" }, q, h("button", { class: "btn", onclick: () => load().catch((err) => toast(err.message, true)) }, "Search")), list));
     await load();

@@ -86,7 +86,10 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
 
   // Each account also says whether it's a tester, so the Users and Features pages always agree.
   async users(a) {
-    const rows = must(await admin.rpc("admin_users", { p_query: text(a.q, 100), p_limit: 50 })) as { user_id: string }[];
+    // plan "pro": look through up to 200 newest accounts and keep only active Pro (the Overview "Pro now" card opens this).
+    const pro = a.plan === "pro";
+    let rows = must(await admin.rpc("admin_users", { p_query: text(a.q, 100), p_limit: pro ? 200 : 50 })) as { user_id: string; plan?: string }[];
+    if (pro) rows = rows.filter((r) => r.plan === "pro");
     const ids = rows.map((r) => r.user_id);
     const { data: t } = ids.length ? await admin.from("feature_testers").select("user_id, label").in("user_id", ids) : { data: [] };
     const testers = new Map((t ?? []).map((r: { user_id: string; label: string | null }) => [r.user_id, r.label ?? ""]));
