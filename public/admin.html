@@ -119,6 +119,19 @@
   .feat tr.dirty { background: var(--dirty); }
   .steps { margin: 0; padding-left: 20px; }
   .steps li { margin-bottom: 4px; }
+  .sheet-bg { position: fixed; inset: 0; background: rgb(0 0 0 / 0.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); z-index: 10;
+    display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .sheet { width: 100%; max-width: 440px; background: var(--card); border: 1px solid var(--line); border-radius: 24px; padding: 24px 22px 20px;
+    box-shadow: 0 24px 60px -12px rgb(0 0 0 / 0.7); max-height: calc(100vh - 32px); overflow-y: auto; }
+  .sheet h3 { font: 600 22px/1.2 var(--display); margin: 0 0 10px; }
+  .sheet .what { margin: 0 0 8px; color: var(--text); }
+  .sheet ul { margin: 0 0 8px; padding-left: 18px; color: var(--muted); }
+  .sheet ul li { margin-bottom: 4px; }
+  .sheet label { display: block; margin: 14px 0 6px; font-weight: 600; font-size: 14px; }
+  .sheet label small { font-weight: 400; color: var(--muted); }
+  .sheet input { width: 100%; }
+  .sheet .btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap-reverse; }
+  @media (max-width: 480px) { .sheet .btns .btn { flex: 1 1 140px; } }
   .actions-help { margin: -4px 0 14px; font-size: 13px; }
 </style>
 </head>
@@ -185,6 +198,29 @@ function toast(msg, bad) {
   const t = $("toast"); t.textContent = msg; t.className = bad ? "bad" : ""; t.style.display = "block";
   clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = "none"), 3500);
 }
+
+// A clear in-page question instead of the browser's own prompt box. Resolves to the typed text
+// ("" if there's no box or it was left empty), or null if the admin cancelled.
+function ask({ title, what, points = [], field, ok = "Confirm", danger = false }) {
+  return new Promise((resolve) => {
+    const input = field ? h("input", { type: "text", placeholder: field.placeholder || "", value: field.value || "", maxlength: "200" }) : null;
+    const done = (v) => { bg.remove(); document.removeEventListener("keydown", onKey); resolve(v); };
+    const onKey = (e) => { if (e.key === "Escape") done(null); if (e.key === "Enter" && input && document.activeElement === input) done(input.value.trim()); };
+    const bg = h("div", { class: "sheet-bg", onclick: (e) => { if (e.target === bg) done(null); } },
+      h("div", { class: "sheet", role: "dialog", "aria-modal": "true", "aria-label": title },
+        h("h3", {}, title),
+        what ? h("p", { class: "what" }, what) : "",
+        points.length ? h("ul", {}, points.map((t) => h("li", {}, t))) : "",
+        field ? h("label", {}, field.label, " ", field.optional === false ? "" : h("small", {}, "(optional)")) : "", input || "",
+        h("div", { class: "btns" },
+          h("button", { class: "btn ghost", type: "button", onclick: () => done(null) }, "Cancel"),
+          h("button", { class: "btn" + (danger ? " danger" : ""), type: "button", onclick: () => done(input ? input.value.trim() : "") }, ok))));
+    document.body.append(bg);
+    document.addEventListener("keydown", onKey);
+    setTimeout(() => (input || bg.querySelector(".btn:not(.ghost)")).focus(), 30);
+  });
+}
+const NOTE = { label: "Note for the change log", placeholder: "e.g. My own account, or why you did this" };
 
 async function api(action, args = {}) {
   const res = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json", apikey: APIKEY, "x-admin-key": key },
@@ -304,7 +340,8 @@ const VIEWS = {
       function dirty() { tr.classList.add("dirty"); save.disabled = false; }
       STATES.forEach(([s, name]) => seg.append(h("button", { "data-s": s, onclick: () => { st.status = s; paint(); dirty(); } }, name)));
       async function commit() {
-        if (key.startsWith("screen:") && st.status === "off" && !confirm(`Hide the whole ${label} for everyone?`)) return;
+        if (key.startsWith("screen:") && st.status === "off" && (await ask({ title: `Hide the whole ${label}?`, what: `Everyone loses the ${label} until you switch it back on.`,
+          points: ["Phones pick this up within a few minutes.", "Saved photos and paid credits aren't affected."], ok: `Hide ${label}`, danger: true })) === null) return;
         save.disabled = true;
         try {
           if (st.status === "default") await api("setFeature", { key, reset: true });
@@ -456,7 +493,8 @@ const VIEWS = {
         { t: "From", f: (r) => [r.email ? h("a", { href: "mailto:" + r.email + "?subject=" + encodeURIComponent("Your Glow Studio support message") }, r.email) : h("span", { class: "muted" }, "no email"), h("br"), r.user_id ? userLink(r.user_id) : ""] },
         { t: "App", cls: "muted", f: (r) => Object.entries(r.context || {}).map(([k, v]) => `${k}: ${v}`).join(", ") },
         { t: "", f: (r) => h("button", { class: "btn ghost", onclick: async () => {
-            const note = r.status === "open" ? prompt("Optional note (what you did):", r.note || "") : null;
+            const note = r.status === "open" ? await ask({ title: "Close this support message?", what: "It moves to Closed. You can reopen it any time.",
+              field: { label: "What you did", placeholder: "e.g. Replied by email and gave 10 credits", value: r.note || "" }, ok: "Close message" }) : null;
             if (note === null && r.status === "open") return;
             await api("supportUpdate", { id: r.id, status: r.status === "open" ? "closed" : "open", note: note ?? undefined }).catch((e) => toast(e.message, true));
             show("support/" + status);
@@ -528,7 +566,7 @@ const VIEWS = {
 async function userDetail(id) {
   const d = await api("user", { user: id });
   const p = d.profile || {}, a = d.allowance || {};
-  const reason = () => prompt("Reason (kept in the change log):", "") ?? null;
+  const until = (n) => new Date(Date.now() + n * 864e5).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   const act = async (action, args, done) => {
     try { const r = await api(action, { user: id, ...args }); toast(done(r)); show("users/" + id); } catch (e) { toast(e.message, true); }
   };
@@ -537,7 +575,7 @@ async function userDetail(id) {
   return [
     h("p", {}, h("button", { class: "link", onclick: () => show("users") }, "← All accounts")),
     h("div", { class: "grid2" },
-      h("section", { class: "card" }, h("h2", {}, "Account"),
+      h("section", { class: "card" }, h("h2", {}, `Account ${short(d.account.id)}`),
         h("dl", {},
           h("dt", {}, "ID"), h("dd", { class: "mono" }, d.account.id, " ", h("button", { class: "link", onclick: () => navigator.clipboard.writeText(d.account.id).then(() => toast("Copied.")) }, "copy")),
           h("dt", {}, "Joined"), h("dd", {}, when(d.account.created_at)),
@@ -549,16 +587,44 @@ async function userDetail(id) {
           h("dt", {}, "Ads watched"), h("dd", {}, d.ads),
           h("dt", {}, "Status"), h("dd", {}, p.blocked_at ? h("span", { class: "pill bad" }, `Blocked ${when(p.blocked_at)}${p.blocked_reason ? ": " + p.blocked_reason : ""}`) : h("span", { class: "pill good" }, "OK")),
         )),
-      h("section", { class: "card" }, h("h2", {}, "Actions"),
-        h("div", { class: "row" }, credits, h("button", { class: "btn", onclick: () => { const r = reason(); if (r !== null) act("grant", { credits: Number(credits.value), reason: r }, (x) => `Bonus credits now ${x.bonus_credits}.`); } }, "Give bonus credits")),
-        h("div", { class: "row" }, days, h("button", { class: "btn", onclick: () => { const r = reason(); if (r !== null) act("setPro", { days: Number(days.value), reason: r }, (x) => `Pro until ${when(x.until)}.`); } }, "Give free Pro (days)"),
-          a.plan === "pro" ? h("button", { class: "btn ghost", onclick: () => { if (confirm("Remove Pro from this account now? A real store subscription will set it back on its next renewal.")) act("setPro", { days: 0, reason: reason() || "" }, () => "Pro removed."); } }, "Remove Pro") : null),
+      h("section", { class: "card" }, h("h2", {}, "Change this account"),
+        h("p", { class: "muted actions-help" }, "Each change asks you to confirm first, and is saved in the Change log."),
+        h("div", { class: "row" }, credits, h("button", { class: "btn", onclick: async () => {
+          const n = Math.trunc(Number(credits.value));
+          if (!n) return toast("Type how many credits, e.g. 50.", true);
+          const r = await ask(n > 0
+            ? { title: `Give ${n} bonus credits?`, what: `This account gets ${n} extra AI credits, free.`,
+                points: ["They're used after the plan's own daily or weekly credits run out.", "They never expire.", "To take credits back, type a minus number, e.g. -10."], field: NOTE, ok: `Give ${n} credits` }
+            : { title: `Take back ${-n} bonus credits?`, what: `Removes up to ${-n} of this account's bonus credits (it never goes below 0).`, field: NOTE, ok: "Take back", danger: true });
+          if (r !== null) act("grant", { credits: n, reason: r }, (x) => `Bonus credits now ${x.bonus_credits}.`); } }, "Give bonus credits")),
+        h("div", { class: "row" }, days, h("button", { class: "btn", onclick: async () => {
+          const n = Math.trunc(Number(days.value));
+          if (!(n >= 1 && n <= 366)) return toast("Type a number of days from 1 to 366.", true);
+          const r = await ask({ title: `Give ${n} days of free Pro?`, what: `This account gets Glow Studio Pro until ${until(n)}, at no charge.`,
+            points: ["Pro unlocks every Pro tool, clean saves and 40 AI credits a week.", "It ends on its own. Give more days any time.", "If they buy Pro in the app store later, the store plan takes over."], field: NOTE, ok: "Give Pro" });
+          if (r !== null) act("setPro", { days: n, reason: r }, (x) => `Pro until ${when(x.until)}.`); } }, "Give free Pro (days)"),
+          a.plan === "pro" ? h("button", { class: "btn ghost", onclick: async () => {
+            const r = await ask({ title: "Remove Pro now?", what: "This account goes back to the free plan straight away.",
+              points: ["Bonus credits stay.", "If they pay through the app store, Pro comes back at their next renewal. Cancel that in the store, not here."], field: NOTE, ok: "Remove Pro", danger: true });
+            if (r !== null) act("setPro", { days: 0, reason: r }, () => "Pro removed."); } }, "Remove Pro") : null),
         h("div", { class: "row" }, d.tester
-          ? h("button", { class: "btn ghost", onclick: () => { if (confirm("Remove this account from the testers? It stops seeing features set to Testers.")) act("removeTester", {}, () => "Removed from testers."); } }, "Remove tester")
-          : h("button", { class: "btn ghost", onclick: () => { const l = prompt("Make this account a tester (sees features set to Testers or Rollout). Name, e.g. My Android:", ""); if (l !== null) act("addTester", { label: l }, () => "Added as a tester."); } }, "Make tester")),
+          ? h("button", { class: "btn ghost", onclick: async () => {
+              const r = await ask({ title: "Remove this tester?", what: "This account stops seeing features that are set to Testers on the Features page.", ok: "Remove tester", danger: true });
+              if (r !== null) act("removeTester", {}, () => "Removed from testers."); } }, "Remove tester")
+          : h("button", { class: "btn ghost", onclick: async () => {
+              const l = await ask({ title: "Make this account a tester?", what: "Testers see new features early, before everyone else.",
+                points: ["They see every feature you set to Testers (or Rollout) on the Features page.", "Use it for your own phones and people helping you test.", "In the app, Settings shows \"· Tester\" on the version line."],
+                field: { label: "Name for this device or person", placeholder: "e.g. My Android" }, ok: "Make tester" });
+              if (l !== null) act("addTester", { label: l }, () => "Added as a tester."); } }, "Make tester")),
         h("div", { class: "row" }, p.blocked_at
-          ? h("button", { class: "btn ghost", onclick: () => act("block", { blocked: false }, () => "Unblocked.") }, "Unblock AI tools")
-          : h("button", { class: "btn danger", onclick: () => { const r = reason(); if (r !== null) act("block", { blocked: true, reason: r }, () => "Blocked from AI tools."); } }, "Block AI tools")),
+          ? h("button", { class: "btn ghost", onclick: async () => {
+              const r = await ask({ title: "Unblock AI tools?", what: "This account can use AI tools again, with its normal credits.", ok: "Unblock" });
+              if (r !== null) act("block", { blocked: false, reason: r }, () => "Unblocked."); } }, "Unblock AI tools")
+          : h("button", { class: "btn danger", onclick: async () => {
+              const r = await ask({ title: "Block AI tools for this account?", what: "Use this for abuse, such as someone draining AI credits with fake accounts.",
+                points: ["Every AI tool is refused for this account. Nothing is charged.", "The free editor and camera still work.", "You can unblock it here any time."],
+                field: { label: "Reason", placeholder: "e.g. Many accounts from one phone" }, ok: "Block AI tools", danger: true });
+              if (r !== null) act("block", { blocked: true, reason: r }, () => "Blocked from AI tools."); } }, "Block AI tools")),
         h("p", { class: "muted" }, "Money refunds: Apple decides iPhone refunds (customers ask at reportaproblem.apple.com). Google Play purchases can be refunded from the customer's page in RevenueCat."),
       ),
     ),
@@ -570,8 +636,11 @@ async function userDetail(id) {
         r.status === "succeeded" && r.finished_at ? h("span", { class: "muted" }, ` ${Math.round((new Date(r.finished_at) - new Date(r.created_at)) / 1000)}s`) : "",
         r.error ? h("div", { class: "muted msg" }, r.error) : "",
       ] },
-      { t: "IP", cls: "mono", f: (r) => (r.ip ? h("span", {}, r.ip, " ", h("button", { class: "link", onclick: async () => { const why = prompt(`Block ${r.ip} from AI tools on every account? Reason:`, ""); if (why === null) return; await api("blockIp", { ip: r.ip, reason: why }).then(() => toast("Address blocked."), (e) => toast(e.message, true)); } }, "block")) : "") },
-      { t: "", f: (r) => (r.refunded ? "" : h("button", { class: "btn ghost", onclick: () => { const why = reason(); if (why !== null) act("refund", { usage: r.id, reason: why }, () => "Credits returned."); } }, "Refund credits")) },
+      { t: "IP", cls: "mono", f: (r) => (r.ip ? h("span", {}, r.ip, " ", h("button", { class: "link", onclick: async () => { const why = await ask({ title: "Block this internet address?", what: `Every account using ${r.ip} is refused AI tools, not just this one.`,
+        points: ["Use it when one person keeps making new accounts.", "Homes and offices can share an address, so other people there are blocked too.", "Undo it on the Blocking page."],
+        field: { label: "Reason", placeholder: "e.g. Many free accounts from one address" }, ok: "Block address", danger: true }); if (why === null) return; await api("blockIp", { ip: r.ip, reason: why }).then(() => toast("Address blocked."), (e) => toast(e.message, true)); } }, "block")) : "") },
+      { t: "", f: (r) => (r.refunded ? "" : h("button", { class: "btn ghost", onclick: async () => { const why = await ask({ title: `Give back ${r.cost} credit${r.cost === 1 ? "" : "s"}?`, what: `Returns the credits this ${r.mode} run used, for example when the result was bad.`,
+        points: ["This gives credits back, not money. Apple and Google handle money refunds."], field: NOTE, ok: "Give credits back" }); if (why !== null) act("refund", { usage: r.id, reason: why }, () => "Credits returned."); } }, "Refund credits")) },
     ], d.usage, "No AI runs.")),
     h("section", { class: "card" }, h("h2", {}, "Subscription history"), table([
       { t: "When", f: (r) => when(r.created_at) }, { t: "Event", f: subRow },
