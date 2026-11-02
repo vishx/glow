@@ -4046,16 +4046,16 @@ function showSupportBadge() {
     say("Glow Studio support replied to your message.", false, { label: "Read", run: openMessages });
   }
 }
-const SUPPORT_TOPICS = { billing: "Subscription or payment", ai: "AI tool or credits", bug: "Something isn't working", privacy: "My data or privacy", other: "Your message" };
+const SUPPORT_TOPICS = { billing: "Subscription or payment", ai: "AI tool or credits", bug: "Something isn't working", privacy: "My data or privacy", other: "General question" };
 function mk(tag, cls, text) { const el = document.createElement(tag); if (cls) el.className = cls; if (text != null) el.textContent = text; return el; }
 // Screenshots on a support message (migration 018): up to 3, shrunk to 1600px JPEG before sending, so a
 // phone screenshot is a few hundred KB. Returns the "Add a screenshot" control and its chosen images.
-function shotPicker() {
+function shotPicker(label = "Add a screenshot") {
   const MAX = 3, shots = [];
   const wrap = mk("div", "shots"), row = mk("div", "shot-row");
   const input = mk("input"); input.type = "file"; input.accept = "image/*"; input.multiple = true; input.hidden = true;
   const add = mk("button", "link-btn shot-add"); add.type = "button";
-  add.append(Object.assign(mk("span"), { innerHTML: icon("gallery") }), "Add a screenshot");
+  add.append(Object.assign(mk("span"), { innerHTML: icon("gallery") }), label);
   add.addEventListener("click", () => input.click());
   const draw = () => {
     row.replaceChildren(...shots.map((url, i) => {
@@ -4098,11 +4098,19 @@ function renderMessages(d) {
   const body = $("msgsBody"), list = (d && d.conversations) || [];
   if (!list.length) { body.replaceChildren(mk("p", "empty", "No messages yet. Use Contact support in Settings and our reply will show up here.")); return; }
   const day = (t) => new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const short = (t) => { const one = String(t || "").replace(/^\[Idea\]\s*/, "").split("\n")[0].trim(); return one.length > 48 ? one.slice(0, 46).trimEnd() + "…" : one || "Your message"; };
+  const shortDay = (t) => new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   body.replaceChildren(...list.map((c, i) => {
     const det = mk("details", "convo"); det.open = i === 0 || c.unread;
-    const sum = mk("summary", null, SUPPORT_TOPICS[c.topic] || "Your message");
+    const sum = mk("summary");
     const replied = c.messages.some((m) => m.from === "support");
-    sum.append(mk("span", "st" + (c.unread ? " new" : ""), c.unread ? "New reply" : c.status === "closed" ? "Answered" : replied ? "Replied" : "Sent, we'll reply soon"));
+    const last = c.messages[c.messages.length - 1];
+    const waiting = !replied || (last && last.from === "you" && c.status !== "closed");
+    // Title: what they wrote, so two conversations are easy to tell apart. Under it: topic and date.
+    const head = mk("div", "convo-head");
+    head.append(mk("span", "convo-title", short(c.messages[0] && c.messages[0].body)), mk("span", "convo-sub", `${SUPPORT_TOPICS[c.topic] || "Your message"} · ${shortDay(c.created_at)}`));
+    const st = c.unread ? ["new", "New reply"] : c.status === "closed" ? ["done", "Answered"] : waiting ? ["wait", "Waiting for reply"] : ["done", "Replied"];
+    sum.append(head, mk("span", "st " + st[0], st[1]));
     const bubbles = mk("div", "bubbles");
     for (const m of c.messages) {
       const b = mk("div", "b " + m.from); b.append(mk("small", null, `${m.from === "support" ? "Glow Studio support" : "You"} · ${day(m.at)}`), m.body);
@@ -4126,10 +4134,12 @@ function renderMessages(d) {
       }
       det.append(rate);
     }
-    const box = mk("textarea"); box.maxLength = 4000; box.placeholder = c.status === "closed" ? "Still need help? Write back here." : "Write a reply";
+    const box = mk("textarea"); box.maxLength = 4000; box.rows = 1;
+    box.placeholder = c.status === "closed" ? "Still need help? Write back here." : replied ? "Write a reply" : "Add more details";
+    box.addEventListener("input", () => { box.style.height = "auto"; box.style.height = Math.min(box.scrollHeight, 200) + "px"; });
     box.setAttribute("aria-label", "Reply to Glow Studio support");
-    const send = mk("button", "btn", "Send"); send.type = "button";
-    const pick = shotPicker();
+    const send = mk("button", "btn small", "Send"); send.type = "button";
+    const pick = shotPicker("Screenshot");
     send.addEventListener("click", async () => {
       const images = pick.get();
       const message = box.value.trim() || (images.length ? "(Screenshot)" : "");
@@ -4142,6 +4152,12 @@ function renderMessages(d) {
     det.append(box, acts);
     return det;
   }));
+  // How long a reply takes, and a way to start a new conversation without going back to Settings.
+  const foot = mk("div", "msgs-foot");
+  const fresh = mk("button", "btn ghost small", "New message"); fresh.type = "button";
+  fresh.addEventListener("click", () => { $("msgsSheet").close(); openSupport(false); });
+  foot.append(mk("p", "fine", "We usually reply within a day. You'll find our answer here."), fresh);
+  body.append(foot);
 }
 // The Help page's "Contact support" button on the website opens the app at /?contact, straight into the form.
 if (new URLSearchParams(location.search).has("contact")) {

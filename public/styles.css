@@ -1419,15 +1419,25 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
 .msgs .convo { border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); padding: var(--s3); }
 .msgs .convo summary { list-style: none; cursor: pointer; display: flex; gap: var(--s2); align-items: center; font-weight: 600; }
 .msgs .convo summary::-webkit-details-marker { display: none; }
-.msgs .convo summary .st { margin-left: auto; font-size: 0.75rem; font-weight: 600; color: var(--muted); }
-.msgs .convo summary .st.new { color: var(--rose); }
+.msgs .convo summary { align-items: flex-start; }
+.msgs .convo-head { display: grid; gap: 2px; min-width: 0; }
+.msgs .convo-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msgs .convo-sub { font-size: 0.8125rem; font-weight: 500; color: var(--muted); }
+.msgs .convo summary .st { margin-left: auto; flex: none; font-size: 0.75rem; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--surface); color: var(--muted); white-space: nowrap; }
+.msgs .convo summary .st.new { color: var(--cta-fg); background: var(--cta); }
+.msgs .convo summary .st.done { color: var(--text); }
 .msgs .bubbles { display: grid; gap: var(--s2); margin-top: var(--s3); }
 .msgs .b { max-width: 88%; padding: 10px 12px; border-radius: 14px; background: var(--surface); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.9375rem; }
 .msgs .b.support { justify-self: start; border: 1px solid rgb(243 192 98 / 0.35); }
 .msgs .b.you { justify-self: end; background: var(--tint); }
 .msgs .b small { display: block; color: var(--muted); font-size: 0.75rem; margin-bottom: 2px; font-weight: 600; }
-.msgs textarea { width: 100%; box-sizing: border-box; min-height: 88px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; resize: vertical; margin-top: var(--s3); }
+.msgs textarea { width: 100%; box-sizing: border-box; min-height: 48px; max-height: 200px; resize: none; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; margin-top: var(--s3); }
 .msgs .acts { display: flex; gap: var(--s2); justify-content: flex-end; align-items: center; margin-top: var(--s2); flex-wrap: wrap; }
+.msgs .acts .btn.small { padding: 0 22px; }
+.msgs .acts .shot-add { padding: 0 4px; font-size: 0.875rem; }
+.msgs-foot { display: flex; align-items: center; gap: var(--s3); justify-content: space-between; flex-wrap: wrap; padding: 0 var(--s1); }
+.msgs-foot .fine { margin: 0; color: var(--muted); font-size: 0.8125rem; flex: 1 1 180px; }
+.msgs-foot .btn.small { padding: 0 18px; }
 .msgs .rate { display: flex; gap: var(--s2); align-items: center; margin-top: var(--s3); color: var(--muted); font-size: 0.875rem; flex-wrap: wrap; }
 .msgs .rate button { min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--text); font: inherit; cursor: pointer; }
 .msgs .empty { color: var(--muted); }
