@@ -84,13 +84,18 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
     };
   },
 
+  // Each account also says whether it's a tester, so the Users and Features pages always agree.
   async users(a) {
-    return must(await admin.rpc("admin_users", { p_query: text(a.q, 36), p_limit: 50 }));
+    const rows = must(await admin.rpc("admin_users", { p_query: text(a.q, 36), p_limit: 50 })) as { user_id: string }[];
+    const ids = rows.map((r) => r.user_id);
+    const { data: t } = ids.length ? await admin.from("feature_testers").select("user_id, label").in("user_id", ids) : { data: [] };
+    const testers = new Map((t ?? []).map((r: { user_id: string; label: string | null }) => [r.user_id, r.label ?? ""]));
+    return rows.map((r) => ({ ...r, tester: testers.has(r.user_id), tester_label: testers.get(r.user_id) ?? null }));
   },
 
   async user(a) {
     const id = userId(a.user);
-    const [auth, profile, allowance, usage, ads, support, events, errors, subs] = await Promise.all([
+    const [auth, profile, allowance, usage, ads, support, events, errors, subs, tester] = await Promise.all([
       admin.auth.admin.getUserById(id),
       admin.from("profiles").select("*").eq("id", id).maybeSingle(),
       admin.rpc("ai_allowance", { p_user: id }).maybeSingle(),
@@ -100,6 +105,7 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
       admin.from("app_events").select("name, props, platform, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(30),
       admin.from("app_errors").select("message, build, platform, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(20),
       admin.from("subscription_events").select("type, product_id, period_type, store, environment, price_usd, cancel_reason, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(30),
+      admin.from("feature_testers").select("label, created_at").eq("user_id", id).maybeSingle(),
     ]);
     if (!auth.data?.user) throw new HttpError("No account with that ID (it may have been deleted).");
     const u = auth.data.user;
@@ -107,6 +113,7 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
       account: { id: u.id, created_at: u.created_at, last_seen: u.last_sign_in_at, anonymous: u.is_anonymous ?? !u.email },
       profile: profile.data, allowance: allowance.data, usage: must(usage), ads: ads.count ?? 0,
       support: support.data ?? [], events: events.data ?? [], errors: errors.data ?? [], subscriptions: subs.data ?? [],
+      tester: tester.data ?? null,
     };
   },
 

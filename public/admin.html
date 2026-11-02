@@ -432,7 +432,7 @@ const VIEWS = {
       const rows = await api("users", { q: q.value });
       list.replaceChildren(table([
         { t: "Account", f: (r) => userLink(r.user_id) }, { t: "Joined", f: (r) => when(r.created_at) }, { t: "Last seen", f: (r) => when(r.last_seen) },
-        { t: "Plan", f: (r) => [planPill(r.plan, r.plan_period), r.blocked ? h("span", { class: "pill bad" }, " Blocked") : ""] },
+        { t: "Plan", f: (r) => h("span", {}, planPill(r.plan, r.plan_period), r.tester ? " " : "", r.tester ? h("span", { class: "pill good", title: r.tester_label || "" }, "Tester") : "", r.blocked ? " " : "", r.blocked ? h("span", { class: "pill bad" }, "Blocked") : "") },
         { t: "Extra", n: 1, f: (r) => r.bonus_credits || "" }, { t: "AI 7d", n: 1, f: (r) => r.runs_7d }, { t: "Credits 7d", n: 1, f: (r) => r.credits_7d }, { t: "AI total", n: 1, f: (r) => r.runs_total },
       ], rows, "No accounts match."));
     };
@@ -545,6 +545,7 @@ async function userDetail(id) {
           h("dt", {}, "Plan"), h("dd", {}, planPill(a.plan, a.period), p.plan_expires_at && a.plan === "pro" ? ` until ${when(p.plan_expires_at)}` : ""),
           h("dt", {}, "Credits left"), h("dd", {}, `${a.remaining ?? "?"} (${a.pool || ""}${a.bonus ? `, includes ${a.bonus} extra (bought or given)` : ""})`),
           a.plan !== "pro" ? [h("dt", {}, "Premium trial left"), h("dd", {}, a.trial_left ?? "")] : null,
+          h("dt", {}, "Tester"), h("dd", {}, d.tester ? h("span", { class: "pill good" }, "Yes") : h("span", { class: "muted" }, "No"), d.tester && d.tester.label ? ` ${d.tester.label}` : "", d.tester ? h("span", { class: "muted" }, ` · since ${when(d.tester.created_at)}`) : ""),
           h("dt", {}, "Ads watched"), h("dd", {}, d.ads),
           h("dt", {}, "Status"), h("dd", {}, p.blocked_at ? h("span", { class: "pill bad" }, `Blocked ${when(p.blocked_at)}${p.blocked_reason ? ": " + p.blocked_reason : ""}`) : h("span", { class: "pill good" }, "OK")),
         )),
@@ -552,7 +553,9 @@ async function userDetail(id) {
         h("div", { class: "row" }, credits, h("button", { class: "btn", onclick: () => { const r = reason(); if (r !== null) act("grant", { credits: Number(credits.value), reason: r }, (x) => `Bonus credits now ${x.bonus_credits}.`); } }, "Give bonus credits")),
         h("div", { class: "row" }, days, h("button", { class: "btn", onclick: () => { const r = reason(); if (r !== null) act("setPro", { days: Number(days.value), reason: r }, (x) => `Pro until ${when(x.until)}.`); } }, "Give free Pro (days)"),
           a.plan === "pro" ? h("button", { class: "btn ghost", onclick: () => { if (confirm("Remove Pro from this account now? A real store subscription will set it back on its next renewal.")) act("setPro", { days: 0, reason: reason() || "" }, () => "Pro removed."); } }, "Remove Pro") : null),
-        h("div", { class: "row" }, h("button", { class: "btn ghost", onclick: () => { const l = prompt("Make this account a tester (sees features set to Testers or Rollout). Name:", ""); if (l !== null) act("addTester", { label: l }, () => "Added as a tester."); } }, "Make tester")),
+        h("div", { class: "row" }, d.tester
+          ? h("button", { class: "btn ghost", onclick: () => { if (confirm("Remove this account from the testers? It stops seeing features set to Testers.")) act("removeTester", {}, () => "Removed from testers."); } }, "Remove tester")
+          : h("button", { class: "btn ghost", onclick: () => { const l = prompt("Make this account a tester (sees features set to Testers or Rollout). Name, e.g. My Android:", ""); if (l !== null) act("addTester", { label: l }, () => "Added as a tester."); } }, "Make tester")),
         h("div", { class: "row" }, p.blocked_at
           ? h("button", { class: "btn ghost", onclick: () => act("block", { blocked: false }, () => "Unblocked.") }, "Unblock AI tools")
           : h("button", { class: "btn danger", onclick: () => { const r = reason(); if (r !== null) act("block", { blocked: true, reason: r }, () => "Blocked from AI tools."); } }, "Block AI tools")),
