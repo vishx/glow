@@ -1,0 +1,35 @@
+{
+  "trend_figurine": {
+    "status": "failed"
+  },
+  "trend_yearbook": {
+    "status": "ok",
+    "model": "google/nano-banana-2",
+    "prediction": "79w9ydgxfsrmr0d1kpwrn1942g",
+    "secs": 9.777027027
+  },
+  "trend_poster": {
+    "status": "ok",
+    "model": "google/nano-banana-2",
+    "prediction": "8p0rzgabq1rmw0d1kpwsfbzv40",
+    "secs": 10.667999659
+  },
+  "trend_polaroid": {
+    "status": "ok",
+    "model": "google/nano-banana-2",
+    "prediction": "pq0f7s45hxrmy0d1kpwr1gkzr0",
+    "secs": 9.657609966999999
+  },
+  "trend_snow": {
+    "status": "ok",
+    "model": "google/nano-banana-2",
+    "prediction": "5tmcqrxkghrmy0d1kpwr0mnv9w",
+    "secs": 8.718825439
+  },
+  "trend_holiday": {
+    "status": "ok",
+    "model": "google/nano-banana-2",
+    "prediction": "zeq4atpyfnrmy0d1kpwt4xerfc",
+    "secs": 8.919294885
+  }
+}
