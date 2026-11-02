@@ -126,18 +126,20 @@ function tryPhoto(body) {
     if (f) { try { await closetAdd(f); } catch (err) { say(err.message, true); } tryChanged(); }
   });
   row.append(add);
-  // Paste a copied product photo (desktop, and phones that allow it).
-  if (navigator.clipboard && navigator.clipboard.read) {
+  // Paste a copied outfit picture: computers, the Android app (natively) and browsers that allow it.
+  // Where nothing can read pictures from the clipboard, there's no Paste button at all.
+  if (Platform.canPaste()) {
     const paste = document.createElement("button"); paste.className = "try-add"; paste.innerHTML = icon("paste") + "<span>Paste</span>";
     paste.setAttribute("aria-label", "Paste a copied outfit picture");
     paste.addEventListener("click", async () => {
-      try {
-        for (const it of await navigator.clipboard.read()) {
-          const type = it.types.find((x) => x.startsWith("image/"));
-          if (type) { await closetAdd(new File([await it.getType(type)], "outfit.png", { type })); tryChanged(); return; }
-        }
-        say("There's no picture to paste. Copy an outfit picture first.", true);
-      } catch { say("Glow Studio couldn't read the clipboard. Save the picture and use Add instead.", true); }
+      let f;
+      try { f = await Platform.pasteImage(); }
+      catch (err) {
+        say(err && err.denied ? "Glow Studio wasn't allowed to see the clipboard. Allow it, or save the picture and use Add." : "Glow Studio couldn't read that picture. Save it and use Add instead.", true);
+        return;
+      }
+      if (!f) { say("There's no picture to paste. Copy an outfit picture first (press and hold it, then Copy image).", true); return; }
+      await tryPasted(f);
     });
     row.append(paste);
   }
@@ -155,6 +157,21 @@ function tryPhoto(body) {
   body.append(row);
   if (!tryOn.closet) closetLoad().then(() => { if (sel === "outfit" && tryOn.src === "photo" && tryOn.closet.length) renderPanel(true); });
 }
+
+async function tryPasted(f) {
+  try { await closetAdd(f); } catch (err) { say(err.message, true); return; }
+  tryChanged();
+}
+// Ctrl+V / Cmd+V on a computer while Try on > Your photo is open adds the copied picture.
+document.addEventListener("paste", (e) => {
+  if (screen !== "editorScreen" || sel !== "outfit" || tryOn.src !== "photo" || ed.demo) return;
+  if (e.target && e.target.closest && e.target.closest("input, textarea, [contenteditable]")) return;
+  const it = [...((e.clipboardData && e.clipboardData.items) || [])].find((x) => x.kind === "file" && x.type.startsWith("image/"));
+  const f = it && it.getAsFile();
+  if (!f) return;
+  e.preventDefault();
+  tryPasted(new File([f], "outfit." + (f.type.split("/")[1] || "png"), { type: f.type }));
+});
 
 function tryWords(body) {
   const l = document.createElement("label"); l.className = "prompt";

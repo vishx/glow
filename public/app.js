@@ -212,8 +212,19 @@ function say(text, isErr, action) {
     const b = document.createElement("button"); b.className = "toast-act"; b.textContent = action.label;
     b.addEventListener("click", () => { t.classList.remove("on"); action.run(); }); t.append(" ", b);
   }
+  placeToast(t);
   if (isErr) $("alertLive").textContent = text;
   toastTimer = setTimeout(() => t.classList.remove("on"), isErr ? 7000 : action ? 7000 : 3800);
+}
+// In the phone editor the toast sits just above the tools dock, over the bottom edge of the photo,
+// instead of across the top where it hid the face.
+function placeToast(t) {
+  t.style.top = "";
+  if (screen !== "editorScreen" || innerWidth >= 960) return;
+  const side = document.querySelector("#editorScreen .side"), r = side && side.getBoundingClientRect();
+  if (!r || !r.height) return;
+  const top = r.top - t.offsetHeight - 12;
+  if (top > t.getBoundingClientRect().top) t.style.top = `${Math.round(top)}px`;
 }
 // A small in-app dialog. Resolves with the chosen action's value, or null.
 function ask({ title, text, actions, image, caption }) {

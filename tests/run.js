@@ -2337,6 +2337,76 @@ test('try on: one tool with ideas, your photo or words; sends the part; keeps ev
   eq([body.prompt, body.part], ['a red satin slip dress', 'top'], 'words are sent as written, with the part picked before');
 });
 
+// 2026-11-02: Paste in Try on > Your photo said "couldn't read the clipboard" on Samsung phones:
+// Android's WebView refuses navigator.clipboard.read(). The app now asks Android (GlowImage.pasteImage).
+const pasteApp = (o) => `(${((o) => {
+  const st = window.__paste = { calls: 0 };
+  const methods = [{ name: 'toJpeg', rtype: 'promise' }].concat(o.old ? [] : [{ name: 'pasteImage', rtype: 'promise' }]);
+  window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', PluginHeaders: [{ name: 'GlowImage', methods }], Plugins: { GlowImage: {
+    pasteImage: async () => {
+      st.calls++;
+      if (o.empty) return { empty: true };
+      const c = document.createElement('canvas'); c.width = 300; c.height = 400;
+      const x = c.getContext('2d'); x.fillStyle = '#1d3a8a'; x.fillRect(0, 0, 300, 400);
+      return { data: c.toDataURL('image/jpeg', 0.9), width: 300, height: 400 };
+    },
+  } } };
+  // The WebView's own clipboard is there but always refuses, as on the phone.
+  try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read: async () => { throw new DOMException('Read permission denied.', 'NotAllowedError'); }, writeText: async () => {} } }); } catch {}
+}).toString()})(${JSON.stringify(o)})`;
+async function openTryPhoto(p) {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'looks', null, 'outfit');
+  await p.click('.try-seg .opt:has-text("Your photo")'); await settle(200);
+}
+test('try on paste: the Android app pastes a copied picture through Android, not the WebView', async ({ p, state }) => {
+  await openTryPhoto(p);
+  assert(await p.isVisible('.try-add[aria-label^="Paste"]'), 'Paste is offered');
+  await p.click('.try-add[aria-label^="Paste"]');
+  await p.waitForFunction(() => !!outfitData && tryOn.closet.length === 1, null, { timeout: 10000 });
+  eq(await p.evaluate(() => [window.__paste.calls, $('applyBtn').disabled, $('toast').classList.contains('on') && $('toast').classList.contains('err')]), [1, false, false], 'one native read, picked, ready to try on, no error');
+  eq(state.errs, [], 'no page errors');
+}, { init: pasteApp({}) });
+test('try on paste: nothing copied says how to copy a picture, and the message sits above the tools, not over the face', async ({ p }) => {
+  await openTryPhoto(p);
+  await p.click('.try-add[aria-label^="Paste"]');
+  await p.waitForFunction(() => /no picture to paste/.test($('toast').textContent));
+  const r = await p.evaluate(() => { const t = $('toast').getBoundingClientRect(), s = document.querySelector('#editorScreen .side').getBoundingClientRect(), c = $('canvas') ? $('canvas').getBoundingClientRect() : null;
+    return { tBottom: t.bottom, sTop: s.top, tTop: t.top, mid: innerHeight / 2 }; });
+  assert(r.tBottom <= r.sTop && r.tTop > r.mid, 'toast just above the dock, lower half of the screen: ' + JSON.stringify(r));
+  eq(await p.evaluate(() => tryOn.closet.length), 0, 'nothing added');
+}, { init: pasteApp({ empty: true }), viewport: { width: 412, height: 915 } });
+test('try on paste: an older Android app (no native paste) shows no Paste button instead of an error', async ({ p }) => {
+  await openTryPhoto(p);
+  eq(await p.isVisible('.try-add[aria-label^="Add"]'), true, 'Add is there');
+  eq(await p.$('.try-add[aria-label^="Paste"]'), null, 'no Paste');
+}, { init: pasteApp({ old: true }) });
+test('try on paste: in a browser, Paste uses the web clipboard and Ctrl+V adds a copied picture', async ({ p, state }) => {
+  await p.addInitScript(() => {
+    window.__reads = 0;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => {}, read: async () => {
+      window.__reads++;
+      const c = document.createElement('canvas'); c.width = 200; c.height = 300; c.getContext('2d').fillRect(0, 0, 200, 300);
+      const b = await new Promise((ok) => c.toBlob(ok, 'image/png'));
+      return [{ types: ['text/html', 'image/png'], getType: async () => b }];
+    } } });
+  });
+  await openTryPhoto(p);
+  await p.click('.try-add[aria-label^="Paste"]');
+  await p.waitForFunction(() => tryOn.closet.length === 1, null, { timeout: 10000 });
+  eq(await p.evaluate(() => window.__reads), 1, 'web clipboard read once');
+  // Ctrl+V with a picture on the clipboard (a paste event carrying a file).
+  await p.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 120; c.height = 160; const x = c.getContext('2d'); x.fillStyle = '#c33'; x.fillRect(0, 0, 120, 160);
+    const b = await new Promise((ok) => c.toBlob(ok, 'image/png'));
+    const dt = new DataTransfer(); dt.items.add(new File([b], 'shot.png', { type: 'image/png' }));
+    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
+  });
+  await p.waitForFunction(() => tryOn.closet.length === 2, null, { timeout: 10000 });
+  eq(await p.evaluate(() => outfitData === tryOn.closet[0]), true, 'the pasted picture is picked');
+  eq(state.errs, [], 'no page errors');
+});
+
 test('describe: a reframed AI result is lined up with the photo and her face goes on her new face (no double face)', async ({ p }) => {
   await p.goto('https://app.test/');
   const data = (f) => 'data:image/' + (f.endsWith('png') ? 'png' : 'jpeg') + ';base64,' + fs.readFileSync(f).toString('base64');

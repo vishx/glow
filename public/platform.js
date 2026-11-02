@@ -115,6 +115,39 @@ const Platform = {
     return (await fetch(res.data)).blob();
   },
 
+  // Paste a copied picture (Try on > Your photo). The Android app's WebView can't read pictures from
+  // the clipboard (navigator.clipboard.read() is always refused there), so the app asks Android
+  // itself (GlowImage.pasteImage, in APKs from v85 on); older APKs don't offer Paste at all.
+  // Browsers and the iPhone app use the web clipboard, which asks for permission or shows a Paste bubble.
+  canPaste() {
+    if (native && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === "android") {
+      const h = (window.Capacitor.PluginHeaders || []).find((p) => p.name === "GlowImage");
+      return !!(h && h.methods && h.methods.some((m) => m.name === "pasteImage"));
+    }
+    return !!(navigator.clipboard && navigator.clipboard.read);
+  },
+  // Resolves with the picture as a File, or null when the clipboard holds no picture.
+  // Throws (err.denied = true) when the browser wasn't allowed to look.
+  async pasteImage() {
+    if (native && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === "android") {
+      const r = await plugins.GlowImage.pasteImage({ max: 2048 });
+      if (!r || r.empty || !r.data) return null;
+      const blob = await (await fetch(r.data)).blob();
+      return new File([blob], blob.type === "image/png" ? "outfit.png" : "outfit.jpg", { type: blob.type });
+    }
+    let items;
+    try { items = await navigator.clipboard.read(); }
+    catch (e) {
+      if (e && e.name === "NotAllowedError") e.denied = true;
+      throw e;
+    }
+    for (const it of items) {
+      const type = it.types.find((x) => x.startsWith("image/"));
+      if (type) return new File([await it.getType(type)], "outfit." + (type.split("/")[1] || "png"), { type });
+    }
+    return null;
+  },
+
   // Saves photos ({ blob } or { data: dataURL }, plus a name without extension). Resolves only
   // once the platform has finished, and says where they went: "photos" (the phone app saved them
   // to the Glow Studio album), "shared" (the share sheet closed; we can't tell what the user picked) or
