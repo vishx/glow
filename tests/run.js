@@ -2108,7 +2108,7 @@ test('ai: Remove waits for Apply, survives switching tools and a reload, and kee
   await p.fill('.brush-row input[type=range]', '40'); await p.dispatchEvent('.brush-row input[type=range]', 'change');
   await paint(p, [0.1, 0.1], [0.3, 0.12]);
   eq(await p.evaluate(() => [strokes.length, Math.round(strokes[0].w * imageRect().s)]), [1, 40], 'stroke at the chosen size');
-  await p.click('.brush-modes .opt:nth-child(2)'); await paint(p, [0.25, 0.11], [0.3, 0.12]);
+  await p.click('.brush-modes .opt[aria-label="Erase marks"]'); await paint(p, [0.25, 0.11], [0.3, 0.12]);
   eq(await p.evaluate(() => [strokes.length, !!strokes[1].erase]), [2, true], 'erase marks');
   await p.keyboard.press('+'); await settle(300); await p.keyboard.press('0'); await settle(300);
   eq(state.posts.length, 0, 'nothing sent before Generate');
