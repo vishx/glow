@@ -3203,6 +3203,95 @@ async function authCall(path, body) {
   followAccount();
   return session;
 }
+// ---------- Sign in with Apple/Google (idea 16, fixes bug 5) ----------
+// Optional. The private anonymous account is linked to Apple or Google, keeping its id, so the plan,
+// credit packs and RevenueCat purchases stay with it; on a new phone, signing in the same way
+// opens that account. Supabase does the OAuth; the app gets the tokens back in the URL's #fragment
+// (web: this page; phone app: com.vishx.glow://auth, opened through the Browser plugin).
+const AUTH_RETURN = native ? "com.vishx.glow://auth" : location.origin + "/";
+let authUser = null;
+async function loadAuthUser() {
+  try {
+    const s = await ensureSession();
+    const r = await fetch(`${CONFIG.supabaseUrl}/auth/v1/user`, { headers: { apikey: CONFIG.supabaseKey, Authorization: `Bearer ${s.access_token}` } });
+    authUser = r.ok ? await r.json() : null;
+  } catch { authUser = null; }
+  renderSignIn();
+  return authUser;
+}
+const signedIn = () => !!(authUser && authUser.is_anonymous === false && (authUser.identities || []).some((i) => i.provider !== "anonymous"));
+function renderSignIn() {
+  const row = $("signInRow"); if (!row) return;
+  row.hidden = !featureOn("account:signin");
+  const who = signedIn() && (authUser.email || (authUser.identities || []).map((i) => i.provider)[0]);
+  $("signInLabel").textContent = who ? `Signed in: ${who}` : "Sign in to keep your purchases";
+  $("signInBtns").hidden = !!who; $("signedInBtns").hidden = !who;
+  $("signInTitle").textContent = who ? "Signed in" : "Keep your purchases safe";
+  $("signInText").textContent = who ? `Your plan and credit packs are kept with ${who}. Sign in the same way on a new phone to get them back.`
+    : "Glow Studio works without an account. Sign in to keep your Pro plan and credit packs when you get a new phone or reinstall. Your photos are never uploaded for this.";
+  $("signInNote").hidden = !!who;
+}
+async function startSignIn(provider) {
+  try {
+    const s = await ensureSession();
+    // Link this phone's account (keeps everything on it). If that Apple/Google account is already
+    // used by another Glow Studio account, sign in to that one instead (a new phone).
+    const q = new URLSearchParams({ provider, redirect_to: AUTH_RETURN, skip_http_redirect: "true" });
+    let r = await fetch(`${CONFIG.supabaseUrl}/auth/v1/user/identities/authorize?${q}`, { headers: { apikey: CONFIG.supabaseKey, Authorization: `Bearer ${s.access_token}` } });
+    let d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.url) {
+      if (/not enabled|unsupported provider|manual linking/i.test(d.msg || d.error_description || "")) throw new Error(`Sign in with ${provider === "apple" ? "Apple" : "Google"} isn't available yet.`);
+      throw new Error("Couldn't start sign-in. Check your connection and try again.");
+    }
+    store.set("glowAuthPending", JSON.stringify({ provider, at: Date.now() }));
+    track("signin_start", { provider });
+    if (native && plugins.Browser) await plugins.Browser.open({ url: d.url, presentationStyle: "popover" });
+    else location.href = d.url;
+  } catch (err) { say(err.message, true); }
+}
+// The tokens come back in the URL fragment (or an error, e.g. that identity belongs to another account).
+async function finishSignIn(url) {
+  const hash = String(url).split("#")[1] || "", qs = String(url).split("?")[1] || "";
+  const p = new URLSearchParams(hash || qs);
+  if (!p.get("access_token") && !p.get("error") && !p.get("error_description")) return false;
+  if (native && plugins.Browser) plugins.Browser.close().catch(() => {});
+  if (!native) history.replaceState(null, "", location.pathname + location.search);
+  const pend = (() => { try { return JSON.parse(store.get("glowAuthPending") || "null"); } catch { return null; } })();
+  store.set("glowAuthPending", "");
+  const err = p.get("error_description") || p.get("error");
+  if (err) {
+    // Already linked to another Glow Studio account (a new phone): sign in to that one.
+    if (pend && /already linked|identity.*exists|already exists/i.test(err)) {
+      const q = new URLSearchParams({ provider: pend.provider, redirect_to: AUTH_RETURN, skip_http_redirect: "true" });
+      const r = await fetch(`${CONFIG.supabaseUrl}/auth/v1/authorize?${q}`, { headers: { apikey: CONFIG.supabaseKey } }).catch(() => null);
+      const d = r && r.ok ? await r.json().catch(() => ({})) : {};
+      if (d.url) { store.set("glowAuthPending", JSON.stringify({ ...pend, existing: true })); if (native && plugins.Browser) await plugins.Browser.open({ url: d.url }); else location.href = d.url; return true; }
+    }
+    say("Sign-in didn't finish. " + err.replace(/\+/g, " "), true); return true;
+  }
+  session = { access_token: p.get("access_token"), refresh_token: p.get("refresh_token"), expires_at: Number(p.get("expires_at")) || Math.floor(Date.now() / 1000) + Number(p.get("expires_in") || 3600), user_id: null };
+  try { const u = await (await fetch(`${CONFIG.supabaseUrl}/auth/v1/user`, { headers: { apikey: CONFIG.supabaseKey, Authorization: `Bearer ${session.access_token}` } })).json(); authUser = u; session.user_id = u.id; } catch {}
+  store.set("glowSession", JSON.stringify(session));
+  followAccount(); refreshAccount(); renderSignIn();
+  track("signin_done", { provider: pend && pend.provider, existing: !!(pend && pend.existing) });
+  say(pend && pend.existing ? "Signed in. Your plan and credits are back on this phone." : "Signed in. Your purchases are kept with your account.");
+  return true;
+}
+$("signInRow").addEventListener("click", (e) => { e.preventDefault(); renderSignIn(); $("signInSheet").showModal(); loadAuthUser(); });
+$("signInApple").addEventListener("click", () => startSignIn("apple"));
+$("signInGoogle").addEventListener("click", () => startSignIn("google"));
+$("signOutBtn").addEventListener("click", async () => {
+  // A fresh private account on this phone; the signed-in one keeps everything for next time.
+  session = null; authUser = null; store.set("glowSession", ""); store.set("glowPro", "");
+  $("signInSheet").close();
+  try { await ensureSession(true); } catch {}
+  followAccount(); refreshAccount(); renderSignIn();
+  say("Signed out on this phone. Sign in again any time to get your purchases back.");
+});
+if (location.hash.includes("access_token") || location.hash.includes("error_description")) finishSignIn(location.href);
+if (native && plugins.App) plugins.App.addListener("appUrlOpen", ({ url }) => { if (String(url).startsWith("com.vishx.glow://auth")) finishSignIn(url); });
+renderSignIn();
+
 // One sign-in at a time, so parallel calls can't create two accounts.
 let sessionPromise = null;
 function ensureSession(force) {

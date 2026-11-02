@@ -51,6 +51,8 @@ const FEATURE_AREAS = [
     ["enhance:retouch", "Face Retouch switch", true, "On the Enhance result."],
     ["enhance:colors", "Colors switch", true, "On the Enhance result."],
     ["enhance:blur", "Background Blur switch", true, "On the Enhance result."],
+    ["account:signin", "Sign in with Apple/Google (Settings)", false, "Turn on after the Apple and Google providers are set up in Supabase Auth."],
+    ["money:firstglow", "First glow invite", true, "Until someone has enhanced a photo, Choose a photo reads \"Glow up your first photo · Free\"."],
     ["erase:tap", "Remove: tap to select + find distractions", true, "On-device, free. Adds a Tap mode and a Find distractions button to Remove."],
     ["studio:trends", "Studio: Trends", true, "One-tap templates on the Enhance home (2 credits each)."],
     ["studio:headshots", "Studio: Headshot pack", true, "Four headshot styles (2 credits each)."],

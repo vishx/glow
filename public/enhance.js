@@ -654,6 +654,7 @@ function showEnhResult() {
     store.set("glow.compareZoomHint", "1");
     say(matchMedia("(pointer: coarse)").matches ? "Pinch or double-tap to zoom in" : "Scroll or double-click to zoom in");
   }, 1300);
+  if (!enh.demo && !store.get("glowFirstGlow")) { store.set("glowFirstGlow", "1"); track("first_glow"); if (typeof firstGlow === "function") firstGlow(); }
   introOffer("enhance");   // once per install: the Pro screen, after the reveal and the zoom hint
 }
 setIcon($("enhClose"), "close"); setIcon($("enhDownload"), "save"); setIcon($("enhKnob"), "compare");

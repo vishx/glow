@@ -518,3 +518,12 @@ setIcon($("studioClose"), "close"); setIcon($("studioViewClose"), "close");
 $("studioClose").addEventListener("click", () => $("studio").close());
 $("studioViewClose").addEventListener("click", () => $("studioView").close());
 renderStudioStrip();
+
+// First glow (idea 7): until someone has enhanced a photo, the Enhance home invites them to try
+// their own first, free; the Pro offer (with the trial timeline) only appears after that reveal.
+function firstGlow() {
+  const first = !store.get("glowFirstGlow") && featureOn("money:firstglow");
+  const b = $("enhPick"), lbl = first ? "Glow up your first photo · Free" : "Choose a photo";
+  if (b.lastChild && b.lastChild.nodeType === 3 && b.lastChild.textContent !== lbl) b.lastChild.textContent = lbl;
+}
+firstGlow();

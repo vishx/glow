@@ -491,6 +491,7 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
   <div class="setting">
     <h3>Account</h3>
     <div class="set-list">
+      <a href="#" id="signInRow" hidden><span data-icon="pro"></span><span id="signInLabel">Sign in to keep your purchases</span></a>
       <a href="#" id="subsInfo"><span data-icon="star"></span><span>AI credits and plan</span></a>
       <a href="#" id="manageSubs"><span data-icon="pro"></span><span>Manage subscription</span></a>
       <a href="#" id="shareApp"><span data-icon="share"></span><span>Share Glow Studio</span></a>
@@ -562,6 +563,19 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
 <dialog class="sheet" id="msgsSheet" aria-labelledby="msgsTitle">
   <div class="sheet-head"><h2 class="t-section" id="msgsTitle">Your messages</h2><button class="icon-btn" data-close aria-label="Close"></button></div>
   <div id="msgsBody" class="msgs"></div>
+</dialog>
+
+<dialog class="sheet" id="signInSheet" aria-labelledby="signInTitle">
+  <div class="sheet-head"><h2 class="t-section" id="signInTitle">Keep your purchases safe</h2><button class="icon-btn" data-close aria-label="Close"></button></div>
+  <p id="signInText">Glow Studio works without an account. Sign in to keep your Pro plan and credit packs when you get a new phone or reinstall. Your photos are never uploaded for this.</p>
+  <div class="stack" id="signInBtns">
+    <button class="btn glow signin-apple" id="signInApple">Continue with Apple</button>
+    <button class="btn quiet signin-google" id="signInGoogle">Continue with Google</button>
+  </div>
+  <div class="stack" id="signedInBtns" hidden>
+    <button class="btn quiet" id="signOutBtn">Sign out on this phone</button>
+  </div>
+  <p class="fine" id="signInNote">On a new phone, sign in the same way to get everything back.</p>
 </dialog>
 
 <dialog class="sheet" id="creditsSheet" aria-labelledby="creditsTitle">

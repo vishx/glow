@@ -31,6 +31,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Sign in with Apple/Google comes back to the app through com.vishx.glow://auth -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.vishx.glow" android:host="auth" />
+            </intent-filter>
+
         </activity>
 
         <provider

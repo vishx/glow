@@ -948,7 +948,7 @@ test('settings: Enhance defaults, subscription details, share the app, and sugge
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   await p.evaluate(() => store.set('glow.enhDefaults', JSON.stringify({ blur: 2 })));
   await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
-  eq(await p.$$eval('#enhPrefsList select', (s) => s.map((x) => x.dataset.k + '=' + x.value)), ['face=2', 'bg=2', 'retouch=0', 'colors=0', 'blur=2'], 'each tool shows its default');
+  eq(await p.$$eval('#enhPrefsList select', (s) => s.map((x) => x.dataset.k + '=' + x.value)), ['face=2', 'bg=2', 'retouch=0', 'colors=0', 'blur=2', 'texture=2'], 'each tool shows its default');
   await p.selectOption('#enhPrefsList select[data-k=face]', '3'); await p.selectOption('#enhPrefsList select[data-k=blur]', '0');
   eq(await p.evaluate(() => JSON.parse(store.get('glow.enhDefaults'))), { face: 3 }, 'changes saved; the standard level needs no entry');
   await p.click('#enhPrefsReset'); eq(await p.evaluate(() => store.get('glow.enhDefaults')), '{}', 'reset');
@@ -1238,13 +1238,13 @@ test('enhance sharper: free sends 2-4 tiles under 1 MP each on one credit, and t
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false, ai: { server: 'patched', plus: true } });
 
-test('enhance sharper: Pro sends the ~3 MP copy for Topaz and no tiles', async ({ p, state }) => {
+test('enhance sharper: Pro sends the ~3 MP copy for Topaz, plus tiles as the fallback (bug 19)', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(path.join(fixtures, 'phone-12mp-exif6.jpg'));
   await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
   await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 30000 });
   const b = state.bodies[0], [w, h] = await upSize(p, b.hd);
-  assert(!b.tiles && w * h > 2_500_000 && w * h <= 3_200_000, 'Pro: Topaz copy ~3 MP, no tiles: ' + [w, h]);
+  assert(Array.isArray(b.tiles) && b.tiles.length >= 2 && w * h > 2_500_000 && w * h <= 3_200_000, 'Pro: Topaz copy ~3 MP, tiles for the fallback: ' + [w, h]);
   eq(state.used, 1, 'one credit');
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false, plan: 'pro', quota: 40, ai: { server: 'patched', plus: true } });
@@ -1472,7 +1472,7 @@ test('crop: frame, grid, dimmed outside, hint; drag, wheel, pinch and the zoom s
   await openCropOn(p, fx('coords-600x400.png'));
   const ui = await p.evaluate(() => ({ hint: $('cropHint').textContent, dim: getComputedStyle($('cropBox')).boxShadow, grid: !!$('cropBox').querySelector('.crop-grid'),
     handles: [...document.querySelectorAll('.crop-h')].map((h) => h.dataset.h).sort().join(), touch: getComputedStyle($('cropView')).touchAction,
-    shapes: [...document.querySelectorAll('.panel .opt')].map((b) => b.textContent) }));
+    shapes: [...document.querySelectorAll('.panel .opt:not(.crop-flips .opt)')].map((b) => b.textContent) }));
   eq(ui.hint, 'Drag to reposition · Pinch to zoom', 'hint'); assert(/rgba?\(12, 11, 14/.test(ui.dim), 'outside is dimmed: ' + ui.dim); assert(ui.grid, 'thirds grid');
   eq(ui.handles, 'e,n,ne,nw,s,se,sw,w', 'corner and edge handles'); eq(ui.touch, 'none', 'page does not scroll while touching the crop');
   eq(ui.shapes, ['Free', 'Original', 'Square', '4:5', '3:4', '9:16', '16:9'], 'shapes');
