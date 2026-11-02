@@ -106,8 +106,9 @@ Deno.serve(async (req) => {
     const ids = uuids([event.app_user_id, ...(event.aliases ?? [])]);
     if (!ids.length) return new Response("ignored", { status: 200 });
     const expires = event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null;
-    // RevenueCat retries failed deliveries, so events can arrive late and out of order. An old
-    // EXPIRATION must not undo a newer renewal, and an old renewal must not shorten the plan.
+    // RevenueCat retries failed deliveries, so events can arrive late and out of order: an old
+    // EXPIRATION must not undo a newer renewal. (Active events always apply: a refund arrives as a
+    // CANCELLATION whose expiry is now, and must end Pro.)
     const { data: rows } = await admin.from("profiles").select("id, plan, plan_expires_at").in("id", ids);
     const latest = Math.max(0, ...(rows ?? []).filter((r) => r.plan === "pro" && r.plan_expires_at).map((r) => Date.parse(r.plan_expires_at)));
     if (event.type === "EXPIRATION") {
@@ -117,10 +118,7 @@ Deno.serve(async (req) => {
       }
       await setPlan(ids, "free", null);
     }
-    else if (ACTIVE.has(event.type) && expires) {
-      if (latest > Date.parse(expires) + 60_000) { console.log("revenuecat", event.type, "skipped: older than the expiry on file", ids.join(",")); return new Response("ok (stale)", { status: 200 }); }
-      await setPlan(ids, "pro", expires, periodOf(event.product_id), event.period_type === "TRIAL");
-    }
+    else if (ACTIVE.has(event.type) && expires) await setPlan(ids, "pro", expires, periodOf(event.product_id), event.period_type === "TRIAL");
     else return new Response("ignored", { status: 200 });
     console.log("revenuecat", event.type, event.period_type ?? "", ids.join(","), expires);
     return new Response("ok", { status: 200 });
