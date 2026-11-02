@@ -1,11 +1,11 @@
 {
- "version": "202610354-b84843b8d2",
+ "version": "202610354-5cd891b5b6",
  "build": 202610354,
  "minNative": {
   "android": 4,
   "ios": 2
  },
- "created": "2026-11-02T19:22:17.931Z",
+ "created": "2026-11-02T19:39:12.257Z",
  "files": [
   {
    "file_name": "admin.html",
@@ -328,6 +328,36 @@
    "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/toon3d.jpg"
   },
   {
+   "file_name": "samples/trends/trend_figurine.webp",
+   "file_hash": "2176618d4dd93d80c8a0d8cccf76f5af2e62a876b277434e0b7ec9e54f9a0f30",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/trends/trend_figurine.webp"
+  },
+  {
+   "file_name": "samples/trends/trend_holiday.webp",
+   "file_hash": "2b6ee921938da0c14f199f88bf13a4c615f780ecc8b2f591cca92670258570d9",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/trends/trend_holiday.webp"
+  },
+  {
+   "file_name": "samples/trends/trend_polaroid.webp",
+   "file_hash": "0dec980212adc89351917f8fbff2b9736a65d9b06715ffb1ad7fb38d8b60b942",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/trends/trend_polaroid.webp"
+  },
+  {
+   "file_name": "samples/trends/trend_poster.webp",
+   "file_hash": "5b320329f32fd79aaf293171f5b9a92b016fb1ecf71cd8d3f5a8fa1e734bbdee",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/trends/trend_poster.webp"
+  },
+  {
+   "file_name": "samples/trends/trend_snow.webp",
+   "file_hash": "aaf13feeb3e1a9e5ecd835cb184b4b60ccc5b2811c03faaaeff53bb6e61d6bd5",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/trends/trend_snow.webp"
+  },
+  {
+   "file_name": "samples/trends/trend_yearbook.webp",
+   "file_hash": "7d07d720f2d910ddb9c99f1b74a87c57384c9578ff8e5c609602cef5d42d72ba",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/trends/trend_yearbook.webp"
+  },
+  {
    "file_name": "splash/core.webp",
    "file_hash": "3193ec963d91b952ac80186b9c87930caeaab7d7be1a19a70a633887c09063c1",
    "download_url": "https://glow-photo-enhancer.vercel.app/splash/core.webp"
@@ -344,7 +374,7 @@
   },
   {
    "file_name": "studio.js",
-   "file_hash": "40a3401fbecb9302d1b978b26b5bdfc3fd10dc0fa35a9bd7f5f80dd073db12b9",
+   "file_hash": "8d6dc59398c7354773cc50378e6572cb8a86f91b749fc4a1930c066ee1553fa4",
    "download_url": "https://glow-photo-enhancer.vercel.app/studio.js"
   },
   {

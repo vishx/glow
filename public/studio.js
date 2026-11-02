@@ -9,7 +9,7 @@
 // check: compare the face before and after (styles that redraw the whole picture are skipped).
 // added: when a trend joined (shown as New for a week). season: [fromMonthDay, toMonthDay] it shows.
 // Trends with a sample picture (made once with the real pipeline on the AI-generated sample person).
-const TREND_SAMPLES = [];
+const TREND_SAMPLES = ["trend_figurine", "trend_yearbook", "trend_poster", "trend_polaroid", "trend_snow", "trend_holiday"];
 const TRENDS = [
   { mode: "trend_figurine", name: "Mini Me figurine", desc: "You as a boxed collectible on a desk", icon: "pro", added: "2026-11-02" },
   { mode: "trend_yearbook", name: "Yearbook '98", desc: "A 90s school portrait", icon: "camera", added: "2026-11-02" },
