@@ -1029,10 +1029,20 @@ test('your messages: support replies show in the app; reply back and rate', asyn
     { id: 7, topic: 'ai', status: 'pending', created_at: t, rating: null, unread: true, messages: [{ from: 'you', body: 'Try on failed', at: t }, { from: 'support', body: 'Hi Jane, credits returned.', at: t }] },
     { id: 3, topic: 'billing', status: 'closed', created_at: t, rating: null, unread: false, messages: [{ from: 'you', body: 'Refund?', at: t }, { from: 'support', body: 'Apple handles refunds.', at: t }] },
   ];
-  state.supportBadge = { any: true, unread: 1 };
+  state.supportBadge = { any: true, unread: 1, latest: { id: 7, at: t, preview: 'Hi Jane, credits returned.' } };
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   await p.waitForFunction(() => $('enhSettingsBtn').classList.contains('has-dot'), null, { timeout: 5000 });
-  assert(/support replied/.test(await toast(p)), 'toast: ' + await toast(p));
+  // The "support replied" card: above the tab bar, with the start of the reply; it doesn't use the toast.
+  await p.waitForSelector('#replyCard.on:not([hidden])', { timeout: 5000 });
+  eq(await p.evaluate(() => [$('replyPreview').textContent, $('replyCard').classList.contains('over-nav'), $('toast').classList.contains('on')]), ['“Hi Jane, credits returned.”', true, false], 'reply card with preview, above the tab bar, no toast');
+  const r = await p.evaluate(() => [$('replyCard').getBoundingClientRect().bottom, $('nav').getBoundingClientRect().top]);
+  assert(r[0] <= r[1], 'card sits above the tab bar ' + r);
+  // Close hides it for this reply, also after a reload; the dot stays until it's read.
+  await p.click('#replyX'); await p.waitForFunction(() => $('replyCard').hidden);
+  await p.reload(); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.waitForFunction(() => $('enhSettingsBtn').classList.contains('has-dot'), null, { timeout: 5000 });
+  await p.waitForTimeout(300);
+  eq(await p.evaluate(() => $('replyCard').hidden), true, 'closed card stays closed for the same reply');
   await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
   eq(await p.evaluate(() => [$('myMessages').hidden, $('myMessagesCount').textContent]), [false, '1'], 'Your messages row with count');
   await p.click('#myMessages'); await p.waitForSelector('#msgsSheet[open] .convo');

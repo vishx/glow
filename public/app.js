@@ -298,6 +298,7 @@ function showScreen(id) {
   if (dest) store.set("glowLastDest", dest);
   if (id === "cameraScreen") enterCamera();
   if (id === "editorHome") renderHome();
+  if (typeof showReplyCard === "function" && account) showReplyCard();
   if (id === "enhanceHome" && typeof renderEnhanceHome === "function") renderEnhanceHome();
   syncSystemBars();
   setTimeout(syncBackGuard);
@@ -4041,11 +4042,29 @@ function showSupportBadge() {
   $("myMessagesCount").textContent = s.unread ? String(s.unread) : "";
   $("myMessagesCount").hidden = !s.unread;
   for (const id of ["enhSettingsBtn", "camSettingsBtn", "homeSettingsBtn"]) { const b = $(id); if (b) b.classList.toggle("has-dot", !!s.unread); }
-  if (s.unread && !showSupportBadge.told && !$("msgsSheet").open) {
-    showSupportBadge.told = true;
-    say("Glow Studio support replied to your message.", false, { label: "Read", run: openMessages });
-  }
+  showReplyCard();
 }
+// "Support replied" card: a dark card just above the tab bar on the home screens, with the start of
+// the reply, Read and a close button. Closing it hides that reply's card for good (a newer reply
+// shows again); the dot and the count in Settings stay until the reply is read.
+function showReplyCard() {
+  const s = (account && account.support) || {}, card = $("replyCard");
+  const key = s.latest ? `${s.latest.id}:${s.latest.at}` : s.unread ? "n" + s.unread : "";
+  const home = screen === "enhanceHome" || screen === "editorHome";   // never over the camera or an edit
+  const show = !!s.unread && home && !$("msgsSheet").open && store.get("glow.replyDismissed") !== key;
+  if (show) {
+    $("replyPreview").textContent = s.latest && s.latest.preview ? `“${s.latest.preview}”` : "Tap to read the reply.";
+    card.dataset.key = key;
+  }
+  card.classList.toggle("over-nav", !$("nav").hidden);
+  if (show === !card.hidden) return;
+  card.hidden = !show;
+  if (show) { requestAnimationFrame(() => card.classList.add("on")); track("support_reply_card"); } else card.classList.remove("on");
+}
+const readReply = () => { $("replyCard").hidden = true; openMessages(); };
+$("replyRead").addEventListener("click", readReply);
+$("replyGo").addEventListener("click", readReply);
+$("replyX").addEventListener("click", () => { store.set("glow.replyDismissed", $("replyCard").dataset.key || ""); showReplyCard(); });
 const SUPPORT_TOPICS = { billing: "Subscription or payment", ai: "AI tool or credits", bug: "Something isn't working", privacy: "My data or privacy", other: "General question" };
 function mk(tag, cls, text) { const el = document.createElement(tag); if (cls) el.className = cls; if (text != null) el.textContent = text; return el; }
 // Screenshots on a support message (migration 018): up to 3, shrunk to 1600px JPEG before sending, so a
@@ -4091,7 +4110,7 @@ async function openMessages() {
   if (!$("msgsSheet").open) $("msgsSheet").showModal();
   try { renderMessages(await call("account", { method: "POST", body: JSON.stringify({ supportList: true }) })); }
   catch (e) { body.replaceChildren(mk("p", "empty", e.message)); return; }
-  if (account && account.support) { account.support.unread = 0; showSupportBadge(); }
+  if (account && account.support) { account.support.unread = 0; account.support.latest = null; showSupportBadge(); }
 }
 $("myMessages").addEventListener("click", (e) => { e.preventDefault(); openMessages(); });
 function renderMessages(d) {

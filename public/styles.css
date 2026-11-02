@@ -1454,3 +1454,21 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
 .msgs .acts .shots { margin-right: auto; }
 .msgs .b-shots { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .msgs .b-shots img { width: 96px; height: 96px; object-fit: cover; border-radius: 10px; display: block; }
+
+/* "Support replied" card, above the tab bar on the home screens. */
+.reply-card { position: fixed; left: 12px; right: 12px; bottom: calc(12px + var(--sa-bottom)); z-index: 40; max-width: 520px; margin: 0 auto;
+  display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 4px 10px; padding: 12px 8px 12px 14px;
+  background: #18181c; border: 1px solid rgb(243 192 98 / 0.4); border-radius: 18px; box-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: var(--text);
+  opacity: 0; transform: translateY(16px); transition: opacity .25s ease, transform .25s ease; }
+.reply-card.over-nav { bottom: calc(var(--nav-h) + var(--sa-bottom) + 10px); }
+.reply-card.on { opacity: 1; transform: none; }
+.reply-card[hidden] { display: none; }
+.reply-card .reply-ic { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: rgb(243 192 98 / 0.16); color: rgb(243 192 98); }
+.reply-card .reply-ic svg { width: 20px; height: 20px; }
+.reply-card .reply-body { all: unset; cursor: pointer; display: grid; gap: 2px; min-width: 0; }
+.reply-card .reply-body strong { font-size: 0.9375rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reply-card .reply-body span { font-size: 0.8125rem; line-height: 1.35; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.reply-card .reply-go { min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--cta); color: var(--cta-fg); font: inherit; font-weight: 700; font-size: 0.875rem; cursor: pointer; }
+.reply-card .reply-x { width: 36px; height: 36px; border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; border-radius: 50%; }
+@media (prefers-reduced-motion: reduce) { .reply-card { transition: none; } }

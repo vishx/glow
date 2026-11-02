@@ -431,6 +431,15 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="reply-card" id="replyCard" role="status" aria-live="polite" hidden>
+  <span class="reply-ic" data-icon="chat"></span>
+  <button class="reply-body" id="replyRead" type="button">
+    <strong>Support replied</strong>
+    <span id="replyPreview">Tap to read the reply.</span>
+  </button>
+  <button class="reply-go" id="replyGo" type="button">Read</button>
+  <button class="reply-x" id="replyX" type="button" aria-label="Dismiss">×</button>
+</div>
 <div class="sr-only" id="alertLive" role="alert" aria-live="assertive"></div>
 <input type="file" id="file" accept="image/*" hidden>
 <input type="file" id="files" accept="image/*" multiple hidden>

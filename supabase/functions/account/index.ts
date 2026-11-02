@@ -119,10 +119,18 @@ type Req = { id: number; topic: string; message: string; status: string; created
 // How many conversations have a reply the person hasn't seen, and whether they have any at all
 // (the app shows "Your messages" in Settings only then). Quietly nothing before migration 017.
 async function supportUnread(uid: string) {
-  const { data, error } = await admin.from("support_requests").select("last_reply_at, user_seen_at").eq("user_id", uid).limit(50);
+  const { data, error } = await admin.from("support_requests").select("id, last_reply_at, user_seen_at").eq("user_id", uid).limit(50);
   if (error || !data) return { any: false, unread: 0 };
-  const unread = data.filter((r) => r.last_reply_at && (!r.user_seen_at || r.last_reply_at > r.user_seen_at)).length;
-  return { any: data.length > 0, unread };
+  const open = data.filter((r) => r.last_reply_at && (!r.user_seen_at || r.last_reply_at > r.user_seen_at))
+    .sort((a, b) => (a.last_reply_at < b.last_reply_at ? 1 : -1));
+  // The start of the newest unseen reply, for the "support replied" card in the app.
+  let latest = null;
+  if (open.length) {
+    const { data: m } = await admin.from("support_messages").select("body, created_at").eq("request_id", open[0].id).eq("author", "admin")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (m) latest = { id: open[0].id, at: m.created_at, preview: String(m.body).replace(/\s+/g, " ").trim().slice(0, 140) };
+  }
+  return { any: data.length > 0, unread: open.length, latest };
 }
 
 async function supportList(uid: string) {
