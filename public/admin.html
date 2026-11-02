@@ -95,8 +95,19 @@
   .login-mark { width: 52px; height: 52px; border-radius: 14px; display: block; margin-bottom: 18px; }
   .login-card h1 { font: 600 28px/1.15 var(--display); margin: 0 0 8px; }
   .login-card p { margin: 0 0 20px; }
-  .login-card input[type=password] { width: 100%; min-height: 48px; font-size: 16px; }
-  .check { display: flex; align-items: center; gap: 10px; margin: 16px 0 20px; color: var(--muted); cursor: pointer; }
+  #codeInput { font-size: 24px; letter-spacing: 0.2em; text-align: center; }
+  .sec-banner { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-color: rgb(243 192 98 / 0.45); }
+  .sec-banner p { margin: 4px 0 0; }
+  .sec-banner .btn { width: auto; }
+  .qr { background: #fff; border-radius: 12px; padding: 8px; width: 200px; margin: 8px auto 12px; }
+  .qr svg { display: block; width: 100%; height: auto; }
+  pre.codes { background: var(--card-2); border-radius: 12px; padding: 12px 14px; font: 600 17px/1.6 ui-monospace, Menlo, monospace; letter-spacing: 0.04em; white-space: pre-wrap; user-select: all; margin: 8px 0 12px; }
+  pre.codes.key { font-size: 15px; }
+  ol.steps { padding-left: 20px; line-height: 1.6; }
+  dd.warn { color: var(--warn); }
+  .login-card input[type=password], #codeInput { width: 100%; box-sizing: border-box; min-height: 48px; font-size: 16px; }
+  .check input, .sheet .check input { width: auto; min-height: 0; flex: none; margin: 0; }
+  .check, .sheet label.check { display: flex; font-weight: 400; font-size: 15px; align-items: center; gap: 10px; margin: 16px 0 20px; color: var(--muted); cursor: pointer; }
   .login-card .btn { width: 100%; min-height: 48px; font-size: 16px; }
   #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--bg); font-weight: 600; padding: 10px 18px; border-radius: 14px; display: none; z-index: 5; max-width: 90vw; }
   #toast.bad { background: var(--bad); color: #2a0b0b; }
@@ -199,11 +210,18 @@
   <div class="login-card">
     <img class="login-mark" src="/icon-192.png" alt="">
     <h1>Glow Studio <em style="font-style:normal;background:var(--gold);-webkit-background-clip:text;background-clip:text;color:transparent">admin</em></h1>
-    <p class="muted">Enter your admin key. It's the ADMIN_KEY secret in Supabase.</p>
+    <p class="muted" id="keyIntro">Enter your admin key. It's the ADMIN_KEY secret in Supabase.</p>
     <form id="loginForm">
       <input id="keyInput" type="password" autocomplete="current-password" placeholder="Admin key" aria-label="Admin key" required>
       <label class="check"><input type="checkbox" id="remember"> Remember on this device</label>
       <button class="btn" type="submit">Open</button>
+    </form>
+    <form id="codeForm" hidden>
+      <p class="muted" style="margin:0 0 12px">Two-step login is on. Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
+      <input id="codeInput" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="123456" aria-label="Code" required>
+      <label class="check"><input type="checkbox" id="trustDevice"> Trust this device for 30 days</label>
+      <button class="btn" type="submit">Verify</button>
+      <button class="btn ghost" type="button" id="codeBack" style="margin-top:8px">Use a different admin key</button>
     </form>
   </div>
 </div>
@@ -220,6 +238,7 @@
       <button data-tab="errors">App errors</button>
       <button data-tab="abuse">Blocking</button>
       <button data-tab="log">Change log</button>
+      <button data-tab="security">Security</button>
     </nav>
     <div class="head-actions">
       <button class="btn ghost" id="refresh">Refresh</button>
@@ -236,6 +255,8 @@ const API = "https://vahtdouihsnpnaskrtka.supabase.co/functions/v1/admin";
 const APIKEY = "sb_publishable_UH4edWInYXUknGg_Piqkeg_8fvxPL0b";
 const $ = (id) => document.getElementById(id);
 let key = sessionStorage.getItem("glowAdminKey") || localStorage.getItem("glowAdminKey") || "";
+// Two-step login (migration 019): the token this browser got for a correct authenticator code.
+let session = sessionStorage.getItem("glowAdminSession") || localStorage.getItem("glowAdminSession") || "";
 let tab = location.hash.slice(1) || "overview";
 
 // Builds elements without ever treating data as HTML (support messages come from the public).
@@ -282,24 +303,50 @@ function ask({ title, what, points = [], field, ok = "Confirm", danger = false }
 const NOTE = { label: "Note for the change log", placeholder: "e.g. My own account, or why you did this" };
 
 async function api(action, args = {}) {
-  const res = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json", apikey: APIKEY, "x-admin-key": key },
+  const res = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json", apikey: APIKEY, "x-admin-key": key, ...(session ? { "x-admin-session": session } : {}) },
     body: JSON.stringify({ action, ...args }) });
   const data = await res.json().catch(() => ({ error: `Error ${res.status}` }));
   if (res.status === 401) { signOut(); throw new Error(data.error || "Wrong admin key."); }
+  if (res.status === 403 && data.needCode) { setSession(""); askCode(); throw new Error(data.error); }
   if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
   return data;
 }
 
-function signOut() { key = ""; sessionStorage.removeItem("glowAdminKey"); localStorage.removeItem("glowAdminKey"); $("app").hidden = true; $("login").hidden = false; }
+function setSession(token, remember) {
+  session = token; sessionStorage.removeItem("glowAdminSession"); localStorage.removeItem("glowAdminSession");
+  if (token) (remember ? localStorage : sessionStorage).setItem("glowAdminSession", token);
+}
+function signOut() {
+  key = ""; setSession(""); sessionStorage.removeItem("glowAdminKey"); localStorage.removeItem("glowAdminKey");
+  $("app").hidden = true; $("login").hidden = false; $("loginForm").hidden = false; $("keyIntro").hidden = false; $("codeForm").hidden = true;
+}
+// The second step: the admin key was right, now the code from the authenticator app.
+function askCode() {
+  $("app").hidden = true; $("login").hidden = false; $("loginForm").hidden = true; $("keyIntro").hidden = true; $("codeForm").hidden = false;
+  $("codeInput").value = ""; setTimeout(() => $("codeInput").focus(), 30);
+}
 $("logout").onclick = signOut;
+$("codeBack").onclick = signOut;
 $("loginForm").onsubmit = async (e) => {
   e.preventDefault();
   key = $("keyInput").value.trim();
   try {
-    await api("audit");
+    const st = await api("twoStepStatus");
     (($("remember").checked) ? localStorage : sessionStorage).setItem("glowAdminKey", key);
-    start();
+    if (st.enabled && !session) askCode(); else start();
   } catch (err) { toast(err.message, true); }
+};
+$("codeForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const btn = e.submitter; if (btn) btn.disabled = true;
+  try {
+    const r = await api("twoStepLogin", { code: $("codeInput").value.trim(), remember: $("trustDevice").checked });
+    if (r.token) setSession(r.token, $("trustDevice").checked);
+    $("codeForm").hidden = true; $("loginForm").hidden = false; $("keyIntro").hidden = false;
+    start();
+    if (r.recoveryLeft != null && r.recoveryLeft <= 2) toast(`Only ${r.recoveryLeft} recovery codes left. Make new ones under Security.`, true);
+  } catch (err) { toast(err.message, true); $("codeInput").select(); }
+  finally { if (btn) btn.disabled = false; }
 };
 $("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) show(b.dataset.tab); };
 $("refresh").onclick = () => show(tab);
@@ -450,7 +497,12 @@ const VIEWS = {
   },
 
   async overview() {
-    const o = await api("overview", { days: 14 });
+    const [o, sec] = await Promise.all([api("overview", { days: 14 }), api("twoStepStatus").catch(() => null)]);
+    const secBanner = sec && sec.available && !sec.enabled
+      ? h("section", { class: "card sec-banner" }, h("div", {}, h("b", {}, "Protect the admin page with two-step login"),
+          h("p", { class: "muted" }, "Anyone with your admin key can open this page. Add a code from an authenticator app so the key alone isn't enough.")),
+          h("button", { class: "btn", type: "button", onclick: () => show("security") }, "Set it up"))
+      : "";
     const today = o.daily[0] || {}, week = o.daily.slice(0, 7);
     const sum = (k) => week.reduce((n, d) => n + Number(d[k] || 0), 0);
     const failRate = today.ai_runs ? Math.round((today.ai_failed / today.ai_runs) * 100) : 0;
@@ -461,6 +513,7 @@ const VIEWS = {
       : h("div", { class: "tile" + (alert ? " alert" : "") }, h("b", {}, v), h("span", {}, label));
     const jump = (id) => { const el = $(id); if (!el) return; el.scrollIntoView({ behavior: "smooth", block: "start" }); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); };
     return [
+      secBanner,
       h("div", { class: "tiles" },
         tile(o.plans.accounts, "Accounts", false, "users", "Open Users"),
         tile(o.plans.pro_weekly + o.plans.pro_yearly + o.plans.pro_other, `Pro now (${o.plans.pro_weekly} weekly, ${o.plans.pro_yearly} yearly${o.plans.pro_other ? `, ${o.plans.pro_other} free` : ""})`, false, "users/pro", "See the Pro accounts"),
@@ -663,6 +716,38 @@ const VIEWS = {
           { t: "Account", f: (r) => h("span", {}, userLink(r.id), r.contact_name || r.contact_email ? h("div", { class: "muted small" }, r.contact_name || r.contact_email) : "") },
           { t: "Reason", f: (r) => r.blocked_reason || "" }, { t: "Since", f: (r) => when(r.blocked_at) },
         ], users, "No blocked accounts."))];
+  },
+
+  // Two-step login: turn it on (QR code for an authenticator app, then recovery codes), see signed-in
+  // devices, sign every device out, or turn it off.
+  async security() {
+    const st = await api("twoStepStatus");
+    if (!st.available) return h("section", { class: "card" }, h("h2", {}, "Two-step login"),
+      h("p", {}, "Run migration 019 (019_admin_two_step.sql) in the Supabase SQL editor to turn this on."));
+    if (!st.enabled) return h("section", { class: "card" }, h("h2", {}, "Two-step login is off"),
+      h("p", {}, "Right now the admin key alone opens this page. With two-step login, you also enter a 6-digit code from an authenticator app on your phone, which changes every 30 seconds."),
+      h("ol", { class: "steps" },
+        h("li", {}, "Install an authenticator app if you don't have one: Google Authenticator, Microsoft Authenticator or 1Password all work."),
+        h("li", {}, "Tap Set up, then scan the QR code with the app (or type the key)."),
+        h("li", {}, "Enter the code the app shows, and save the recovery codes somewhere safe.")),
+      h("button", { class: "btn", type: "button", onclick: setupTwoStep }, "Set up two-step login"));
+    return h("section", { class: "card" }, h("h2", {}, "Two-step login is on"),
+      h("dl", { class: "kv" },
+        h("dt", {}, "On since"), h("dd", {}, when(st.since)),
+        h("dt", {}, "Signed-in devices"), h("dd", {}, String(st.devices)),
+        h("dt", {}, "Recovery codes left"), h("dd", { class: st.recoveryLeft <= 2 ? "warn" : "" }, `${st.recoveryLeft} of 8`)),
+      h("p", { class: "muted" }, "Lost your phone? Sign in with a recovery code, then turn two-step login off and on again to link the new phone. Each recovery code works once."),
+      h("div", { class: "row" },
+        h("button", { class: "btn ghost", type: "button", onclick: async () => {
+          if (await ask({ title: "Sign out every device?", what: "Every browser, this one too, will need the admin key and a new code.", ok: "Sign out all" }) === null) return;
+          await api("twoStepSignOutAll"); setSession(""); askCode();
+        } }, "Sign out all devices"),
+        h("button", { class: "btn ghost", type: "button", onclick: async () => {
+          const code = await ask({ title: "Turn off two-step login?", what: "The admin key alone will open this page again. Enter a current code to confirm.",
+            field: { label: "Code from your app", placeholder: "123456", optional: false }, ok: "Turn off", danger: true });
+          if (!code) return;
+          try { await api("twoStepOff", { code }); setSession(""); toast("Two-step login is off."); show("security"); } catch (e) { toast(e.message, true); }
+        } }, "Turn off")));
   },
 
   async log() {
@@ -908,6 +993,49 @@ async function macroManager() {
 }
 
 // Spreadsheet download of what's on screen.
+// Turning on two-step login: QR code + key, the first code, then the recovery codes (shown once).
+async function setupTwoStep() {
+  let d;
+  try { d = await api("twoStepSetup"); } catch (e) { return toast(e.message, true); }
+  if (!window.qrcode) await new Promise((ok) => { const sc = document.createElement("script"); sc.src = "/vendor/qrcode.js"; sc.onload = sc.onerror = ok; document.head.append(sc); });
+  const qr = h("div", { class: "qr" });
+  try { const q = window.qrcode(0, "M"); q.addData(d.uri); q.make(); qr.innerHTML = q.createSvgTag({ cellSize: 5, margin: 2, scalable: true }); } catch { qr.hidden = true; }
+  const code = h("input", { type: "text", inputmode: "numeric", autocomplete: "one-time-code", maxlength: "7", placeholder: "123456", "aria-label": "Code from your app" });
+  const trust = h("input", { type: "checkbox" });
+  const done = () => bg.remove();
+  const confirm = h("button", { class: "btn", type: "button", onclick: async () => {
+      confirm.disabled = true;
+      try {
+        const r = await api("twoStepConfirm", { code: code.value.trim(), remember: trust.checked });
+        setSession(r.token, trust.checked);
+        sheet.replaceChildren(
+          h("h3", {}, "Two-step login is on"),
+          h("p", { class: "what" }, "Save these recovery codes somewhere safe, like a password manager. If you lose your phone, each one lets you in once. They won't be shown again."),
+          h("pre", { class: "codes" }, r.recovery.join("\n")),
+          h("div", { class: "btns" },
+            h("button", { class: "btn ghost", type: "button", onclick: () => { navigator.clipboard?.writeText(r.recovery.join("\n")).then(() => toast("Copied.")); } }, "Copy"),
+            h("button", { class: "btn ghost", type: "button", onclick: () => {
+              const a = h("a", { href: URL.createObjectURL(new Blob([`Glow Studio admin recovery codes (${new Date().toLocaleDateString()})\n\n${r.recovery.join("\n")}\n`], { type: "text/plain" })), download: "glow-admin-recovery-codes.txt" });
+              a.click();
+            } }, "Download"),
+            h("button", { class: "btn", type: "button", onclick: () => { done(); show("security"); } }, "I've saved them")));
+      } catch (e) { toast(e.message, true); confirm.disabled = false; }
+    } }, "Turn on");
+  const sheet = h("div", { class: "sheet", role: "dialog", "aria-modal": "true", "aria-label": "Set up two-step login" },
+    h("h3", {}, "Set up two-step login"),
+    h("p", { class: "what" }, "1. In your authenticator app, add an account and scan this QR code."),
+    qr,
+    h("p", { class: "what" }, "Can't scan? On this phone, ", h("a", { href: d.uri }, "open it in the app"), ", or type this key:"),
+    h("pre", { class: "codes key" }, d.secret.replace(/(.{4})/g, "$1 ").trim()),
+    h("p", { class: "what" }, "2. Enter the 6-digit code the app now shows."),
+    code,
+    h("label", { class: "check" }, trust, " Trust this device for 30 days"),
+    h("div", { class: "btns" }, h("button", { class: "btn ghost", type: "button", onclick: done }, "Cancel"), confirm));
+  const bg = h("div", { class: "sheet-bg" }, sheet);
+  document.body.append(bg);
+  setTimeout(() => code.focus(), 50);
+}
+
 function downloadCsv(name, rows, cols) {
   const cell = (v) => { const s = v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const csv = [cols.join(","), ...rows.map((r) => cols.map((c) => cell(r[c])).join(","))].join("\n");

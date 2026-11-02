@@ -1,6 +1,8 @@
 // The Glow Studio admin page (/admin) talks to this function. Every request must carry the owner's
 // admin key (the ADMIN_KEY secret) in the x-admin-key header; nothing else can reach it.
 // POST { action, ...args }. Needs migrations 009 and 010 (017 for the support inbox). Every change is written to admin_audit.
+// Two-step login (migration 019): once turned on, every action also needs an x-admin-session token,
+// which the page gets by sending a 6-digit authenticator code (or a recovery code) to twoStepLogin.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -8,7 +10,7 @@ const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE
 const KEY = Deno.env.get("ADMIN_KEY") ?? "";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "x-admin-key, content-type, apikey, authorization",
+  "Access-Control-Allow-Headers": "x-admin-key, x-admin-session, content-type, apikey, authorization",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const json = (body: unknown, status = 200) =>
@@ -57,6 +59,67 @@ async function sendReplyEmail(to: string, name: string, id: number, body: string
     return { ok: false, error: String(err?.message || `Email service error ${res.status}`).slice(0, 200) };
   } catch (e) { return { ok: false, error: String(e).slice(0, 200) }; }
 }
+
+// ---------- Two-step login (migration 019) ----------
+// TOTP (RFC 6238): 6 digits, 30 seconds, SHA-1, the standard every authenticator app reads.
+const B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+function b32enc(bytes: Uint8Array) {
+  let bits = 0, val = 0, out = "";
+  for (const b of bytes) { val = ((val << 8) | b) & 0xffff; bits += 8; while (bits >= 5) { out += B32[(val >>> (bits - 5)) & 31]; bits -= 5; } }
+  if (bits > 0) out += B32[(val << (5 - bits)) & 31];
+  return out;
+}
+function b32dec(s: string): Uint8Array<ArrayBuffer> {
+  let bits = 0, val = 0; const out: number[] = [];
+  for (const c of s.toUpperCase().replace(/[^A-Z2-7]/g, "")) { val = ((val << 5) | B32.indexOf(c)) & 0xffff; bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 255); bits -= 8; } }
+  return new Uint8Array(out);
+}
+async function hotp(secret: Uint8Array<ArrayBuffer>, counter: number) {
+  const buf = new ArrayBuffer(8), v = new DataView(buf);
+  v.setUint32(0, Math.floor(counter / 2 ** 32)); v.setUint32(4, counter >>> 0);
+  const k = await crypto.subtle.importKey("raw", secret, { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+  const hm = new Uint8Array(await crypto.subtle.sign("HMAC", k, buf));
+  const o = hm[hm.length - 1] & 15;
+  const n = ((hm[o] & 127) << 24) | (hm[o + 1] << 16) | (hm[o + 2] << 8) | hm[o + 3];
+  return String(n % 1_000_000).padStart(6, "0");
+}
+// The code now, or the one just before or after (phones' clocks drift a little).
+async function totpOk(secretB32: string, code: string, at = Date.now()) {
+  if (!/^\d{6}$/.test(code)) return false;
+  const t = Math.floor(at / 30000), key = b32dec(secretB32);
+  for (const d of [0, -1, 1]) if (await hotp(key, t + d) === code) return true;
+  return false;
+}
+const sha = async (t: string) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+const randomHex = (n: number) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
+type Sec = { totp_secret: string | null; pending_secret: string | null; enabled_at: string | null; recovery_hashes: string[] };
+// null before migration 019 (two-step login then simply isn't available, and the key alone works).
+async function security(): Promise<Sec | null> {
+  const { data, error } = await admin.from("admin_security").select("*").eq("id", 1).maybeSingle();
+  return error ? null : (data as Sec | null) ?? { totp_secret: null, pending_secret: null, enabled_at: null, recovery_hashes: [] };
+}
+async function sessionOk(token: string | null) {
+  if (!token || !/^[0-9a-f]{64}$/.test(token)) return false;
+  const hash = await sha(token);
+  const { data } = await admin.from("admin_sessions").select("expires_at, last_used_at").eq("token_hash", hash).maybeSingle();
+  if (!data || new Date(data.expires_at).getTime() < Date.now()) return false;
+  if (Date.now() - new Date(data.last_used_at).getTime() > 3600e3) admin.from("admin_sessions").update({ last_used_at: new Date().toISOString() }).eq("token_hash", hash).then(() => {});
+  return true;
+}
+async function newSession(remember: boolean, device: string) {
+  const token = randomHex(32), days = remember ? 30 : 0.5;
+  const expires = new Date(Date.now() + days * 864e5).toISOString();
+  must(await admin.from("admin_sessions").insert({ token_hash: await sha(token), expires_at: expires, device: device.slice(0, 160) || null }));
+  admin.from("admin_sessions").delete().lt("expires_at", new Date().toISOString()).then(() => {});
+  return { token, expires };
+}
+// 5 wrong codes in 10 minutes stops further tries for a while, so a stolen admin key can't guess the code.
+async function tooManyTries() {
+  const { count } = await admin.from("admin_login_attempts").select("id", { count: "exact", head: true }).eq("ok", false).gte("created_at", new Date(Date.now() - 10 * 60e3).toISOString());
+  return (count ?? 0) >= 5;
+}
+const recoveryNorm = (c: string) => c.toLowerCase().replace(/[^a-z0-9]/g, "");
+let currentDevice = "";
 
 const must = <T>(r: { data: T; error: { message: string } | null }) => {
   if (r.error) throw new Error(r.error.message);
@@ -489,6 +552,74 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
     return { user_id: id, label };
   },
 
+  // ---------- Two-step login (migration 019) ----------
+  async twoStepStatus() {
+    const sec = await security();
+    if (!sec) return { available: false, enabled: false };
+    const { count } = await admin.from("admin_sessions").select("token_hash", { count: "exact", head: true }).gt("expires_at", new Date().toISOString());
+    return { available: true, enabled: !!sec.enabled_at, since: sec.enabled_at, recoveryLeft: sec.recovery_hashes.length, devices: count ?? 0 };
+  },
+
+  // Step 1 of turning it on: a new secret for the authenticator app (scan the QR code or type the key).
+  async twoStepSetup() {
+    const sec = await security();
+    if (!sec) throw new HttpError("Run migration 019 (two-step login) in the Supabase SQL editor first.");
+    if (sec.enabled_at) throw new HttpError("Two-step login is already on.");
+    const secret = b32enc(crypto.getRandomValues(new Uint8Array(20)));
+    must(await admin.from("admin_security").update({ pending_secret: secret, updated_at: new Date().toISOString() }).eq("id", 1));
+    return { secret, uri: `otpauth://totp/Glow%20Studio:admin?secret=${secret}&issuer=Glow%20Studio&algorithm=SHA1&digits=6&period=30` };
+  },
+
+  // Step 2: the first code from the app proves it's set up. Turns it on and returns 8 recovery codes, shown once.
+  async twoStepConfirm(a) {
+    const sec = await security();
+    if (!sec?.pending_secret) throw new HttpError("Start the setup again.");
+    if (!(await totpOk(sec.pending_secret, text(a.code, 10).replace(/\s/g, "")))) throw new HttpError("That code didn't match. Check the time on your phone and try the newest code.");
+    const recovery = Array.from({ length: 8 }, () => { const x = randomHex(5); return `${x.slice(0, 5)}-${x.slice(5)}`; });
+    must(await admin.from("admin_security").update({ totp_secret: sec.pending_secret, pending_secret: null, enabled_at: new Date().toISOString(),
+      recovery_hashes: await Promise.all(recovery.map((c) => sha(recoveryNorm(c)))), updated_at: new Date().toISOString() }).eq("id", 1));
+    await audit("two_step_on", null, {});
+    return { ...(await newSession(a.remember === true, currentDevice)), recovery };
+  },
+
+  // The second step of signing in: a code from the app, or one of the recovery codes (each works once).
+  async twoStepLogin(a) {
+    const sec = await security();
+    if (!sec?.enabled_at || !sec.totp_secret) return { notNeeded: true };
+    if (await tooManyTries()) throw new HttpError("Too many wrong codes. Wait 10 minutes and try again.");
+    const code = text(a.code, 20);
+    let ok = await totpOk(sec.totp_secret, code.replace(/\s/g, "")), usedRecovery = false;
+    if (!ok && recoveryNorm(code).length === 10) {
+      const hash = await sha(recoveryNorm(code));
+      if (sec.recovery_hashes.includes(hash)) {
+        ok = usedRecovery = true;
+        must(await admin.from("admin_security").update({ recovery_hashes: sec.recovery_hashes.filter((x) => x !== hash) }).eq("id", 1));
+      }
+    }
+    await admin.from("admin_login_attempts").insert({ ok });
+    if (!ok) throw new HttpError("That code didn't match. Use the newest code in your authenticator app.");
+    if (usedRecovery) await audit("two_step_recovery_used", null, { left: sec.recovery_hashes.length - 1 });
+    return { ...(await newSession(a.remember === true, currentDevice)), recoveryLeft: sec.recovery_hashes.length - (usedRecovery ? 1 : 0) };
+  },
+
+  // Signs every browser out of the admin page (they'll need a new code). Needs a signed-in session.
+  async twoStepSignOutAll() {
+    must(await admin.from("admin_sessions").delete().neq("token_hash", ""));
+    await audit("two_step_sign_out_all", null, {});
+    return { done: true };
+  },
+
+  // Turns it off. Needs a signed-in session and a current code.
+  async twoStepOff(a) {
+    const sec = await security();
+    if (!sec?.totp_secret) return { enabled: false };
+    if (!(await totpOk(sec.totp_secret, text(a.code, 10).replace(/\s/g, "")))) throw new HttpError("That code didn't match.");
+    must(await admin.from("admin_security").update({ totp_secret: null, pending_secret: null, enabled_at: null, recovery_hashes: [], updated_at: new Date().toISOString() }).eq("id", 1));
+    must(await admin.from("admin_sessions").delete().neq("token_hash", ""));
+    await audit("two_step_off", null, {});
+    return { enabled: false };
+  },
+
   async removeTester(a) {
     const id = userId(a.user);
     must(await admin.from("feature_testers").delete().eq("user_id", id));
@@ -508,6 +639,14 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const run = actions[body?.action];
   if (!run) return json({ error: "Unknown action" }, 400);
+  currentDevice = (req.headers.get("user-agent") ?? "").replace(/\s*\([^)]*\)\s*/, " ").trim();
+  // Two-step login: with it on, everything except checking the code needs a signed-in session.
+  if (body.action !== "twoStepStatus" && body.action !== "twoStepLogin") {
+    const sec = await security();
+    if (sec?.enabled_at && !(await sessionOk(req.headers.get("x-admin-session")))) {
+      return json({ error: "Enter the 6-digit code from your authenticator app.", needCode: true }, 403);
+    }
+  }
   try {
     return json(await run(body));
   } catch (e) {
