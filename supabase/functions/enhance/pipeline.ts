@@ -228,7 +228,7 @@ export function okFaceSheet(v: unknown): v is string {
 // A user prompt is plain text: one line, at most 200 characters, no control characters.
 // Words that ask for nudity, sexual content or revealing clothes (swimwear, underwear), in the
 // languages the app is used in most.
-const UNSAFE = /\b(nude|nudity|naked|topless|bottomless|nsfw|porn\w*|sex(y|ual|ier)?|erotic\w*|lingerie|undress\w*|unclothed|see[- ]?through|bare (breasts?|chest|butt)|nipples?|genital\w*|desnud[ao]s?|nackt|nue|seins? nus?|telanjang|bugil|bikinis?|biquinis?|swim ?suits?|swimwear|bathing ?suits?|monokinis?|underwear|undies|bras?|bralettes?|panties|knickers|thongs?|g-?strings?|tanga|skimpy|revealing|cleavage|(less|no|without|fewer) (clothes|clothing)|ropa interior|sujetador|sous-v[eê]tements?|unterw[aä]sche|dessous|pakaian dalam)\b/i;
+const UNSAFE = /\b(nude|nudity|naked|topless|bottomless|nsfw|porn\w*|sex(y|ual|ier)?|erotic\w*|lingerie|undress\w*|unclothed|see[- ]?through|bare (breasts?|chest|butt)|nipples?|genital\w*|desnud[ao]s?|nackt|nue|seins? nus?|telanjang|bugil|bikinis?|biquinis?|swim ?suits?|swimwear|bathing ?suits?|monokinis?|underwear|undies|bras?|bralettes?|panties|knickers|thongs?|g-?strings?|tanga|skimpy|revealing|cleavage|(less|no|without|fewer) (clothes|clothing)|ropa interior|sujetador|sous-v[eê]tements?|unterw[aä]sche|pakaian dalam)\b/i;
 export function unsafePrompt(v: unknown): boolean {
   return typeof v === "string" && UNSAFE.test(v);
 }
