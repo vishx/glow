@@ -115,7 +115,7 @@ export const MODES: Record<string, Mode> = {
   // own face back if the model moved it.
   custom: { ...edit("Make this photo look its best"), userPrompt: "Edit this photo: {p}." + SAME },
   // Trends gallery: one-tap templates, no typing. Same charge as an AI edit (2 credits, migration 021).
-  trend_figurine: look("Create a 1/7 scale commercialized collectible figurine of the person in this photo, in a realistic style, standing on a round clear acrylic base on a tidy computer desk. Beside it, a colorful toy packaging box printed with the same figurine artwork. Soft indoor light, photorealistic product photo.", KEEP_FACE),
+  trend_figurine: look("Turn the person in this photo into a small handmade toy figurine, about the size of a coffee mug, standing on a round clear stand on a tidy wooden desk, with a plain illustrated gift box behind it. Same hair, outfit and friendly expression, cute but recognizable. Soft daylight, realistic close-up photo.", KEEP_FACE),
   trend_yearbook: look("Restyle this as a 1998 American high school yearbook portrait: soft mottled blue studio backdrop, gentle flash, slightly grainy film look, late-90s hair and clothes styling, head-and-shoulders framing.", KEEP_FACE),
   trend_poster: look("Turn this photo into a dramatic cinematic movie poster: the person as the lead, moody teal and orange color grade, dramatic rim light, a blurred epic scene behind, and an elegant title area left empty at the bottom with no readable text.", KEEP_FACE),
   trend_snow: look("Make it a magical winter scene: soft snow falling around the person, a few snowflakes in their hair, cool crisp daylight with a warm glow on the face. Keep the pose and clothes, add a cozy scarf only if their neck is bare.", KEEP_FACE),
