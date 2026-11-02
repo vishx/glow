@@ -4,5 +4,20 @@
   "webDir": "www",
   "backgroundColor": "#121014",
   "ios": { "contentInset": "always" },
-  "android": { "backgroundColor": "#121014" }
+  "android": { "backgroundColor": "#121014" },
+  "plugins": {
+    "CapacitorUpdater": {
+      "autoUpdate": false,
+      "appReadyTimeout": 15000,
+      "responseTimeout": 30,
+      "resetWhenUpdate": true,
+      "autoDeleteFailed": true,
+      "autoDeletePrevious": true,
+      "statsUrl": "",
+      "updateUrl": "",
+      "channelUrl": "",
+      "shakeMenu": false,
+      "nativeUpdatePrompt": false
+    }
+  }
 }

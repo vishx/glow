@@ -1,0 +1,446 @@
+{
+ "version": "202610347-e5af60e75a",
+ "build": 202610347,
+ "minNative": {
+  "android": 4,
+  "ios": 2
+ },
+ "created": "2026-11-02T05:55:58.443Z",
+ "files": [
+  {
+   "file_name": "admin.html",
+   "file_hash": "6925ba23f4573a1fa5a7dacdd5580e89554be60a5815af9d17953a557687fa34",
+   "download_url": "https://glow-photo-enhancer.vercel.app/admin.html"
+  },
+  {
+   "file_name": "app.js",
+   "file_hash": "3015ed15384b0c7f8537e08770009cb3b6d695b29d8f600ab1cec81be8fd1da0",
+   "download_url": "https://glow-photo-enhancer.vercel.app/app.js"
+  },
+  {
+   "file_name": "camerapro.js",
+   "file_hash": "6fabd448697eb519b67552df629160c98239ec860ac60f350db9f3a8b33e34ec",
+   "download_url": "https://glow-photo-enhancer.vercel.app/camerapro.js"
+  },
+  {
+   "file_name": "delete-account.html",
+   "file_hash": "d7f98d96d37519c676d48ffbbad81ffca5102031a86aaa63e10f87dbd0fdeba3",
+   "download_url": "https://glow-photo-enhancer.vercel.app/delete-account.html"
+  },
+  {
+   "file_name": "engine.js",
+   "file_hash": "fe62757d5feeaed7bac57e23c23ac4e4b2b17967a97a671e2de66c0718166253",
+   "download_url": "https://glow-photo-enhancer.vercel.app/engine.js"
+  },
+  {
+   "file_name": "enhance.css",
+   "file_hash": "8de0f81e270a3e55d79814d268356896bc72b7eddc6e42e624449b000119696b",
+   "download_url": "https://glow-photo-enhancer.vercel.app/enhance.css"
+  },
+  {
+   "file_name": "enhance.js",
+   "file_hash": "db863f266e863c5748eb6ac1c3b6c139651654eb7d79402056aba0d0d8dc54f9",
+   "download_url": "https://glow-photo-enhancer.vercel.app/enhance.js"
+  },
+  {
+   "file_name": "faceworker.js",
+   "file_hash": "c3f052fe8f330dfc408e8de5c10deea70ba34c71b8819cdf1cab9d6dd4d5a1ed",
+   "download_url": "https://glow-photo-enhancer.vercel.app/faceworker.js"
+  },
+  {
+   "file_name": "favicon.ico",
+   "file_hash": "b495a89097e991365d1ea73362faa811a9c04820eb7ca1b1b4b93c2249ffb202",
+   "download_url": "https://glow-photo-enhancer.vercel.app/favicon.ico"
+  },
+  {
+   "file_name": "features.js",
+   "file_hash": "8f52cb32d2ee7780624cf2585991b096d1353528299996b4604e1af09618b34a",
+   "download_url": "https://glow-photo-enhancer.vercel.app/features.js"
+  },
+  {
+   "file_name": "homescreen.js",
+   "file_hash": "cab7f80e52a651fc04b4d38c8f9e4ca73dffa1a1812b4e49be721454a045ed14",
+   "download_url": "https://glow-photo-enhancer.vercel.app/homescreen.js"
+  },
+  {
+   "file_name": "icon-180.png",
+   "file_hash": "cab4b03ba01bcc198812b371e01410682b0f1061d227d5efe2b6fe58831f9dcc",
+   "download_url": "https://glow-photo-enhancer.vercel.app/icon-180.png"
+  },
+  {
+   "file_name": "icon-192.png",
+   "file_hash": "16cfb3c756ae18e6d57c32ca1b98100c1ccd672679bdbd5e8900c26835e1d776",
+   "download_url": "https://glow-photo-enhancer.vercel.app/icon-192.png"
+  },
+  {
+   "file_name": "icon-512-maskable.png",
+   "file_hash": "be907174ccfa6919a6fa5dd0388e1b73ef08cd3418e4a54ad944f3b091796785",
+   "download_url": "https://glow-photo-enhancer.vercel.app/icon-512-maskable.png"
+  },
+  {
+   "file_name": "icon-512.png",
+   "file_hash": "d247d1c4eced1dad0baa63498135aec09e23d170e846a5b656c8b62fe2d1bd8e",
+   "download_url": "https://glow-photo-enhancer.vercel.app/icon-512.png"
+  },
+  {
+   "file_name": "icons.js",
+   "file_hash": "74023f2171ef938a34b583abc435e0b1300775ea1197f7e3a0c9abd8128e01a2",
+   "download_url": "https://glow-photo-enhancer.vercel.app/icons.js"
+  },
+  {
+   "file_name": "index.html",
+   "file_hash": "e7692954032772a0b8c2a8e990fb72f34ad695fc586d195732e8c2b584315a4f",
+   "download_url": "https://glow-photo-enhancer.vercel.app/index.html"
+  },
+  {
+   "file_name": "legal.css",
+   "file_hash": "8d98dc67f20a8c43316b202c7e5c0e423c218bb896293ab4b8f830e367d63649",
+   "download_url": "https://glow-photo-enhancer.vercel.app/legal.css"
+  },
+  {
+   "file_name": "licenses.html",
+   "file_hash": "ca77cf01f0b4357ccffb53d58d507be72307a86e53b5843e31d71f836543522e",
+   "download_url": "https://glow-photo-enhancer.vercel.app/licenses.html"
+  },
+  {
+   "file_name": "livebeauty.js",
+   "file_hash": "e285576f7e3612b9e43aa7e53d9888220c38158ea55511383fdd48bd07a909e8",
+   "download_url": "https://glow-photo-enhancer.vercel.app/livebeauty.js"
+  },
+  {
+   "file_name": "liveupdate.js",
+   "file_hash": "a9fb4d20c4e3edc1163a7d08a379222a4b89515243f9b1b4975e4a413e782437",
+   "download_url": "https://glow-photo-enhancer.vercel.app/liveupdate.js"
+  },
+  {
+   "file_name": "manifest.json",
+   "file_hash": "d8363ed1610b55eb1c49178e48f879afa0809c224d23d0c9d947c075a581b289",
+   "download_url": "https://glow-photo-enhancer.vercel.app/manifest.json"
+  },
+  {
+   "file_name": "platform.js",
+   "file_hash": "247fa87864f9d98a778ff36a9b07fd07a7df93cf8169f03d34b1c3b1455b1977",
+   "download_url": "https://glow-photo-enhancer.vercel.app/platform.js"
+  },
+  {
+   "file_name": "privacy.html",
+   "file_hash": "598f997f3358ed8fd1dc750df7d783b22dda29a9deadbadddd3ea701eb11f6e8",
+   "download_url": "https://glow-photo-enhancer.vercel.app/privacy.html"
+  },
+  {
+   "file_name": "samples/demo-v2/SOURCE.md",
+   "file_hash": "6d9a80c3e6dfa49dd3d96895568e45b4c3c033c14306aa8666a45d5cdb738b3c",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/SOURCE.md"
+  },
+  {
+   "file_name": "samples/demo-v2/clay.jpg",
+   "file_hash": "e26d6cc0c6d01ec2230318b90421a69a1f98cf84abadfbdbf46c24edfad32ced",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/clay.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/colorize.jpg",
+   "file_hash": "69c7643796ad6a958a2dd45219c911a28957ce6bab0bea5351f6f94677f4064f",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/colorize.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/enhance.jpg",
+   "file_hash": "212a6e7874b070fa5454febaf32ecd5608e889ddcff13bff87625cb94791b672",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/enhance.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/faces.jpg",
+   "file_hash": "31bcb01efc9296370921006f76df1dcd69a644e0f0df3be00d9ba0f6d2cf0c6b",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/faces.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/golden.jpg",
+   "file_hash": "6a931b631554f99bd119dac38b9df14c955925aa5c470d989afbc6a7eb6c7d9a",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/golden.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/hair_pixie.jpg",
+   "file_hash": "0cac229e389351106bc6fd64bf5545aaa62cad99a536b0c527b0dbc7d84b7157",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/hair_pixie.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/home/golden.webp",
+   "file_hash": "bc644d3872ca22599af2fd06551a3f6c78170c9f505bfe883e4a7ff08a3972ea",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/home/golden.webp"
+  },
+  {
+   "file_name": "samples/demo-v2/home/original.webp",
+   "file_hash": "075e46bfe8425a4ade3f2f0475f261611dac7f110c8806c2776548ebcc1901d5",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/home/original.webp"
+  },
+  {
+   "file_name": "samples/demo-v2/home/retouch.webp",
+   "file_hash": "d5ba703ca5200aea1016c49bcc67cb2beb2b05a93d11f6805a4e19744d57d081",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/home/retouch.webp"
+  },
+  {
+   "file_name": "samples/demo-v2/home/suit.webp",
+   "file_hash": "ef45264ff81df81f0f624b69392c017f8c7972921e13672c940cc028c4d7c35f",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/home/suit.webp"
+  },
+  {
+   "file_name": "samples/demo-v2/home/sundress.webp",
+   "file_hash": "b21c70fb182073d99d309fc28b7d4a97bcd8cf06ababa843c8b17b1c4adc0582",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/home/sundress.webp"
+  },
+  {
+   "file_name": "samples/demo-v2/intro.jpg",
+   "file_hash": "d5c66643b27043d42602a11193ac0ad968a0733d1328877660faa70855d2361e",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/intro.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/manifest.json",
+   "file_hash": "1a2e02a7c18960f9f143074ee570b09070770b2bbe956732020b03efd744c707",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/manifest.json"
+  },
+  {
+   "file_name": "samples/demo-v2/original.png",
+   "file_hash": "5bf7bc4f3d96afd2dd9abfb7cbd7229de64cae3c8ab7f24897ff251f66d252d4",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/original.png"
+  },
+  {
+   "file_name": "samples/demo-v2/pro.jpg",
+   "file_hash": "0c812d5c7308ecede8f1cdb0202bc22c932dbef1c6516b931d0704b6e0b68066",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/pro.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/pw-after.jpg",
+   "file_hash": "55fdd8105104d40024cca7e0e70986fffadcc0a7de090d74eda9c97898cd212f",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/pw-after.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/pw-before.jpg",
+   "file_hash": "7d95bba4ae860caf311d8e79c14923276d488f67e722a502577cc368e0c2e903",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/pw-before.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/quick/looks.webp",
+   "file_hash": "f40b124643ece4a93acd521a60a42d464344bac7d13e700577e94474184a1d9f",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/quick/looks.webp"
+  },
+  {
+   "file_name": "samples/demo-v2/quick/newbg.webp",
+   "file_hash": "5699608bdd3c02e4ef4bfd7efa1b058b6bc0e6479f9f0704c6e2b13f68efac24",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/quick/newbg.webp"
+  },
+  {
+   "file_name": "samples/demo-v2/quick/oldphoto.webp",
+   "file_hash": "28c19178ba25750beec75d4d7f51cd6b8effc26232e9c63e3623b3bd82126fb1",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/quick/oldphoto.webp"
+  },
+  {
+   "file_name": "samples/demo-v2/quick/remove.webp",
+   "file_hash": "ed5c683891ab59c281b2fd1a960e3baf7bdf8fb7bca774959ad717b4f2b7ceab",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/quick/remove.webp"
+  },
+  {
+   "file_name": "samples/demo-v2/quick/smooth.webp",
+   "file_hash": "d2f0318174c278cb2242404e35e32376184403b7428cfc14acd26ca904bce2b3",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/quick/smooth.webp"
+  },
+  {
+   "file_name": "samples/demo-v2/quick/tryon.webp",
+   "file_hash": "5590e0b7bbfd2e61eb34e41d82fa1aac469bf8724a9024fee51c54daed90dd0d",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/quick/tryon.webp"
+  },
+  {
+   "file_name": "samples/demo-v2/retouch.jpg",
+   "file_hash": "3ff5198cee2de7fd3e1f07520e4c44c6637bca4157797699406f252ec372a896",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/retouch.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/suit.jpg",
+   "file_hash": "8dc5775f1914e4649b080124f3667411ea698f7c37f523c9988ae1f915ec6fe4",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/suit.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/sundress.jpg",
+   "file_hash": "b230fdd2686ccd5bed1e6c9fe88b99948fc2d360c31bb209faf830a64eb88e35",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/sundress.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/thumb.jpg",
+   "file_hash": "58a5bff0b8fb9f90a9e736cc32ba7259d57b73cacccaf654ad27151038d0b962",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/thumb.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/thumbs/clay.jpg",
+   "file_hash": "9dc361c2fac4a7c804c848ac978928fb4836c01af4fd07ab72f1a5c432ec837c",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/thumbs/clay.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/thumbs/colorize.jpg",
+   "file_hash": "f1745e6c50f8df4b82112352f8b6fe31aa87b7ea87be256e9de7e95587aa79df",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/thumbs/colorize.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/thumbs/enhance.jpg",
+   "file_hash": "fae5c86cc048f2f7b9ccd196e841ef51e6052232682f17b32e4f98d4b4aebc9c",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/thumbs/enhance.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/thumbs/faces.jpg",
+   "file_hash": "08f5a67d9ac54aad0bd0c4b14883abdda8412b2034dfa43ebf9df763bd9d1353",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/thumbs/faces.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/thumbs/golden.jpg",
+   "file_hash": "a1d63af8b77529b345928852db9028094c656bb5ecaba73cc91cbee83da09960",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/thumbs/golden.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/thumbs/hair_pixie.jpg",
+   "file_hash": "50781edb72211c71c827b866891876efcf882e51597a90c8119e443349816020",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/thumbs/hair_pixie.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/thumbs/pro.jpg",
+   "file_hash": "bb2b4906c4bceec2cfb6419e33ba58df08729693e85ac6a56edcdff789e7cd24",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/thumbs/pro.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/thumbs/retouch.jpg",
+   "file_hash": "c6c25913d571340a90bf107a6890fda0c1cb45f41dbe73b7e65d06d13dc27953",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/thumbs/retouch.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/thumbs/suit.jpg",
+   "file_hash": "c2b3b3941e2c23d07847bc1ecb2c2cbcbc1b890d42479a39013911d645c788a9",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/thumbs/suit.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/thumbs/sundress.jpg",
+   "file_hash": "fb56e1f2877d1230f2dcf2a1b0057e4b5f6751b02c0cc198dd123fced1e5cd00",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/thumbs/sundress.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/thumbs/toon3d.jpg",
+   "file_hash": "d07b6a592f2f28e7d74f3f31fd1798603b593fc6e7c26106dcf348b0df62a473",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/thumbs/toon3d.jpg"
+  },
+  {
+   "file_name": "samples/demo-v2/toon3d.jpg",
+   "file_hash": "1bea9bf620901773f3e29f60cb816ee90c1e4df52774818270b0b756a0a7832e",
+   "download_url": "https://glow-photo-enhancer.vercel.app/samples/demo-v2/toon3d.jpg"
+  },
+  {
+   "file_name": "splash/core.webp",
+   "file_hash": "3193ec963d91b952ac80186b9c87930caeaab7d7be1a19a70a633887c09063c1",
+   "download_url": "https://glow-photo-enhancer.vercel.app/splash/core.webp"
+  },
+  {
+   "file_name": "splash/halo.webp",
+   "file_hash": "d8962ed8e3c0312cd332d7cbd1202c512ff904ee7253064090ae4f6911e1e263",
+   "download_url": "https://glow-photo-enhancer.vercel.app/splash/halo.webp"
+  },
+  {
+   "file_name": "splash/sparkle.webp",
+   "file_hash": "c4928778b39360be833f4805a813eebe71dedd9c51a22f4a8cb9da5d738c185b",
+   "download_url": "https://glow-photo-enhancer.vercel.app/splash/sparkle.webp"
+  },
+  {
+   "file_name": "styles.css",
+   "file_hash": "866d1ed37bce70262d3538e543bf9fcd21960fd62f9625388d111b5b76ec8857",
+   "download_url": "https://glow-photo-enhancer.vercel.app/styles.css"
+  },
+  {
+   "file_name": "support.html",
+   "file_hash": "9e06306936363f22f07ebd610df188286d467f137843748f2fdb90761a6f0c23",
+   "download_url": "https://glow-photo-enhancer.vercel.app/support.html"
+  },
+  {
+   "file_name": "sw.js",
+   "file_hash": "95a02a7276ea2e4370780d3e6bda1d4cbc4b05d2ae8ecb9bdf687f4c756d1fab",
+   "download_url": "https://glow-photo-enhancer.vercel.app/sw.js"
+  },
+  {
+   "file_name": "terms.html",
+   "file_hash": "748ea1940dcd04e6bf60f6a4b519880dfde5b00b40dad21850b8b3462ac4aa8f",
+   "download_url": "https://glow-photo-enhancer.vercel.app/terms.html"
+  },
+  {
+   "file_name": "tryon.js",
+   "file_hash": "e643b483aa40dd4790dd37959961493eba03c6edb73485caea96193306fb4099",
+   "download_url": "https://glow-photo-enhancer.vercel.app/tryon.js"
+  },
+  {
+   "file_name": "vendor/blaze_face_short_range.tflite",
+   "file_hash": "b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f",
+   "download_url": "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite"
+  },
+  {
+   "file_name": "vendor/face_landmarker.task",
+   "file_hash": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+   "download_url": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+  },
+  {
+   "file_name": "vendor/hair_segmenter.tflite",
+   "file_hash": "2628cf3ce5f695f604cbea2841e00befcaa3624bf80caf3664bef2656d59bf84",
+   "download_url": "https://storage.googleapis.com/mediapipe-models/image_segmenter/hair_segmenter/float32/latest/hair_segmenter.tflite"
+  },
+  {
+   "file_name": "vendor/mediapipe/vision_bundle.cjs",
+   "file_hash": "52b84244bb64fd460faf89e0fa24711bafd32cfd26e830e574d0fc67bdad7ab7",
+   "download_url": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.cjs"
+  },
+  {
+   "file_name": "vendor/mediapipe/vision_bundle.mjs",
+   "file_hash": "e77f281f9619150d937023c355bae170e9120e3b9e43f1e23a2a7bee07197669",
+   "download_url": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs"
+  },
+  {
+   "file_name": "vendor/mediapipe/wasm/vision_wasm_internal.js",
+   "file_hash": "9440cf0cc0cea21800e31581ec32aeedcc5fbf9df4509796bbc7d3f99e52ab9c",
+   "download_url": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm/vision_wasm_internal.js"
+  },
+  {
+   "file_name": "vendor/mediapipe/wasm/vision_wasm_internal.wasm",
+   "file_hash": "f82a8e6c05e08a44cc9f9e7ec5f845935bcbb1b1500ebe8c2f4812fb4e2917dc",
+   "download_url": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm/vision_wasm_internal.wasm"
+  },
+  {
+   "file_name": "vendor/mediapipe/wasm/vision_wasm_nosimd_internal.js",
+   "file_hash": "abe9b6fbeaf86fcb53a5edce3926c82ccb0619e18fed4d9d9ce561ee7f55e054",
+   "download_url": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm/vision_wasm_nosimd_internal.js"
+  },
+  {
+   "file_name": "vendor/mediapipe/wasm/vision_wasm_nosimd_internal.wasm",
+   "file_hash": "38b61feab2fd7934e05cbe9f68baa308978a5e3b7f85c1913bb8ae89b8ef8b97",
+   "download_url": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm/vision_wasm_nosimd_internal.wasm"
+  },
+  {
+   "file_name": "vendor/pose_landmarker_lite.task",
+   "file_hash": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a",
+   "download_url": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+  },
+  {
+   "file_name": "vendor/purchases-js/LICENSE",
+   "file_hash": "b175672dbc142198bae1daa4bdef4893103d75c111a949f1e33d6493d67658bf",
+   "download_url": "https://glow-photo-enhancer.vercel.app/vendor/purchases-js/LICENSE"
+  },
+  {
+   "file_name": "vendor/purchases-js/Purchases.umd.js",
+   "file_hash": "763440c622799825422e8a02070c6e94ed9c67fdfe8f92f6f4442395f1ecc91d",
+   "download_url": "https://glow-photo-enhancer.vercel.app/vendor/purchases-js/Purchases.umd.js"
+  },
+  {
+   "file_name": "vendor/qrcode.js",
+   "file_hash": "79ec86f82856005b1c887905cfccfcfbec3821ca61c7fd5a952faa5f778f791c",
+   "download_url": "https://glow-photo-enhancer.vercel.app/vendor/qrcode.js"
+  },
+  {
+   "file_name": "vendor/selfie_segmenter.tflite",
+   "file_hash": "191ac9529ae506ee0beefa6b2c945a172dab9d07d1e802a290a4e4038226658b",
+   "download_url": "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite"
+  },
+  {
+   "file_name": "vercel.json",
+   "file_hash": "9653f3a9169aed989e181fa56a27863cb3653f7f88a7a9c46635842ad9f7fa8d",
+   "download_url": "https://glow-photo-enhancer.vercel.app/vercel.json"
+  }
+ ]
+}

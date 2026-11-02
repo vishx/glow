@@ -44,6 +44,7 @@ const FEATURE_AREAS = [
     ["screen:camera", "Camera tab", true, "Hides the Camera tab and its shortcuts. The app opens on Enhance instead."],
     ["screen:editor", "Editor tab", true, "Hides the Editor tab and every Edit button that leads to it."],
     ["editor:quick", "Quick actions on Editor home", true, "The photo tiles under Choose a photo. Each tile is also hidden when its tool is off."],
+    ["app:liveupdate", "Phone app live updates", true, "On each open the Android/iPhone app downloads the newest screens from this site and switches to them. Off pauses it: phones keep what they have. To roll phones back, roll the website back."],
     ["app:home", "Add to home screen prompt", true, "Asked once, a few seconds after the first saved photo (Android app, phone browsers). Settings keeps an Add to home screen row."],
   ]],
   ["Enhance", [

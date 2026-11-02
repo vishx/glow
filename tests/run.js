@@ -3508,6 +3508,93 @@ test('audit: an AI result waiting for Apply opens as a before/after, and the tic
   eq(await p.evaluate(() => ed.view), 'edited', 'back to the edit after Apply');
 });
 
+// ---------- Live updates (phone app) ----------
+const APP_BUILD_TEST = Number(/const APP_BUILD = (\d+);/.exec(fs.readFileSync(path.join(__dirname, '../public/features.js'), 'utf8'))[1]);
+// A mocked updater plugin (@capgo/capacitor-updater) and App plugin; the manifest comes from the
+// test. set() would reload the app on a phone; here it is only recorded.
+const luMock = (o) => {
+  const st = window.__lu = { downloads: [], sets: [], ready: 0, deleted: [], store: [], current: o.current || { id: 'builtin', version: 'builtin' },
+    bundles: o.bundles || [] };
+  if (o.saved) localStorage.setItem('glowLiveUpdate', JSON.stringify(o.saved));
+  window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: {
+    App: { getInfo: async () => ({ build: String(o.native || 4), version: '1.0.4' }), addListener: () => ({ remove() {} }) },
+    CapacitorUpdater: {
+      current: async () => ({ bundle: st.current }),
+      list: async () => ({ bundles: st.bundles }),
+      notifyAppReady: async () => { st.ready++; return { bundle: st.current }; },
+      download: async (d) => { st.downloads.push(d); const b = { id: 'b' + st.downloads.length, version: d.version, status: 'pending' }; st.bundles.push(b); return b; },
+      set: async (d) => { st.sets.push(d.id); },
+      delete: async (d) => { st.deleted.push(d.id); },
+      getAppUpdateInfo: async () => ({ immediateUpdateAllowed: true }),
+      performImmediateUpdate: async () => { st.store.push('immediate'); return {}; },
+      openAppStore: async () => { st.store.push('store'); },
+    } } };
+};
+// Init scripts can't see this file's variables, so the options travel inside the script text.
+const luApp = (o = {}) => `(${luMock.toString()})(${JSON.stringify(o)})`;
+const luManifest = (version, extra = {}) => ({ version, build: 202610399, minNative: { android: 4, ios: 2 }, files: [{ file_name: 'index.html', file_hash: 'ab', download_url: 'https://glow-photo-enhancer.vercel.app/index.html' }], ...extra });
+async function luServe(p, manifest) {
+  const hits = { n: 0 };
+  await p.route('https://glow-photo-enhancer.vercel.app/app-update/**', (r) => { hits.n++; return r.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: manifest }); });
+  return hits;
+}
+test('live update: the phone app confirms it started, downloads a newer version and switches on the home screen', async ({ p, state }) => {
+  const hits = await luServe(p, luManifest('202610399-new'));
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.waitForFunction(() => window.__lu.sets.length > 0, null, { timeout: 8000 });
+  const lu = await p.evaluate(() => window.__lu);
+  eq([lu.ready, lu.downloads.length, lu.downloads[0].version, lu.downloads[0].manifest.length, lu.sets], [1, 1, '202610399-new', 1, ['b1']], 'ready, one delta download, switched');
+  const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('glowLiveUpdate')));
+  eq([saved.pending.version, saved.trying, saved.builtin.build], ['202610399-new', 'b1', APP_BUILD_TEST], 'remembers what it is trying and what the app carries');
+  assert(hits.n === 1, 'manifest read once');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false, init: luApp() });
+test('live update: nothing to do when the phone already has that version', async ({ p }) => {
+  await luServe(p, luManifest('202610399-same'));
+  await p.goto('https://app.test/'); await p.waitForFunction(() => window.__lu.ready === 1); await settle(4500);
+  eq(await p.evaluate(() => [window.__lu.downloads.length, window.__lu.sets.length, LiveUpdate.state.status, LiveUpdate.state.source]), [0, 0, 'up to date', 'live update'], 'no download');
+}, { start: 'enhance', camera: false, init: luApp({ current: { id: 'b9', version: '202610399-same' } }) });
+test('live update: an app too old for the new screens keeps its screens and offers the store update', async ({ p }) => {
+  await luServe(p, luManifest('202610399-native', { minNative: { android: 5, ios: 2 } }));
+  await p.goto('https://app.test/'); await p.waitForFunction(() => window.__lu.ready === 1);
+  await p.waitForFunction(() => /new version of Glow Studio/.test($('toast').textContent), null, { timeout: 8000 });
+  eq(await p.evaluate(() => window.__lu.downloads.length), 0, 'no download');
+  await p.click('#toast .toast-act'); await settle(300);
+  eq(await p.evaluate(() => window.__lu.store), ['immediate'], 'Play in-app update');
+}, { start: 'enhance', camera: false, init: luApp() });
+test('live update: a version that failed to start is not tried again', async ({ p }) => {
+  await luServe(p, luManifest('202610399-bad'));
+  await p.goto('https://app.test/'); await p.waitForFunction(() => window.__lu.ready === 1); await settle(4500);
+  const r = await p.evaluate(() => [window.__lu.sets, window.__lu.downloads.length, JSON.parse(localStorage.getItem('glowLiveUpdate')).bad, LiveUpdate.state.status]);
+  eq(r, [[], 0, ['202610399-bad'], 'skipped a version that failed'], 'rolled back version skipped');
+}, { start: 'enhance', camera: false, init: luApp({ bundles: [], saved: { pending: { id: 'b7', version: '202610399-bad', build: 202610399 }, trying: 'b7' } }) });
+test('live update: a downloaded version waiting from last time is switched in at start', async ({ p }) => {
+  await luServe(p, luManifest('202610399-wait'));
+  await p.goto('https://app.test/'); await p.waitForFunction(() => window.__lu.sets.length > 0, null, { timeout: 5000 });
+  eq(await p.evaluate(() => window.__lu.sets[0]), 'b5', 'switched to the waiting version');
+}, { start: 'enhance', camera: false, init: luApp({ bundles: [{ id: 'b5', version: '202610399-wait', status: 'pending' }], saved: { pending: { id: 'b5', version: '202610399-wait', build: 202610399 } } }) });
+test('live update: paused from the admin page, phones do not check', async ({ p }) => {
+  const hits = await luServe(p, luManifest('202610399-new'));
+  await p.goto('https://app.test/'); await p.waitForFunction(() => window.__lu.ready === 1); await settle(4500);
+  eq([hits.n, await p.evaluate(() => window.__lu.downloads.length)], [0, 0], 'no check, no download');
+}, { start: 'enhance', camera: false, init: luApp({ saved: { } }), features: { 'app:liveupdate': false } });
+test('live update: the website never checks and keeps its offline cache', async ({ p }) => {
+  const hits = await luServe(p, luManifest('202610399-new'));
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome'); await settle(4000);
+  eq([hits.n, await p.evaluate(() => LiveUpdate.native)], [0, false], 'web untouched');
+}, { start: 'enhance', camera: false });
+test('audit: the live-update manifest matches every file in public/ (run mobile/live-update.mjs after changes)', async () => {
+  const crypto = require('crypto');
+  const m = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/app-update/manifest.json'), 'utf8'));
+  const build = Number(/const APP_BUILD = (\d+);/.exec(fs.readFileSync(path.join(__dirname, '../public/features.js'), 'utf8'))[1]);
+  eq(m.build, build, 'manifest build is APP_BUILD');
+  const walk = (d, b = d) => fs.readdirSync(d).flatMap((n) => { const f = path.join(d, n); return fs.statSync(f).isDirectory() ? walk(f, b) : [path.relative(b, f).split(path.sep).join('/')]; });
+  const pub = walk(path.join(__dirname, '../public')).filter((f) => !f.startsWith('app-update/'));
+  const byName = Object.fromEntries(m.files.map((f) => [f.file_name, f.file_hash]));
+  const stale = pub.filter((f) => byName[f] !== crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, '../public', f))).digest('hex'));
+  eq(stale, [], 'files missing or changed since the manifest was made');
+}, { camera: false });
+
 test('audit: every stylesheet has balanced braces (a lost one after a merge silently nests the rest)', async () => {
   for (const f of fs.readdirSync(path.join(__dirname, '../public')).filter((n) => n.endsWith('.css'))) {
     const t = fs.readFileSync(path.join(__dirname, '../public', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
