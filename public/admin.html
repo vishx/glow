@@ -323,7 +323,7 @@ const VIEWS = {
 
     const known = new Set(Object.keys(FEATURE_DEFAULTS));
     const orphans = d.flags.filter((r) => !known.has(r.key));
-    const tUser = h("input", { placeholder: "Account ID", "aria-label": "Tester account ID", style: "min-width:300px" });
+    const tUser = h("input", { placeholder: "Account ID (first 8 characters are enough)", "aria-label": "Tester account ID", style: "min-width:300px" });
     const tLabel = h("input", { placeholder: "Name, e.g. My iPhone", "aria-label": "Tester name" });
     return [
       h("section", { class: "card" }, h("h2", {}, "Feature switches"),

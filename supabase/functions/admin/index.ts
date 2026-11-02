@@ -35,6 +35,17 @@ const userId = (v: unknown) => {
   if (typeof v !== "string" || !UUID.test(v)) throw new HttpError("That isn't a Glow Studio account ID.");
   return v.toLowerCase();
 };
+// Takes a full account ID, or just its first characters (the app's Settings shows the first 8),
+// as long as they match exactly one account.
+async function findUser(v: unknown) {
+  if (typeof v === "string" && UUID.test(v.trim())) return v.trim().toLowerCase();
+  const q = typeof v === "string" ? v.trim().toLowerCase() : "";
+  if (!/^[0-9a-f-]{6,35}$/.test(q)) throw new HttpError("Enter the account ID, or at least its first 6 characters (Settings in the app shows the first 8).");
+  const rows = must(await admin.rpc("admin_users", { p_query: q, p_limit: 2 })) as { user_id: string }[];
+  if (!rows.length) throw new HttpError(`No account starts with ${q}.`);
+  if (rows.length > 1) throw new HttpError(`More than one account starts with ${q}. Type more of the ID.`);
+  return rows[0].user_id;
+}
 const text = (v: unknown, max = 500) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 class HttpError extends Error {}
 
@@ -237,7 +248,7 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
   },
 
   async addTester(a) {
-    const id = userId(a.user), label = text(a.label, 80) || null;
+    const id = await findUser(a.user), label = text(a.label, 80) || null;
     must(await admin.from("feature_testers").upsert({ user_id: id, label }));
     await audit("tester_add", id, { label });
     return { user_id: id, label };
