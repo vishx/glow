@@ -99,6 +99,10 @@ exports.launch = async (opts = {}) => {
         const list = () => ({ conversations: (state.convos || []).map((c) => ({ ...c })) });
         if (b.supportList) { const out = list(); for (const c of state.convos || []) c.unread = false; state.supportBadge = { any: !!(state.convos || []).length, unread: 0 }; return r.fulfill({ headers: cors, json: out }); }
         if (b.supportReply) { state.supportReplies = [...(state.supportReplies || []), b.supportReply]; const c = state.convos.find((x) => x.id === b.supportReply.id); c.status = 'open'; c.messages.push({ from: 'you', body: b.supportReply.message, at: new Date().toISOString() }); return r.fulfill({ headers: cors, json: list() }); }
+        if (b.history) { const now = Date.now(); return r.fulfill({ headers: cors, json: { items: [
+          { at: new Date(now - 60000).toISOString(), kind: 'use', mode: 'enhance', credits: 1 },
+          { at: new Date(now - 120000).toISOString(), kind: 'refund', mode: 'pro', credits: 2 },
+          { at: new Date(now - 86400000 * 2).toISOString(), kind: 'pack', credits: 10 }] } }); }
         if (b.supportRate) { state.supportRates = [...(state.supportRates || []), b.supportRate]; return r.fulfill({ headers: cors, json: { rated: true } }); }
         state.support.push(b.support);
         return r.fulfill({ headers: cors, json: { sent: true } });

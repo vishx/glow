@@ -6,7 +6,7 @@
 // refund the server confirmed. Needs migration 006 (ai_usage.client_request_id).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { cleanPrompt, ENHANCE_HD, FACE_SHEET, HttpError, lastOutput, MODES, okFaceSheet, okHd, okTiles, rep, tryOnMode, startPrediction, TOKEN } from "./pipeline.ts";
+import { unsafePrompt, cleanPrompt, ENHANCE_HD, FACE_SHEET, HttpError, lastOutput, MODES, okFaceSheet, okHd, okTiles, rep, tryOnMode, startPrediction, TOKEN } from "./pipeline.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -156,6 +156,9 @@ Deno.serve(async (req) => {
     }
     let cfg = MODES[mode];
     if (!cfg) return json({ error: "Unknown tool" }, 400);
+    // Trust promise: no sexualised edits. Typed requests that ask for one are turned down before any
+    // charge (the models' own safety filters catch the rest, and those runs are refunded).
+    if (unsafePrompt(prompt)) return json({ error: "Glow Studio doesn't make revealing or sexual edits. Nothing was charged." }, 400);
     const okImage = typeof image === "string" &&
       (image.startsWith("data:image/") || /^https:\/\/([a-z0-9-]+\.)*replicate\.delivery\//.test(image));
     if (!okImage) return json({ error: "Send the photo as a data URL" }, 400);
@@ -237,7 +240,9 @@ Deno.serve(async (req) => {
       // Pro Edit sends one too: its model returns faces soft, so the phone uses the restored faces as
       // the finish's detail (same credit).
       const sheet = !p && (mode === "enhance" || mode === "pro") && okFaceSheet(faces);
-      if (!p && mode === "enhance" && !paid && okTiles(tiles)) {
+      // Tiles are free credits' sharper pass, and Pro's fallback when Topaz turns the photo down (so
+      // Pro never gets a smaller Enhance than free).
+      if (!p && mode === "enhance" && okTiles(tiles)) {
         // Every tile starts at once; the edit is one job made of them.
         try {
           const deadline = Date.now() + 45_000;   // then the plain Enhance below, on the same credit

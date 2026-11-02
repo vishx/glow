@@ -2954,6 +2954,19 @@ test('controls: the new editor controls show and work (straighten, flip, blur st
   if (ids.brush) { await tool(p, 'edit', '', ids.brush); eq(await p.evaluate(() => $('undoStroke') && $('undoStroke').disabled), true, 'undo stroke, off until a stroke'); await shot('brush'); }
 }, { start: 'editor', camera: false });
 
+test('ideas: credit history, trust promises, natural texture switch and subtle body tools', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => !!account);
+  await p.evaluate(() => openCredits()); await p.click('#creditsHistoryBtn');
+  await p.waitForSelector('#creditsHistory li');
+  const rows = await p.$$eval('#creditsHistory li', (x) => x.map((l) => l.textContent));
+  eq(rows.length, 3, 'three history rows');
+  assert(/Enhance.*−1/.test(rows[0]) && /refunded/.test(rows[1]) && /Credit pack.*\+10/.test(rows[2]), 'use, refund, pack: ' + rows.join(' | '));
+  await p.evaluate(() => $('creditsSheet').close());
+  eq(await p.evaluate(() => document.querySelectorAll('#settings .promises li').length), 4, 'four promises in Settings');
+  eq(await p.evaluate(() => [ENH_TOGGLES.some(([k]) => k === 'texture'), enhToggleOn('texture'), typeof keepTexture]), [true, true, 'function'], 'Natural texture on by default');
+  eq(await p.evaluate(() => [TOOL.bposture.kind, TOOL.btailor.kind, tabFor('bposture'), ADVANCED.some((g) => g[2].includes('btailor'))]), ['body', 'body', null, true], 'body tools reached through Search');
+});
+
 test('controls: closing the sheet while Enhance works stops waiting and keeps the job to check later', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
@@ -2966,6 +2979,14 @@ test('controls: closing the sheet while Enhance works stops waiting and keeps th
   eq(kept, true, 'job kept for Check now');
   eq(state.posts.length, 1, 'one POST');
 }, { start: 'enhance', camera: false, ai: { post: 'processing', polls: ['processing'] } });
+
+test('audit2: every script and stylesheet is asked for with the release number (no mixing old and new files)', async () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8'), sw = fs.readFileSync(path.join(__dirname, '..', 'public', 'sw.js'), 'utf8');
+  const v = /glow-v(\d+)/.exec(sw)[1];
+  const refs = [...html.matchAll(/(?:<script src|<link rel="stylesheet" href)="([a-z]+\.(?:js|css)[^"]*)"/g)].map((m) => m[1]);
+  assert(refs.length >= 12, 'found the app files');
+  eq(refs.filter((r) => !r.endsWith(`?v=${v}`)), [], `all carry ?v=${v} (bump index.html with sw.js)`);
+});
 
 // 2026-11-01 audit of the Pro mark switch: the Enhance tab follows it too, and the paywall the free
 // switch opens closes back to Settings.

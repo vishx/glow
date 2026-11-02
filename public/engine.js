@@ -414,7 +414,7 @@ const LOOKS = {
 const MAKEUP_TOOLS = ["flips", "fblush", "fbrows", "fshadow", "fliner", "flashes", "feyecolor", "fcontour", "fhighlight", "fbronzer", "fskin", "ftone"];
 const FACE_DEFAULTS = { fauto: 50, fsmooth: 50, fblemish: 60, fundereye: 50, fteeth: 50, feyes: 40, fbigeyes: 35, fslim: 35, fnose: 35, flips: 45, fblush: 40,
   fbrows: 45, fshadow: 45, fliner: 50, fglam: 60, flashes: 55, feyecolor: 60, fcontour: 40, fhighlight: 45, fbronzer: 35, fskin: 50, ftone: 50,
-  bwaist: 45, bhips: 40, barms: 40, bslimlegs: 40, blegs: 40, hcolor: 60 };
+  bwaist: 45, bhips: 40, barms: 40, bslimlegs: 40, blegs: 40, bposture: 60, btailor: 50, hcolor: 60 };
 let faceSet = { amt: { ...FACE_DEFAULTS }, shade: Object.fromEntries(Object.entries(SHADES).map(([k, v]) => [k, v[0]])),
   style: {}, custom: {}, mine: null };
 const STYLE_DEFAULTS = Object.fromEntries(Object.entries(STYLES).map(([k, v]) => [k, v[0][1]]));
@@ -1629,6 +1629,26 @@ async function bodyEdit(src, toolId, amt) {
       o.drawImage(c, 0, y0, W, y1 - y0, 0, y0, W, y1 - y0 + d);
       o.drawImage(c, 0, y1, W, H - y1, 0, y1 + d, W, H - y1);
       return out;
+    },
+    // Subtle, capped body tools (idea 14, 2026-11-02): at full strength each changes the outline by
+    // only a few percent, so the person still looks like themselves.
+    // Posture: shoulders levelled a little and the neck lengthened a touch.
+    bposture(a) {
+      need([0, 11, 12], "shoulders");
+      const [L, R] = [P[11], P[12]], dy = L[1] - R[1], r = shoulderW * 0.45;
+      // The lower shoulder comes up by up to half the difference (never more than 4% of shoulder width).
+      const lift = Math.min(Math.abs(dy) / 2, shoulderW * 0.04) * a;
+      if (lift > 0.5) push(ctx, dy > 0 ? L : R, r, [0, -lift]);
+      const neck = [(L[0] + R[0]) / 2, Math.min(L[1], R[1]) - shoulderW * 0.12];
+      push(ctx, [neck[0], (neck[1] + P[0][1]) / 2], shoulderW * 0.35, [0, -shoulderW * 0.03 * a]);
+    },
+    // Tailor fit: baggy fabric at the torso's sides pulled in slightly, chest to hips, like a tailored shirt.
+    btailor(a) {
+      need([11, 12, 23, 24], "upper body");
+      for (const t of [0.3, 0.45, 0.6, 0.75, 0.9]) {
+        const y = P[11][1] + ((P[23][1] + P[24][1]) / 2 - P[11][1]) * t, cx = (P[11][0] + P[12][0] + P[23][0] + P[24][0]) / 4;
+        squeeze(y, cx, 0.025 * a, shoulderW * 0.3);
+      }
     },
     bslimlegs(a) {
       need([23, 24, 25, 26], "legs");

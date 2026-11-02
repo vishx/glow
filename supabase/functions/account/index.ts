@@ -5,6 +5,7 @@
 // POST { supportRate: { id, rating } }: thumbs up (1) or down (-1) on a closed conversation.
 // (These three need migration 017.) Messages and replies can carry up to 3 screenshots as data: URLs in
 // "images" (migration 018; saved in the private support-files bucket, shown back through expiring links).
+// POST { history: true }: the person's last 60 days of credit use, refunds, packs and ad credits.
 // DELETE: permanently deletes the user's account and data (required by the App Store).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -48,6 +49,7 @@ Deno.serve(async (req) => {
   if (req.method === "POST") {
     const body = await req.json().catch(() => ({}));
     if (body?.supportList) return json(await supportList(user.id));
+    if (body?.history) return json(await creditHistory(user.id));
     if (body?.supportReply) return supportFollowUp(user.id, body.supportReply);
     if (body?.supportRate) {
       const id = Math.trunc(Number(body.supportRate.id)), rating = Number(body.supportRate.rating) > 0 ? 1 : -1;
@@ -215,4 +217,20 @@ async function deleteSupportFiles(uid: string) {
     }
     await admin.from("support_requests").update({ attachments: [] }).eq("user_id", uid);
   } catch (e) { console.error("support files delete", e); }
+}
+
+// Credit history (honest billing): every AI use, refund, pack and ad credit, newest first.
+async function creditHistory(uid: string) {
+  const since = new Date(Date.now() - 60 * 86400000).toISOString();
+  const [u, p, a] = await Promise.all([
+    admin.from("ai_usage").select("mode, cost, refunded, from_bonus, created_at").eq("user_id", uid).gte("created_at", since).order("created_at", { ascending: false }).limit(150),
+    admin.from("credit_purchases").select("product_id, credits, refunded_at, created_at").eq("user_id", uid).order("created_at", { ascending: false }).limit(30),
+    admin.from("ad_rewards").select("created_at").eq("user_id", uid).gte("created_at", since).order("created_at", { ascending: false }).limit(50),
+  ]);
+  const items = [
+    ...(u.data ?? []).map((r) => ({ at: r.created_at, kind: r.refunded ? "refund" : "use", mode: r.mode, credits: r.cost ?? 1, extra: !!r.from_bonus })),
+    ...(p.data ?? []).map((r) => ({ at: r.created_at, kind: r.refunded_at ? "pack_refunded" : "pack", credits: r.credits })),
+    ...(a.data ?? []).map((r) => ({ at: r.created_at, kind: "ad", credits: 1 })),
+  ].sort((x, y) => Date.parse(y.at) - Date.parse(x.at)).slice(0, 200);
+  return { items };
 }

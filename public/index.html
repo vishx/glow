@@ -17,12 +17,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght,SOFT,WONK@9..144,400..600,0..100,0..1&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=80">
 <script>/* Dark is the default look (gold reads best on dark); Light and System stay in Settings. Set before first paint. */
 /* Golden Hour made Dark the default: a look picked before it (Light/System) is cleared once, so everyone starts on Dark; a later pick in Settings sticks. */
 try { if (localStorage.getItem("glowThemeV") !== "2") { localStorage.removeItem("glowTheme"); localStorage.setItem("glowThemeV", "2"); } } catch (e) {}
 try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system") document.documentElement.dataset.theme = gt; } catch (e) { document.documentElement.dataset.theme = "dark"; }</script>
-<link rel="stylesheet" href="enhance.css">
+<link rel="stylesheet" href="enhance.css?v=80">
 </head>
 <body>
 <!-- Launch animation: the icon's lens opens and the app shows through (enhance.js removes it). -->
@@ -505,6 +505,15 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
     </div>
   </div>
   <div class="setting">
+    <h3>Our promises</h3>
+    <ul class="promises">
+      <li><span data-icon="check"></span><span><b>Still you.</b> Glow Studio never rates, scores or ranks faces or bodies.</span></li>
+      <li><span data-icon="check"></span><span><b>No revealing edits.</b> AI tools turn down nude or sexual requests, and nothing is charged.</span></li>
+      <li><span data-icon="check"></span><span><b>Your photos stay yours.</b> On-device tools never upload. Photos sent to an AI tool are deleted from our AI provider within about an hour and never used to train AI.</span></li>
+      <li><span data-icon="check"></span><span><b>Fair billing.</b> Failed AI edits are refunded automatically, and we remind you before a free trial turns paid.</span></li>
+    </ul>
+  </div>
+  <div class="setting">
     <h3>About</h3>
     <div class="set-list plain">
       <a href="/privacy.html" data-doc="Privacy policy"><span>Privacy policy</span></a>
@@ -559,7 +568,9 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
   <div class="stack">
     <button class="btn glow" id="creditsPro">See Glow Studio Pro</button>
     <button class="btn ghost" id="creditsPacks">Buy a credit pack</button>
+    <button class="btn ghost" id="creditsHistoryBtn" aria-expanded="false" aria-controls="creditsHistory">Credit history</button>
   </div>
+  <div class="cr-history" id="creditsHistory" hidden></div>
 </dialog>
 
 <dialog class="sheet" id="packsSheet" aria-labelledby="packsTitle">
@@ -588,10 +599,15 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
     <button class="plan" role="radio" aria-checked="true" data-plan="yearly"><em>Save 81%</em><b>Yearly</b><span class="price" id="priceYearly">$49.99/year</span><small id="yearlyNote">About $4.17 a month, billed yearly</small></button>
     <button class="plan" role="radio" aria-checked="false" data-plan="weekly"><b>Weekly</b><span class="price" id="priceWeekly">$4.99/week</span><small>Billed every week</small></button>
   </div>
+  <ol class="pw-timeline" id="pwTimeline" hidden aria-label="How the free trial works">
+    <li><b>Today</b><span>Every Pro tool, with 10 AI credits to try.</span></li>
+    <li><b id="pwTlRemind">Day 2</b><span>We remind you the trial ends tomorrow.</span></li>
+    <li><b id="pwTlBill">Day 3</b><span id="pwTlPrice">Your yearly plan starts. Cancel before then and you pay nothing.</span></li>
+  </ol>
   <button class="btn glow" id="buyBtn">Continue with yearly</button>
   <button class="btn ghost" id="adBtn" hidden>Watch a short ad for 1 AI credit</button>
   <button class="pw-packs" id="pwPacks">Just need a few? <u>Buy a credit pack</u></button>
-  <p class="pw-free">Yearly gives up to 60 credits a month. Camera, filters and on-device tools stay free for everyone.</p>
+  <p class="pw-free" id="pwFree">Both plans give 40 AI credits a week. Yearly is capped at 60 in any 30 days. Camera, filters and on-device tools stay free for everyone.</p>
   <p class="fine" id="pwNote"></p>
   <div class="links"><button id="restoreBtn2">Restore purchases</button><a href="/terms.html" target="_blank" rel="noopener">Terms</a><a href="/privacy.html" target="_blank" rel="noopener">Privacy</a></div>
 </dialog>
@@ -642,16 +658,16 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
   <div class="stack" id="askActions"></div>
 </dialog>
 
-<script src="liveupdate.js"></script>
-<script src="features.js"></script>
-<script src="icons.js"></script>
-<script src="platform.js"></script>
-<script src="engine.js"></script>
-<script src="livebeauty.js"></script>
-<script src="app.js"></script>
-<script src="camerapro.js"></script>
-<script src="tryon.js"></script>
-<script src="enhance.js"></script>
-<script src="homescreen.js"></script>
+<script src="liveupdate.js?v=80"></script>
+<script src="features.js?v=80"></script>
+<script src="icons.js?v=80"></script>
+<script src="platform.js?v=80"></script>
+<script src="engine.js?v=80"></script>
+<script src="livebeauty.js?v=80"></script>
+<script src="app.js?v=80"></script>
+<script src="camerapro.js?v=80"></script>
+<script src="tryon.js?v=80"></script>
+<script src="enhance.js?v=80"></script>
+<script src="homescreen.js?v=80"></script>
 </body>
 </html>

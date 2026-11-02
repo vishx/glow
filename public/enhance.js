@@ -22,7 +22,11 @@ const ENH_COLORS = ["glow", "warm", "vivid", "soft", "cool", "film", "mono"];
 const ENH_TOGGLES = [["face", "Face Enhancer", "face", ["Disabled", "1", "2", "3"], 2], ["bg", "Background Enhancer", "upscale", ["Disabled", "1", "2", "3"], 2],
   ["retouch", "Face Retouch", "fsmooth", ["Disabled", "1", "2", "3"], 0],
   ["colors", "Colors", "palette", ["Disabled", "Auto", ...ENH_COLORS.map((id) => (id === "warm" ? "Warm" : FILTERS.find((f) => f.id === id).name))], 0],
-  ["blur", "Background Blur", "bgblur", ["Disabled", "Low", "Medium", "High"], 0]];
+  ["blur", "Background Blur", "bgblur", ["Disabled", "Low", "Medium", "High"], 0],
+  // Natural texture (on by default): the photo's own fine skin texture is laid back over the restored
+  // faces, so they never look plastic. Off gives the smooth AI faces.
+  ["texture", "Natural texture", "fblemish", ["Disabled", "Light", "On"], 2]];
+const ENH_TEXTURE = [0, 0.35, 0.65];
 const ENH_MIX = [0, 0.4, 1, 1], ENH_DETAIL = { face: 0.9, bg: 1.1 };   // level 3's extra detail, faces gentler
 // Face Retouch: the editor's own skin and eye steps, each level stronger (Glow Up's one-pass recipe).
 const ENH_RETOUCH = [null,
@@ -484,7 +488,8 @@ async function enhancePlus(src) {
   const a = account, pro = isPro(), packs = !!(a && a.bonus > 0);
   const img = await loadImg(src), W0 = img.naturalWidth, H0 = img.naturalHeight, out = {};
   if (pro || packs) out.hd = await uploadable(src, ENH_PLUS.hdSide, ENH_PLUS.hdPixels);
-  if (!pro && W0 * H0 > aiMaxPixels(ENH_MODE)) {
+  // Pro and pack credits get tiles too, as the server's fallback if Topaz turns the photo down.
+  if (W0 * H0 > aiMaxPixels(ENH_MODE)) {
     const k = Math.min(1, Math.sqrt(ENH_PLUS.srcPixels / (W0 * H0)));
     const W = Math.floor(W0 * k), H = Math.floor(H0 * k), o = ENH_PLUS.overlap;
     // Two tiles along the long side when that keeps each under the limit, otherwise a 2x2 grid.
@@ -927,11 +932,30 @@ async function composeEnhanced(lv) {
     x.drawImage(b, 0, 0, W, H); x.globalAlpha = enh.strength / 100; x.drawImage(a, 0, 0, W, H);
     out = c.toDataURL("image/jpeg", 0.94);
   }
+  if (faces && ENH_TEXTURE[lv.texture] && enh.style !== PRO_MODE) out = await keepTexture(out, ENH_TEXTURE[lv.texture]);
   const rt = ENH_RETOUCH[lv.retouch];
   if (rt && faces) out = await glowUp(out, { face: rt }, { faces: enh.faces });   // the faces found on the photo: same framing as the result
   if (lv.colors) out = await enhColors(out, lv.colors);
   if (lv.blur) out = await portraitBlur(out, lv.blur);
   return out;
+}
+// Natural texture: the photo's own fine detail (the original minus a blurred copy: pores, fine hair,
+// grain) added back over the faces only. Big shapes and color stay the AI's.
+async function keepTexture(src, amt) {
+  const [im, base] = await Promise.all([loadImg(src), loadImg(enh.base)]), W = im.naturalWidth, H = im.naturalHeight;
+  const c = newCanvas(W, H), x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(im, 0, 0);
+  const b = newCanvas(W, H), bx = b.getContext("2d", { willReadFrequently: true }); bx.drawImage(base, 0, 0, W, H);
+  const bd = bx.getImageData(0, 0, W, H).data, g = blurData(b, Math.max(1.5, W / 900));
+  const mask = faceMaskFor(W, H).getContext("2d", { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+  const img = x.getImageData(0, 0, W, H), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const m = mask[i + 3] / 255; if (m < 0.02) continue;
+    // Luminance detail only, capped so edges never ring.
+    const dl = Math.max(-18, Math.min(18, (bd[i] + bd[i + 1] + bd[i + 2] - g[i] - g[i + 1] - g[i + 2]) / 3)) * amt * m;
+    d[i] += dl; d[i + 1] += dl; d[i + 2] += dl;
+  }
+  x.putImageData(img, 0, 0);
+  return c.toDataURL("image/jpeg", 0.94);
 }
 // The faces' soft outlines, white on clear, at the result's size.
 function faceMaskFor(W, H) {

@@ -1479,3 +1479,22 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
 .opt.color-well input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
 .crop-flips { margin-top: 4px; }
 #settings .setting select { min-height: 36px; max-width: 55%; padding: 0 var(--s2); border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2, transparent); color: inherit; font: inherit; font-size: 0.875rem; }
+
+/* Honest billing: the free trial's timeline on the Pro screen, and credit history. */
+.pw-timeline { list-style: none; margin: 0 0 var(--s3, 12px); padding: 0; display: grid; gap: 10px; position: relative; }
+.pw-timeline li { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: baseline; font-size: 0.875rem; }
+.pw-timeline b { color: var(--cta, #f3c062); font-weight: 600; }
+.pw-timeline span { color: var(--ink-2, inherit); opacity: 0.85; }
+.cr-history { margin-top: 16px; }
+.cr-history h3 { font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.6; margin: 14px 0 6px; font-weight: 600; }
+.cr-history ul { list-style: none; margin: 0; padding: 0; }
+.cr-history li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line, rgba(255,255,255,0.08)); font-size: 0.875rem; }
+.cr-history li small { display: block; opacity: 0.6; font-size: 0.75rem; }
+.cr-history .amt { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+.cr-history .amt.plus { color: var(--ok, #7fd49b); }
+
+/* Settings > Our promises */
+.promises { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.promises li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; font-size: 0.875rem; line-height: 1.4; }
+.promises li > span:first-child svg { width: 18px; height: 18px; color: var(--cta, #f3c062); margin-top: 1px; }
+.promises b { font-weight: 600; }

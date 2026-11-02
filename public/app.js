@@ -68,6 +68,8 @@ tool("hcolor", "Color", "Hair color", "hair", "hair");
   .forEach(([id, label, title]) => tool(id, label, title, "ai", "hair", { hint: "Works best on a clear, front-facing photo." }));
 [["bwaist", "Waist", "Waist"], ["bhips", "Hips", "Hips"], ["barms", "Arms", "Arms"], ["bslimlegs", "Slim legs", "Slim legs"], ["blegs", "Longer legs", "Longer legs"]]
   .forEach(([id, label, title]) => tool(id, label, title, "body", "body", { reshape: true, hint: "Works best on a photo that shows your whole body." }));
+[["bposture", "Posture", "Posture"], ["btailor", "Tailor fit", "Tailor fit"]]
+  .forEach(([id, label, title]) => tool(id, label, title, "body", "body", { reshape: true, hint: "Subtle by design: kept to a natural range, so it still looks like you." }));
 const SELFIE_HINT = "Works best on a clear, front-facing selfie.";
 tool("outfit", "Try on", "Try on", "ai", "styles", { hint: "Pick an idea, your own outfit photo, or describe one." });
 [["gown", "Gown", "Evening gown"], ["suit", "Suit", "Business suit"], ["sundress", "Sundress", "Summer dress"], ["street", "Street", "Streetwear"],
@@ -81,7 +83,7 @@ tool("outfit", "Try on", "Try on", "ai", "styles", { hint: "Pick an idea, your o
 tool("glowup", "Glow Up", "Glow Up", "glowup", "fix", { hint: "Tick what you want. AI is optional." });
 tool("custom", "Describe", "Describe an edit", "ai", "fix", { hint: "Say what to change. Her face is kept as hers." });
 tool("bgcolor", "Color", "Color background", "bg", "bg", { hint: "A plain studio color behind you." });
-tool("bgphoto", "Photo", "Your background", "bg", "bg", { hint: "Pick any photo as the background. She is matched to its light and color." });
+tool("bgphoto", "Photo", "Your background", "bg", "bg", { hint: "Pick any photo as the background. You are matched to its light and color." });
 // AI backgrounds: a scene painted around her (only the background is repainted; she stays her own
 // pixels), and an HD cutout whose edges follow single hair strands.
 tool("bgscene", "AI scene", "AI background", "ai", "bg", { hint: "Pick a scene or describe one. Only the background changes." });
@@ -169,7 +171,7 @@ const SEARCH_WORDS = {
   crop: "rotate straighten resize", light: "brightness light", exposure: "exposure brighter darker", warmth: "warmth warm cool",
   detail: "detail sharp", color: "color saturate", lnoise: "denoise grainy luminance", cnoise: "denoise color speckles",
   dehaze: "haze fog glare", clarity: "punch depth local contrast", texture: "skin texture fine detail",
-  golden: "sunset warm glow", headshot: "linkedin professional",
+  golden: "sunset warm glow", headshot: "linkedin professional", bposture: "posture shoulders stand tall neck body", btailor: "tailor fit shirt baggy clothes body",
 };
 // Try on holds the outfit presets (suit, summer dress, ...) inside its own panel; their old tool
 // ids stay registered so saved drafts replay, but they have no tile of their own.
@@ -177,7 +179,7 @@ const IN_TRY_ON = ["suit", "sundress"];
 // Remove, Fill, Describe and Try on are always listed, even on the sample, whose panel says they
 // need your own photo (instead of the tools silently disappearing).
 const DEMO_LISTED = ["erase", "fill", "custom", "outfit"];
-const ADVANCED = [["camlooks", "Camera looks", ["mylook"]]];
+const ADVANCED = [["camlooks", "Camera looks", ["mylook"]], ["body", "Body (subtle)", ["bposture", "btailor"]]];
 // Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
 // another tool, or (body reshaping) didn't fit Glow Studio. Their code stays so saved drafts still replay.
 const RETIRED = RETIRED_TOOLS;   // features.js: retired tools are switches that default to off
@@ -3031,6 +3033,81 @@ $("balanceBtn").addEventListener("click", openCredits);
 $("homeCredits").addEventListener("click", openCredits);
 $("creditsPro").addEventListener("click", () => { $("creditsSheet").close(); openPaywall(); });
 $("creditsPacks").addEventListener("click", () => { $("creditsSheet").close(); openPacks(); });
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+// Honest billing: during the yearly plan's free trial, a reminder the day before it turns paid. In the
+// phone app it's a notification (scheduled once per trial end); in the app itself a note, once.
+const TRIAL_NOTE_ID = 7301;
+function trialReminder() {
+  const a = account, end = a && a.plan === "pro" && a.inTrial && a.expires ? new Date(a.expires) : null;
+  const LN = plugins.LocalNotifications;
+  if (!end || isNaN(end)) {
+    if (LN && store.get("glowTrialNote")) { LN.cancel({ notifications: [{ id: TRIAL_NOTE_ID }] }).catch(() => {}); store.set("glowTrialNote", ""); }
+    return;
+  }
+  const key = end.toISOString(), left = end - Date.now(), when = fmtDate(end);
+  if (LN && store.get("glowTrialNote") !== key && left > 26 * 3600e3) {
+    store.set("glowTrialNote", key);
+    LN.requestPermissions().then((p) => p && p.display === "granted" && LN.schedule({ notifications: [{ id: TRIAL_NOTE_ID,
+      title: "Your Glow Studio trial ends tomorrow", body: `Your yearly plan starts on ${when}. To avoid being charged, cancel in your store subscriptions before then.`,
+      schedule: { at: new Date(end - 24 * 3600e3), allowWhileIdle: true } }] })).catch(() => {});
+  }
+  if (left > 0 && left < 36 * 3600e3 && store.get("glowTrialSeen") !== key) {
+    store.set("glowTrialSeen", key);
+    setTimeout(() => say(`Your free trial ends ${when}. Cancel before then in your store subscriptions and you won't be charged.`, false,
+      { label: "Manage", run: () => $("manageSubs").click() }), 1500);
+  }
+}
+// Weekly ritual: when the free daily credits run out, the phone app offers one notification when
+// they're back (at the next UTC midnight). Only after she's used them all, and at most once a day.
+const REFILL_NOTE_ID = 7302;
+function refillReminder() {
+  const a = account, LN = plugins.LocalNotifications;
+  if (!LN || !a || a.plan === "pro" || a.remaining > 0 || store.get("glowRefillNote") === "off") return;
+  const at = nextUtcMidnight(), key = String(at.getTime ? at.getTime() : at);
+  if (store.get("glowRefillNote") === key) return;
+  store.set("glowRefillNote", key);
+  LN.requestPermissions().then((p) => p && p.display === "granted" && LN.schedule({ notifications: [{ id: REFILL_NOTE_ID,
+    title: "Your free AI credits are back", body: "Enhance a photo, or try something new from Trends.", schedule: { at: new Date(at), allowWhileIdle: true } }] })).catch(() => {});
+}
+const fmtDate = (d) => d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+// Credit history (honest billing): every AI use, refund, pack and ad credit of the last 60 days.
+function historyName(mode) {
+  const t = TOOL[mode] || (mode === "enhance" ? { label: "Enhance" } : mode === "pro" ? { label: "Pro Edit" } : null);
+  return t ? t.label : String(mode || "AI edit").replace(/^hair_/, "Hairstyle: ").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
+async function renderCreditHistory() {
+  const box = $("creditsHistory");
+  box.hidden = false; box.innerHTML = `<p class="fine">Loading your credit history…</p>`;
+  let items;
+  try { ({ items } = await call("account", { method: "POST", body: JSON.stringify({ history: true }) })); }
+  catch { box.innerHTML = `<p class="fine">Couldn't load your history. Check your connection and try again.</p>`; return; }
+  if (!items || !items.length) { box.innerHTML = `<p class="fine">No credits used or added in the last 60 days.</p>`; return; }
+  const day = (d) => d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  const row = (it) => {
+    const n = it.credits || 1, s = n === 1 ? "credit" : "credits";
+    const [what, sub, amt, plus] =
+      it.kind === "use" ? [historyName(it.mode), it.extra ? "From your extra credits" : "", `−${n}`, false]
+      : it.kind === "refund" ? [historyName(it.mode), "Didn't finish, so it was refunded", "0", true]
+      : it.kind === "pack" ? ["Credit pack", "Never expires", `+${n}`, true]
+      : it.kind === "pack_refunded" ? ["Credit pack refunded", "The store refunded this purchase", `${n} ${s} removed`, false]
+      : ["Watched an ad", "", "+1", true];
+    const t = new Date(it.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    return `<li><div>${esc(what)}<small>${t}${sub ? " · " + esc(sub) : ""}</small></div><span class="amt${plus ? " plus" : ""}">${amt}</span></li>`;
+  };
+  let html = "", last = "";
+  for (const it of items) {
+    const d = day(new Date(it.at));
+    if (d !== last) { html += (last ? "</ul>" : "") + `<h3>${esc(d)}</h3><ul>`; last = d; }
+    html += row(it);
+  }
+  box.innerHTML = html + "</ul><p class=\"fine\">Shows the last 60 days. Refunded edits never count against you.</p>";
+}
+$("creditsHistoryBtn").addEventListener("click", () => {
+  const b = $("creditsHistoryBtn"), open = b.getAttribute("aria-expanded") !== "true";
+  b.setAttribute("aria-expanded", String(open));
+  if (open) renderCreditHistory(); else $("creditsHistory").hidden = true;
+});
+$("creditsSheet").addEventListener("close", () => { $("creditsHistoryBtn").setAttribute("aria-expanded", "false"); $("creditsHistory").hidden = true; });
 
 function showUsage(u) {
   // The network's shared free limit (migration 020) says nothing about this account's own balance.
@@ -3047,6 +3124,7 @@ function showUsage(u) {
   if (u && u.support) showSupportBadge();
   if (u && u.plan === "pro" && u.expires) store.set("glowPro", u.expires);
   else if (u && u.plan === "free") store.set("glowPro", "");
+  if (u && u.plan) { trialReminder(); refillReminder(); }
   $("planLine").textContent = account.plan === "pro"
     ? `Glow Studio Pro: ${account.remaining} of ${account.quota} AI credits left this week.`
     : `Free plan: ${account.remaining} of ${account.quota} AI credits left today. On-device tools are always free.`;
@@ -4533,6 +4611,12 @@ async function trialDays(product) {
 function renderPlanNote() {
   const price = $(plan === "yearly" ? "priceYearly" : "priceWeekly").textContent.replace("/", " per ");
   const trial = plan === "yearly" && yearlyTrial;
+  // The trial's timeline, in plain words: when we remind, when the first charge happens.
+  $("pwTimeline").hidden = !trial;
+  if (trial) {
+    $("pwTlRemind").textContent = `Day ${Math.max(1, yearlyTrial - 1)}`; $("pwTlBill").textContent = `Day ${yearlyTrial + 1}`;
+    $("pwTlPrice").textContent = `You're charged ${$("priceYearly").textContent.replace("/", " per ")}, unless you cancel before. Cancel and you pay nothing.`;
+  }
   $("pwNote").textContent = webCheckout()
     ? `${trial ? `Free for ${yearlyTrial} days, with 10 AI credits to try. Then ${price}` : price}. Renews automatically every ${plan === "yearly" ? "year" : "week"} until you cancel. Cancel anytime from Settings > Manage subscription or the link in your receipt email. Secure card payment by Stripe.`
     : native

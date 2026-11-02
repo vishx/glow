@@ -182,6 +182,11 @@ export function okFaceSheet(v: unknown): v is string {
 }
 
 // A user prompt is plain text: one line, at most 200 characters, no control characters.
+// Words that ask for nudity or sexual content, in the languages the app is used in most.
+const UNSAFE = /\b(nude|nudity|naked|topless|bottomless|nsfw|porn\w*|sex(y|ual|ier)?|erotic\w*|lingerie|undress\w*|unclothed|see[- ]?through|bare (breasts?|chest|butt)|nipples?|genital\w*|desnud[ao]s?|nackt|nue|seins? nus?|telanjang|bugil)\b/i;
+export function unsafePrompt(v: unknown): boolean {
+  return typeof v === "string" && UNSAFE.test(v);
+}
 export function cleanPrompt(v: unknown): string {
   if (typeof v !== "string") return "";
   return v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
