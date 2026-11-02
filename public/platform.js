@@ -8,6 +8,50 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
 };
 
+// Date taken: canvas re-encodes drop EXIF, so enhanced photos sorted as "today" in the gallery.
+// photoDate() reads DateTimeOriginal ("YYYY:MM:DD HH:MM:SS") from a JPEG; withPhotoDate() writes
+// just that tag into a JPEG (no location or other metadata is copied).
+async function photoDate(blob) {
+  try {
+    if (!blob || !/jpe?g/i.test(blob.type || "image/jpeg")) return "";
+    const b = new DataView(await blob.slice(0, 131072).arrayBuffer());
+    if (b.getUint16(0) !== 0xffd8) return "";
+    let o = 2;
+    while (o + 4 < b.byteLength) {
+      const m = b.getUint16(o), len = b.getUint16(o + 2);
+      if (m === 0xffe1 && b.getUint32(o + 4) === 0x45786966) {
+        const t = o + 10, le = b.getUint16(t) === 0x4949;
+        const u16 = (p) => b.getUint16(t + p, le), u32 = (p) => b.getUint32(t + p, le);
+        const tag = (ifd, want) => { const n = u16(ifd); for (let i = 0; i < n; i++) { const e = ifd + 2 + i * 12; if (u16(e) === want) return e; } return -1; };
+        const ascii = (e) => { if (e < 0) return ""; const at = t + u32(e + 8); let str = ""; for (let i = 0; i < 19; i++) str += String.fromCharCode(b.getUint8(at + i)); return str; };
+        const ifd0 = u32(4), ex = tag(ifd0, 0x8769);
+        const d = (ex >= 0 && ascii(tag(u32(ex + 8), 0x9003))) || ascii(tag(ifd0, 0x0132));
+        return /^\d{4}:\d\d:\d\d \d\d:\d\d:\d\d$/.test(d) ? d : "";
+      }
+      if ((m & 0xff00) !== 0xff00 || m === 0xffda) break;
+      o += 2 + len;
+    }
+  } catch {}
+  return "";
+}
+async function withPhotoDate(blob, date) {
+  try {
+    if (!date || !/jpe?g/i.test(blob.type)) return blob;
+    const src = new Uint8Array(await blob.arrayBuffer());
+    if (src[0] !== 0xff || src[1] !== 0xd8) return blob;
+    const tiff = new Uint8Array(64), v = new DataView(tiff.buffer);
+    v.setUint16(0, 0x4d4d); v.setUint16(2, 42); v.setUint32(4, 8);
+    v.setUint16(8, 1); v.setUint16(10, 0x8769); v.setUint16(12, 4); v.setUint32(14, 1); v.setUint32(18, 26); v.setUint32(22, 0);
+    v.setUint16(26, 1); v.setUint16(28, 0x9003); v.setUint16(30, 2); v.setUint32(32, 20); v.setUint32(36, 44); v.setUint32(40, 0);
+    for (let i = 0; i < 19; i++) tiff[44 + i] = date.charCodeAt(i);
+    const app1 = new Uint8Array(4 + 6 + 64), a = new DataView(app1.buffer);
+    a.setUint16(0, 0xffe1); a.setUint16(2, app1.length - 2); app1.set([0x45, 0x78, 0x69, 0x66, 0, 0], 4); app1.set(tiff, 10);
+    // After the JFIF header when there is one, as cameras write it.
+    const at = src[2] === 0xff && src[3] === 0xe0 ? 4 + ((src[4] << 8) | src[5]) : 2;
+    return new Blob([src.subarray(0, at), app1, src.subarray(at)], { type: blob.type });
+  } catch { return blob; }
+}
+
 const Platform = {
   // Opens the system photo picker. Resolves with the File, or null if the user backs out.
   pickPhoto(inputId = "file") {
@@ -61,13 +105,23 @@ const Platform = {
   // { share: true } asks for the share sheet on computers too (the editor's Share button).
   async savePhotos(items, opts = {}) {
     const files = await Promise.all(items.map(async (it) => {
-      const blob = it.blob || (await (await fetch(it.data)).blob());
+      let blob = it.blob || (await (await fetch(it.data)).blob());
+      if (it.date) blob = await withPhotoDate(blob, it.date);
       const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
       return new File([blob], `${it.name}.${ext}`, { type: blob.type || "image/jpeg" });
     }));
     // The home screens' "Recent" row (kept on this device only), once the save went through.
     const where = await this.savePhotoFiles(files, opts);
-    if (!opts.share) Recents.add(files).catch(() => {});
+    // Recents keep the unmarked picture (item.clean) when there is one, so re-editing a free save
+    // doesn't stack a second badge, and a later Pro save of it comes out clean.
+    if (!opts.share) (async () => {
+      const rec = await Promise.all(items.map(async (it, i) => {
+        if (!it.clean) return files[i];
+        const b = await (await fetch(it.clean)).blob();
+        return new File([b], files[i].name, { type: b.type || files[i].type });
+      }));
+      await Recents.add(rec);
+    })().catch(() => {});
     return where;
   },
   async savePhotoFiles(files, opts) {

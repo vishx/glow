@@ -94,9 +94,14 @@ const sha = async (t: string) => [...new Uint8Array(await crypto.subtle.digest("
 const randomHex = (n: number) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
 type Sec = { totp_secret: string | null; pending_secret: string | null; enabled_at: string | null; recovery_hashes: string[] };
 // null before migration 019 (two-step login then simply isn't available, and the key alone works).
+// Any other read error throws: a database hiccup must not let the key alone through (fail closed).
 async function security(): Promise<Sec | null> {
   const { data, error } = await admin.from("admin_security").select("*").eq("id", 1).maybeSingle();
-  return error ? null : (data as Sec | null) ?? { totp_secret: null, pending_secret: null, enabled_at: null, recovery_hashes: [] };
+  if (error) {
+    if (error.code === "42P01" || /does not exist|schema cache/i.test(error.message)) return null;
+    throw new Error("Couldn't check two-step login right now. Try again in a moment.");
+  }
+  return (data as Sec | null) ?? { totp_secret: null, pending_secret: null, enabled_at: null, recovery_hashes: [] };
 }
 async function sessionOk(token: string | null) {
   if (!token || !/^[0-9a-f]{64}$/.test(token)) return false;
@@ -642,7 +647,8 @@ Deno.serve(async (req) => {
   currentDevice = (req.headers.get("user-agent") ?? "").replace(/\s*\([^)]*\)\s*/, " ").trim();
   // Two-step login: with it on, everything except checking the code needs a signed-in session.
   if (body.action !== "twoStepStatus" && body.action !== "twoStepLogin") {
-    const sec = await security();
+    let sec: Sec | null;
+    try { sec = await security(); } catch (e) { return json({ error: (e as Error).message }, 503); }
     if (sec?.enabled_at && !(await sessionOk(req.headers.get("x-admin-session")))) {
       return json({ error: "Enter the 6-digit code from your authenticator app.", needCode: true }, 403);
     }

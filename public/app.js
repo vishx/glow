@@ -90,7 +90,7 @@ tool("bgcut", "HD cutout", "HD cutout", "ai", "bg", { hint: "A precise cutout, d
 // the photo. Your own pixels outside the marked or new area are put back exactly afterwards.
 tool("erase", "Remove", "Remove", "ai", "ai", { hint: "Paint over what to remove. Only the marked area changes.", mask: true });
 tool("fill", "Fill", "Fill", "ai", "ai", { hint: "Paint the area to fill and, if you like, say what to put there.", mask: true });
-tool("expand", "Expand", "Expand", "ai", "ai", { hint: "Choose a bigger shape and place the photo. Only the new area is generated." });
+tool("expand", "Expand", "Expand", "ai", "ai", { hint: "Adds more scene around the photo on every side. Only the new area is generated; your photo stays as it is." });
 tool("crop", "Crop", "Crop and rotate", "crop", "edit");
 // The Adjust sliders cover Photoshop Express's full Adjustments list. Each can change the whole
 // photo, only the people in it, or only the background (the Full / Person / Background chips).
@@ -352,16 +352,18 @@ const maskOn = () => (MASK_TOOLS.includes(sel) && !reviewing() && !ed.demo) || r
 const hasPhoto = () => ed.hist.length > 0;
 const committed = () => ed.hist[ed.idx].data;
 const unsaved = () => hasPhoto() && ed.idx > 0 && ed.savedIdx !== ed.idx;
+// A cheap fingerprint of a history step's picture (its data URL's length and tail).
+const stepFp = (i) => { const h = ed.hist[i], d = h && typeof h.data === "string" ? h.data : ""; return d ? d.length + ":" + d.slice(-48) : ""; };
 const newSession = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 // Tool settings. Reshaping tools start at 0, so nothing is reshaped unless the user asks.
 const toolAmt = { exposure: 0, whites: 0, blacks: 0, texture: 0, clarity: 0, dehaze: 0, lnoise: 0, cnoise: 0, light: 0, color: 0, warmth: 0, detail: 0, contrast: 0, highlights: 0, shadows: 0, vibrance: 0, tint: 0, fade: 0, vignette: 0, grain: 0 };
-for (const t of TOOLS) if (t.reshape) faceSet.amt[t.id] = 0;
 try {
   const s = JSON.parse(store.get("glowFace2") || "null") || { shade: (JSON.parse(store.get("glowFace") || "{}").shade) || {} };
   Object.assign(faceSet.amt, s.amt || {}); Object.assign(faceSet.shade, s.shade || {}); Object.assign(faceSet.style, s.style || {});
   Object.assign(faceSet.custom, s.custom || {}); if (Array.isArray(s.mine)) faceSet.mine = s.mine;
 } catch {}
+for (const t of TOOLS) if (t.reshape) faceSet.amt[t.id] = 0; // after loading, so saved reshape amounts don't come back
 const saveFace = () => store.set("glowFace2", JSON.stringify(faceSet));
 let lookPick = null;
 let cr = null;            // the open crop: { base, baseIdx, img, canvas, turns, W, H, aspect, rect, start, view, hint }
@@ -1064,7 +1066,7 @@ $("frame").addEventListener("dblclick", (e) => e.preventDefault());
 // A one-time hint the first time a photo opens in the editor.
 let hintTimer = 0;
 function maybeZoomHint() {
-  if (localStorage.getItem("glow.zoomHint") || !$("zoomHint").hidden || $("toast").classList.contains("on") || !fitRect().nw) return;
+  if (store.get("glow.zoomHint") || !$("zoomHint").hidden || $("toast").classList.contains("on") || !fitRect().nw) return;
   try { localStorage.setItem("glow.zoomHint", "1"); } catch {}
   $("zoomHint").textContent = matchMedia("(pointer: coarse)").matches ? "Pinch or double-tap to zoom" : "Scroll or double-click to zoom";
   $("zoomHint").hidden = false; $("zoomHint").classList.remove("gone"); $("frame").classList.add("hinting");
@@ -1131,12 +1133,15 @@ function commit(data, t, op, full) {
   saveDraft();
 }
 $("undoBtn").addEventListener("click", () => {
+  // Undo/Redo with the crop open (wide screens keep the buttons) would crop a picture that's no longer shown.
+  if (cr) { selectTool(null, { discard: true }); renderEditor(); say("Crop cancelled."); return; }
   if (ed.pending) { ed.pending = null; previewToken++; }
   else if (ed.idx > ed.floor) ed.idx--;
   if (sel && liveTool(TOOL[sel]) && !refining) { toolAmt[sel] = 0; panelBuilt = null; }
   lastCommitTool = null; renderEditor(); saveDraft(); say("Undone.");
 });
 $("redoBtn").addEventListener("click", () => {
+  if (cr) { selectTool(null, { discard: true }); renderEditor(); }
   if (ed.idx < ed.hist.length - 1) { ed.pending = null; ed.idx++; lastCommitTool = null; renderEditor(); saveDraft(); say("Redone."); }
 });
 
@@ -1417,8 +1422,11 @@ async function discardResult() {
 async function applyResult() {
   if (!resultReady()) return;
   const r = job.result, t = TOOL[job.tool];
-  if (ed.idx !== job.baseIdx) {
-    const c = await ask({ title: `Use the ${t.title} result?`, text: "It was made from an earlier version of this photo, so edits made since then won't be in it. Undo brings them back.",
+  const moved = ed.idx !== job.baseIdx || (job.baseFp && stepFp(job.baseIdx) !== job.baseFp);
+  if (moved) {
+    const c = await ask({ title: `Use the ${t.title} result?`, text: ed.idx > job.baseIdx
+        ? "It was made from an earlier version of this photo, so edits made since then won't be in it. Undo brings them back."
+        : "It was made from a different version of this photo than the one showing now. Undo brings this one back.",
       actions: [{ label: "Use it", value: "yes" }, { label: "Not now", value: "", kind: "ghost" }] });
     if (!c || !resultReady()) return;
   }
@@ -1608,7 +1616,8 @@ async function dropColor(e) {
   say("Color picked from the photo.");
 }
 // Save my look: the makeup steps on this photo become "My look" in Looks, for any photo.
-function saveMyLook() {
+// (Named apart from the camera's saveMyLook below: two plain functions with one name, the later wins.)
+function saveMakeupLook() {
   const steps = [];
   for (const h of ed.hist.slice(1, ed.idx + 1)) {
     const op = h.op; if (!op || op.revert) { if (op && op.revert) steps.length = 0; continue; }
@@ -1785,7 +1794,7 @@ function buildPanel(t) {
       row.setAttribute("role", "group"); row.setAttribute("aria-label", "Style");
       if (t.id === "fglam") {
         const save = document.createElement("button"); save.className = "opt save-look"; save.textContent = "+ Save my look";
-        save.addEventListener("click", saveMyLook); row.append(save);
+        save.addEventListener("click", saveMakeupLook); row.append(save);
       }
       body.append(row);
     }
@@ -2350,19 +2359,19 @@ async function startAiEdit(t) {
       body = { image: await uploadable(base, aiMaxSide(t.id), aiMaxPixels(t.id)), mode: "outfit", extra: r.extra, prompt: r.prompt, part: r.part };
       keep = { look: r.label };
     } else if (t.id === "expand") {
-      const x = await expandInputs(base); body = { image: x.image, mode: "expand", mask: x.mask };
+      const x = await expandInputs(base); body = { image: x.image, mode: "expand", mask: x.mask }; keep = { place: x.place };
     } else body = { image: await uploadable(base, aiMaxSide(t.id), aiMaxPixels(t.id)), mode: t.id };
   } catch (err) { setBusy(false); say(err.message, true); return; }
-  job = { requestId: rid(), id: null, tool: t.id, title: t.title, session: ed.session, baseIdx: ed.idx, status: "starting", startedAt: Date.now(), before, ...keep };
+  job = { requestId: rid(), id: null, tool: t.id, title: t.title, session: ed.session, baseIdx: ed.idx, baseFp: stepFp(ed.idx), status: "starting", startedAt: Date.now(), before, ...keep };
   saveJob();
   let res;
   try {
     track("ai_start", { mode: t.id });
-    res = await call("enhance", { method: "POST", body: JSON.stringify({ ...body, tool: t.id, platform: PLATFORM, build: APP_BUILD, request_id: job.requestId }) });
+    res = await call("enhance", { method: "POST", timeout: AI_POST_TIMEOUT, body: JSON.stringify({ ...body, tool: t.id, platform: PLATFORM, build: APP_BUILD, request_id: job.requestId }) });
   } catch (err) {
     setBusy(false);
     track("ai_fail", { mode: t.id, status: err.status || 0, limit: !!err.limit });
-    if (err.status) {
+    if (err.status && err.answered) {
       // The server answered, so the edit didn't start. It returns the credit itself if it had taken one.
       job = null; saveJob();
       // Switched off from the admin page since this tool was opened: nothing was charged.
@@ -2400,7 +2409,7 @@ async function followJob(first, blockMs, blocking) {
       await sleep(blocking ? 1500 : 4000);
       if (document.hidden) { mine.status = "processing"; saveJob(); return; } // checked again on return
       const q = mine.id ? "id=" + encodeURIComponent(mine.id) : "request=" + encodeURIComponent(mine.requestId);
-      try { res = await call("enhance?" + q, { method: "GET" }); if (res.id) mine.id = res.id; mine.status = "processing"; }
+      try { res = await call("enhance?" + q, { method: "GET", timeout: 30000 }); if (res.id) mine.id = res.id; mine.status = "processing"; }
       catch { mine.status = "unknown"; mine.error = "Glow Studio couldn't reach its server to check."; saveJob(); return; }
     }
   } finally {
@@ -2417,7 +2426,7 @@ async function checkJob() {
   if (mine.id) { mine.status = "processing"; renderJob(); return followJob(null, 0, false); }
   // We never got a job id: ask the server by our request id (needs the backend update).
   let res;
-  try { res = await call("enhance?request=" + encodeURIComponent(mine.requestId), { method: "GET" }); }
+  try { res = await call("enhance?request=" + encodeURIComponent(mine.requestId), { method: "GET", timeout: 30000 }); }
   catch (err) {
     if (err.status === 404) { job = null; saveJob(); say(`${mine.title} never started, so no AI credit was used.`); return; }
     mine.status = "unknown";
@@ -2445,7 +2454,9 @@ async function settleJob(res) {
   // Remove / Fill: only the marked area comes from the AI. It is blended into the FULL-SIZE photo
   // (every earlier step redone at full size), so every unmarked pixel is the photo's own, at its
   // own resolution. Only the marked area is limited to the size the AI worked at.
-  const mineHere = mine.session === ed.session && hasPhoto() && ed.hist.length > mine.baseIdx;
+  // Same photo AND the step it was made from is still that step (an undo and a different edit while
+  // it ran would put another picture at baseIdx, and the result would be blended onto the wrong one).
+  const mineHere = mine.session === ed.session && hasPhoto() && ed.hist.length > mine.baseIdx && (!mine.baseFp || stepFp(mine.baseIdx) === mine.baseFp);
   if (mineHere && mine.mask) {
     try { const fb = await renderExport(mine.baseIdx); full = await protectComposite(fb.data, full, mine.mask); } catch { mine.unblended = true; }
   }
@@ -2456,6 +2467,10 @@ async function settleJob(res) {
   // Pro edit: the model's light and color, each person's own features and fine detail (engine.js proFinish).
   if (mineHere && mine.tool === "pro") {
     try { const fb = await renderExport(mine.baseIdx); full = (await proFinish(await shrinkData(fb.data, 2560), full)).data; } catch {}
+  }
+  // Expand: the photo's own full-size pixels go back in the middle; only the new border is the AI's.
+  if (mineHere && mine.tool === "expand" && mine.place) {
+    try { const fb = await renderExport(mine.baseIdx); full = await expandComposite(fb.data, full, mine.place); } catch { mine.unblended = true; }
   }
   // HD cutout: the AI's edge, applied to the full-size photo.
   if (mineHere && mine.tool === "bgcut") {
@@ -2613,7 +2628,15 @@ async function exportBase(src, png) {
   } finally { if (src instanceof Blob) URL.revokeObjectURL(url); }
 }
 // Redoes every step at full size, up to the current version (or step `upto`).
-async function renderExport(upto = ed.idx) {
+// Full-size renders swap the global IMG_MAX, so they run one at a time: a save during a background
+// AI finish would otherwise finish some steps at preview size, or leave IMG_MAX raised for good.
+let exportQueue = Promise.resolve();
+function renderExport(upto = ed.idx) {
+  const run = exportQueue.then(() => renderExportNow(upto));
+  exportQueue = run.catch(() => {});
+  return run;
+}
+async function renderExportNow(upto) {
   const steps = ed.hist.slice(0, upto + 1);
   let k = 0;
   for (let i = steps.length - 1; i >= 1; i--) if (steps[i].op && steps[i].op.fixed) { k = i; break; }
@@ -2623,18 +2646,25 @@ async function renderExport(upto = ed.idx) {
   const base = await exportBase(from, png);
   let data = base.data;
   const keep = IMG_MAX; IMG_MAX = EXPORT_SIDE;
+  const skipped = [];
   try {
     const keepFor = new Set(steps.map((s) => s.op && s.op.base).filter((b) => b != null)), kept = { [k]: data };
     for (let i = k + 1; i < steps.length; i++) {
       const op = steps[i].op, from = op && op.base != null && kept[op.base] !== undefined ? kept[op.base] : data;
-      const out = await computeOp(op, from); if (out) data = out; else data = from;
+      // One step that can't be redone at full size (say a face it no longer finds) is left out,
+      // instead of failing the whole save; the note after saving says which.
+      let out = null;
+      try { out = await computeOp(op, from); }
+      catch (err) { console.warn("export step skipped", op && op.tool, err); skipped.push(op && TOOL[op.tool] ? TOOL[op.tool].title : "a step"); }
+      data = out || from;
       if (keepFor.has(i)) kept[i] = data;
     }
   } finally { IMG_MAX = keep; }
   const img = await loadImg(data);
-  return { data, w: img.naturalWidth, h: img.naturalHeight, capped: base.capped, ai: k && TOOL[steps[k].op.tool] && steps[k].op.tool !== "camlook" && steps[k].op.tool !== "pro" ? TOOL[steps[k].op.tool] : null };
+  return { data, w: img.naturalWidth, h: img.naturalHeight, capped: base.capped, skipped, ai: k && TOOL[steps[k].op.tool] && steps[k].op.tool !== "camlook" && steps[k].op.tool !== "pro" ? TOOL[steps[k].op.tool] : null };
 }
 function exportNote(r) {
+  if (r.skipped && r.skipped.length) return exportNote({ ...r, skipped: null }) + ` ${[...new Set(r.skipped)].join(", ")} couldn't be redone at full size, so it was left out.`;
   if (r.preview) return ` Saved at ${r.w} × ${r.h}, the preview size, because the full-size version couldn't be made on this device.`;
   if (r.ai && ed.demo) return ` Saved at ${r.w} × ${r.h}, the prepared preview's size.`;
   if (r.ai) return ` Saved at ${r.w} × ${r.h}, the size ${r.ai.title} returned.`;
@@ -2644,6 +2674,8 @@ function exportNote(r) {
 async function saveEdit(opts) {
   const share = !!(opts && opts.share === true);   // the Share button: the share sheet wherever the browser has one
   if (keepLive()) { sel = null; renderEditor(); }
+  // A crop still open on screen is what the user sees, so it's part of the save.
+  if (cr) { if (cropChanged() && !busyNow) await applyCrop(); else closeCrop(); sel = null; renderEditor(); }
   if (ed.pending) {
     const t = TOOL[ed.pending.tool];
     const c = await ask({ title: `Apply ${t.title} before saving?`, text: "This change is only a preview so far.", actions: [
@@ -2669,8 +2701,16 @@ async function saveEdit(opts) {
   catch {
     out = null;
   } finally { setBusy(false); }
+  let chosePreview = false;
+  if (out && out.skipped && out.skipped.length) {
+    const names = [...new Set(out.skipped)].join(", ");
+    const c = await ask({ title: "One edit couldn't be redone at full size", text: `${names} didn't work at full size (for example the face wasn't found). Save the preview size with every edit, or full size without it.`,
+      actions: [{ label: "Preview size, all edits", value: "preview" }, { label: `Full size without ${names}`, value: "full", kind: "ghost" }, { label: "Cancel", value: "", kind: "ghost" }] });
+    if (!c) { savingEdit = false; return false; }
+    if (c === "preview") { out = null; chosePreview = true; }
+  }
   if (!out) {
-    const c = await ask({ title: "Couldn't make the full-size photo", text: "This device ran out of room while redoing your edits at full size. You can save the preview size instead.",
+    const c = chosePreview ? "preview" : await ask({ title: "Couldn't make the full-size photo", text: "This device ran out of room while redoing your edits at full size. You can save the preview size instead.",
       actions: [{ label: "Save preview size", value: "preview" }, { label: "Cancel", value: "", kind: "ghost" }] });
     if (!c) { savingEdit = false; return false; }
     const img = await loadImg(committed());
@@ -2679,8 +2719,10 @@ async function saveEdit(opts) {
   // Free plan: the small Glow Studio badge goes on the finished picture.
   const marked = await markForSave(out.data, isPng(out.data));
   if (!marked) { savingEdit = false; return false; }
+  const clean = marked.marked ? out.data : null;
   if (marked.marked) out = { ...out, data: marked.data, marked: true };
-  const stamp = Date.now(), items = [{ data: out.data, name: ed.demo ? `glow-studio-ai-sample-${demoSaveTag()}${stamp}` : `glow-studio-${stamp}` }];
+  const date = ed.demo ? "" : await photoDate(ed.original && ed.original.blob);
+  const stamp = Date.now(), items = [{ data: out.data, clean, date, name: ed.demo ? `glow-studio-ai-sample-${demoSaveTag()}${stamp}` : `glow-studio-${stamp}` }];
   const withOrig = !ed.demo && store.get("glowSaveOrig") === "on" && !ed.originalSaved && ed.original && ed.original.blob;
   if (withOrig) items.unshift({ blob: ed.original.blob, name: `glow-studio-${stamp}-original` });
   try {
@@ -2939,6 +2981,8 @@ $("creditsPro").addEventListener("click", () => { $("creditsSheet").close(); ope
 $("creditsPacks").addEventListener("click", () => { $("creditsSheet").close(); openPacks(); });
 
 function showUsage(u) {
+  // The network's shared free limit (migration 020) says nothing about this account's own balance.
+  if (u && u.pool === "ip_limit") return;
   // A premium tool on the free plan draws on the one-time trial, not today's balance. The server's
   // trial balance includes extra credits; the exact split comes from the account a moment later.
   if (u && u.pool === "trial") {
@@ -3002,24 +3046,37 @@ function ensureSession(force) {
 }
 
 // Server calls
+// The enhance function can run ~150s (its wall clock) before answering; past that the connection is stuck.
+const AI_POST_TIMEOUT = 170000;
 async function call(path, opts = {}, retried) {
   const s = await ensureSession();
   let res;
+  // opts.timeout (ms): a stalled connection gives up instead of holding the screen forever. AI calls
+  // then land in their "lost connection, Check again is free" state, which never charges twice.
+  const { timeout, ...fetchOpts } = opts;
+  const ctl = timeout && typeof AbortController === "function" ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), timeout) : 0;
   try {
     res = await fetch(`${CONFIG.supabaseUrl}/functions/v1/${path}`, {
-      ...opts,
+      ...fetchOpts, ...(ctl ? { signal: ctl.signal } : {}),
       headers: { "Content-Type": "application/json", apikey: CONFIG.supabaseKey, Authorization: `Bearer ${s.access_token}` },
     });
   } catch (err) {
+    if (ctl && ctl.signal.aborted) { const e = new Error("Glow Studio's server is taking too long to answer."); e.timeout = true; e.offline = true; throw e; }
     // No connection (or it dropped): say so in words, not the browser's "Failed to fetch".
     if (err && err.name === "AbortError") throw err;
     const e = new Error("You're offline. Check your internet and try again."); e.offline = true; throw e;
   }
+  finally { clearTimeout(timer); }
   if (res.status === 401 && !retried) { await ensureSession(true); return call(path, opts, true); }
   const body = await res.json().catch(() => ({}));
   if (body.usage) showUsage(body.usage);
   if (!res.ok) {
-    const e = new Error(body.error || "Something went wrong."); e.status = res.status; e.limit = body.limit; e.blocked = !!body.blocked; e.featureOff = body.feature_off || null; throw e;
+    const e = new Error(body.error || "Something went wrong."); e.status = res.status;
+    // `answered`: Glow Studio's own function said no (its answers carry `error`; it refunds before
+    // answering). A gateway error (function killed or timed out: 502/504/546 with no `error`) means
+    // the job may still be running, so the app checks on it instead of charging again.
+    e.answered = typeof body.error === "string"; e.limit = body.limit; e.blocked = !!body.blocked; e.featureOff = body.feature_off || null; throw e;
   }
   return body;
 }
@@ -3827,11 +3884,11 @@ function saveShot(s, auto, note = "") {
       let marked = false;
       if (wantMark()) {
         const main = items[items.length - 1], data = main.data || await blobToData(main.blob);
-        if (auto) { try { const m = await addMark(data, false); if (m) { items[items.length - 1] = { data: m.data, name: main.name }; marked = true; } } catch {} }
+        if (auto) { try { const m = await addMark(data, false); if (m) { items[items.length - 1] = { data: m.data, clean: data, name: main.name }; marked = true; } } catch {} }
         else {
           const m = await markForSave(data, false);
           if (!m) return false;   // the note was cancelled: nothing saved
-          if (m.marked) { items[items.length - 1] = { data: m.data, name: main.name }; marked = true; }
+          if (m.marked) { items[items.length - 1] = { data: m.data, clean: data, name: main.name }; marked = true; }
         }
       }
       // Auto-save never opens a share sheet on its own; browsers get a download.
@@ -4007,7 +4064,12 @@ $("deleteAccount").addEventListener("click", async (e) => {
     session = null; store.set("glowSession", ""); store.set("glowPro", "");
     // The photos being edited on this device go too, so nothing of the old account is left behind.
     exitDemo(); ed.hist = []; ed.idx = 0; ed.pending = null; ed.session = ""; job = null; recovered = null; account = null;
-    await Promise.all([Drafts.clear(), Drafts.clearJob(), Drafts.clearRecovered()]).catch(() => {});
+    // Saved-photo history, the Try on closet and kept looks, and the support contact details go too.
+    await Promise.all([Drafts.clear(), Drafts.clearJob(), Drafts.clearRecovered(), Recents.clear(), Drafts.remove("closet"), Drafts.remove("tryLooks")]).catch(() => {});
+    if (typeof tryOn === "object" && tryOn) tryOn.closet = [];
+    if (typeof tryLooks === "object") tryLooks = { session: null, items: [] };
+    ["glow.supportName", "glow.supportEmail", "glowRoutine"].forEach((k) => store.set(k, ""));
+    $("supportName").value = ""; $("supportEmail").value = "";
     $("settings").close(); if (screen === "editorScreen" || screen === "editorHome") showScreen("editorHome");
     say("Your account and data were deleted.");
     refreshAccount();

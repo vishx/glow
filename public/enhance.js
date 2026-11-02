@@ -125,6 +125,16 @@ $("enhStyle").addEventListener("click", (e) => {
 });
 function openEnhSheet(work, original, name, demo) {
   if (enh.busy) return;
+  // A paid Enhance that lost its connection is still on the server: don't drop it silently.
+  if (enh.pending && !enh.demo && enh.src && enh.src !== work) {
+    const keep = { src: enh.src, original: enh.original, name: enh.name, pending: enh.pending, sheet: enh.sheet };
+    ask({ title: "Your last Enhance hasn't come back yet", text: "It may already be finished. Checking is free and never charges twice.",
+      actions: [{ label: "Check it now", value: "check" }, { label: "Start the new photo", value: "new", kind: "ghost" }] }).then((c) => {
+      if (c === "check") resumeEnh(keep);
+      else if (c === "new") { enh.pending = null; Drafts.remove("enhJob"); openEnhSheet(work, original, name, demo); }
+    });
+    return;
+  }
   Object.assign(enh, { changes: null, strength: 100, style: ENH_MODE, src: work, original, name, demo, ai: null, full: null, base: null, faces: [], pending: null, saved: null, fromBatch: null, fromCamera: null });
   enh.cache.clear();
   $("enhSheetImg").src = work; $("enhSheetFill").src = work;
@@ -136,6 +146,33 @@ function openEnhSheet(work, original, name, demo) {
   if (!$("enhSheet").open) $("enhSheet").showModal();
   if (!demo) refreshAccount().then(renderEnhCost);
 }
+// The pending Enhance is kept on the device (Drafts "enhJob"), so closing or reloading the app, or a
+// live update, doesn't lose a charged result: on the next open the app offers to check it, for free.
+function keepEnhJob() {
+  if (enh.demo || !enh.pending) return;
+  Drafts.write("enhJob", { at: Date.now(), src: enh.src, original: enh.original, name: enh.name, pending: enh.pending, sheet: enh.sheet || null }).catch(() => {});
+}
+function resumeEnh(j) {
+  if (enh.busy) return;
+  Object.assign(enh, { changes: null, strength: 100, style: j.pending.mode || ENH_MODE, src: j.src, original: j.original, name: j.name, demo: false, ai: null, full: null, base: null, faces: [], pending: j.pending, sheet: j.sheet, saved: null, fromBatch: null, fromCamera: null });
+  enh.cache.clear();
+  $("enhSheetImg").src = j.src; $("enhSheetFill").src = j.src;
+  $("enhSheetPic").querySelector(".done")?.remove();
+  $("enhRings").innerHTML = ""; $("enhSheetSample").hidden = true;
+  setSheetWorking(false); renderEnhCost();
+  if (screen !== "enhanceHome" && screen !== "enhanceResult") showScreen("enhanceHome");
+  if (!$("enhSheet").open) $("enhSheet").showModal();
+  runEnhance();
+}
+setTimeout(() => {
+  Drafts.read("enhJob").then((j) => {
+    if (!j || !j.pending || !j.src) return;
+    // Replicate's result links last about an hour; after that there's nothing left to fetch.
+    if (Date.now() - j.at > 50 * 60000) { Drafts.remove("enhJob"); return; }
+    if (enh.pending || enh.busy) return;
+    say("Your last Enhance may be ready. Checking is free.", false, { label: "Check now", run: () => resumeEnh(j) });
+  }).catch(() => {});
+}, 2500);
 function renderEnhCost() {
   const c = $("enhCost"), a = account, go = $("enhGoLbl");
   if (enh.busy) return;
@@ -297,7 +334,7 @@ async function runEnhance() {
       catch (e) { reportError("Pro Edit finish failed: " + (e && e.message)); }
     } else full = await putFacesBack(full, enh.sheet, facesUrl);
     // The toggles work on a 2048px copy; the untouched result is kept for saving at full size.
-    enh.ai = await shrinkData(full, 2048); enh.full = full; enh.pending = null;
+    enh.ai = await shrinkData(full, 2048); enh.full = full; enh.pending = null; Drafts.remove("enhJob");
     if (!enh.demo) refreshAccount();
     await prepareResult();
     await sheetReveal(enh.ai);
@@ -308,6 +345,7 @@ async function runEnhance() {
     return true;
   } catch (err) {
     setSheetWorking(false);
+    if (enh.pending) keepEnhJob(); else if (!enh.demo) Drafts.remove("enhJob");
     if (err.limit) { say(err.message, true); if (!err.blocked && !isPro()) openPaywall(); }
     else if (err.message) {
       // With the sheet open the message goes on the sheet itself, right under the button she just
@@ -334,12 +372,12 @@ async function enhanceRequest(h = enh, src = enh.src, onLabel = enhLabel, from =
     h.pending = { requestId, id: null, layout: plus.layout || null };
     try {
       track("ai_start", { mode: ENH_MODE, from, hd: !!plus.hd, tiles: plus.tiles ? plus.tiles.length : 0 });
-      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: ENH_MODE, from: "enhance", request_id: requestId, faces: h.sheet ? h.sheet.data : undefined, hd: plus.hd, tiles: plus.tiles }) });
+      const res = await call("enhance", { method: "POST", timeout: AI_POST_TIMEOUT, body: JSON.stringify({ image, mode: ENH_MODE, from: "enhance", request_id: requestId, faces: h.sheet ? h.sheet.data : undefined, hd: plus.hd, tiles: plus.tiles }) });
       h.pending.id = res.id || null;
       return await followEnhance(h, res, onLabel, from);
     } catch (err) {
       // The server answered, so nothing started; it returns any credit it took.
-      if (err.status) { h.pending = null; track("ai_fail", { mode: ENH_MODE, from, status: err.status, limit: !!err.limit }); throw err; }
+      if (err.status && err.answered) { h.pending = null; track("ai_fail", { mode: ENH_MODE, from, status: err.status, limit: !!err.limit }); throw err; }
       // The AI failed (usually out of memory on a big photo) and the credit came back: try once more, smaller.
       if (err.oom && maxPixels > AI_RETRY.pixels) { onLabel("Trying again…"); return enhanceRequest(h, src, onLabel, from, AI_RETRY.side, AI_RETRY.pixels); }
       // The AI answered "failed": that's the real reason, not a lost connection.
@@ -359,11 +397,11 @@ async function proEditRequest(h, src, onLabel, from) {
     h.pending = { requestId, id: null, mode: PRO_MODE };
     try {
       track("ai_start", { mode: PRO_MODE, from });
-      const res = await call("enhance", { method: "POST", body: JSON.stringify({ image, mode: PRO_MODE, from: "enhance", platform: PLATFORM, build: APP_BUILD, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined }) });
+      const res = await call("enhance", { method: "POST", timeout: AI_POST_TIMEOUT, body: JSON.stringify({ image, mode: PRO_MODE, from: "enhance", platform: PLATFORM, build: APP_BUILD, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined }) });
       h.pending.id = res.id || null;
       return await followEnhance(h, res, onLabel, from);
     } catch (err) {
-      if (err.status) {
+      if (err.status && err.answered) {
         h.pending = null; track("ai_fail", { mode: PRO_MODE, from, status: err.status, limit: !!err.limit });
         // The free plan's premium tries never reset, so don't say "come back tomorrow".
         if (err.limit && !isPro() && !err.blocked) err.message = "Pro Edit is a premium tool and you've used your free tries. Go Pro or get a credit pack to keep using it.";
@@ -403,7 +441,7 @@ async function followEnhance(h, first, onLabel, from) {
     else if (res) onLabel(p.mode === PRO_MODE ? "Editing like a pro…" : "Enhancing…");
     await sleep(1500);
     const q = p.id ? "id=" + encodeURIComponent(p.id) : "request=" + encodeURIComponent(p.requestId);
-    try { res = await call("enhance?" + q, { method: "GET" }); if (res.id) p.id = res.id; misses = 0; }
+    try { res = await call("enhance?" + q, { method: "GET", timeout: 30000 }); if (res.id) p.id = res.id; misses = 0; }
     catch (err) {
       if (err.status === 404 && !p.id) { h.pending = null; throw new Error("Enhance never started, so no AI credit was used. Tap Enhance to try again."); }
       if (err.status && err.status !== 429 && err.status < 500) { throw lostConnection(); }
@@ -941,7 +979,12 @@ async function lookThumbs() {
 
 $("enhClose").addEventListener("click", closeEnhResult);
 async function closeEnhResult() {
-  if (enh.fromBatch) { showScreen("enhanceBatch"); return; }   // the batch still holds this photo
+  if (enh.fromBatch) {   // the batch still holds this photo, with what was changed on it for "Save all"
+    const it = enh.fromBatch;
+    if (enh.current !== enh.ai && !enh.saved) { try { it.edit = await (await fetch(await enhSaveData())).blob(); } catch { it.edit = null; } }
+    else if (enh.current === enh.ai) it.edit = null;
+    showScreen("enhanceBatch"); return;
+  }
   if (!enh.saved && !enh.demo) {
     const c = await ask({ title: "Leave without saving?", text: "This enhanced photo hasn't been saved yet.", actions: [
       { label: "Save it", value: "save" }, { label: "Discard", value: "discard", kind: "ghost" }, { label: "Keep looking", value: "", kind: "ghost" }] });
@@ -958,18 +1001,54 @@ function enhExit() {
 }
 
 // ---------- Save and Share ----------
+// The picture to save: the AI's own full-size result, with the chosen levels (Colors, Blur, Retouch,
+// Pro Edit strength…) redone at that size. The levels work on a 2048px copy for speed; saving that
+// copy used to halve the photo as soon as any level was touched. Falls back to the 2048px picture
+// if the phone runs out of room.
+async function enhFullData() {
+  if (!enh.full || enh.current === enh.ai) return enh.full || enh.current;
+  const keep = { ai: enh.ai, base: enh.base, size: enh.size, current: enh.current };
+  try {
+    const [a, o] = await Promise.all([loadImg(enh.full), loadImg(enh.src)]);
+    // Below iOS's canvas limit (16 MP), like the editor's full-size saves.
+    const k = Math.min(1, Math.sqrt(EXPORT_AREA / (a.naturalWidth * a.naturalHeight)));
+    const W = Math.round(a.naturalWidth * k), H = Math.round(a.naturalHeight * k);
+    if (!keep.size || W <= keep.size[0]) return enh.current;
+    const c = newCanvas(W, H), x = c.getContext("2d");
+    x.imageSmoothingQuality = "high"; x.drawImage(o, 0, 0, W, H);
+    enh.ai = enh.full; enh.base = c.toDataURL("image/jpeg", 0.94); enh.size = [W, H];
+    // The engine's steps cap their canvases at IMG_MAX (2048): raised to the export size for this
+    // render, queued with the editor's full-size renders since they share that setting.
+    const run = exportQueue.then(async () => {
+      const k = IMG_MAX; IMG_MAX = EXPORT_SIDE;
+      try { return await composeEnhanced(enh.lv); } finally { IMG_MAX = k; }
+    });
+    exportQueue = run.catch(() => {});
+    return await run;
+  } catch (e) {
+    reportError("Enhance full-size save fell back to 2048: " + (e && e.message));
+    return keep.current;
+  } finally { Object.assign(enh, keep); }
+}
+async function enhSaveData() {
+  if (!enh.full || enh.current === enh.ai) return enh.full || enh.current;
+  enh.busy = true; setBusy(true, "Preparing the full-size photo…");
+  try { return await enhFullData(); } finally { setBusy(false); enh.busy = false; }
+}
 $("enhDownload").addEventListener("click", enhDownload);
 async function enhDownload() {
   if (enh.busy || !enh.current) return;
   // With only the AI enhancers on, the photo saved is the AI's own full-size result (up to twice
   // the uploaded size) rather than the 2048px working copy.
-  let data = enh.current === enh.ai && enh.full ? enh.full : enh.current;
+  let data = await enhSaveData();
   const marked = await markForSave(data, false);
   if (!marked) return;
+  const clean = marked.marked ? data : null;
   data = marked.data;
   const name = enh.demo ? `glow-studio-ai-sample-enhanced-${Date.now()}` : `glow-studio-enhanced-${Date.now()}`;
   try {
-    const where = await Platform.savePhotos([{ data, name }]);
+    const date = enh.demo ? "" : await photoDate(enh.original && enh.original.blob);
+    const where = await Platform.savePhotos([{ data, clean, date, name }]);
     track("save", { from: "enhance", demo: !!enh.demo, marked: marked.marked, where: String(where || "") });
     enh.saved = { data, where, name };
     if (enh.fromBatch) enh.fromBatch.saved = true;
@@ -1087,7 +1166,7 @@ async function editEnhanced() {
     return;
   }
   if (!(await confirmReplace())) return;
-  const full = enh.current === enh.ai && enh.full ? enh.full : enh.current;
+  const full = await enhSaveData();
   track("enhance_to_editor", {});
   await openPhoto(enh.src, enh.original, { name: enh.name, processed: { data: enh.current, full, label: "Enhance" } });
   enh.edited = enh.current;
@@ -1151,12 +1230,13 @@ async function camEnhance(s, auto) {
 // Auto-save for an enhanced camera photo: saved quietly at full size (with the Glow Studio mark on
 // free saves), staying on the Result screen.
 async function enhAutoSave() {
-  let data = enh.current === enh.ai && enh.full ? enh.full : enh.current;
+  let data = await enhSaveData();
   const marked = wantMark();
+  const clean = data;
   if (marked) { try { const m = await addMark(data, false); if (m) data = m.data; } catch {} }
   const name = `glow-studio-enhanced-${Date.now()}`;
   try {
-    const where = await Platform.savePhotos([{ data, name }], { download: true });
+    const where = await Platform.savePhotos([{ data, clean: data !== clean ? clean : null, name, date: await photoDate(enh.original && enh.original.blob) }], { download: true });
     track("save", { from: "camera_enhance", auto: true, marked, where: String(where || "") });
     enh.saved = { data, where, name };
     const note = marked && !store.get("glowBadgeSeen") ? " Free saves include a small Glow Studio badge in the corner." : "";
@@ -1361,16 +1441,20 @@ async function openBatchResult(it) {
 
 // Saves every finished photo at the AI's full size, in one go.
 async function batchSave() {
-  const done = batch.items.filter((i) => i.status === "done");
-  if (!done.length || batch.saving) return;
+  // Photos already saved one by one (from their own Result screen) aren't saved a second time.
+  const done = batch.items.filter((i) => i.status === "done" && !i.saved);
+  if (!done.length) { if (batch.items.some((i) => i.saved)) say("These photos are already saved."); return; }
+  if (batch.saving) return;
   batch.saving = true; renderBatch();
   try {
     const stamp = Date.now(), pro = !wantMark(), files = [];   // "pro" here: saved without the mark
     for (const [k, it] of done.entries()) {
       const name = `glow-studio-enhanced-${stamp}-${k + 1}`;
-      if (pro) { files.push({ blob: it.full, name }); continue; }
-      let m; try { m = await addMark(await blobToData(it.full), false); } catch { m = null; }   // Pro lapsed meanwhile: free saves carry the badge
-      files.push(m ? { data: m.data, name } : { blob: it.full, name });
+      const pic = it.edit || it.full;
+      const date = await photoDate(it.original && it.original.blob);   // with the Colors, Blur… chosen on its own Result screen
+      if (pro) { files.push({ blob: pic, name, date }); continue; }
+      let m, raw = null; try { raw = await blobToData(pic); m = await addMark(raw, false); } catch { m = null; }   // Pro lapsed meanwhile: free saves carry the badge
+      files.push(m ? { data: m.data, clean: raw, name, date } : { blob: pic, name, date });
     }
     const where = await Platform.savePhotos(files);
     track("batch_save", { photos: files.length, marked: !pro, where: String(where || "") });

@@ -168,7 +168,23 @@ async function expandInputs(src) {
   const mctx = m.getContext("2d");
   mctx.fillStyle = "#fff"; mctx.fillRect(0, 0, m.width, m.height);
   mctx.fillStyle = "#000"; mctx.fillRect(pw + 6, ph + 6, base.width - 12, base.height - 12);
-  return { image: c.toDataURL("image/jpeg", 0.92), mask: m.toDataURL("image/png") };
+  // Where the photo sits in the padded picture (0-1), so the result can get the photo's own
+  // full-size pixels back in the middle (app.js settleJob).
+  return { image: c.toDataURL("image/jpeg", 0.92), mask: m.toDataURL("image/png"),
+    place: { l: pw / c.width, t: ph / c.height, w: base.width / c.width, h: base.height / c.height } };
+}
+// Expand's result at the photo's own resolution: the AI's new border scaled up, and the full-size
+// photo (every earlier step redone at full size) put back exactly in the middle. Capped at 16 MP.
+async function expandComposite(photo, ai, place) {
+  const [p, a] = await Promise.all([loadImg(photo), loadImg(ai)]);
+  let W = p.naturalWidth / place.w, H = p.naturalHeight / place.h;
+  const k = Math.min(1, Math.sqrt(16e6 / (W * H)));
+  W = Math.round(W * k); H = Math.round(H * k);
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const x = c.getContext("2d"); x.imageSmoothingQuality = "high";
+  x.drawImage(a, 0, 0, W, H);
+  x.drawImage(p, Math.round(place.l * W), Math.round(place.t * H), Math.round(place.w * W), Math.round(place.h * H));
+  return c.toDataURL("image/jpeg", 0.95);
 }
 
 // Replicate URLs can be passed straight through; big client-made images get shrunk first.

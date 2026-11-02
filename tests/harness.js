@@ -159,6 +159,8 @@ exports.launch = async (opts = {}) => {
         state.jobs[body.request_id || job.id] = job;
         // The server took the request and charged, but the answer never arrives.
         if (ai.dropPost) { ai.dropPost = false; return r.abort('connectionreset'); }
+        // The gateway gave up on the function (killed / wall clock): a 504 with no `error`, job still running.
+        if (ai.gatewayPost) { ai.gatewayPost = false; job.n = ai.polls.length - 1; return r.fulfill({ status: 504, headers: cors, json: { code: 'WORKER_TIMEOUT', message: 'timed out' } }); }
         const st = ai.post === 'processing' ? 'processing' : ai.polls[ai.polls.length - 1];
         if (st === 'processing') return r.fulfill({ headers: cors, json: { id: job.id, status: 'processing', output: null, usage: usage() } });
         job.n = ai.polls.length - 1;

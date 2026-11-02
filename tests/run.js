@@ -2859,6 +2859,47 @@ test('audit: Enhance saves the AI result at its full size, not the 2048px workin
   eq(imageSize(d.file).w, 6000, 'saved at the AI result size');
 }, { start: 'enhance', camera: false, files: { '/__ai.jpg': path.join(fixtures, 'large-24mp.jpg') } });
 
+// 2026-11-02 deep audit.
+test('audit2: a gateway timeout on Enhance never charges twice: Check again finds the same job', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => !enh.busy && $('enhGoLbl').textContent === 'Check again', null, { timeout: 60000 });
+  eq(state.posts.length, 1, 'one POST');
+  eq(await p.evaluate(() => !!enh.pending), true, 'the request is kept');
+  await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult', null, { timeout: 60000 });
+  eq(state.posts.length, 1, 'Check again did not POST again');
+  eq(state.used, 1, 'charged once');
+}, { start: 'enhance', camera: false, ai: { server: 'patched', gatewayPost: true } });
+
+test('audit2: Enhance Result saves full size after a Colors level change too', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
+  await p.waitForFunction(() => screen === 'enhanceResult' && $('enhAfter').naturalWidth > 0, null, { timeout: 60000 });
+  await p.evaluate(async () => { enh.lv.colors = 1; showComposite(await composeEnhanced(enh.lv)); });
+  eq(await p.evaluate(() => enh.current !== enh.ai), true, 'a level is on');
+  await p.click('#enhDownload'); const [d] = await downloads(state, 1);
+  const w = imageSize(d.file).w; eq(w > 4000 && w <= 6000, true, `saved near full size (16 MP cap), not 2048 (got ${w})`);
+}, { start: 'enhance', camera: false, files: { '/__ai.jpg': path.join(fixtures, 'large-24mp.jpg') } });
+
+test('audit2: the editor and the camera each have their own Save my look', async ({ p }) => {
+  await p.goto('https://app.test/');
+  eq(await p.evaluate(() => [typeof saveMakeupLook, typeof saveMyLook, saveMakeupLook.toString().includes('faceSet.mine')]), ['function', 'function', true], 'two separate functions');
+});
+
+test('audit2: saved photos keep the original date taken', async ({ p }) => {
+  await p.goto('https://app.test/');
+  const r = await p.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 8; c.height = 8;
+    const b = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.9));
+    const out = await withPhotoDate(b, '2019:07:04 12:34:56');
+    return [await photoDate(b), await photoDate(out), out.size > b.size];
+  });
+  eq(r, ['', '2019:07:04 12:34:56', true], 'date written and read back');
+});
+
 // 2026-11-01 audit of the Pro mark switch: the Enhance tab follows it too, and the paywall the free
 // switch opens closes back to Settings.
 test('audit: Enhance saves follow the mark switch for Pro (on by default, off when switched off)', async ({ p, state }) => {
