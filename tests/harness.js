@@ -173,7 +173,7 @@ exports.launch = async (opts = {}) => {
     }
     if (u.host === 'cdn.jsdelivr.net' && mp) { const f = path.join(mp, u.pathname.replace(/^.*tasks-vision@[^/]+\//, '')); return r.fulfill({ path: f, headers: { ...cors, 'content-type': f.endsWith('.mjs') ? 'text/javascript' : f.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream' } }); }
     if (u.host === 'storage.googleapis.com') {
-      const n = u.pathname.includes('face_landmarker') ? 'face_landmarker.task' : u.pathname.includes('blaze_face') ? 'blaze_face_short_range.tflite' : u.pathname.includes('pose') ? 'pose_landmarker_lite.task' : u.pathname.includes('hair') ? 'hair_segmenter.tflite' : 'selfie_segmenter.tflite';
+      const n = u.pathname.includes('face_landmarker') ? 'face_landmarker.task' : u.pathname.includes('blaze_face') ? 'blaze_face_short_range.tflite' : u.pathname.includes('pose') ? 'pose_landmarker_lite.task' : u.pathname.includes('hair') ? 'hair_segmenter.tflite' : u.pathname.includes('magic_touch') ? 'magic_touch.tflite' : u.pathname.includes('efficientdet') ? 'efficientdet_lite0.tflite' : 'selfie_segmenter.tflite';
       return r.fulfill({ path: path.join(assets, n), headers: cors });
     }
     if (u.host === 'app.test') {

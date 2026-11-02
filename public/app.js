@@ -90,7 +90,7 @@ tool("bgscene", "AI scene", "AI background", "ai", "bg", { hint: "Pick a scene o
 tool("bgcut", "HD cutout", "HD cutout", "ai", "bg", { hint: "A precise cutout, down to the hair. Then pick any background for free." });
 // Generative tools: Remove and Fill repaint only the area you mark; Expand adds new scene around
 // the photo. Your own pixels outside the marked or new area are put back exactly afterwards.
-tool("erase", "Remove", "Remove", "ai", "ai", { hint: "Paint over what to remove. Only the marked area changes.", mask: true });
+tool("erase", "Remove", "Remove", "ai", "ai", { hint: "Tap or paint over what to remove, or let Find distractions mark them. Only the marked area changes.", mask: true });
 tool("fill", "Fill", "Fill", "ai", "ai", { hint: "Paint the area to fill and, if you like, say what to put there.", mask: true });
 tool("expand", "Expand", "Expand", "ai", "ai", { hint: "Adds more scene around the photo on every side. Only the new area is generated; your photo stays as it is." });
 tool("crop", "Crop", "Crop and rotate", "crop", "edit");
@@ -1915,13 +1915,22 @@ function buildPanel(t) {
     tryOnPanel(body);
   } else if (MASK_TOOLS.includes(t.id) && !ed.demo) {
     // Paint marks the area; Erase takes marks away. Reset (in the title row) clears them all.
-    const modes = options([["Paint", "paint"], ["Erase marks", "erase"]], (v) => v === brushMode, (v) => { brushMode = v; renderPanel(true); });
+    // Remove also has Tap: one tap outlines the thing under the finger (on the phone, free).
+    const tapOk = t.id === "erase" && featureOn("erase:tap");
+    if (!tapOk && brushMode === "tap") brushMode = "paint";
+    const modes = options([...(tapOk ? [["Tap to select", "tap"]] : []), ["Paint", "paint"], ["Erase marks", "erase"]], (v) => v === brushMode, (v) => { brushMode = v; renderPanel(true); });
     modes.setAttribute("role", "group"); modes.setAttribute("aria-label", "Brush"); modes.classList.add("brush-modes");
-    [...modes.children].forEach((b, i) => { b.setAttribute("aria-label", b.textContent); b.title = b.textContent; b.innerHTML = icon(i ? "eraser" : "brush"); });
+    [...modes.children].forEach((b) => { const v = b.textContent; b.setAttribute("aria-label", v); b.title = v; b.innerHTML = icon(v === "Tap to select" ? "wand" : v === "Paint" ? "brush" : "eraser"); });
     const sz = slider("Size", 8, 80, brushSize, (v) => { brushSize = v; }, (v) => { brushSize = v; }, (v) => v);
     sz.querySelector("input").setAttribute("aria-valuetext", `${brushSize} pixels`);
     sz.querySelector("input").addEventListener("input", (e) => e.target.setAttribute("aria-valuetext", `${e.target.value} pixels`));
     const row = document.createElement("div"); row.className = "brush-row"; row.append(modes, sz); body.append(row);
+    if (tapOk) {
+      const find = document.createElement("button"); find.className = "btn quiet find-distractions"; find.id = "findDistractions";
+      find.innerHTML = `${icon("sparkle")}<span>Find distractions</span>`;
+      find.addEventListener("click", findAndMarkDistractions);
+      body.append(find);
+    }
     if (t.id === "fill") {
       const l = document.createElement("label"); l.className = "prompt";
       const inp = document.createElement("input"); inp.type = "text"; inp.id = "fillPrompt"; inp.maxLength = 200; inp.autocomplete = "off";
@@ -2600,11 +2609,43 @@ function drawStrokes() {
   ctx.strokeStyle = "rgb(64 132 230)"; ctx.lineCap = ctx.lineJoin = "round";
   for (const s of strokes) {
     ctx.globalCompositeOperation = s.erase ? "destination-out" : "source-over";
+    if (s.region) { ctx.drawImage(tintedRegion(s), r.x, r.y, r.nw * r.s, r.nh * r.s); continue; }
     ctx.lineWidth = s.w * r.s; ctx.beginPath();
     s.pts.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, r.x + x * r.s, r.y + y * r.s));
     if (s.pts.length === 1) ctx.lineTo(r.x + s.pts[0][0] * r.s + 0.1, r.y + s.pts[0][1] * r.s);
     ctx.stroke();
   }
+}
+// Tap-selected areas: white masks at the photo's size, shown in the marks' blue.
+function tintedRegion(s) {
+  if (s.tint) return s.tint;
+  const c = newCanvas(s.region.width, s.region.height), x = c.getContext("2d");
+  x.drawImage(s.region, 0, 0); x.globalCompositeOperation = "source-in"; x.fillStyle = "rgb(64 132 230)"; x.fillRect(0, 0, c.width, c.height);
+  return (s.tint = c);
+}
+let tapBusy = false;
+async function tapSelect([px, py]) {
+  const r = imageRect(); if (tapBusy || px < 0 || py < 0 || px > r.nw || py > r.nh) return;
+  tapBusy = true; $("alertLive").textContent = "Selecting…";
+  try {
+    const region = await magicSelect(committed(), px / r.nw, py / r.nh);
+    strokes.push({ region, w: 0, pts: [] }); drawStrokes(); renderPanel();
+    Platform.haptic(); track("erase_tap");
+  } catch (err) { say(err.message, true); }
+  finally { tapBusy = false; }
+}
+async function findAndMarkDistractions() {
+  const b = $("findDistractions"); if (b) { b.disabled = true; b.lastElementChild.textContent = "Looking…"; }
+  try {
+    const src = committed(), found = await findDistractions(src);
+    if (!found.length) { say("No distractions found. Tap or paint anything you want gone."); return; }
+    for (const d of found) strokes.push({ region: await distractionMask(src, d), w: 0, pts: [], label: d.label });
+    drawStrokes(); renderPanel();
+    const people = found.filter((d) => d.label === "person").length, other = found.length - people;
+    say(`Marked ${[people && `${people} ${people === 1 ? "person" : "people"} in the background`, other && `${other} ${other === 1 ? "object" : "objects"}`].filter(Boolean).join(" and ")}. Undo any you want to keep.`);
+    track("erase_distractions", { people, other });
+  } catch (err) { say(err.message, true); }
+  finally { const bb = $("findDistractions"); if (bb) { bb.disabled = false; bb.lastElementChild.textContent = "Find distractions"; } }
 }
 function brushPoint(e) {
   const st = $("stage").getBoundingClientRect(), r = imageRect();
@@ -2621,6 +2662,7 @@ $("brush").addEventListener("pointerdown", (e) => {
     navPtrs.set(painter.id, painter.p); painter = null; navDown(e); return;
   }
   if (e.pointerType === "mouse" && e.button !== 0) return;
+  if (brushMode === "tap" && !refining) { tapSelect(brushPoint(e)); return; }
   painting = true; painter = { id: e.pointerId, p: stagePt(e) };
   strokes.push({ w: brushSize / imageRect().s, pts: [brushPoint(e)], erase: brushMode === "erase" || undefined, rm: refining && brushMode === "remove" || undefined }); drawStrokes();
 });
@@ -2640,6 +2682,7 @@ function eraseMask(w, h) {
   ctx.fillStyle = "#000"; ctx.fillRect(0, 0, w, h);
   ctx.lineCap = ctx.lineJoin = "round";
   for (const s of strokes) {
+    if (s.region) { ctx.drawImage(s.region, 0, 0, w, h); continue; }
     ctx.strokeStyle = s.erase ? "#000" : "#fff";
     ctx.lineWidth = s.w * (s.erase ? 1 : 1.15) * k; ctx.beginPath();
     s.pts.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, x * k, y * k));

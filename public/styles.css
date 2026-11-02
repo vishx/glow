@@ -1562,3 +1562,7 @@ dialog.studio::backdrop, dialog.studio-view::backdrop { background: var(--scrim)
 .studio-view-pic { flex: 1; display: grid; place-items: center; overflow: hidden; padding: 0 var(--gutter); }
 .studio-view-pic img, .studio-view-pic video { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--r-well); }
 dialog.studio-view .studio-row { padding: var(--s3) var(--gutter) calc(var(--sa-bottom, 0px) + var(--s3)); }
+
+/* One-tap Eraser */
+.find-distractions { margin-top: var(--s2); width: 100%; }
+.find-distractions svg { width: 18px; height: 18px; }

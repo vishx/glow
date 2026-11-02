@@ -13,6 +13,8 @@ fetch face_landmarker.task "$base/face_landmarker/face_landmarker/float16/1/face
 fetch blaze_face_short_range.tflite "$base/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite"
 fetch pose_landmarker_lite.task "$base/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
 fetch hair_segmenter.tflite "$base/image_segmenter/hair_segmenter/float32/latest/hair_segmenter.tflite"
+fetch magic_touch.tflite "$base/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite"
+fetch efficientdet_lite0.tflite "$base/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite"
 # The live camera checks show the fake camera a gently moving portrait (the app's own sample).
 if command -v ffmpeg >/dev/null && [ ! -s tests/.assets/face.y4m ]; then
   ffmpeg -loglevel error -y -loop 1 -i public/samples/demo-v2/original.png -t 3 -r 15 \

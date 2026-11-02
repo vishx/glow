@@ -237,6 +237,77 @@ function segmenter() {
   })().catch(() => { segmenterPromise = null; throw new Error("Couldn't load the background tool. Check your connection and try again."); });
   return segmenterPromise;
 }
+// ---------- One-tap Eraser (2026-11-02, idea 2) ----------
+// Tap to select: MediaPipe's interactive segmenter ("magic touch") outlines the thing under the
+// finger. Find distractions: its object detector lists people and clutter; the main subject (the
+// biggest, most central person) is kept and the rest are offered for removal. Both run on the phone.
+const MAGIC_MODEL = "https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite";
+const OBJECT_MODEL = "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite";
+let magicPromise = null, objectsPromise = null;
+function magicFinder() {
+  if (!magicPromise) magicPromise = (async () => {
+    const { vision, fileset } = await visionLib();
+    return vision.InteractiveSegmenter.createFromOptions(fileset, { baseOptions: { modelAssetPath: native ? "vendor/magic_touch.tflite" : MAGIC_MODEL }, outputConfidenceMasks: true, outputCategoryMask: false });
+  })().catch(() => { magicPromise = null; throw new Error("Couldn't load tap to select. Check your connection, or paint over it instead."); });
+  return magicPromise;
+}
+function objectFinder() {
+  if (!objectsPromise) objectsPromise = (async () => {
+    const { vision, fileset } = await visionLib();
+    return vision.ObjectDetector.createFromOptions(fileset, { baseOptions: { modelAssetPath: native ? "vendor/efficientdet_lite0.tflite" : OBJECT_MODEL }, scoreThreshold: 0.3, maxResults: 25, runningMode: "IMAGE" });
+  })().catch(() => { objectsPromise = null; throw new Error("Couldn't load distraction finder. Check your connection."); });
+  return objectsPromise;
+}
+// A mask (white where selected, clear elsewhere) at the picture's size, for a tap at (x, y), 0..1.
+async function magicSelect(src, x, y) {
+  const [seg, img] = await Promise.all([magicFinder(), loadImg(src)]);
+  const c = canvasFor(img, 1024); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  const res = seg.segment(c, { keypoint: { x, y } }), m = res.confidenceMasks && res.confidenceMasks[0];
+  if (!m) { if (res.close) res.close(); throw new Error("Nothing found there. Tap right on it, or paint over it."); }
+  const conf = m.getAsFloat32Array(), mc = newCanvas(m.width, m.height), mx = mc.getContext("2d"), px = mx.createImageData(m.width, m.height);
+  let on = 0;
+  for (let i = 0; i < conf.length; i++) { const v = conf[i] > 0.5 ? 255 : 0; px.data[i * 4] = px.data[i * 4 + 1] = px.data[i * 4 + 2] = 255; px.data[i * 4 + 3] = v; if (v) on++; }
+  if (res.close) res.close();
+  if (on < conf.length * 0.0005) throw new Error("Nothing found there. Tap right on it, or paint over it.");
+  if (on > conf.length * 0.6) throw new Error("That selected most of the photo. Tap a smaller thing, or paint over it.");
+  mx.putImageData(px, 0, 0);
+  // A little larger than the thing itself, so its edge and shadow go too.
+  const W = img.naturalWidth, H = img.naturalHeight, out = newCanvas(W, H), o = out.getContext("2d");
+  const grow = Math.max(3, Math.round(Math.max(W, H) / 150));
+  o.filter = `blur(${grow}px)`; o.drawImage(mc, 0, 0, W, H); o.filter = "none";
+  const d = o.getImageData(0, 0, W, H); for (let i = 3; i < d.data.length; i += 4) d.data[i] = d.data[i] > 20 ? 255 : 0; o.putImageData(d, 0, 0);
+  return out;
+}
+const CLUTTER = new Set(["bottle", "cup", "wine glass", "backpack", "handbag", "suitcase", "umbrella", "chair", "bench", "car", "truck", "bus",
+  "bicycle", "motorcycle", "traffic light", "fire hydrant", "stop sign", "parking meter", "bird", "potted plant", "trash can", "remote", "tv", "laptop"]);
+// Distractions: { label, x, y, w, h } (0..1). People much smaller than the main subject, and clutter
+// that doesn't overlap the main subject (so a cup in her hand stays).
+async function findDistractions(src) {
+  const [det, img] = await Promise.all([objectFinder(), loadImg(src)]);
+  const c = canvasFor(img, 1024); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  const W = c.width, H = c.height, list = (det.detect(c).detections || []).map((d) => {
+    const b = d.boundingBox, cat = (d.categories && d.categories[0]) || {};
+    return { label: cat.categoryName || "", score: cat.score || 0, x: b.originX / W, y: b.originY / H, w: b.width / W, h: b.height / H };
+  });
+  const people = list.filter((d) => d.label === "person").sort((a, b) => b.w * b.h - a.w * a.h);
+  const main = people[0], area = (d) => d.w * d.h;
+  const overlap = (a, b) => { const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)), iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)); return (ix * iy) / Math.max(1e-6, area(a)); };
+  // Everyone about as big as the main subject is part of the photo (a couple, a group).
+  const keep = people.filter((p) => main && area(p) >= area(main) * 0.35);
+  return list.filter((d) => d.score >= 0.35 && !keep.includes(d) && (d.label === "person" || CLUTTER.has(d.label))
+    && !keep.some((k) => overlap(d, k) > 0.5) && area(d) < 0.3);
+}
+// A box as a mask: the selected outline at its middle, or the box itself if that finds nothing.
+async function distractionMask(src, d) {
+  try {
+    const m = await magicSelect(src, d.x + d.w / 2, d.y + d.h / 2);
+    return m;
+  } catch {
+    const img = await loadImg(src), W = img.naturalWidth, H = img.naturalHeight, c = newCanvas(W, H), x = c.getContext("2d");
+    x.fillStyle = "#fff"; x.fillRect(d.x * W, d.y * H, d.w * W, d.h * H); return c;
+  }
+}
+
 // ---------- Cutout quality ----------
 // The segmenter's mask is coarse (256 px). It is refined against the photo itself with a guided
 // filter, so the edge follows the real outline (hair strands, shoulders) instead of a blocky,

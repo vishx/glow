@@ -3029,6 +3029,25 @@ test('studio: Photo to motion sends the chosen motion; Old photo offers color; f
   await p.screenshot({ path: path.join(__dirname, 'out', 'studio-hair-colors.png') });
 }, { start: 'enhance', camera: false, plan: 'pro', quota: 40 });
 
+test('eraser: tap selects a person in one touch, Find distractions runs on the phone, and Remove sends the selection', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, fx('group-two.jpg'));
+  await tool(p, 'ai', 'change', 'erase');
+  eq(await p.evaluate(() => [...document.querySelectorAll('.brush-modes .opt')].map((b) => b.getAttribute('aria-label'))), ['Tap to select', 'Paint', 'Erase marks'], 'Tap, Paint, Erase marks');
+  await p.click('.brush-modes .opt[aria-label="Tap to select"]');
+  const box = await p.evaluate(() => { const st = $('stage').getBoundingClientRect(), r = imageRect(); return { x: st.left + r.x + r.nw * r.s * 0.3, y: st.top + r.y + r.nh * r.s * 0.45 }; });
+  await p.mouse.click(box.x, box.y);
+  await p.waitForFunction(() => strokes.some((s) => s.region) || !tapBusy, null, { timeout: 30000 });
+  await p.waitForFunction(() => !tapBusy, null, { timeout: 30000 });
+  const sel = await p.evaluate(() => { const s = strokes.find((x) => x.region); if (!s) return null; const d = s.region.getContext('2d').getImageData(0, 0, s.region.width, s.region.height).data; let on = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) on++; return on / (d.length / 4); });
+  assert(sel > 0.01 && sel < 0.6, `a sensible area was selected (${sel})`);
+  await p.click('#findDistractions');
+  await p.waitForFunction(() => !$('findDistractions').disabled, null, { timeout: 30000 });
+  await p.screenshot({ path: path.join(__dirname, 'out', 'eraser-tap.png') });
+  await p.click('#applyBtn');
+  await p.waitForFunction(() => !busyNow, null, { timeout: 30000 });
+  eq(state.posts.includes('erase'), true, 'Remove ran with the tapped selection');
+}, { start: 'editor', camera: false });
+
 test('controls: closing the sheet while Enhance works stops waiting and keeps the job to check later', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
