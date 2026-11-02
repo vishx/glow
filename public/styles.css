@@ -1498,3 +1498,67 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
 .promises li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; font-size: 0.875rem; line-height: 1.4; }
 .promises li > span:first-child svg { width: 18px; height: 18px; color: var(--cta, #f3c062); margin-top: 1px; }
 .promises b { font-weight: 600; }
+
+/* ---------- Studio (2026-11-02): Trends, Headshot pack, Try-on grid, Old photo, Group fix, Motion, Me ---------- */
+.studio-wrap { margin: var(--s5) 0 var(--s3); }
+.studio-wrap-h { font-size: 0.8125rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 var(--s2); font-weight: 600; }
+.studio-strip { display: grid; grid-auto-flow: column; grid-auto-columns: 148px; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; scrollbar-width: none; }
+.studio-strip::-webkit-scrollbar { display: none; }
+.studio-card { scroll-snap-align: start; position: relative; display: grid; align-content: start; gap: 4px; text-align: left; padding: 14px; min-height: 132px;
+  border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--line); color: var(--text); font: inherit; cursor: pointer; }
+.studio-card b { font-size: 0.9375rem; font-weight: 600; }
+.studio-card small { font-size: 0.75rem; color: var(--muted); line-height: 1.35; }
+.studio-ic { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: var(--blush); color: var(--rose); margin-bottom: 4px; }
+.studio-ic svg { width: 20px; height: 20px; }
+.studio-new { justify-self: start; margin-top: 6px; max-width: 100%; font-size: 0.625rem; font-weight: 700; padding: 3px 7px; border-radius: 99px; background: var(--champagne); color: var(--cta-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+dialog.studio, dialog.studio-view { width: 100%; max-width: 640px; height: 100%; max-height: 100%; margin: 0 auto; padding: 0; border: 0; background: var(--bg); color: var(--text);
+  display: none; flex-direction: column; }
+dialog.studio[open], dialog.studio-view[open] { display: flex; }
+dialog.studio::backdrop, dialog.studio-view::backdrop { background: var(--scrim); }
+.studio-head { display: flex; gap: var(--s3); align-items: center; padding: calc(var(--sa-top, 0px) + 10px) var(--gutter) 10px; }
+.studio-head p { margin: 2px 0 0; }
+.studio-body { flex: 1; overflow-y: auto; padding: 0 var(--gutter) var(--s4); }
+.studio-foot { padding: var(--s3) var(--gutter) calc(var(--sa-bottom, 0px) + var(--s3)); display: grid; gap: var(--s2); border-top: 1px solid var(--line); background: var(--bg); }
+.studio-foot .btn { width: 100%; }
+.studio-pics { display: flex; gap: 10px; flex-wrap: wrap; margin: var(--s2) 0 var(--s4); }
+.studio-slot { position: relative; width: 104px; height: 132px; border-radius: var(--r-well); border: 1.5px dashed var(--control); background: var(--surface); color: var(--muted);
+  display: grid; place-items: center; align-content: center; gap: 6px; padding: 8px; font: inherit; font-size: 0.75rem; text-align: center; overflow: hidden; cursor: pointer; }
+.studio-slot svg { width: 22px; height: 22px; }
+.studio-slot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.studio-slot:has(img) { border-style: solid; border-color: var(--line); }
+.studio-slot:has(img) > span { position: absolute; bottom: 6px; left: 6px; right: 6px; padding: 3px; border-radius: 99px; background: var(--glass); color: var(--text); font-weight: 600; }
+.studio-slot.filled { border-style: solid; }
+.studio-x { position: absolute; top: 4px; right: 4px; width: 30px; height: 30px; min-height: 0; background: var(--glass); }
+.studio-scan { align-self: center; }
+.studio-scan svg { width: 18px; height: 18px; }
+.studio-h { font-size: 0.875rem; font-weight: 600; margin: var(--s4) 0 var(--s2); display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.studio-h small { font-weight: 400; color: var(--muted); font-size: 0.75rem; }
+.studio-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; }
+.studio-pick { position: relative; display: grid; gap: 3px; align-content: start; text-align: left; padding: 12px 12px 30px; min-height: 108px; border-radius: var(--r-well);
+  background: var(--surface); border: 1.5px solid var(--line); color: var(--text); font: inherit; cursor: pointer; }
+.studio-pick b { font-size: 0.875rem; font-weight: 600; }
+.studio-pick small { font-size: 0.75rem; color: var(--muted); line-height: 1.3; }
+.studio-pick[aria-pressed="true"], .studio-pick[aria-checked="true"] { border-color: var(--rose); box-shadow: inset 0 0 0 1px var(--rose); }
+.studio-pick .studio-ic { width: 30px; height: 30px; border-radius: 10px; }
+.studio-badge { position: absolute; top: 10px; right: 10px; font-size: 0.625rem; font-weight: 700; padding: 2px 7px; border-radius: 99px; background: var(--champagne); color: var(--cta-fg); }
+.studio-cost { position: absolute; bottom: 10px; right: 10px; display: inline-flex; gap: 2px; align-items: center; font-size: 0.75rem; color: var(--muted); }
+.studio-cost svg { width: 12px; height: 12px; }
+.studio-row { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.studio-row .btn { flex: 1 1 140px; }
+.studio-note { margin: var(--s3) 0 0; }
+.studio-note .link-btn { display: inline; padding: 0; min-height: 0; }
+.studio-motions { margin-top: var(--s2); flex-wrap: wrap; }
+.studio-toggle { display: flex; justify-content: space-between; align-items: center; margin-top: var(--s4); }
+.studio-results { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: var(--s2); }
+.studio-results.one { grid-template-columns: 1fr; }
+.studio-res { position: relative; aspect-ratio: 3 / 4; border-radius: var(--r-well); overflow: hidden; background: var(--surface); display: grid; place-items: center; align-content: center; gap: 8px; text-align: center; padding: 8px; color: var(--muted); font-size: 0.8125rem; }
+.studio-results.one .studio-res { aspect-ratio: auto; min-height: 50vh; }
+.studio-res img, .studio-res video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.studio-results.one .studio-res img, .studio-results.one .studio-res video { object-fit: contain; }
+.studio-res.done { cursor: pointer; padding: 0; }
+.studio-lbl { position: absolute; left: 8px; bottom: 8px; padding: 4px 10px; border-radius: 99px; background: var(--glass); color: var(--text); font-weight: 600; font-size: 0.75rem; }
+.studio-warn { position: absolute; left: 8px; top: 8px; padding: 4px 10px; border-radius: 99px; background: var(--danger); color: #1a0d0d; font-weight: 700; font-size: 0.6875rem; }
+.studio-fail { color: var(--text); font-weight: 600; }
+.studio-view-pic { flex: 1; display: grid; place-items: center; overflow: hidden; padding: 0 var(--gutter); }
+.studio-view-pic img, .studio-view-pic video { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--r-well); }
+dialog.studio-view .studio-row { padding: var(--s3) var(--gutter) calc(var(--sa-bottom, 0px) + var(--s3)); }

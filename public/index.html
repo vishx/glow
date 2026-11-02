@@ -59,6 +59,7 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
         <button class="link-btn enh-batch-link" id="enhBatchPick"><span data-icon="gallery"></span>Enhance up to 10 at once<span class="pro-chip">Pro</span></button>
       </div>
       <div class="enh-meta"><button id="enhCredits" hidden></button></div>
+      <div class="studio-wrap" id="studioWrap" hidden><h2 class="studio-wrap-h">Create</h2><div class="studio-strip" id="studioStrip" role="list"></div></div>
       <div class="recents" hidden><div class="recents-head"><h2>Recent</h2><button class="link-btn recents-clear">Clear</button></div><div class="recents-row" role="list"></div></div>
     </div>
   </section>
@@ -445,6 +446,7 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
 <input type="file" id="files" accept="image/*" multiple hidden>
 <input type="file" id="sysCamera" accept="image/*" capture="user" hidden>
 <input type="file" id="outfitFile" accept="image/*" hidden>
+<input type="file" id="scanFile" accept="image/*" capture="environment" hidden>
 
 <dialog class="sheet" id="settings" aria-labelledby="settingsTitle">
   <div class="sheet-head"><h2 class="t-section" id="settingsTitle">Settings</h2><button class="icon-btn" data-close aria-label="Close settings"></button></div>
@@ -612,6 +614,20 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
   <div class="links"><button id="restoreBtn2">Restore purchases</button><a href="/terms.html" target="_blank" rel="noopener">Terms</a><a href="/privacy.html" target="_blank" rel="noopener">Privacy</a></div>
 </dialog>
 
+<dialog class="studio" id="studio" aria-labelledby="studioTitle">
+  <header class="studio-head">
+    <button class="icon-btn" id="studioClose" aria-label="Close"></button>
+    <div><h2 class="t-section" id="studioTitle">Studio</h2><p class="fine" id="studioSub"></p></div>
+  </header>
+  <div class="studio-body" id="studioBody"></div>
+  <footer class="studio-foot" id="studioFoot"></footer>
+</dialog>
+<dialog class="studio-view" id="studioView" aria-labelledby="studioViewTitle">
+  <header class="studio-head"><button class="icon-btn" id="studioViewClose" aria-label="Close"></button><h2 class="t-section" id="studioViewTitle"></h2></header>
+  <div class="studio-view-pic" id="studioViewPic"></div>
+  <div class="studio-row" id="studioViewActs"></div>
+</dialog>
+
 <dialog class="enh-sheet" id="enhSheet" aria-label="Enhance this photo">
   <div class="ph">
     <img class="ph-fill" id="enhSheetFill" alt="" aria-hidden="true">
@@ -668,6 +684,7 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
 <script src="camerapro.js?v=80"></script>
 <script src="tryon.js?v=80"></script>
 <script src="enhance.js?v=80"></script>
+<script src="studio.js?v=80"></script>
 <script src="homescreen.js?v=80"></script>
 </body>
 </html>

@@ -141,7 +141,7 @@ exports.launch = async (opts = {}) => {
         }
         const body = JSON.parse(r.request().postData());
         state.posts.push(body.mode);
-        state.aiBodies.push({ mode: body.mode, from: body.from, tool: body.tool, platform: body.platform, build: body.build });
+        state.aiBodies.push({ mode: body.mode, from: body.from, tool: body.tool, platform: body.platform, build: body.build, refs: body.refs ? body.refs.length : 0, extra: !!body.extra, retry_of: body.retry_of || null, prompt: body.prompt || null });
         // The server refuses a switched-off tool before charging (the Enhance tab has no switch).
         const offKey = [!(body.from === 'enhance' && body.mode === 'enhance') && 'tool:' + body.mode, body.tool && 'tool:' + body.tool]
           .find((k) => k && state.features && state.features !== 404 && state.features[k] === false);

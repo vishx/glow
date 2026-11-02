@@ -2967,6 +2967,68 @@ test('ideas: credit history, trust promises, natural texture switch and subtle b
   eq(await p.evaluate(() => [TOOL.bposture.kind, TOOL.btailor.kind, tabFor('bposture'), ADVANCED.some((g) => g[2].includes('btailor'))]), ['body', 'body', null, true], 'body tools reached through Search');
 });
 
+test('studio: Headshot pack makes four looks with the Me selfies, saves all and a collage', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && !!account);
+  eq(await p.evaluate(() => [...document.querySelectorAll('#studioStrip .studio-card')].map((b) => b.dataset.kind)), ['trends', 'headshots', 'hair', 'oldphoto', 'groupfix', 'motion', 'me'], 'seven Studio cards on the Enhance home');
+  // Me: two selfies.
+  await p.click('.studio-card[data-kind="me"]'); await p.waitForSelector('#studio[open]');
+  const fc = p.waitForEvent('filechooser'); await p.click('#studioBody .studio-slot'); await (await fc).setFiles([PORTRAIT, PORTRAIT]);
+  await p.waitForFunction(() => document.querySelectorAll('#studioBody .studio-slot.filled').length === 2);
+  await p.click('#studioFoot .btn');
+  await p.click('.studio-card[data-kind="headshots"]'); await p.waitForSelector('#studio[open]');
+  eq(await p.$$eval('.studio-pick[aria-pressed="true"]', (x) => x.length), 4, 'all four styles picked');
+  const fc2 = p.waitForEvent('filechooser'); await p.click('#studioBody .studio-slot'); await (await fc2).setFiles(PORTRAIT);
+  await p.waitForFunction(() => /8 credits/.test($('studioGo').textContent));
+  await p.click('#studioGo');
+  await p.waitForFunction(() => document.querySelectorAll('.studio-res.done').length === 4, null, { timeout: 60000 });
+  eq(state.aiBodies.filter((b) => b.from === 'studio').map((b) => [b.mode, b.refs]), [['hs_office', 2], ['hs_creative', 2], ['hs_dating', 2], ['hs_passport', 2]], 'four jobs, each with the two selfies');
+  await p.click('#studioFoot .btn.glow'); await downloads(state, 4);
+  await p.click('#studioFoot .btn:has-text("Save as collage")'); const d = await downloads(state, 5);
+  const col = d.find((x) => /grid/.test(x.name || x.file)); assert(col && (imageSize(col.file) || {}).w > 1400, 'collage is a big grid: ' + d.map((x) => x.name || x.file).join());
+}, { start: 'enhance', camera: false, plan: 'pro', quota: 40 });
+
+test('studio: Trends sends one template, Then & Now needs the childhood photo, and Try again free marks the retry', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && !!account);
+  await p.click('.studio-card[data-kind="trends"]'); await p.waitForSelector('#studio[open]');
+  const fc = p.waitForEvent('filechooser'); await p.click('#studioBody .studio-slot'); await (await fc).setFiles(PORTRAIT);
+  await p.click('.studio-pick[data-mode="trend_thennow"]');
+  eq(await p.evaluate(() => [$('studioGo').disabled, $('studioGo').textContent]), [true, 'Add the childhood photo'], 'asks for the second photo');
+  const fc2 = p.waitForEvent('filechooser'); await p.click('#studioBody .studio-slot.child'); await (await fc2).setFiles(PORTRAIT);
+  await p.click('#studioGo');
+  await p.waitForSelector('.studio-res.done', { timeout: 60000 });
+  eq(state.aiBodies.filter((b) => b.from === 'studio').map((b) => [b.mode, b.extra]), [['trend_thennow', true]], 'one job with the extra photo');
+  await p.click('.studio-res.done'); await p.waitForSelector('#studioView[open]');
+  await p.click('#studioViewActs .btn:has-text("Try again free")');
+  await p.waitForFunction(() => document.querySelectorAll('.studio-res.done').length === 2, null, { timeout: 60000 });
+  const bodies = state.aiBodies.filter((b) => b.from === 'studio');
+  eq([bodies.length, typeof bodies[1].retry_of], [2, 'string'], 'the retry names the first request');
+}, { start: 'enhance', camera: false, plan: 'pro', quota: 40 });
+
+test('studio: Photo to motion sends the chosen motion; Old photo offers color; free grids need no credits', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && !!account);
+  await p.click('.studio-card[data-kind="motion"]'); await p.waitForSelector('#studio[open]');
+  const fc = p.waitForEvent('filechooser'); await p.click('#studioBody .studio-slot'); await (await fc).setFiles(PORTRAIT);
+  await p.click('.studio-motions .opt:has-text("Falling snow")'); await p.click('#studioGo');
+  await p.waitForSelector('.studio-res.done', { timeout: 60000 });
+  const m = state.aiBodies.filter((b) => b.from === 'studio')[0];
+  eq([m.mode, /snowflakes/.test(m.prompt)], ['motion', true], 'motion with the snow words');
+  await p.click('#studioClose');
+  await p.click('.studio-card[data-kind="oldphoto"]'); await p.waitForSelector('#studio[open]');
+  const fc2 = p.waitForEvent('filechooser'); await p.click('#studioBody .studio-slot'); await (await fc2).setFiles(PORTRAIT);
+  await p.click('#studioGo'); await p.waitForSelector('.studio-res.done', { timeout: 60000 });
+  await p.click('#studioFoot .btn:has-text("Add color")');
+  await p.waitForFunction(() => document.querySelectorAll('.studio-res.done').length === 2, null, { timeout: 60000 });
+  eq(state.aiBodies.filter((b) => b.from === 'studio').map((b) => b.mode), ['motion', 'oldphoto', 'colorize'], 'repair then color');
+  await p.click('#studioClose');
+  await p.click('.studio-card[data-kind="hair"]'); await p.waitForSelector('#studio[open]');
+  const fc3 = p.waitForEvent('filechooser'); await p.click('#studioBody .studio-slot'); await (await fc3).setFiles(PORTRAIT);
+  const before = state.posts.length;
+  await p.click('#studioBody .btn:has-text("Hair color grid")');
+  await p.waitForFunction(() => !studio.running, null, { timeout: 90000 });
+  eq(state.posts.length, before, 'no AI request for the free grid');
+  await p.screenshot({ path: path.join(__dirname, 'out', 'studio-hair-colors.png') });
+}, { start: 'enhance', camera: false, plan: 'pro', quota: 40 });
+
 test('controls: closing the sheet while Enhance works stops waiting and keeps the job to check later', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);

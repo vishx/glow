@@ -16,6 +16,16 @@ function edit(prompt: string, model: string | string[] = EDIT_MODELS) {
 const hair = (style: string) => edit(`Change only the person's hairstyle to ${style}. Keep the same hair color, clothes, pose and background.`);
 const outfit = (clothes: string) => edit(`Change only the person's clothes to ${clothes}. Keep the same body shape, pose, hair and background.`);
 
+// 2026-11-02 ideas: trends, headshot pack, hairstyle grid, old photos, group fix, photo to motion.
+// Nano Banana 2 first (most faithful to faces), then Nano Banana, then FLUX Kontext, on one charge.
+const EDIT2 = ["google/nano-banana-2", "google/nano-banana", "black-forest-labs/flux-kontext-pro"];
+// The "Me" reference selfies (or extra photos of a group) come after the photo being edited.
+const ME_NOTE = " The other images are reference photos of the same person: keep their face exactly as in the references.";
+function look(prompt: string, keep = SAME) {
+  return { model: EDIT2, input: { prompt: prompt + keep, output_format: "jpg", resolution: "1K", aspect_ratio: "match_input_image" }, refs: true, refsNote: ME_NOTE };
+}
+const KEEP_FACE = " Keep the person's face, identity, facial features, skin tone and age exactly the same; they must be instantly recognisable. Photorealistic unless the style says otherwise.";
+const hair2 = (style: string) => look(`Change only the person's hairstyle to ${style}. Keep the same hair color unless the style names one, the same clothes, pose and background.`);
 const PRO_PROMPT = "Edit this photo the way a professional photographer and photo retoucher would finish it for delivery. " +
   "Correct the white balance so whites look neutral and skin tones look natural and true. " +
   "Fix the exposure: brighten and evenly light the faces and people, recover highlights and shadows, add gentle contrast and a clean, polished, natural color grade. " +
@@ -24,7 +34,9 @@ const PRO_PROMPT = "Edit this photo the way a professional photographer and phot
   "Keep every person exactly as they are: the same face, identity, facial features, face shape, expression, age, skin tone, hair, body, pose and clothes. " +
   "Keep the same framing, composition and place. Photorealistic. Do not add objects or text.";
 
-export type Mode = { model: string | string[]; input: Record<string, unknown>; needsMask?: boolean; needsExtra?: boolean; userPrompt?: string; garment?: string; category?: string };
+export type Mode = { model: string | string[]; input: Record<string, unknown>; needsMask?: boolean; needsExtra?: boolean; userPrompt?: string; garment?: string; category?: string;
+  // refs: the tool takes up to 3 optional reference photos (the "Me" selfies, or more shots of the same group).
+  refs?: boolean; refsNote?: string; video?: boolean };
 export const MODES: Record<string, Mode> = {
   // Enhance (the app's one-tap flow and the Restore tool): Real-ESRGAN sharpens and doubles the
   // whole photo, and its GFPGAN pass restores the faces. CodeFormer was used before 2026-10-30 but
@@ -102,6 +114,35 @@ export const MODES: Record<string, Mode> = {
   // Describe / Glow Up "your words": her own request, as a careful photo edit. The phone puts her
   // own face back if the model moved it.
   custom: { ...edit("Make this photo look its best"), userPrompt: "Edit this photo: {p}." + SAME },
+  // Trends gallery: one-tap templates, no typing. Same charge as an AI edit (2 credits, migration 021).
+  trend_figurine: look("Create a 1/7 scale commercialized collectible figurine of the person in this photo, in a realistic style, standing on a round clear acrylic base on a tidy computer desk. Beside it, a colorful toy packaging box printed with the same figurine artwork. Soft indoor light, photorealistic product photo.", KEEP_FACE),
+  trend_yearbook: look("Restyle this as a 1998 American high school yearbook portrait: soft mottled blue studio backdrop, gentle flash, slightly grainy film look, late-90s hair and clothes styling, head-and-shoulders framing.", KEEP_FACE),
+  trend_poster: look("Turn this photo into a dramatic cinematic movie poster: the person as the lead, moody teal and orange color grade, dramatic rim light, a blurred epic scene behind, and an elegant title area left empty at the bottom with no readable text.", KEEP_FACE),
+  trend_snow: look("Make it a magical winter scene: soft snow falling around the person, a few snowflakes in their hair, cool crisp daylight with a warm glow on the face. Keep the pose and clothes, add a cozy scarf only if their neck is bare.", KEEP_FACE),
+  trend_holiday: look("Turn this into a warm festive holiday card photo: cozy evening light, soft bokeh fairy lights and a decorated tree behind the person, gentle film warmth. Keep the pose and clothes.", KEEP_FACE),
+  trend_polaroid: look("Make this look like a real 1990s instant film photo: faded warm colors, soft flash, slight film grain and light leaks, printed on a white instant-film frame lying on a wooden table.", KEEP_FACE),
+  trend_thennow: { ...look("Create one warm, realistic photo of the adult from the first image hugging their younger self, the child from the second image, side by side, both smiling softly at the camera, in soft natural light. The adult keeps the face and clothes from the first image, the child keeps the face and clothes from the second image.", " Keep both faces exactly as in their photos. Photorealistic."), needsExtra: true },
+  // Headshot pack: four looks of the same person, 2 credits each.
+  hs_office: look("Turn this into a professional corporate headshot: smart business attire, soft key light, clean neutral gray studio backdrop, head and shoulders, sharp focus, natural retouching.", KEEP_FACE),
+  hs_creative: look("Turn this into a modern creative-industry headshot: smart casual outfit, warm natural window light, softly blurred stylish studio interior behind, relaxed confident expression.", KEEP_FACE),
+  hs_dating: look("Turn this into a warm, natural dating-profile photo: relaxed smile, golden-hour outdoor light, softly blurred city park behind, casual outfit, candid feel.", KEEP_FACE),
+  hs_passport: look("Turn this into a passport and ID photo: the person facing the camera straight on, neutral expression with mouth closed, even light with no shadows, plain off-white background, head and shoulders centered.", KEEP_FACE),
+  // Hairstyle grid (Try-on grid): one look per style, 1 credit each. Short and masculine cuts included.
+  hair_buzz: hair2("a clean short buzz cut"),
+  hair_fade: hair2("a modern short skin fade with textured top"),
+  hair_slick: hair2("a slicked-back medium-length style"),
+  hair_beard: hair2("the same hair, plus a neatly groomed full beard"),
+  hair_shag: hair2("a modern layered shag with curtain bangs"),
+  hair_lob: hair2("a sleek shoulder-length lob"),
+  hair_afro: hair2("a full, rounded natural afro"),
+  hair_silver: hair2("the same cut in a soft silver-gray color"),
+  // Old Photo mode: repair first, then (optional) Colorize and Enhance from the editor.
+  oldphoto: look("Restore this old photograph: remove scratches, creases, tears, dust, spots and stains, fix fading and uneven exposure, and gently sharpen. Keep it looking like the same real photo: same people, faces, expressions, clothes, framing and colors (keep black and white if it is black and white). Do not add or remove anything.", " Photorealistic."),
+  // Group fix: open eyes and each person's best natural expression; extra shots of the same moment help.
+  groupfix: { ...look("Fix this group photo: make sure every person's eyes are open and looking natural, and every person has a relaxed, natural expression. If other photos of the same moment are given, use them for each person's open eyes and best expression.", " Keep every person's identity, face shape, hair, clothes and position exactly the same, and keep the same background and framing. Photorealistic."), refsNote: "" },
+  // Photo to motion: a 5-second clip from one photo (4 credits).
+  motion: { model: ["wan-video/wan-2.2-i2v-fast", "bytedance/seedance-1-lite", "kwaivgi/kling-v2.1"], input: { prompt: "subtle natural motion: the person blinks softly and breathes, a gentle breeze moves their hair, slight handheld camera drift", duration: 5, resolution: "480p" }, video: true,
+    userPrompt: "{p}. Keep the person's face and identity exactly the same, natural subtle motion, no new people, no text." },
   // HD cutout: a matting model whose edge follows single hair strands. The phone applies the
   // result to the full-size photo and adds the background.
   bgcut: { model: ["men1scus/birefnet", "851-labs/background-remover", "lucataco/remove-bg"], input: {} },
@@ -172,6 +213,9 @@ const okImg = (v: unknown, max: { side: number; pixels: number }): v is string =
   return !!wh && wh[0] >= 16 && wh[1] >= 16 && Math.max(...wh) <= max.side && wh[0] * wh[1] <= max.pixels;
 };
 export const okHd = (v: unknown): v is string => okImg(v, HD_MAX);
+// Reference photos ("Me" selfies, more shots of a group): up to 3, each at most ~1 MP.
+export const REF_MAX = { count: 3, side: 1280, pixels: 1_100_000 };
+export const okRefs = (v: unknown): v is string[] => Array.isArray(v) && v.length >= 1 && v.length <= REF_MAX.count && v.every((t) => okImg(t, REF_MAX));
 export const okTiles = (v: unknown): v is string[] =>
   Array.isArray(v) && v.length >= 2 && v.length <= TILE_MAX.count && v.every((t) => okImg(t, TILE_MAX));
 
@@ -219,6 +263,9 @@ const KNOWN: Record<string, { image: string; list?: boolean; official?: boolean 
   "black-forest-labs/flux-kontext-pro": { image: "input_image", official: true },
   "cuuupid/idm-vton": { image: "human_img" },
   "topazlabs/image-upscale": { image: "image", official: true },
+  "wan-video/wan-2.2-i2v-fast": { image: "image", official: true },
+  "bytedance/seedance-1-lite": { image: "image", official: true },
+  "kwaivgi/kling-v2.1": { image: "start_image", official: true },
 };
 
 const versionCache: Record<string, ModelInfo> = {};
@@ -250,7 +297,7 @@ export const lastOutput = (o: unknown) => (Array.isArray(o) ? o[o.length - 1] : 
 // for an ordinary photo), so one charge still gets a result. An edit still running after the
 // wait is returned as it is and never started twice.
 // `wait = false` starts it and answers at once (Enhance's face sheet runs alongside the main edit).
-export async function startPrediction(cfg: Mode, args: { image: string; mask?: string; extra?: string; prompt?: string }, wait = true) {
+export async function startPrediction(cfg: Mode, args: { image: string; mask?: string; extra?: string; prompt?: string; refs?: string[] }, wait = true) {
   const models = Array.isArray(cfg.model) ? cfg.model : [cfg.model];
   let last: { p: any; info: ModelInfo } | null = null, missing: unknown = null;
   for (const model of models) {
@@ -268,10 +315,13 @@ export async function startPrediction(cfg: Mode, args: { image: string; mask?: s
   throw missing ?? new HttpError(404, "This tool's AI model isn't available right now.");
 }
 
-async function runOn(info: ModelInfo, cfg: Mode, { image, mask, extra, prompt }: { image: string; mask?: string; extra?: string; prompt?: string }, wait = true) {
-  const images = cfg.needsExtra ? [image, extra] : [image];
+async function runOn(info: ModelInfo, cfg: Mode, { image, mask, extra, prompt, refs }: { image: string; mask?: string; extra?: string; prompt?: string; refs?: string[] }, wait = true) {
+  // Reference photos only go to models that take a list of images.
+  const more = cfg.refs && info.imageList && refs?.length ? refs.slice(0, 3) : [];
+  const images = [image, ...(cfg.needsExtra ? [extra] : []), ...more];
   const input: Record<string, unknown> = { [info.imageKey]: info.imageList ? images : image };
   for (const [k, v] of Object.entries(cfg.input)) if (info.open || k in info.props) input[k] = v;
+  if (more.length && cfg.refsNote && typeof input.prompt === "string") input.prompt += cfg.refsNote;
   // Try-on models without an image list take the clothes as their own input.
   if (cfg.needsExtra && !info.imageList) {
     input[["garm_img", "garment_image", "cloth_image"].find((k) => k in info.props) ?? "garm_img"] = extra;
@@ -279,7 +329,7 @@ async function runOn(info: ModelInfo, cfg: Mode, { image, mask, extra, prompt }:
     if (cfg.category && "category" in info.props) input.category = cfg.category;
   }
   if (cfg.needsMask) input[info.maskKey] = mask;
-  if (cfg.userPrompt && prompt) input.prompt = cfg.userPrompt.replace("{p}", prompt);
+  if (cfg.userPrompt && prompt) input.prompt = cfg.userPrompt.replace("{p}", prompt) + (more.length && cfg.refsNote ? cfg.refsNote : "");
   // Wait up to a minute so most edits finish in one request.
   return await rep(info.version ? "/predictions" : `/models/${info.model}/predictions`, {
     method: "POST",

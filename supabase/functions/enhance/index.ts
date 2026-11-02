@@ -6,7 +6,7 @@
 // refund the server confirmed. Needs migration 006 (ai_usage.client_request_id).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { unsafePrompt, cleanPrompt, ENHANCE_HD, FACE_SHEET, HttpError, lastOutput, MODES, okFaceSheet, okHd, okTiles, rep, tryOnMode, startPrediction, TOKEN } from "./pipeline.ts";
+import { okRefs, unsafePrompt, cleanPrompt, ENHANCE_HD, FACE_SHEET, HttpError, lastOutput, MODES, okFaceSheet, okHd, okTiles, rep, tryOnMode, startPrediction, TOKEN } from "./pipeline.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -146,7 +146,7 @@ Deno.serve(async (req) => {
     }
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-    const { image, mode, mask, extra, prompt, part, request_id, faces, hd, tiles, from, tool, platform, build } = await req.json().catch(() => ({}));
+    const { image, mode, mask, extra, prompt, part, request_id, faces, hd, tiles, from, tool, platform, build, refs, retry_of } = await req.json().catch(() => ({}));
     const requestId = typeof request_id === "string" && UUID.test(request_id) ? request_id : null;
     // A resent request is the same edit: answer with it instead of charging again.
     if (requestId) {
@@ -168,7 +168,9 @@ Deno.serve(async (req) => {
     if (mode === "outfit") {
       if (!hasExtra && !cleanPrompt(prompt)) return json({ error: "Pick an outfit first" }, 400);
       cfg = tryOnMode(cfg, part, cleanPrompt(prompt), hasExtra);
-    } else if (cfg.needsExtra && !hasExtra) return json({ error: "Pick the outfit photo first" }, 400);
+    } else if (cfg.needsExtra && !hasExtra) return json({ error: mode === "trend_thennow" ? "Pick a childhood photo first" : "Pick the outfit photo first" }, 400);
+    // Reference photos ("Me" selfies, or more shots of the same group): only for tools that take them.
+    const refList = cfg.refs && okRefs(refs) ? refs : undefined;
 
     // Feature switches (migration 013): a tool switched off on the admin page is refused here, before
     // anything is charged. The Enhance tab (and the camera's AI Enhance) has no switch; an editor tool
@@ -255,7 +257,7 @@ Deno.serve(async (req) => {
           console.error("tiles start", (e as Error).message); tileIds = []; p = null;
         }
       }
-      if (!p) ({ p, info } = await startPrediction(cfg, { image, mask, extra, prompt: cleanPrompt(prompt) }, !sheet));
+      if (!p) ({ p, info } = await startPrediction(cfg, { image, mask, extra, prompt: cleanPrompt(prompt), refs: refList }, !sheet && !cfg.video));
       console.log("started", mode, info.model, p.id, p.status, p.error ?? "");
       if (sheet) await admin.from("ai_usage").update({ prediction_id: p.id }).eq("id", quota.usage_id);   // findable while the sheet starts
       // The face sheet is an extra on the same credit. Replicate allows only one new job at a time
@@ -275,6 +277,9 @@ Deno.serve(async (req) => {
       if (failed) { dropFaces(); facesId = undefined; }
       const pid = facesId ? `${p.id}.${facesId}` : p.id;
       await admin.from("ai_usage").update({ prediction_id: pid }).eq("id", quota.usage_id);
+      // "Face changed? Try again free": one free retry of a finished edit with the same tool within
+      // 15 minutes (migration 021). This charge is returned at once; the retry is marked so it's used once.
+      if (!failed && typeof retry_of === "string" && UUID.test(retry_of)) await freeRetry(user.id, mode, retry_of, quota.usage_id);
       if (failed) await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
       if (DONE.has(p.status)) await finish(quota.usage_id, p.status, p.error);
       const w = await withFaces(p, facesId);
@@ -295,3 +300,17 @@ Deno.serve(async (req) => {
     return json({ error: msg }, status >= 500 || status === 402 ? 502 : status);
   }
 });
+
+async function freeRetry(uid: string, mode: string, ofRequest: string, usageId: number) {
+  try {
+    const { data: o } = await admin.from("ai_usage").select("id, mode, created_at, refunded").eq("client_request_id", ofRequest).eq("user_id", uid).maybeSingle();
+    const of = o?.id;
+    if (!o || o.mode !== mode || o.refunded || Date.now() - Date.parse(o.created_at) > 15 * 60000) return;
+    const { count } = await admin.from("ai_usage").select("id", { count: "exact", head: true }).eq("retry_of", of);
+    if (count) return;
+    const { error } = await admin.from("ai_usage").update({ retry_of: of }).eq("id", usageId);
+    if (error) return;   // before migration 021: no free retries
+    await admin.rpc("refund_ai_edit", { p_usage: usageId });
+    console.log("free retry", of, "->", usageId);
+  } catch (e) { console.error("free retry", (e as Error).message); }
+}
