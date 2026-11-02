@@ -23,7 +23,8 @@ jobs:
           REPLICATE_API_BASE: https://vahtdouihsnpnaskrtka.supabase.co/functions/v1/trend-samples
         run: |
           # A fresh OIDC token for each sample (they're short-lived).
-          for m in trend_figurine trend_yearbook trend_poster trend_polaroid trend_snow trend_holiday; do
+          MODES=$(sed -n 2p tools/trend-samples/trigger.txt); MODES=${MODES:-"trend_figurine trend_yearbook trend_poster trend_polaroid trend_snow trend_holiday"}
+          for m in $MODES; do
             REPLICATE_API_TOKEN=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=glow-trend-samples" | jq -r .value)
             export REPLICATE_API_TOKEN
             deno run --allow-env --allow-net --allow-read --allow-write tools/trend-samples/run.ts $m || echo "$m failed"
