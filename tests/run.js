@@ -2677,6 +2677,7 @@ test('ops: Contact support sends the message with the account ID and app details
   assert(/u1/.test(await p.textContent('#supportAccount')), 'shows the account ID');
   await p.selectOption('#supportTopic', 'billing');
   await p.fill('#supportMessage', 'I paid but still see the free plan.');
+  await p.fill('#supportName', 'Sam Test');
   await p.fill('#supportEmail', 'me@test.dev');
   await p.click('#supportSend');
   await p.waitForFunction(() => !$('supportSheet').open);
