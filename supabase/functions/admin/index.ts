@@ -1,6 +1,6 @@
 // The Glow Studio admin page (/admin) talks to this function. Every request must carry the owner's
 // admin key (the ADMIN_KEY secret) in the x-admin-key header; nothing else can reach it.
-// POST { action, ...args }. Needs migrations 009 and 010. Every change is written to admin_audit.
+// POST { action, ...args }. Needs migrations 009 and 010 (017 for the support inbox). Every change is written to admin_audit.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -48,6 +48,30 @@ async function findUser(v: unknown) {
 }
 const text = (v: unknown, max = 500) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 class HttpError extends Error {}
+
+// Where and on what the person last used Glow Studio: the newest of their app events, support
+// messages (which carry platform, build and device) and app errors.
+type Row = Record<string, unknown>;
+function deviceOf(events: Row[], support: Row[], err: Row | null) {
+  const s = support.find((r) => r.context && typeof r.context === "object" && Object.keys(r.context as object).length);
+  const c = (s?.context ?? {}) as Record<string, string>;
+  const e = events.find((r) => r.platform);
+  return {
+    platform: (e?.platform as string) || c.platform || (err?.platform as string) || null,
+    build: c.build || (err?.build as string) || null,
+    device: c.device || null,
+    seen: (e?.created_at as string) || (s?.created_at as string) || null,
+  };
+}
+// Pro given from this page (not bought): the newest "set_pro" in the change log whose end date is
+// the plan's end date. A store purchase later moves the end date, so it stops matching.
+function giftOf(p: Row | null, log: Row[]) {
+  if (!p || p.plan !== "pro" || !p.plan_expires_at) return null;
+  const g = log.find((r) => r.action === "set_pro");
+  const until = (g?.detail as Row | undefined)?.until as string | undefined;
+  if (!until || Math.abs(new Date(until).getTime() - new Date(String(p.plan_expires_at)).getTime()) > 120000) return null;
+  return { until, given_at: g!.created_at, reason: (g!.detail as Row).reason ?? "" };
+}
 
 const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> = {
   async overview(a) {
@@ -104,11 +128,15 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
       admin.rpc("ai_allowance", { p_user: id }).maybeSingle(),
       admin.from("ai_usage").select("id, mode, cost, created_at, refunded, from_bonus, prediction_id, ip, status, finished_at, error").eq("user_id", id).order("created_at", { ascending: false }).limit(50),
       admin.from("ad_rewards").select("id", { count: "exact", head: true }).eq("user_id", id),
-      admin.from("support_requests").select("id, topic, message, status, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(10),
+      admin.from("support_requests").select("id, topic, message, status, created_at, context").eq("user_id", id).order("created_at", { ascending: false }).limit(10),
       admin.from("app_events").select("name, props, platform, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(30),
       admin.from("app_errors").select("message, build, platform, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(20),
       admin.from("subscription_events").select("type, product_id, period_type, store, environment, price_usd, cancel_reason, created_at").eq("user_id", id).order("created_at", { ascending: false }).limit(30),
       admin.from("feature_testers").select("label, created_at").eq("user_id", id).maybeSingle(),
+    ]);
+    const [log, lastErr] = await Promise.all([
+      admin.from("admin_audit").select("*").eq("target", id).order("created_at", { ascending: false }).limit(30),
+      admin.from("app_errors").select("build, platform, created_at").eq("user_id", id).not("build", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (!auth.data?.user) throw new HttpError("No account with that ID (it may have been deleted).");
     const u = auth.data.user;
@@ -116,7 +144,8 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
       account: { id: u.id, created_at: u.created_at, last_seen: u.last_sign_in_at, anonymous: u.is_anonymous ?? !u.email },
       profile: profile.data, allowance: allowance.data, usage: must(usage), ads: ads.count ?? 0,
       support: support.data ?? [], events: events.data ?? [], errors: errors.data ?? [], subscriptions: subs.data ?? [],
-      tester: tester.data ?? null,
+      tester: tester.data ?? null, log: log.data ?? [], device: deviceOf(events.data ?? [], support.data ?? [], lastErr.data),
+      gift: giftOf(profile.data, log.data ?? []),
     };
   },
 
@@ -193,21 +222,148 @@ const actions: Record<string, (a: Record<string, unknown>) => Promise<unknown>> 
     return { refunded: true };
   },
 
+  // ---------- Support inbox (migration 017) ----------
+  // The list: open (needs a reply), pending (waiting on the customer), closed or all, newest activity
+  // first, with each customer's plan so paying customers stand out. q searches name, email and the message.
   async support(a) {
-    const status = a.status === "closed" ? "closed" : a.status === "all" ? null : "open";
-    let q = admin.from("support_requests").select("*").order("created_at", { ascending: false }).limit(100);
+    const status = ["open", "pending", "closed"].includes(String(a.status)) ? String(a.status) : a.status === "all" ? null : "open";
+    let q = admin.from("support_requests").select("*").order("updated_at", { ascending: false }).limit(200);
     if (status) q = q.eq("status", status);
-    return must(await q);
+    const term = text(a.q, 100).replace(/[%,()]/g, " ").trim();
+    if (term) {
+      if (/^\d+$/.test(term)) q = q.eq("id", Number(term));
+      else q = q.or(`name.ilike.%${term}%,email.ilike.%${term}%,message.ilike.%${term}%`);
+    }
+    const rows = must(await q) as { id: number; user_id: string | null }[];
+    const ids = [...new Set(rows.map((r) => r.user_id).filter(Boolean))] as string[];
+    const reqIds = rows.map((r) => r.id);
+    const [profiles, msgs, stats] = await Promise.all([
+      ids.length ? admin.from("profiles").select("id, plan, plan_expires_at, plan_period, blocked_at, contact_name, contact_email").in("id", ids) : { data: [] },
+      reqIds.length ? admin.from("support_messages").select("request_id, author, body, created_at").in("request_id", reqIds).neq("author", "note").order("created_at", { ascending: false }).limit(2000) : { data: [] },
+      admin.rpc("admin_support_stats", { p_days: 30 }).maybeSingle(),
+    ]);
+    const prof = new Map((profiles.data ?? []).map((p: { id: string }) => [p.id, p]));
+    const last = new Map<number, { author: string; body: string; created_at: string }>();
+    const count = new Map<number, number>();
+    for (const m of (msgs.data ?? []) as { request_id: number; author: string; body: string; created_at: string }[]) {
+      if (!last.has(m.request_id)) last.set(m.request_id, m);
+      count.set(m.request_id, (count.get(m.request_id) ?? 0) + 1);
+    }
+    const now = Date.now();
+    return {
+      rows: rows.map((r) => {
+        const p = r.user_id ? prof.get(r.user_id) as Record<string, unknown> | undefined : undefined;
+        const pro = p?.plan === "pro" && (!p.plan_expires_at || new Date(String(p.plan_expires_at)).getTime() > now);
+        return { ...r, plan: pro ? "pro" : "free", plan_period: pro ? p?.plan_period ?? null : null, blocked: !!p?.blocked_at,
+          contact_name: p?.contact_name ?? null, contact_email: p?.contact_email ?? null, last: last.get(r.id) ?? null, replies: count.get(r.id) ?? 0 };
+      }),
+      stats: stats.error ? null : stats.data,
+    };
   },
 
+  // One conversation with everything needed to answer it without leaving the page: the messages and
+  // notes, and the customer's plan, credits, recent AI runs, errors, purchases, other messages and change log.
+  async supportThread(a) {
+    const id = Math.trunc(Number(a.id));
+    const { data: r } = await admin.from("support_requests").select("*").eq("id", id).maybeSingle();
+    if (!r) throw new HttpError("That support message doesn't exist any more.");
+    const uid = r.user_id as string | null;
+    const [msgs, customer, others, log] = await Promise.all([
+      admin.from("support_messages").select("*").eq("request_id", id).order("created_at"),
+      uid ? actions.user({ user: uid }).catch(() => null) : Promise.resolve(null),
+      uid ? admin.from("support_requests").select("id, topic, message, status, created_at").eq("user_id", uid).neq("id", id).order("created_at", { ascending: false }).limit(10) : { data: [] },
+      uid ? admin.from("admin_audit").select("*").eq("target", uid).order("created_at", { ascending: false }).limit(20) : { data: [] },
+    ]);
+    return { request: r, messages: must(msgs), customer, others: others.data ?? [], log: log.data ?? [] };
+  },
+
+  // A reply. It's shown to the customer in the app (Settings > Your messages); via "email" also records
+  // that the admin page opened a mail to them. Status after: pending (waiting on them) by default, or closed.
+  async supportReply(a) {
+    const id = Math.trunc(Number(a.id)), body = text(a.body, 4000);
+    if (!body) throw new HttpError("Write a reply first.");
+    const via = a.via === "email" ? "email" : "app";
+    const status = a.status === "closed" ? "closed" : a.status === "open" ? "open" : "pending";
+    const { data: r } = await admin.from("support_requests").select("id, user_id, first_reply_at").eq("id", id).maybeSingle();
+    if (!r) throw new HttpError("That support message doesn't exist any more.");
+    const now = new Date().toISOString();
+    must(await admin.from("support_messages").insert({ request_id: id, author: "admin", body, via }));
+    const patch: Record<string, unknown> = { status, last_reply_at: now, updated_at: now, closed_at: status === "closed" ? now : null };
+    if (!r.first_reply_at) patch.first_reply_at = now;
+    must(await admin.from("support_requests").update(patch).eq("id", id));
+    await audit("support_reply", r.user_id ?? String(id), { request: id, via, status, chars: body.length });
+    return { id, status };
+  },
+
+  // A private note on the conversation, never shown to the customer.
+  async supportNote(a) {
+    const id = Math.trunc(Number(a.id)), body = text(a.body, 4000);
+    if (!body) throw new HttpError("Write a note first.");
+    must(await admin.from("support_messages").insert({ request_id: id, author: "note", body }));
+    must(await admin.from("support_requests").update({ updated_at: new Date().toISOString() }).eq("id", id));
+    return { id };
+  },
+
+  // Status, priority, topic and tags. "note" is the older one-line note (kept for messages closed before 017).
   async supportUpdate(a) {
     const id = Math.trunc(Number(a.id));
-    const status = a.status === "open" ? "open" : "closed";
-    const patch: Record<string, unknown> = { status };
+    const patch: Record<string, unknown> = {};
+    if (a.status !== undefined) {
+      const status = ["open", "pending", "closed"].includes(String(a.status)) ? String(a.status) : "closed";
+      patch.status = status;
+      patch.closed_at = status === "closed" ? new Date().toISOString() : null;
+    }
+    if (a.priority !== undefined) patch.priority = a.priority === "high" ? "high" : "normal";
+    if (a.topic !== undefined) {
+      if (!["billing", "ai", "bug", "privacy", "other"].includes(String(a.topic))) throw new HttpError("Pick a topic.");
+      patch.topic = a.topic;
+    }
+    if (Array.isArray(a.tags)) patch.tags = [...new Set(a.tags.map((t) => text(t, 30).toLowerCase()).filter(Boolean))].slice(0, 10);
     if (typeof a.note === "string") patch.note = text(a.note, 2000) || null;
-    must(await admin.from("support_requests").update(patch).eq("id", id));
-    await audit("support_" + status, String(id), {});
-    return { id, status };
+    if (!Object.keys(patch).length) throw new HttpError("Nothing to change.");
+    let res = await admin.from("support_requests").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id);
+    // Before migration 017: only status and note exist.
+    if (res.error && /column|check constraint/i.test(res.error.message) && (patch.status === "open" || patch.status === "closed")) {
+      res = await admin.from("support_requests").update({ status: patch.status, ...(patch.note !== undefined ? { note: patch.note } : {}) }).eq("id", id);
+    }
+    must(res);
+    if (patch.status) await audit("support_" + patch.status, String(id), typeof a.note === "string" && a.note ? { note: text(a.note, 200) } : {});
+    return { id, ...patch };
+  },
+
+  async macros() {
+    return must(await admin.from("support_macros").select("*").order("sort").order("id"));
+  },
+
+  async saveMacro(a) {
+    const title = text(a.title, 80), body = text(a.body, 4000);
+    if (!title || !body) throw new HttpError("A saved reply needs a name and the reply text.");
+    const id = Math.trunc(Number(a.id)) || null;
+    const row = { title, body, sort: Math.trunc(Number(a.sort)) || 0, updated_at: new Date().toISOString() };
+    if (id) must(await admin.from("support_macros").update(row).eq("id", id));
+    else must(await admin.from("support_macros").insert(row));
+    return { saved: true };
+  },
+
+  async deleteMacro(a) {
+    must(await admin.from("support_macros").delete().eq("id", Math.trunc(Number(a.id))));
+    return { deleted: true };
+  },
+
+  // Small counts for the tab badges, checked every minute while the admin page is open.
+  async badges() {
+    const [open, unanswered, errors] = await Promise.all([
+      admin.from("support_requests").select("id", { count: "exact", head: true }).eq("status", "open"),
+      admin.from("support_requests").select("id", { count: "exact", head: true }).eq("status", "open").is("first_reply_at", null),
+      admin.from("app_errors").select("id", { count: "exact", head: true }).gte("created_at", new Date(Date.now() - 864e5).toISOString()),
+    ]);
+    const { data: newest } = await admin.from("support_requests").select("id, created_at").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    return { openSupport: open.count ?? 0, unanswered: unanswered.error ? null : unanswered.count ?? 0, errors24h: errors.count ?? 0, newestSupport: newest ?? null };
+  },
+
+  // Accounts blocked from AI tools (the Blocking page lists them next to blocked addresses).
+  async blockedUsers() {
+    return must(await admin.from("profiles").select("id, blocked_at, blocked_reason, contact_name, contact_email").not("blocked_at", "is", null).order("blocked_at", { ascending: false }).limit(200));
   },
 
   async errors() {
@@ -301,6 +457,7 @@ Deno.serve(async (req) => {
     console.error("admin", body.action, msg);
     // Before migrations 009 and 010 the report functions and tables don't exist yet.
     if (/function .* does not exist|relation .* does not exist|column .* does not exist|schema cache/i.test(msg)) {
+      if (/support|macro/i.test(body.action)) return json({ error: "Run migration 017 (support inbox) in the Supabase SQL editor first.", detail: msg }, 409);
       if (/feature/i.test(body.action) || /tester/i.test(body.action)) return json({ error: "Run migration 013 (feature switches) in the Supabase SQL editor first.", detail: msg }, 409);
       return json({ error: "Run migration 010 (and 009 before it) in the Supabase SQL editor first.", detail: msg }, 409);
     }

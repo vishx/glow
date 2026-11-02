@@ -145,6 +145,49 @@
   .sheet .btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap-reverse; }
   @media (max-width: 480px) { .sheet .btns .btn { flex: 1 1 140px; } }
   .actions-help { margin: -4px 0 14px; font-size: 13px; }
+  [hidden] { display: none !important; }
+  /* Support inbox */
+  .seg-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; background: var(--card-2); border-radius: 999px; padding: 4px; width: max-content; max-width: 100%; }
+  .seg-tabs button { flex: none; border: 0; background: none; color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; padding: 7px 14px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+  .seg-tabs button[aria-selected="true"] { background: var(--text); color: var(--bg); }
+  .seg-tabs.small button { padding: 5px 12px; font-size: 13px; }
+  .seg-tabs .count { display: inline-block; min-width: 20px; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--blush); color: var(--rose); font-size: 12px; }
+  .inbox { display: grid; gap: 8px; margin-top: 12px; }
+  .inbox-row { display: block; width: 100%; text-align: left; font: inherit; color: var(--text); background: var(--card-2); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; cursor: pointer; }
+  .inbox-row:hover, .inbox-row:focus-visible { border-color: rgb(243 192 98 / 0.55); }
+  .inbox-row.fresh { border-left: 3px solid var(--rose); }
+  .inbox-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .inbox-when { margin-left: auto; font-size: 13px; white-space: nowrap; }
+  .inbox-snip { margin-top: 4px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+  .inbox-meta { margin-top: 4px; font-size: 12.5px; }
+  .inbox-meta .new { color: var(--rose); font-weight: 600; }
+  .pill.tag { background: none; border: 1px solid var(--line); color: var(--muted); }
+  .convo { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .convo-side { position: sticky; top: 112px; }
+  button.btn.only-narrow { display: none; }
+  @media (max-width: 900px) { .convo { grid-template-columns: minmax(0, 1fr); gap: 0; } .convo-side { position: static; } button.btn.only-narrow { display: inline-flex; } }
+  .thread { display: grid; gap: 12px; }
+  .bubble { max-width: 88%; padding: 10px 14px; border-radius: 16px; background: var(--card-2); }
+  .bubble.admin { justify-self: end; background: rgb(243 192 98 / 0.12); border: 1px solid rgb(243 192 98 / 0.3); }
+  .bubble.note { justify-self: stretch; max-width: none; background: none; border: 1px dashed var(--warn); }
+  .bubble-head { font-size: 12.5px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+  .bubble .msg { max-width: none; }
+  .bubble .ctx { font-weight: 400; margin-top: 2px; }
+  .composer textarea { width: 100%; min-height: 140px; margin-top: 10px; resize: vertical; }
+  .composer textarea.note { border-style: dashed; border-color: var(--warn); }
+  .check-inline { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; cursor: pointer; }
+  .check-inline[hidden] { display: none; }
+  .btn.on { border-color: var(--bad) !important; color: var(--bad) !important; }
+  .quick { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+  .quick .btn { min-height: 36px; padding: 6px 14px; font-size: 14px; }
+  h3.sub { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 16px 0 6px; }
+  .mini { display: grid; gap: 6px; font-size: 14px; }
+  .small { font-size: 13px; }
+  .nav-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--card-2); color: var(--text); font-size: 11.5px; line-height: 18px; text-align: center; }
+  .nav-badge.hot { background: var(--gold); color: var(--on-gold); }
+  .sheet.wide { max-width: 620px; }
+  .sheet textarea { width: 100%; resize: vertical; }
+  .sheet .inbox { max-height: 50vh; overflow-y: auto; }
 </style>
 </head>
 <body>
@@ -257,14 +300,16 @@ $("loginForm").onsubmit = async (e) => {
 $("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) show(b.dataset.tab); };
 $("refresh").onclick = () => show(tab);
 
-function start() { $("login").hidden = true; $("app").hidden = false; show(tab); }
+function start() { $("login").hidden = true; $("app").hidden = false; show(tab); checkBadges(); }
 async function show(name) {
   tab = name; history.replaceState(null, "", "#" + name);
   for (const b of $("tabs").children) {
     if (b.dataset.tab === name.split("/")[0]) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   }
   const view = $("view"); view.replaceChildren(h("p", { class: "muted" }, "Loading…"));
-  try { view.replaceChildren(...[].concat(await VIEWS[name.split("/")[0]](name.split("/")[1]))); }
+  // "support/c/12" opens VIEWS.support("c/12"): everything after the first slash is the view's argument.
+  const cut = name.indexOf("/");
+  try { view.replaceChildren(...[].concat(await VIEWS[cut < 0 ? name : name.slice(0, cut)](cut < 0 ? undefined : name.slice(cut + 1)))); window.scrollTo(0, 0); }
   catch (err) { view.replaceChildren(h("section", { class: "card" }, h("h2", {}, "Couldn't load this"), h("p", {}, err.message))); }
 }
 
@@ -490,7 +535,7 @@ const VIEWS = {
         { t: "Account", f: (r) => h("span", {}, userLink(r.user_id), r.contact_name || r.contact_email ? h("div", { class: "muted", style: "font-size:13px" }, r.contact_name || "", r.contact_name && r.contact_email ? " · " : "", r.contact_email || "") : "") }, { t: "Joined", f: (r) => when(r.created_at) }, { t: "Last seen", f: (r) => when(r.last_seen) },
         { t: "Plan", f: (r) => h("span", {}, planPill(r.plan, r.plan_period), r.tester ? " " : "", r.tester ? h("span", { class: "pill good", title: r.tester_label || "" }, "Tester") : "", r.blocked ? " " : "", r.blocked ? h("span", { class: "pill bad" }, "Blocked") : "") },
         { t: "Extra", n: 1, f: (r) => r.bonus_credits || "" }, { t: "AI 7d", n: 1, f: (r) => r.runs_7d }, { t: "Credits 7d", n: 1, f: (r) => r.credits_7d }, { t: "AI total", n: 1, f: (r) => r.runs_total },
-      ], rows, proOnly ? "No Pro accounts match." : "No accounts match."));
+      ], rows, proOnly ? "No Pro accounts match." : "No accounts match."), rows.length ? h("p", {}, h("button", { class: "btn ghost", onclick: () => downloadCsv("users", rows, ["user_id", "contact_name", "contact_email", "created_at", "last_seen", "plan", "plan_period", "plan_expires_at", "bonus_credits", "blocked", "tester", "runs_7d", "credits_7d", "runs_total"]) }, "Download CSV")) : "");
     };
     q.addEventListener("keydown", (e) => { if (e.key === "Enter") load().catch((err) => toast(err.message, true)); });
     const only = h("select", { "aria-label": "Show", onchange: (e) => show(e.target.value === "pro" ? "users/pro" : "users") },
@@ -502,33 +547,59 @@ const VIEWS = {
     return out;
   },
 
-  async support(status = "open") {
-    const rows = await api("support", { status });
-    const pick = h("select", { "aria-label": "Show", onchange: (e) => show("support/" + e.target.value) },
-      ...[["open", "Open"], ["closed", "Closed"], ["all", "All"]].map(([v, t]) => h("option", { value: v, selected: v === status }, t)));
-    return h("section", { class: "card" }, h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Support messages"), h("span", { class: "spacer" }), pick),
-      h("p", { class: "muted", style: "margin-top:0" }, "Reply by email when the customer left one. Close a message once it's handled."),
-      table([
-        { t: "When", f: (r) => when(r.created_at) }, { t: "Topic", f: (r) => r.topic },
-        { t: "Message", f: (r) => h("div", { class: "msg" }, r.message, r.note ? h("div", { class: "muted" }, "Note: " + r.note) : "") },
-        { t: "From", f: (r) => [r.name ? h("div", {}, r.name) : "", r.email ? h("a", { href: "mailto:" + r.email + "?subject=" + encodeURIComponent("Your Glow Studio support message") }, r.email) : h("span", { class: "muted" }, "no email"), h("br"), r.user_id ? userLink(r.user_id) : ""] },
-        { t: "App", cls: "muted", f: (r) => Object.entries(r.context || {}).map(([k, v]) => `${k}: ${v}`).join(", ") },
-        { t: "", f: (r) => h("button", { class: "btn ghost", onclick: async () => {
-            const note = r.status === "open" ? await ask({ title: "Close this support message?", what: "It moves to Closed. You can reopen it any time.",
-              field: { label: "What you did", placeholder: "e.g. Replied by email and gave 10 credits", value: r.note || "" }, ok: "Close message" }) : null;
-            if (note === null && r.status === "open") return;
-            await api("supportUpdate", { id: r.id, status: r.status === "open" ? "closed" : "open", note: note ?? undefined }).catch((e) => toast(e.message, true));
-            show("support/" + status);
-          } }, r.status === "open" ? "Close" : "Reopen") },
-      ], rows, status === "open" ? "No open messages." : "Nothing here."));
+  // Support inbox. "support/open" (needs a reply), "support/pending" (waiting on the customer),
+  // "support/closed", "support/all", or "support/c/<id>" for one conversation.
+  async support(arg = "open") {
+    if (arg.startsWith("c/")) return supportConversation(Number(arg.slice(2)));
+    const [status, query = ""] = arg.split("?q=");
+    const d = await api("support", { status, q: decodeURIComponent(query) });
+    const rows = d.rows || [], st = d.stats;
+    const search = h("input", { type: "search", placeholder: "Search name, email, words or #number", "aria-label": "Search support", value: decodeURIComponent(query), style: "flex:1 1 220px",
+      onkeydown: (e) => { if (e.key === "Enter") show(`support/${status}${search.value.trim() ? "?q=" + encodeURIComponent(search.value.trim()) : ""}`); } });
+    const FILTERS = [["open", "Needs reply", st?.open], ["pending", "Waiting on customer", st?.pending], ["closed", "Closed", null], ["all", "All", null]];
+    const seg = h("div", { class: "seg-tabs", role: "tablist" }, FILTERS.map(([v, t, n]) =>
+      h("button", { role: "tab", "aria-selected": String(v === status), onclick: () => show("support/" + v) }, t, n ? h("span", { class: "count" }, n) : "")));
+    const mins = (m) => (m == null ? "–" : m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`);
+    const rated = st ? st.rated_up + st.rated_down : 0;
+    const numbers = st ? h("div", { class: "tiles" },
+        tileBox(st.open, `Need a reply${st.unanswered ? ` (${st.unanswered} not answered yet)` : ""}`, st.high_open > 0),
+        tileBox(st.oldest_open ? ago(st.oldest_open) : "–", "Oldest waiting for you", st.oldest_open && Date.now() - new Date(st.oldest_open) > 864e5),
+        tileBox(mins(st.median_first_reply_mins), "Typical first reply, 30 days"),
+        tileBox(st.received ? Math.round((st.replied / st.received) * 100) + "%" : "–", "Messages answered, 30 days"),
+        tileBox(rated ? Math.round((st.rated_up / rated) * 100) + "%" : "–", `Happy with the answer (${rated} rated)`),
+        tileBox(st.pending, "Waiting on the customer")) : h("p", { class: "muted" }, "Run migration 017 to see support numbers, replies in the app and saved replies.");
+    return [
+      h("section", { class: "card" },
+        h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Support"), h("span", { class: "spacer" }),
+          h("button", { class: "btn ghost", onclick: () => macroManager() }, "Saved replies"),
+          "Notification" in window && Notification.permission === "default" ? h("button", { class: "btn ghost", onclick: () => Notification.requestPermission().then(() => show(tab)) }, "Notify me") : "",
+          h("button", { class: "btn ghost", onclick: () => downloadCsv("support", rows, ["id", "created_at", "status", "priority", "topic", "name", "email", "message", "user_id", "plan", "first_reply_at", "closed_at", "rating"]) }, "CSV")),
+        h("p", { class: "muted", style: "margin-top:0" }, "Replies show in the customer's app (Settings, Your messages) and can be emailed too. After you reply it waits on the customer, and comes back here when they answer."),
+        seg, h("div", { class: "row", style: "margin-top:12px" }, search),
+        rows.length ? h("div", { class: "inbox" }, rows.map(inboxRow)) : h("p", { class: "muted" }, status === "open" ? "Nothing needs a reply. Nice." : "Nothing here.")),
+      st ? h("h2", { style: "margin:4px 2px 12px" }, "How support is going") : "", numbers,
+    ];
   },
 
   async subs(type = "") {
     const rows = await api("subscriptions", { type });
+    // 30-day summary from the events on screen (test purchases left out).
+    const since = Date.now() - 30 * 864e5, live = rows.filter((r) => r.environment !== "SANDBOX" && new Date(r.created_at) >= since);
+    const n = (f) => live.filter(f).length;
+    const net = live.reduce((t, r) => t + Number(r.price_usd || 0), 0);
+    const summary = type ? "" : h("div", { class: "tiles" },
+      tileBox(n((r) => r.type === "INITIAL_PURCHASE" && r.period_type !== "TRIAL"), "New paid subscriptions, 30 days"),
+      tileBox(n((r) => r.type === "INITIAL_PURCHASE" && r.period_type === "TRIAL"), "Free trials started"),
+      tileBox(n((r) => r.type === "RENEWAL"), "Renewals (incl. trials that became paid)"),
+      tileBox(n((r) => r.type === "CANCELLATION"), "Cancelled (renewal turned off)", n((r) => r.type === "CANCELLATION") > 3),
+      tileBox(n((r) => Number(r.price_usd) < 0), "Refunds", n((r) => Number(r.price_usd) < 0) > 0),
+      tileBox(n((r) => r.type === "BILLING_ISSUE"), "Payment problems", n((r) => r.type === "BILLING_ISSUE") > 0),
+      tileBox(money(net), "Net, before store fees"));
     const pick = h("select", { "aria-label": "Show", onchange: (e) => show("subs/" + e.target.value) },
       h("option", { value: "" }, "All events"),
       ...Object.entries(SUB_NAMES).map(([v, t]) => h("option", { value: v, selected: v === type }, t)));
-    return h("section", { class: "card" }, h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Subscription events"), h("span", { class: "spacer" }), pick),
+    return [summary, h("section", { class: "card" }, h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Subscription events"), h("span", { class: "spacer" }), pick,
+        h("button", { class: "btn ghost", onclick: () => downloadCsv("subscriptions", rows, ["created_at", "type", "product_id", "period_type", "store", "environment", "price_usd", "cancel_reason", "user_id"]) }, "CSV")),
       h("p", { class: "muted", style: "margin-top:0" }, "Everything RevenueCat reports: new subscriptions, renewals, trials, credit packs, cancellations, refunds and payment problems. Amounts are in US dollars before store fees; refunds show as minus. Test purchases are marked and left out of revenue."),
       table([
         { t: "When", f: (r) => when(r.created_at) }, { t: "Event", f: subRow },
@@ -536,18 +607,28 @@ const VIEWS = {
         { t: "Amount", n: 1, f: (r) => (r.price_usd != null ? money(r.price_usd) : "") },
         { t: "Reason", cls: "muted", f: (r) => (r.cancel_reason || "").replace(/_/g, " ").toLowerCase() },
         { t: "Account", f: (r) => (r.user_id ? userLink(r.user_id) : "") },
-      ], rows, "No subscription events yet. They appear here as soon as RevenueCat sends them."));
+      ], rows, "No subscription events yet. They appear here as soon as RevenueCat sends them."))];
   },
 
-  async errors() {
-    const rows = await api("errors");
+  async errors(filter = "") {
+    const all = await api("errors");
+    const [fp = "", fb = "", fd = "7"] = decodeURIComponent(filter).split("|");
+    const rows = all.filter((r) => (!fp || r.platform === fp) && (!fb || r.build === fb) && (fd === "all" || new Date(r.created_at) >= Date.now() - Number(fd) * 864e5));
+    const opt = (list, cur, label) => [h("option", { value: "" }, label), ...[...new Set(list.filter(Boolean))].sort().reverse().map((v) => h("option", { value: v, selected: v === cur }, v))];
+    const go = () => show("errors/" + encodeURIComponent([selP.value, selB.value, selD.value].join("|")));
+    const selP = h("select", { "aria-label": "Platform", onchange: go }, opt(all.map((r) => r.platform), fp, "All platforms"));
+    const selB = h("select", { "aria-label": "Build", onchange: go }, opt(all.map((r) => r.build), fb, "All builds"));
+    const selD = h("select", { "aria-label": "Period", onchange: go }, [["1", "Last 24 hours"], ["7", "Last 7 days"], ["all", "Newest 100"]].map(([v, t]) => h("option", { value: v, selected: v === fd }, t)));
+    const filters = h("section", { class: "card" }, h("div", { class: "row", style: "margin:0" }, h("h2", { style: "margin:0" }, "App errors"), h("span", { class: "spacer" }), selP, selB, selD,
+      h("button", { class: "btn ghost", onclick: () => downloadCsv("errors", rows, ["created_at", "message", "detail", "build", "platform", "user_id"]) }, "CSV")),
+      h("p", { class: "muted", style: "margin:8px 0 0" }, "Pick a build to check whether a release made things worse."));
     const groups = Object.values(rows.reduce((g, r) => {
       const k = r.message || "(no message)";
       const x = (g[k] ||= { message: k, count: 0, users: new Set(), last: r.created_at, builds: new Set() });
       x.count++; if (r.user_id) x.users.add(r.user_id); if (r.build) x.builds.add(r.build);
       return g;
     }, {})).sort((a, b) => b.count - a.count);
-    return [h("section", { class: "card" }, h("h2", {}, "Most common errors"),
+    return [filters, h("section", { class: "card" }, h("h2", {}, "Most common errors"),
       table([
         { t: "Error", f: (r) => h("div", { class: "msg" }, r.message) }, { t: "Times", n: 1, f: (r) => r.count },
         { t: "People", n: 1, f: (r) => r.users.size }, { t: "Last seen", f: (r) => when(r.last) }, { t: "Builds", cls: "mono", f: (r) => [...r.builds].join(", ") },
@@ -561,28 +642,280 @@ const VIEWS = {
   },
 
   async abuse() {
-    const rows = await api("blockedIps");
+    const [rows, users] = await Promise.all([api("blockedIps"), api("blockedUsers").catch(() => [])]);
     const ip = h("input", { placeholder: "IP address", "aria-label": "IP address" }), why = h("input", { placeholder: "Reason (optional)", "aria-label": "Reason" });
-    return h("section", { class: "card" }, h("h2", {}, "Blocked internet addresses"),
+    return [h("section", { class: "card" }, h("h2", {}, "Blocked internet addresses"),
       h("p", { class: "muted", style: "margin-top:0" }, "A blocked address can't start AI runs, on any account. Block a single account from its page under Users. Find heavy users on the Overview."),
       h("div", { class: "row" }, ip, why, h("button", { class: "btn danger", onclick: async () => {
         try { await api("blockIp", { ip: ip.value, reason: why.value }); toast("Blocked."); show("abuse"); } catch (e) { toast(e.message, true); } } }, "Block")),
       table([
         { t: "Address", cls: "mono", f: (r) => r.ip }, { t: "Reason", f: (r) => r.reason || "" }, { t: "Since", f: (r) => when(r.created_at) },
         { t: "", f: (r) => h("button", { class: "btn ghost", onclick: async () => { await api("blockIp", { ip: r.ip, blocked: false }).catch((e) => toast(e.message, true)); show("abuse"); } }, "Unblock") },
-      ], rows, "No blocked addresses."));
+      ], rows, "No blocked addresses.")),
+      h("section", { class: "card" }, h("h2", {}, "Blocked accounts"),
+        h("p", { class: "muted", style: "margin-top:0" }, "Accounts that can't use AI tools. Open one to unblock it."),
+        table([
+          { t: "Account", f: (r) => h("span", {}, userLink(r.id), r.contact_name || r.contact_email ? h("div", { class: "muted small" }, r.contact_name || r.contact_email) : "") },
+          { t: "Reason", f: (r) => r.blocked_reason || "" }, { t: "Since", f: (r) => when(r.blocked_at) },
+        ], users, "No blocked accounts."))];
   },
 
   async log() {
-    const rows = await api("audit");
-    return h("section", { class: "card" }, h("h2", {}, "Change log"), h("p", { class: "muted", style: "margin-top:0" }, "Every change made from this page."),
-      table([
+    const [rows, dels] = await Promise.all([api("audit"), api("deletions").catch(() => [])]);
+    const list = h("div", {});
+    const paint = (q) => list.replaceChildren(table([
         { t: "When", f: (r) => when(r.created_at) }, { t: "Change", f: (r) => r.action.replace(/_/g, " ") },
         { t: "Target", f: (r) => (/^[0-9a-f-]{36}$/.test(r.target || "") ? userLink(r.target) : r.target || "") },
         { t: "Details", cls: "muted", f: (r) => Object.entries(r.detail || {}).filter(([, v]) => v !== "" && v != null).map(([k, v]) => `${k}: ${v}`).join(", ") },
-      ], rows, "No changes yet."));
+      ], rows.filter((r) => !q || JSON.stringify(r).toLowerCase().includes(q)), "No changes match."));
+    const search = h("input", { type: "search", placeholder: "Filter: account ID, change or note", "aria-label": "Filter the change log", style: "flex:1 1 240px", oninput: () => paint(search.value.trim().toLowerCase()) });
+    paint("");
+    return [h("section", { class: "card" }, h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Change log"), h("span", { class: "spacer" }),
+        h("button", { class: "btn ghost", onclick: () => downloadCsv("change-log", rows, ["created_at", "action", "target", "detail"]) }, "CSV")),
+      h("p", { class: "muted", style: "margin-top:0" }, "Every change made from this page (newest 100)."), h("div", { class: "row" }, search), list),
+      h("section", { class: "card" }, h("h2", {}, "Account deletions"),
+        h("p", { class: "muted", style: "margin-top:0" }, "People who deleted their account in the app. Everything that identifies them is already gone; this is the record that each request was carried out."),
+        table([
+          { t: "When", f: (r) => when(r.created_at) }, { t: "Plan", f: (r) => planPill(r.plan) }, { t: "AI runs", n: 1, f: (r) => r.ai_runs },
+          { t: "Account age", n: 1, f: (r) => `${r.account_age_days} d` },
+        ], dels, "No deletions."))];
   },
 };
+
+// ---------- Support helpers ----------
+const TOPICS = { billing: "Payment", ai: "AI tool or credits", bug: "Not working", privacy: "Data or privacy", other: "Other" };
+const STATUS = { open: "Needs reply", pending: "Waiting on customer", closed: "Closed" };
+function ago(t) {
+  const s = Math.max(0, (Date.now() - new Date(t)) / 1000);
+  return s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`;
+}
+const tileBox = (v, label, alert) => h("div", { class: "tile" + (alert ? " alert" : "") }, h("b", {}, v), h("span", {}, label));
+const firstName = (n) => (n || "").trim().split(/\s+/)[0] || "there";
+// "android" + "... Version/4.0 Chrome/156 Mobile Safari" → "Android app (Chrome 156)"; web Safari → "Web · Safari 18".
+function deviceName(c = {}) {
+  const ua = String(c.device || ""), p = String(c.platform || "").toLowerCase();
+  const chrome = ua.match(/Chrome\/(\d+)/), safari = ua.match(/Version\/(\d+)[\d.]* .*Safari/), firefox = ua.match(/Firefox\/(\d+)/);
+  const browser = firefox ? `Firefox ${firefox[1]}` : /Edg\//.test(ua) ? "Edge" : chrome ? `Chrome ${chrome[1]}` : safari ? `Safari ${safari[1]}` : "";
+  if (p === "android") return `Android app${chrome ? ` (Chrome ${chrome[1]})` : ""}`;
+  if (p === "ios") return "iPhone app";
+  if (p === "web") return `Web${/Mobile/.test(ua) ? " on a phone" : ""}${browser ? ` · ${browser}` : ""}`;
+  return [p, browser].filter(Boolean).join(" · ") || "Unknown";
+}
+function contextLine(c) {
+  if (!c || !Object.keys(c).length) return "";
+  const bits = [deviceName(c), c.build ? `build ${c.build}` : "", c.plan ? `${c.plan} plan` : "", c.credits !== undefined && c.credits !== "" ? `${c.credits} credits left` : "",
+    c.screen ? `was on ${c.screen}` : "", c.lang || "", c.tz || ""].filter(Boolean);
+  return bits.join(" · ");
+}
+function inboxRow(r) {
+  const who = r.contact_name || r.name || r.contact_email || r.email || `Account ${short(r.user_id)}`;
+  const last = r.last || { author: "customer", body: r.message, created_at: r.created_at };
+  const lastBy = last.author === "admin" ? "You: " : "";
+  const fresh = r.status === "open" && !r.first_reply_at;
+  return h("button", { class: "inbox-row" + (fresh ? " fresh" : ""), onclick: () => show("support/c/" + r.id) },
+    h("div", { class: "inbox-top" },
+      h("b", {}, who),
+      r.plan === "pro" ? h("span", { class: "pill pro" }, "Pro") : "",
+      r.priority === "high" ? h("span", { class: "pill bad" }, "Urgent") : "",
+      r.blocked ? h("span", { class: "pill bad" }, "Blocked") : "",
+      h("span", { class: "pill" }, TOPICS[r.topic] || r.topic),
+      ...(r.tags || []).map((t) => h("span", { class: "pill tag" }, t)),
+      h("span", { class: "inbox-when muted" }, ago(r.updated_at || r.created_at))),
+    h("div", { class: "inbox-snip" }, h("span", { class: "muted" }, lastBy), String(last.body).slice(0, 180)),
+    h("div", { class: "inbox-meta muted" }, `#${r.id}`, " · ", fresh ? h("span", { class: "new" }, "New") : STATUS[r.status], r.replies ? ` · ${r.replies + 1} messages` : "",
+      r.rating ? ` · ${r.rating > 0 ? "👍" : "👎"}` : ""));
+}
+
+let macroCache = null;
+async function getMacros(force) { if (!macroCache || force) macroCache = await api("macros").catch(() => []); return macroCache; }
+
+async function supportConversation(id) {
+  const d = await api("supportThread", { id });
+  const r = d.request, c = d.customer, p = (c && c.profile) || {}, al = (c && c.allowance) || {};
+  const name = p.contact_name || r.name || "";
+  const email = p.contact_email || r.email || "";
+  const refresh = () => show("support/c/" + id);
+  const upd = (args, msg) => api("supportUpdate", { id, ...args }).then(() => { if (msg) toast(msg); refresh(); }, (e) => toast(e.message, true));
+
+  // ----- the conversation -----
+  const bubble = (who, body, at, extra) => h("div", { class: "bubble " + who },
+    h("div", { class: "bubble-head" }, who === "customer" ? (name || "Customer") : who === "note" ? "Private note" : "You", " · ", when(at), extra || ""),
+    h("div", { class: "msg" }, body));
+  const thread = h("div", { class: "thread" },
+    bubble("customer", r.message, r.created_at, r.context && Object.keys(r.context).length ? h("div", { class: "ctx" }, contextLine(r.context)) : ""),
+    r.note ? bubble("note", r.note, r.closed_at || r.created_at) : "",
+    d.messages.map((m) => bubble(m.author, m.body, m.created_at, m.author === "admin" ? h("span", { class: "muted" }, m.via === "email" ? " · in app + email" : " · in app") : "")),
+    r.rating ? h("p", { class: "muted", style: "text-align:center" }, `${r.rating > 0 ? "👍 Happy" : "👎 Not happy"} with the answer · ${when(r.rating_at)}`) : "");
+
+  // ----- reply box -----
+  let mode = "reply";
+  const box = h("textarea", { rows: "6", placeholder: "Write a reply. The customer sees it in the app.", "aria-label": "Reply", maxlength: "4000" });
+  const sendMail = h("input", { type: "checkbox", checked: email ? true : null, disabled: email ? null : true });
+  const macros = await getMacros();
+  const fill = (body) => body.replaceAll("{name}", firstName(name));
+  const macroPick = h("select", { "aria-label": "Saved reply", onchange: () => {
+      const m = macros.find((x) => String(x.id) === macroPick.value);
+      if (m) { box.value = (box.value.trim() ? box.value.trimEnd() + "\n\n" : "") + fill(m.body); box.focus(); }
+      macroPick.value = "";
+    } }, h("option", { value: "" }, "Insert a saved reply…"), macros.map((m) => h("option", { value: m.id }, m.title)));
+  const tabs = h("div", { class: "seg-tabs small" },
+    h("button", { "aria-selected": "true", onclick: (e) => setMode("reply", e.target) }, "Reply"),
+    h("button", { "aria-selected": "false", onclick: (e) => setMode("note", e.target) }, "Private note"));
+  const mailRow = h("label", { class: "check-inline" }, sendMail, email ? ` Also open an email to ${email}` : " No email on this account (the reply still shows in their app)");
+  const sendWait = h("button", { class: "btn", onclick: () => send("pending") }, "Send");
+  const sendClose = h("button", { class: "btn ghost", onclick: () => send("closed") }, "Send and close");
+  const saveNote = h("button", { class: "btn", hidden: true, onclick: async () => {
+      if (!box.value.trim()) return toast("Write a note first.", true);
+      await api("supportNote", { id, body: box.value }).then(() => { toast("Note saved."); refresh(); }, (e) => toast(e.message, true));
+    } }, "Save note");
+  function setMode(m, btn) {
+    mode = m; for (const b of tabs.children) b.setAttribute("aria-selected", String(b === btn));
+    box.placeholder = m === "note" ? "Only you can see notes. e.g. Gave 10 credits, checked RevenueCat." : "Write a reply. The customer sees it in the app.";
+    box.classList.toggle("note", m === "note");
+    mailRow.hidden = macroPick.hidden = sendWait.hidden = sendClose.hidden = m === "note"; saveNote.hidden = m !== "note";
+  }
+  async function send(status) {
+    const body = box.value.trim();
+    if (!body) return toast("Write a reply first.", true);
+    const viaMail = sendMail.checked && !!email;
+    // Open the mail first (a browser only allows it straight after the tap), then save the reply.
+    if (viaMail) window.open(`mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(`Re: your Glow Studio message (#${id})`)}&body=${encodeURIComponent(body + `\n\n(You can also read and answer this in Glow Studio: Settings, Your messages.)`)}`, "_blank");
+    sendWait.disabled = sendClose.disabled = true;
+    try { await api("supportReply", { id, body, via: viaMail ? "email" : "app", status }); toast(status === "closed" ? "Sent and closed." : "Sent. It shows in their app."); refresh(); }
+    catch (e) { toast(e.message, true); sendWait.disabled = sendClose.disabled = false; }
+  }
+  const composer = h("section", { class: "card composer" }, tabs, box,
+    h("div", { class: "row", style: "margin:10px 0 0" }, macroPick, mailRow),
+    h("div", { class: "row", style: "margin:10px 0 0;justify-content:flex-end" }, sendClose, sendWait, saveNote));
+
+  // ----- header: status, topic, priority, tags -----
+  const statusSel = h("select", { "aria-label": "Status", onchange: () => upd({ status: statusSel.value }, "Status changed.") },
+    Object.entries(STATUS).map(([v, t]) => h("option", { value: v, selected: v === r.status }, t)));
+  const topicSel = h("select", { "aria-label": "Topic", onchange: () => upd({ topic: topicSel.value }, "Topic changed.") },
+    Object.entries(TOPICS).map(([v, t]) => h("option", { value: v, selected: v === r.topic }, t)));
+  const urgent = h("button", { class: "btn ghost" + (r.priority === "high" ? " on" : ""), onclick: () => upd({ priority: r.priority === "high" ? "normal" : "high" }) }, r.priority === "high" ? "Urgent ✓" : "Mark urgent");
+  const tagBtn = h("button", { class: "btn ghost", onclick: async () => {
+      const t = await ask({ title: "Tags", what: "Short labels to group conversations, e.g. refund, android, try-on. Separate with commas.",
+        field: { label: "Tags", value: (r.tags || []).join(", "), placeholder: "refund, android" }, ok: "Save tags" });
+      if (t !== null) upd({ tags: t.split(",").map((x) => x.trim()).filter(Boolean) }, "Tags saved.");
+    } }, (r.tags || []).length ? "Tags: " + r.tags.join(", ") : "Add tags");
+  const head = h("section", { class: "card" },
+    h("p", { style: "margin:0 0 8px" }, h("button", { class: "link", onclick: () => show("support/" + (r.status === "closed" ? "closed" : "open")) }, "← Support")),
+    h("div", { class: "row", style: "margin-bottom:6px" }, h("h2", { style: "margin:0" }, name || email || `Account ${short(r.user_id)}`), h("span", { class: "muted" }, `#${r.id} · ${when(r.created_at)}`)),
+    h("div", { class: "row", style: "margin:0" }, statusSel, topicSel, urgent, tagBtn,
+      h("button", { class: "btn ghost only-narrow", onclick: () => document.querySelector(".convo-side").scrollIntoView({ behavior: "smooth" }) }, "Customer details ↓")));
+
+  // ----- customer panel -----
+  const side = c ? customerPanel(c, r, refresh) : h("section", { class: "card" }, h("h2", {}, "Customer"),
+    h("p", { class: "muted" }, r.user_id ? "This account no longer exists (deleted)." : "Sent without an account."), email ? h("p", {}, h("a", { href: "mailto:" + email }, email)) : "");
+  const others = d.others.length ? h("section", { class: "card" }, h("h2", {}, "Their other messages"),
+    h("div", { class: "inbox" }, d.others.map((o) => h("button", { class: "inbox-row", onclick: () => show("support/c/" + o.id) },
+      h("div", { class: "inbox-top" }, h("b", {}, TOPICS[o.topic] || o.topic), h("span", { class: "pill" }, STATUS[o.status] || o.status), h("span", { class: "inbox-when muted" }, when(o.created_at))),
+      h("div", { class: "inbox-snip" }, String(o.message).slice(0, 140)))))) : "";
+  const log = d.log.length ? h("section", { class: "card" }, h("h2", {}, "Changes to this account"), logTable(d.log.slice(0, 10))) : "";
+  return h("div", { class: "convo" }, h("div", { class: "convo-main" }, head, h("section", { class: "card" }, thread), composer),
+    h("div", { class: "convo-side" }, side, others, log));
+}
+
+// What you need to help this person, plus one-tap fixes. Used on a conversation and (bigger) on the account page.
+function customerPanel(c, req, refresh) {
+  const p = c.profile || {}, a = c.allowance || {}, id = c.account.id, dev = c.device || {};
+  const act = async (action, args, done) => { try { const x = await api(action, { user: id, ...args }); toast(done(x)); refresh(); } catch (e) { toast(e.message, true); } };
+  const failed = (c.usage || []).filter((u) => (u.status === "failed" || u.status === "canceled") && !u.refunded).length;
+  return h("section", { class: "card" }, h("h2", {}, "Customer"),
+    h("dl", {},
+      h("dt", {}, "Name"), h("dd", {}, p.contact_name || h("span", { class: "muted" }, "Not given")),
+      h("dt", {}, "Email"), h("dd", {}, p.contact_email ? h("a", { href: "mailto:" + p.contact_email }, p.contact_email) : h("span", { class: "muted" }, "Not given")),
+      h("dt", {}, "Account"), h("dd", {}, userLink(id), " ", h("button", { class: "link", onclick: () => navigator.clipboard.writeText(id).then(() => toast("ID copied. Paste it in RevenueCat's customer search.")) }, "copy ID")),
+      h("dt", {}, "Plan"), h("dd", {}, planPill(a.plan, a.period), c.gift ? h("span", { class: "muted" }, ` given by you, until ${when(c.gift.until)}`) : p.plan_expires_at && a.plan === "pro" ? h("span", { class: "muted" }, ` renews/ends ${when(p.plan_expires_at)}`) : ""),
+      h("dt", {}, "Credits left"), h("dd", {}, `${a.remaining ?? "?"}${a.bonus ? ` (incl. ${a.bonus} extra)` : ""}`),
+      h("dt", {}, "Device"), h("dd", {}, deviceName({ platform: dev.platform, device: dev.device }), dev.build ? h("span", { class: "muted mono" }, ` · ${dev.build}`) : ""),
+      h("dt", {}, "Joined"), h("dd", {}, when(c.account.created_at)),
+      h("dt", {}, "Last seen"), h("dd", {}, c.account.last_seen ? ago(c.account.last_seen) : ""),
+      h("dt", {}, "AI runs"), h("dd", {}, `${(c.usage || []).length}${(c.usage || []).length >= 50 ? "+" : ""}`, failed ? h("span", { class: "pill bad", style: "margin-left:6px" }, `${failed} failed, not refunded`) : ""),
+      c.tester ? [h("dt", {}, "Tester"), h("dd", {}, h("span", { class: "pill good" }, "Yes"))] : null,
+      p.blocked_at ? [h("dt", {}, "Status"), h("dd", {}, h("span", { class: "pill bad" }, "Blocked from AI"))] : null),
+    h("div", { class: "quick" },
+      h("button", { class: "btn ghost", onclick: async () => {
+        const n = await ask({ title: "Give bonus credits", what: "Free extra AI credits. They never expire.", field: { label: "How many credits", value: "5", optional: false }, ok: "Give credits" });
+        const k = Math.trunc(Number(n)); if (n === null) return; if (!(k >= 1 && k <= 500)) return toast("Give 1 to 500 credits.", true);
+        act("grant", { credits: k, reason: req ? `Support #${req.id}` : "" }, (x) => `Bonus credits now ${x.bonus_credits}.`); } }, "Give credits"),
+      h("button", { class: "btn ghost", onclick: async () => {
+        const n = await ask({ title: "Give free Pro", what: "Glow Studio Pro at no charge. It ends on its own.", field: { label: "Days", value: "7", optional: false }, ok: "Give Pro" });
+        const k = Math.trunc(Number(n)); if (n === null) return; if (!(k >= 1 && k <= 366)) return toast("Type 1 to 366 days.", true);
+        act("setPro", { days: k, reason: req ? `Support #${req.id}` : "" }, (x) => `Pro until ${when(x.until)}.`); } }, "Give Pro"),
+      failed ? h("button", { class: "btn ghost", onclick: async () => {
+        const runs = (c.usage || []).filter((u) => (u.status === "failed" || u.status === "canceled") && !u.refunded);
+        const ok = await ask({ title: `Give back credits for ${runs.length} failed run${runs.length > 1 ? "s" : ""}?`, what: `Returns ${runs.reduce((t, u) => t + u.cost, 0)} credits.`, ok: "Give credits back" });
+        if (ok === null) return;
+        for (const u of runs) await api("refund", { usage: u.id, reason: req ? `Support #${req.id}` : "" }).catch((e) => toast(e.message, true));
+        toast("Credits returned."); refresh(); } }, "Refund failed runs") : "",
+      h("button", { class: "btn ghost", onclick: () => show("users/" + id) }, "Full account")),
+    h("h3", { class: "sub" }, "Recent AI runs"),
+    (c.usage || []).length ? h("div", { class: "mini" }, c.usage.slice(0, 6).map((u) => h("div", {},
+      h("span", {}, u.mode), " ",
+      u.status === "succeeded" ? h("span", { class: "pill good" }, "worked") : u.status === "failed" || u.status === "canceled" ? h("span", { class: "pill bad" }, "failed") : h("span", { class: "pill" }, u.status || "charged"),
+      u.refunded ? h("span", { class: "pill" }, "refunded") : "", h("span", { class: "muted" }, ` ${ago(u.created_at)}`),
+      u.error ? h("div", { class: "muted small" }, String(u.error).slice(0, 120)) : ""))) : h("p", { class: "muted" }, "None."),
+    (c.errors || []).length ? [h("h3", { class: "sub" }, "Recent app errors"), h("div", { class: "mini" }, c.errors.slice(0, 4).map((e) => h("div", {}, h("span", { class: "small" }, e.message), h("span", { class: "muted" }, ` ${ago(e.created_at)}`))))] : "",
+    (c.subscriptions || []).length ? [h("h3", { class: "sub" }, "Purchases"), h("div", { class: "mini" }, c.subscriptions.slice(0, 5).map((s) => h("div", {}, subRow(s), " ", planName(s.product_id), s.price_usd != null ? ` ${money(s.price_usd)}` : "", h("span", { class: "muted" }, ` ${when(s.created_at)}`))))] : "");
+}
+
+async function macroManager() {
+  const list = await getMacros(true);
+  const bg = h("div", { class: "sheet-bg", onclick: (e) => { if (e.target === bg) bg.remove(); } });
+  const edit = (m = {}) => {
+    const title = h("input", { value: m.title || "", placeholder: "Name, e.g. Credits returned", maxlength: "80" });
+    const body = h("textarea", { rows: "8", maxlength: "4000", placeholder: "Hi {name}, …" }); body.value = m.body || "";
+    sheet.replaceChildren(h("h3", {}, m.id ? "Edit saved reply" : "New saved reply"),
+      h("p", { class: "muted" }, "{name} becomes the customer's first name."),
+      h("label", {}, "Name"), title, h("label", {}, "Reply"), body,
+      h("div", { class: "btns" },
+        m.id ? h("button", { class: "btn danger", onclick: async () => { await api("deleteMacro", { id: m.id }).catch((e) => toast(e.message, true)); bg.remove(); macroManager(); } }, "Delete") : "",
+        h("button", { class: "btn ghost", onclick: () => { bg.remove(); macroManager(); } }, "Back"),
+        h("button", { class: "btn", onclick: async () => {
+          try { await api("saveMacro", { id: m.id, title: title.value, body: body.value, sort: m.sort ?? list.length + 1 }); toast("Saved."); bg.remove(); macroCache = null; macroManager(); } catch (e) { toast(e.message, true); } } }, "Save")));
+  };
+  const sheet = h("div", { class: "sheet wide", role: "dialog", "aria-modal": "true", "aria-label": "Saved replies" },
+    h("h3", {}, "Saved replies"),
+    h("p", { class: "muted" }, "Ready-made answers for common questions. Insert one from any conversation, then change it if needed."),
+    h("div", { class: "inbox" }, list.map((m) => h("button", { class: "inbox-row", onclick: () => edit(m) }, h("b", {}, m.title), h("div", { class: "inbox-snip muted" }, m.body.slice(0, 120))))),
+    h("div", { class: "btns" }, h("button", { class: "btn ghost", onclick: () => bg.remove() }, "Close"), h("button", { class: "btn", onclick: () => edit() }, "New saved reply")));
+  bg.append(sheet); document.body.append(bg);
+}
+
+// Spreadsheet download of what's on screen.
+function downloadCsv(name, rows, cols) {
+  const cell = (v) => { const s = v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const csv = [cols.join(","), ...rows.map((r) => cols.map((c) => cell(r[c])).join(","))].join("\n");
+  const a = h("a", { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: `glow-${name}-${new Date().toISOString().slice(0, 10)}.csv` });
+  document.body.append(a); a.click(); a.remove();
+}
+const logTable = (rows) => table([
+  { t: "When", f: (r) => when(r.created_at) }, { t: "Change", f: (r) => r.action.replace(/_/g, " ") },
+  { t: "Details", cls: "muted", f: (r) => Object.entries(r.detail || {}).filter(([, v]) => v !== "" && v != null).map(([k, v]) => `${k}: ${v}`).join(", ") },
+], rows, "No changes yet.");
+
+// Tab badges: open support messages, and a browser notification when a new one arrives while this page is open.
+let lastSupportId = null;
+async function checkBadges() {
+  if (!key || document.hidden) return;
+  try {
+    const b = await api("badges");
+    const btn = document.querySelector('#tabs [data-tab="support"]');
+    btn.querySelector(".nav-badge")?.remove();
+    if (b.openSupport) btn.append(h("span", { class: "nav-badge" + (b.unanswered ? " hot" : "") }, b.openSupport));
+    document.title = (b.openSupport ? `(${b.openSupport}) ` : "") + "Glow Studio admin";
+    const newest = b.newestSupport && b.newestSupport.id;
+    if (lastSupportId !== null && newest && newest > lastSupportId && "Notification" in window && Notification.permission === "granted") {
+      const n = new Notification("New Glow Studio support message", { body: "Tap to open the Support inbox.", icon: "/icon-192.png" });
+      n.onclick = () => { window.focus(); show("support/c/" + newest); };
+    }
+    if (newest) lastSupportId = newest;
+  } catch {}
+}
+setInterval(checkBadges, 60000);
+document.addEventListener("visibilitychange", checkBadges);
 
 async function userDetail(id) {
   const d = await api("user", { user: id });
@@ -613,7 +946,10 @@ async function userDetail(id) {
           h("dt", {}, "ID"), h("dd", { class: "mono" }, d.account.id, " ", h("button", { class: "link", onclick: () => navigator.clipboard.writeText(d.account.id).then(() => toast("Copied.")) }, "copy")),
           h("dt", {}, "Joined"), h("dd", {}, when(d.account.created_at)),
           h("dt", {}, "Last seen"), h("dd", {}, when(d.account.last_seen)),
-          h("dt", {}, "Plan"), h("dd", {}, planPill(a.plan, a.period), p.plan_expires_at && a.plan === "pro" ? ` until ${when(p.plan_expires_at)}` : ""),
+          h("dt", {}, "Plan"), h("dd", {}, planPill(a.plan, a.period), p.plan_expires_at && a.plan === "pro" ? ` until ${when(p.plan_expires_at)}` : "",
+            d.gift ? h("div", { class: "muted small" }, `Given by you on ${when(d.gift.given_at)}, not bought${d.gift.reason ? ` (${d.gift.reason})` : ""}`) : a.plan === "pro" && (d.subscriptions || []).length ? h("div", { class: "muted small" }, "Bought in the store") : ""),
+          h("dt", {}, "Device"), h("dd", {}, d.device && d.device.platform ? deviceName({ platform: d.device.platform, device: d.device.device }) : h("span", { class: "muted" }, "Not known yet"), d.device && d.device.build ? h("span", { class: "muted mono" }, ` · build ${d.device.build}`) : ""),
+          h("dt", {}, "RevenueCat"), h("dd", {}, h("a", { href: "https://app.revenuecat.com/", target: "_blank", rel: "noopener", onclick: () => navigator.clipboard && navigator.clipboard.writeText(d.account.id).then(() => toast("ID copied: paste it in RevenueCat's customer search.")) }, "Open (copies the ID to search)")),
           h("dt", {}, "Credits left"), h("dd", {}, `${a.remaining ?? "?"} (${a.pool || ""}${a.bonus ? `, includes ${a.bonus} extra (bought or given)` : ""})`),
           a.plan !== "pro" ? [h("dt", {}, "Premium trial left"), h("dd", {}, a.trial_left ?? "")] : null,
           h("dt", {}, "Tester"), h("dd", {}, d.tester ? h("span", { class: "pill good" }, "Yes") : h("span", { class: "muted" }, "No"), d.tester && d.tester.label ? ` ${d.tester.label}` : "", d.tester ? h("span", { class: "muted" }, ` · since ${when(d.tester.created_at)}`) : ""),
@@ -675,6 +1011,8 @@ async function userDetail(id) {
       { t: "", f: (r) => (r.refunded ? "" : h("button", { class: "btn ghost", onclick: async () => { const why = await ask({ title: `Give back ${r.cost} credit${r.cost === 1 ? "" : "s"}?`, what: `Returns the credits this ${r.mode} run used, for example when the result was bad.`,
         points: ["This gives credits back, not money. Apple and Google handle money refunds."], field: NOTE, ok: "Give credits back" }); if (why !== null) act("refund", { usage: r.id, reason: why }, () => "Credits returned."); } }, "Refund credits")) },
     ], d.usage, "No AI runs.")),
+    h("section", { class: "card" }, h("h2", {}, "Changes to this account"),
+      h("p", { class: "muted", style: "margin-top:0" }, "Everything done to this account from this page: credits, Pro, blocking, replies."), logTable(d.log || [])),
     h("section", { class: "card" }, h("h2", {}, "Subscription history"), table([
       { t: "When", f: (r) => when(r.created_at) }, { t: "Event", f: subRow },
       { t: "Plan", f: (r) => planName(r.product_id) }, { t: "Amount", n: 1, f: (r) => (r.price_usd != null ? money(r.price_usd) : "") },
@@ -682,7 +1020,8 @@ async function userDetail(id) {
     ], d.subscriptions || [], "No purchases.")),
     h("div", { class: "grid2" },
       h("section", { class: "card" }, h("h2", {}, "Support messages"), table([
-        { t: "When", f: (r) => when(r.created_at) }, { t: "Topic", f: (r) => r.topic }, { t: "Message", f: (r) => h("div", { class: "msg" }, r.message) }, { t: "Status", f: (r) => r.status },
+        { t: "When", f: (r) => h("button", { class: "link", onclick: () => show("support/c/" + r.id) }, when(r.created_at)) }, { t: "Topic", f: (r) => TOPICS[r.topic] || r.topic },
+        { t: "Message", f: (r) => h("div", { class: "msg" }, String(r.message).slice(0, 300)) }, { t: "Status", f: (r) => STATUS[r.status] || r.status },
       ], d.support, "None.")),
       h("section", { class: "card" }, h("h2", {}, "Recent app activity"), table([
         { t: "When", f: (r) => when(r.created_at) }, { t: "Event", f: (r) => EVENT_NAMES[r.name] || r.name }, { t: "Details", cls: "muted", f: (r) => Object.entries(r.props || {}).map(([k, v]) => `${k}: ${v}`).join(", ") },

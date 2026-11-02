@@ -2947,6 +2947,7 @@ function showUsage(u) {
   }
   else if (u && u.pool) { const { pool, ...rest } = u; u = rest; }
   account = { ...(account || {}), ...u };
+  if (u && u.support) showSupportBadge();
   if (u && u.plan === "pro" && u.expires) store.set("glowPro", u.expires);
   else if (u && u.plan === "free") store.set("glowPro", "");
   $("planLine").textContent = account.plan === "pro"
@@ -4030,6 +4031,72 @@ function openSupport(idea) {
   $("supportSheet").showModal();
 }
 $("contactSupport").addEventListener("click", (e) => { e.preventDefault(); openSupport(false); });
+
+// ---------- Your messages ----------
+// Replies from Glow Studio support show here (migration 017). The account check says how many are
+// unread; Settings then shows "Your messages" with a count, and the Settings buttons get a dot.
+function showSupportBadge() {
+  const s = (account && account.support) || {};
+  $("myMessages").hidden = !s.any;
+  $("myMessagesCount").textContent = s.unread ? String(s.unread) : "";
+  $("myMessagesCount").hidden = !s.unread;
+  for (const id of ["enhSettingsBtn", "camSettingsBtn", "homeSettingsBtn"]) { const b = $(id); if (b) b.classList.toggle("has-dot", !!s.unread); }
+  if (s.unread && !showSupportBadge.told && !$("msgsSheet").open) {
+    showSupportBadge.told = true;
+    say("Glow Studio support replied to your message.", false, { label: "Read", run: openMessages });
+  }
+}
+const SUPPORT_TOPICS = { billing: "Subscription or payment", ai: "AI tool or credits", bug: "Something isn't working", privacy: "My data or privacy", other: "Your message" };
+function mk(tag, cls, text) { const el = document.createElement(tag); if (cls) el.className = cls; if (text != null) el.textContent = text; return el; }
+async function openMessages() {
+  if ($("settings").open) $("settings").close();
+  const body = $("msgsBody");
+  body.replaceChildren(mk("p", "empty", "Loading…"));
+  if (!$("msgsSheet").open) $("msgsSheet").showModal();
+  try { renderMessages(await call("account", { method: "POST", body: JSON.stringify({ supportList: true }) })); }
+  catch (e) { body.replaceChildren(mk("p", "empty", e.message)); return; }
+  if (account && account.support) { account.support.unread = 0; showSupportBadge(); }
+}
+$("myMessages").addEventListener("click", (e) => { e.preventDefault(); openMessages(); });
+function renderMessages(d) {
+  const body = $("msgsBody"), list = (d && d.conversations) || [];
+  if (!list.length) { body.replaceChildren(mk("p", "empty", "No messages yet. Use Contact support in Settings and our reply will show up here.")); return; }
+  const day = (t) => new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  body.replaceChildren(...list.map((c, i) => {
+    const det = mk("details", "convo"); det.open = i === 0 || c.unread;
+    const sum = mk("summary", null, SUPPORT_TOPICS[c.topic] || "Your message");
+    const replied = c.messages.some((m) => m.from === "support");
+    sum.append(mk("span", "st" + (c.unread ? " new" : ""), c.unread ? "New reply" : c.status === "closed" ? "Answered" : replied ? "Replied" : "Sent, we'll reply soon"));
+    const bubbles = mk("div", "bubbles");
+    for (const m of c.messages) { const b = mk("div", "b " + m.from); b.append(mk("small", null, `${m.from === "support" ? "Glow Studio support" : "You"} · ${day(m.at)}`), m.body); bubbles.append(b); }
+    det.append(sum, bubbles);
+    if (c.status === "closed" && replied && !c.rating) {
+      const rate = mk("div", "rate", "Did this answer help?");
+      for (const [v, label] of [[1, "👍 Yes"], [-1, "👎 No"]]) {
+        const btn = mk("button", null, label); btn.type = "button";
+        btn.addEventListener("click", async () => {
+          try { await call("account", { method: "POST", body: JSON.stringify({ supportRate: { id: c.id, rating: v } }) }); rate.replaceChildren(v > 0 ? "Thanks! Glad we could help." : "Thanks for telling us. You can write back below."); }
+          catch (e) { say(e.message, true); }
+        });
+        rate.append(btn);
+      }
+      det.append(rate);
+    }
+    const box = mk("textarea"); box.maxLength = 4000; box.placeholder = c.status === "closed" ? "Still need help? Write back here." : "Write a reply";
+    box.setAttribute("aria-label", "Reply to Glow Studio support");
+    const send = mk("button", "btn", "Send"); send.type = "button";
+    send.addEventListener("click", async () => {
+      const message = box.value.trim();
+      if (!message) { box.focus(); return; }
+      send.disabled = true; send.textContent = "Sending…";
+      try { renderMessages(await call("account", { method: "POST", body: JSON.stringify({ supportReply: { id: c.id, message } }) })); say("Sent. We'll reply here."); }
+      catch (e) { say(e.message, true); send.disabled = false; send.textContent = "Send"; }
+    });
+    const acts = mk("div", "acts"); acts.append(send);
+    det.append(box, acts);
+    return det;
+  }));
+}
 // The Help page's "Contact support" button on the website opens the app at /?contact, straight into the form.
 if (new URLSearchParams(location.search).has("contact")) {
   history.replaceState(null, "", location.pathname + location.hash);
@@ -4122,14 +4189,16 @@ $("supportForm").addEventListener("submit", async (e) => {
   $("supportSend").disabled = true; $("supportSend").textContent = "Sending…";
   try {
     const context = { plan: (account && account.plan) || "", credits: account ? account.remaining : "", platform: PLATFORM, build: buildFp, screen,
-      device: navigator.userAgent.replace(/\s*\([^)]*\)\s*/, " ").slice(0, 120) };
+      device: navigator.userAgent.replace(/\s*\([^)]*\)\s*/, " ").slice(0, 120), app: APP_BUILD,
+      lang: navigator.language || "", tz: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; } })() };
     await call("account", { method: "POST", body: JSON.stringify({ support: { topic: supportIdea ? "other" : $("supportTopic").value, message: supportIdea ? "[Idea] " + message : message, name, email, context } }) });
     if (name) { store.set("glow.supportName", name); $("supportName").value = name; }
     if (email) store.set("glow.supportEmail", email);
     track("support_sent", { topic: $("supportTopic").value });
     $("supportMessage").value = "";
     $("supportSheet").close();
-    say(email ? "Sent. We'll reply by email." : "Sent. Thanks for telling us.");
+    say(supportIdea ? "Sent. Thanks for the idea!" : "Sent. We'll reply here in the app (Settings, Your messages) and by email.");
+    refreshAccount();
   } catch (err) { say(err.message, true); }
   finally { $("supportSend").disabled = false; $("supportSend").textContent = "Send"; }
 });

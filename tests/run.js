@@ -1021,6 +1021,40 @@ test('contact support: name and email required, sent with the message, remembere
   eq(state.errs, [], 'no page errors');
 }, { start: 'enhance', camera: false });
 
+// 2026-11-02: replies from the admin Support inbox show in the app (Settings, Your messages), with a
+// count, a dot on the Settings buttons, a one-time toast, follow-up replies and a thumbs rating.
+test('your messages: support replies show in the app; reply back and rate', async ({ p, state }) => {
+  const t = new Date().toISOString();
+  state.convos = [
+    { id: 7, topic: 'ai', status: 'pending', created_at: t, rating: null, unread: true, messages: [{ from: 'you', body: 'Try on failed', at: t }, { from: 'support', body: 'Hi Jane, credits returned.', at: t }] },
+    { id: 3, topic: 'billing', status: 'closed', created_at: t, rating: null, unread: false, messages: [{ from: 'you', body: 'Refund?', at: t }, { from: 'support', body: 'Apple handles refunds.', at: t }] },
+  ];
+  state.supportBadge = { any: true, unread: 1 };
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.waitForFunction(() => $('enhSettingsBtn').classList.contains('has-dot'), null, { timeout: 5000 });
+  assert(/support replied/.test(await toast(p)), 'toast: ' + await toast(p));
+  await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
+  eq(await p.evaluate(() => [$('myMessages').hidden, $('myMessagesCount').textContent]), [false, '1'], 'Your messages row with count');
+  await p.click('#myMessages'); await p.waitForSelector('#msgsSheet[open] .convo');
+  eq(await p.evaluate(() => [$('settings').open, document.querySelectorAll('#msgsBody .convo').length, $('msgsBody').textContent.includes('credits returned'), $('enhSettingsBtn').classList.contains('has-dot')]), [false, 2, true, false], 'two conversations, reply shown, dot cleared');
+  await p.fill('#msgsBody .convo:first-child textarea', 'Thanks, works now');
+  await p.click('#msgsBody .convo:first-child .acts .btn');
+  await p.waitForFunction(() => $('msgsBody').textContent.includes('works now'));
+  eq(state.supportReplies, [{ id: 7, message: 'Thanks, works now' }], 'follow-up sent to the conversation');
+  await p.evaluate(() => document.querySelectorAll('#msgsBody details')[1].open = true);
+  await p.click('#msgsBody .convo:nth-child(2) .rate button');
+  await p.waitForFunction(() => /Glad we could help/.test($('msgsBody').textContent));
+  eq(state.supportRates, [{ id: 3, rating: 1 }], 'rating sent');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false });
+
+test('your messages: hidden when there are no conversations', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
+  eq(await p.evaluate(() => [$('myMessages').hidden, $('enhSettingsBtn').classList.contains('has-dot')]), [true, false], 'no row, no dot');
+  eq(state.errs, [], 'no page errors');
+}, { start: 'enhance', camera: false });
+
 test('contact support: the website link /?contact opens the form', async ({ p, state }) => {
   await p.goto('https://app.test/?contact'); await p.waitForSelector('#supportSheet[open]', { timeout: 5000 });
   eq(await p.evaluate(() => [location.search, $('supportTitle').textContent]), ['', 'Contact support'], 'form open, address cleaned');
@@ -2685,7 +2719,8 @@ test('ops: Contact support sends the message with the account ID and app details
   const m = state.support[0];
   eq([m.topic, m.message, m.email], ['billing', 'I paid but still see the free plan.', 'me@test.dev'], 'message fields');
   eq(m.context.plan, 'free', 'plan sent as context');
-  assert(/reply by email/.test(await toast(p)), 'confirmation: ' + await toast(p));
+  assert(/reply here in the app/.test(await toast(p)), 'confirmation: ' + await toast(p));
+  eq([m.context.app > 202610000, typeof m.context.tz], [true, 'string'], 'app build and time zone sent');
   await settle(4500);
   assert(state.events.some((e) => e.name === 'support_sent' && e.props.topic === 'billing'), 'support_sent event');
 });

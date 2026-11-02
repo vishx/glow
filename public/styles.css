@@ -1408,3 +1408,26 @@ html.native-cam .cam-fx .fx-leak, html.native-cam .cam-fx .fx-grain { mix-blend-
   #cameraScreen .review-row { max-width: none; padding-bottom: calc(var(--s3) + var(--sa-bottom)); grid-template-columns: repeat(3, minmax(0, 180px)); }
   #cameraScreen .vf-ai { bottom: calc(84px + var(--sa-bottom)); }
 }
+
+/* Your messages: support conversations with replies from Glow Studio. */
+.count-badge { margin-left: auto; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; background: var(--cta); color: var(--cta-fg); font-size: 0.75rem; font-weight: 700; display: inline-grid; place-items: center; }
+.count-badge[hidden] { display: none; }
+.set-list a:has(.count-badge:not([hidden]))::after { margin-left: var(--s2); }
+.icon-btn.has-dot { position: relative; }
+.icon-btn.has-dot::after { content: ""; position: absolute; top: 9px; right: 9px; width: 9px; height: 9px; border-radius: 50%; background: var(--rose); box-shadow: 0 0 0 2px var(--bg); }
+.msgs { display: grid; gap: var(--s3); }
+.msgs .convo { border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); padding: var(--s3); }
+.msgs .convo summary { list-style: none; cursor: pointer; display: flex; gap: var(--s2); align-items: center; font-weight: 600; }
+.msgs .convo summary::-webkit-details-marker { display: none; }
+.msgs .convo summary .st { margin-left: auto; font-size: 0.75rem; font-weight: 600; color: var(--muted); }
+.msgs .convo summary .st.new { color: var(--rose); }
+.msgs .bubbles { display: grid; gap: var(--s2); margin-top: var(--s3); }
+.msgs .b { max-width: 88%; padding: 10px 12px; border-radius: 14px; background: var(--surface); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.9375rem; }
+.msgs .b.support { justify-self: start; border: 1px solid rgb(243 192 98 / 0.35); }
+.msgs .b.you { justify-self: end; background: var(--tint); }
+.msgs .b small { display: block; color: var(--muted); font-size: 0.75rem; margin-bottom: 2px; font-weight: 600; }
+.msgs textarea { width: 100%; box-sizing: border-box; min-height: 88px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; resize: vertical; margin-top: var(--s3); }
+.msgs .acts { display: flex; gap: var(--s2); justify-content: flex-end; align-items: center; margin-top: var(--s2); flex-wrap: wrap; }
+.msgs .rate { display: flex; gap: var(--s2); align-items: center; margin-top: var(--s3); color: var(--muted); font-size: 0.875rem; flex-wrap: wrap; }
+.msgs .rate button { min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--text); font: inherit; cursor: pointer; }
+.msgs .empty { color: var(--muted); }

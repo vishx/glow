@@ -1,5 +1,9 @@
 // GET: the signed-in user's plan and how many AI edits they have left.
 // POST { support }: a message from the app's Contact support form (needs migration 009; 016 saves name and email on the account).
+// POST { supportList }: the person's own support conversations with every reply (marks replies seen).
+// POST { supportReply: { id, message } }: the person answers back in a conversation (reopens it).
+// POST { supportRate: { id, rating } }: thumbs up (1) or down (-1) on a closed conversation.
+// (These three need migration 017.)
 // DELETE: permanently deletes the user's account and data (required by the App Store).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -41,6 +45,13 @@ Deno.serve(async (req) => {
 
   if (req.method === "POST") {
     const body = await req.json().catch(() => ({}));
+    if (body?.supportList) return json(await supportList(user.id));
+    if (body?.supportReply) return supportFollowUp(user.id, body.supportReply);
+    if (body?.supportRate) {
+      const id = Math.trunc(Number(body.supportRate.id)), rating = Number(body.supportRate.rating) > 0 ? 1 : -1;
+      const { error } = await admin.from("support_requests").update({ rating, rating_at: new Date().toISOString() }).eq("id", id).eq("user_id", user.id);
+      return error ? json({ error: "Couldn't save that. Please try again." }, 500) : json({ rated: true });
+    }
     const s = body?.support;
     const message = typeof s?.message === "string" ? s.message.trim().slice(0, 4000) : "";
     if (!message) return json({ error: "Write a message first." }, 400);
@@ -80,7 +91,7 @@ Deno.serve(async (req) => {
     return json({ plan: a.plan, period: a.period, expires: a.plan === "pro" ? pe?.plan_expires_at : null, used: a.used, quota: a.quota,
       inTrial: a.plan === "pro" && !!pe?.plan_trial,
       remaining: a.remaining, trialLeft: a.plan === "pro" ? undefined : a.trial_left, adsLeft: a.ads_left,
-      bonus: a.bonus ?? 0, blocked: a.blocked ?? false, v: 2 });
+      bonus: a.bonus ?? 0, blocked: a.blocked ?? false, support: await supportUnread(user.id), v: 2 });
   }
   const { data: p } = await admin.from("profiles").select("plan, plan_expires_at").eq("id", user.id).maybeSingle();
   const pro = p?.plan === "pro" && !!p.plan_expires_at && new Date(p.plan_expires_at) > new Date();
@@ -98,3 +109,52 @@ Deno.serve(async (req) => {
   const quota = pro ? 40 : 3 + bonus, used = count ?? 0;
   return json({ plan: pro ? "pro" : "free", expires: pro ? p?.plan_expires_at : null, used, quota, remaining: Math.max(0, quota - used), adsLeft: pro ? 0 : 3 - bonus });
 });
+
+// ---------- Support conversations (migration 017) ----------
+type Req = { id: number; topic: string; message: string; status: string; created_at: string; last_reply_at: string | null; user_seen_at: string | null; rating: number | null };
+// How many conversations have a reply the person hasn't seen, and whether they have any at all
+// (the app shows "Your messages" in Settings only then). Quietly nothing before migration 017.
+async function supportUnread(uid: string) {
+  const { data, error } = await admin.from("support_requests").select("last_reply_at, user_seen_at").eq("user_id", uid).limit(50);
+  if (error || !data) return { any: false, unread: 0 };
+  const unread = data.filter((r) => r.last_reply_at && (!r.user_seen_at || r.last_reply_at > r.user_seen_at)).length;
+  return { any: data.length > 0, unread };
+}
+
+async function supportList(uid: string) {
+  const { data: reqs, error } = await admin.from("support_requests")
+    .select("id, topic, message, status, created_at, last_reply_at, user_seen_at, rating").eq("user_id", uid).order("created_at", { ascending: false }).limit(20);
+  if (error) return { conversations: [], unavailable: true };
+  const ids = (reqs as Req[]).map((r) => r.id);
+  // Private notes are never sent to the app.
+  const { data: msgs } = ids.length
+    ? await admin.from("support_messages").select("request_id, author, body, created_at").in("request_id", ids).neq("author", "note").order("created_at")
+    : { data: [] };
+  const now = new Date().toISOString();
+  const unseen = (reqs as Req[]).filter((r) => r.last_reply_at && (!r.user_seen_at || r.last_reply_at > r.user_seen_at)).map((r) => r.id);
+  if (unseen.length) await admin.from("support_requests").update({ user_seen_at: now }).in("id", unseen);
+  return {
+    conversations: (reqs as Req[]).map((r) => ({
+      id: r.id, topic: r.topic, status: r.status, created_at: r.created_at, rating: r.rating, unread: unseen.includes(r.id),
+      messages: [{ from: "you", body: r.message, at: r.created_at },
+        ...(msgs ?? []).filter((m) => m.request_id === r.id).map((m) => ({ from: m.author === "admin" ? "support" : "you", body: m.body, at: m.created_at }))],
+    })),
+  };
+}
+
+async function supportFollowUp(uid: string, b: { id?: unknown; message?: unknown }) {
+  const id = Math.trunc(Number(b?.id));
+  const message = typeof b?.message === "string" ? b.message.trim().slice(0, 4000) : "";
+  if (!message) return json({ error: "Write a message first." }, 400);
+  const { data: r } = await admin.from("support_requests").select("id").eq("id", id).eq("user_id", uid).maybeSingle();
+  if (!r) return json({ error: "That conversation isn't on this account." }, 404);
+  // Same limit as new messages: plenty for a real conversation, not enough to flood the inbox.
+  const since = new Date(Date.now() - 864e5).toISOString();
+  const { count } = await admin.from("support_messages").select("id", { count: "exact", head: true }).eq("request_id", id).eq("author", "customer").gte("created_at", since);
+  if ((count ?? 0) >= 10) return json({ error: "We've got your messages. We'll reply as soon as we can." }, 429);
+  const now = new Date().toISOString();
+  const { error } = await admin.from("support_messages").insert({ request_id: id, author: "customer", body: message, via: "app" });
+  if (error) return json({ error: "Couldn't send your message. Please try again." }, 500);
+  await admin.from("support_requests").update({ status: "open", closed_at: null, last_customer_at: now, updated_at: now, rating: null, rating_at: null }).eq("id", id);
+  return json(await supportList(uid));
+}

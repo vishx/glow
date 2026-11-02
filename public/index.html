@@ -483,6 +483,7 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
     <h3>Help</h3>
     <div class="set-list">
       <a href="/support.html" data-doc="Help and FAQ"><span data-icon="info"></span><span>Help and FAQ</span></a>
+      <a href="#" id="myMessages" hidden><span data-icon="chat"></span><span>Your messages</span><span class="count-badge" id="myMessagesCount" hidden></span></a>
       <a href="#" id="contactSupport"><span data-icon="edit"></span><span>Contact support</span></a>
       <a href="#" id="suggestFeature"><span data-icon="sparkle"></span><span>Suggest a feature</span></a>
     </div>
@@ -528,6 +529,11 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
     <p class="fine" id="supportAccount"></p>
     <div class="stack"><button class="btn" id="supportSend" type="submit">Send</button></div>
   </form>
+</dialog>
+
+<dialog class="sheet" id="msgsSheet" aria-labelledby="msgsTitle">
+  <div class="sheet-head"><h2 class="t-section" id="msgsTitle">Your messages</h2><button class="icon-btn" data-close aria-label="Close"></button></div>
+  <div id="msgsBody" class="msgs"></div>
 </dialog>
 
 <dialog class="sheet" id="creditsSheet" aria-labelledby="creditsTitle">

@@ -94,10 +94,16 @@ exports.launch = async (opts = {}) => {
         return r.fulfill({ headers: cors, json: { flags: state.features || {}, tester: !!state.tester, at: new Date().toISOString() } });
       }
       if (u.pathname === '/functions/v1/account' && method === 'POST') {
-        state.support.push(JSON.parse(r.request().postData()).support);
+        const b = JSON.parse(r.request().postData());
+        // Your messages (migration 017): state.convos is the server's list of conversations.
+        const list = () => ({ conversations: (state.convos || []).map((c) => ({ ...c })) });
+        if (b.supportList) { const out = list(); for (const c of state.convos || []) c.unread = false; state.supportBadge = { any: !!(state.convos || []).length, unread: 0 }; return r.fulfill({ headers: cors, json: out }); }
+        if (b.supportReply) { state.supportReplies = [...(state.supportReplies || []), b.supportReply]; const c = state.convos.find((x) => x.id === b.supportReply.id); c.status = 'open'; c.messages.push({ from: 'you', body: b.supportReply.message, at: new Date().toISOString() }); return r.fulfill({ headers: cors, json: list() }); }
+        if (b.supportRate) { state.supportRates = [...(state.supportRates || []), b.supportRate]; return r.fulfill({ headers: cors, json: { rated: true } }); }
+        state.support.push(b.support);
         return r.fulfill({ headers: cors, json: { sent: true } });
       }
-      if (u.pathname === '/functions/v1/account') return r.fulfill({ headers: cors, json: usage() });
+      if (u.pathname === '/functions/v1/account') return r.fulfill({ headers: cors, json: { ...usage(), ...(state.supportBadge ? { support: state.supportBadge } : {}) } });
       if (u.pathname === '/functions/v1/enhance') {
         const answer = (job) => {
           if (job.n < ai.polls.length - 1) job.n++;
