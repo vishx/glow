@@ -1690,7 +1690,11 @@ dialog.studio-view .studio-row { padding: var(--s3) var(--gutter) calc(var(--sa-
   #editorScreen .area-bar .area:not(.refine) { flex: 0 1 auto; min-width: 0; min-height: 44px; padding: 0 12px; gap: 0; border: 4px solid transparent; border-left-width: 0; border-right-width: 0;
     background-clip: padding-box; border-radius: 22px; font-size: 0.8125rem; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #editorScreen .area-bar .area:not(.refine) i { display: none; }
-  #editorScreen .area-bar .area[aria-pressed="true"]:not(.refine) { background-color: #f3c062; color: #15140f; }
+  /* The chosen area is gold text with a short gold line under it, as in Lightroom's mode switches;
+     no filled oval. The others are dimmed white. */
+  #editorScreen .area-bar .area:not(.refine) { position: relative; background: transparent; color: rgb(255 255 255 / 0.72); font-weight: 500; }
+  #editorScreen .area-bar .area[aria-pressed="true"]:not(.refine) { background: transparent; color: #f3c062; font-weight: 700; }
+  #editorScreen .area-bar .area[aria-pressed="true"]:not(.refine)::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 14px; height: 2px; margin-left: -7px; border-radius: 1px; background: #f3c062; }
   #editorScreen .area-bar .area.refine { width: 44px; height: 44px; min-height: 44px; border-radius: 22px; color: #fff; background: rgb(14 14 16 / 0.55); }
   #editorScreen .area-bar .area.refine.done { color: #f3c062; }
   /* The tool row fades at its edge, so a tile cut by the screen edge reads as "more this way". */
