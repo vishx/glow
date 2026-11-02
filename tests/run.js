@@ -727,7 +727,7 @@ test('demo: the shipped prepared previews are all there, match the manifest, and
   }
   // The outfit previews live inside Try on.
   for (const id of ['suit', 'sundress'].filter((x) => ready.some((e) => e.tool === x))) {
-    await tool(p, 'looks', null, 'outfit'); await p.click(`.try-card[data-idea="${id}"]`);
+    await tool(p, 'looks', null, 'outfit'); await p.click(`.try-tile[data-idea="${id}"]`);
     await p.waitForFunction((x) => ed.idx === 1 && ed.hist[1].op.tool === x && sel === 'outfit' && $('after').naturalWidth > 0, id, { timeout: 15000 });
     eq(await p.textContent('#applyBtn'), 'Done', `${id}: shown in Try on as a prepared preview`);
   }
@@ -2288,11 +2288,11 @@ test('ai: AI scene costs 2 credits, sends the background mask and the scene, and
 test('try on: one tool with ideas, your photo or words; sends the part; keeps every look to flip back to free', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'looks', null, 'outfit');
-  eq(await p.evaluate(() => [tryOn.src, !!$('panelBody').querySelector('.try-card[data-idea="casual"][aria-pressed="true"]')]), ['ideas', true], 'opens on Ideas with one picked');
+  eq(await p.evaluate(() => [tryOn.src, !!$('panelBody').querySelector('.try-tile[data-idea="suit"][aria-pressed="true"]'), $('panel').classList.contains('try-full')]), ['ideas', true, true], 'opens on the wardrobe with one picked');
   eq(state.posts.length, 0, 'opening it sends nothing');
   await p.waitForFunction(() => tryOn.check !== null, null, { timeout: 30000 });
-  assert(/Little of your outfit/.test(await p.textContent('#panelNote')), 'the free photo check says a head-and-shoulders photo makes the AI guess: ' + await p.textContent('#panelNote'));
-  await p.click('.try-card[data-idea="suit"]'); await p.click('.try-color[aria-label="Navy"]');
+  assert(/Little of your outfit/.test(await p.textContent('#toast')), 'the free photo check says a head-and-shoulders photo makes the AI guess: ' + await p.textContent('#toast'));
+  await p.click('.try-tile[data-idea="suit"]'); await p.click('.try-tab[data-tab="color"]'); await p.click('.try-tile[data-color="navy blue"]');
   let req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
   await applyTool(p); let body = JSON.parse((await req).postData());
   eq([body.mode, body.part, /business suit/.test(body.prompt), /navy blue/.test(body.prompt), body.extra], ['outfit', 'full', true, true, undefined], 'an idea sends words, color and part');
@@ -2300,24 +2300,23 @@ test('try on: one tool with ideas, your photo or words; sends the part; keeps ev
   await p.waitForFunction(() => tryLooksNow().length === 1);
   eq(await p.evaluate(() => [job.look, tryLooksNow()[0].label]), ['Navy suit', 'Navy suit'], 'the look is named');
   // While a look shows, the panel is just Your looks and the buttons, so the photo is big; the face is the model's own.
-  eq(await p.evaluate(() => [!!$('panelBody').querySelector('.try-card'), $('cancelBtn').textContent, $('panelNote').textContent, $('panel').classList.contains('try-compact'), !!job.keepFace]),
+  eq(await p.evaluate(() => [!!$('panelBody').querySelector('.try-tile'), $('cancelBtn').textContent, $('panelNote').textContent, $('panel').classList.contains('try-compact'), !!job.keepFace]),
     [false, 'Change', '', true, false], 'the result view is compact, without notes, and no face pasting');
   // Change: the look closes (kept in Your looks), the pickers come back, nothing is applied.
   await p.click('#cancelBtn'); await settle(200);
-  await p.click('.try-card[data-idea="gown"]'); await settle(200);
+  await p.click('.try-tab[data-tab="outfits"]'); await p.click('.try-tile[data-idea="gown"]'); await settle(200);
   eq(await p.evaluate(() => [job, ed.idx, tryLooksNow().length, $('applyBtn').textContent]), [null, 0, 1, 'Try on · 1 credit'], 'Change closes the look and offers a new try-on');
-  await p.click('.try-look'); await settle(200);
+  await p.click('.try-cat[data-cat="looks"]'); await p.click('.try-look'); await settle(200);
   eq(await p.evaluate(() => [job && job.look, reviewing()]), ['Navy suit', true], 'and the look is one tap away');
   // Discard keeps it in Your looks, without the "credit isn't returned" question.
   await p.click('#cancelBtn'); await settle(200);
   eq(await p.evaluate(() => [job, tryLooksNow().length]), [null, 1], 'discarded but kept');
   // Your photo: any outfit picture, kept in the closet for next time, with the part to change.
   if (!(await p.evaluate(() => sel === 'outfit'))) await tool(p, 'looks', null, 'outfit');
-  await p.click('.try-seg .opt:has-text("Your photo")');
-  eq(await p.evaluate(() => $('applyBtn').disabled), true, 'nothing to send before a photo is picked');
-  const fc = p.waitForEvent('filechooser'); await p.click('.try-add[aria-label^="Add"]'); await (await fc).setFiles(fx('coords-600x400.png'));
+  await p.click('.try-cat[data-cat="mine"]'); await settle(200);
+  const fc = p.waitForEvent('filechooser'); await p.click('.try-tile[aria-label^="Add"]'); await (await fc).setFiles(fx('coords-600x400.png'));
   await p.waitForFunction(() => !!outfitData && tryOn.closet.length === 1);
-  await p.click('.try-parts .opt:has-text("Top")');
+  await p.click('.try-tab[data-tab="part"]'); await p.click('.try-tile[data-part="top"]');
   req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
   await applyTool(p); body = JSON.parse((await req).postData());
   eq([body.mode, body.part, body.extra.startsWith('data:image/'), body.prompt], ['outfit', 'top', true, undefined], 'a photo sends the picture and the part');
@@ -2330,12 +2329,59 @@ test('try on: one tool with ideas, your photo or words; sends the part; keeps ev
   await applyTool(p); await settle(200);
   eq(await p.evaluate(() => [ed.idx, ed.hist[1].op.tool]), [1, 'outfit'], 'applied as one step');
   // Words: her own description.
-  await tool(p, 'looks', null, 'outfit'); await p.click('.try-seg .opt:has-text("Describe")');
+  await tool(p, 'looks', null, 'outfit'); await p.click('.try-tab[data-tab="outfits"]'); await p.click('.try-tile[aria-label^="Describe"]');
   await p.fill('#tryWords', 'a red satin slip dress');
   req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
   await applyTool(p); body = JSON.parse((await req).postData());
-  eq([body.prompt, body.part], ['a red satin slip dress', 'top'], 'words are sent as written, with the part picked before');
+  eq([body.prompt, body.part], ['a red satin slip dress, mainly in navy blue', 'top'], 'words are sent as written, with the color and part picked before');
 });
+
+test('try on wardrobe: its own tab, the photo keeps its size, pictures take the color, pattern and fabric go in the request, None sends nothing', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT); await settle(300);
+  const photoH = () => p.evaluate(() => Math.round($('stage').getBoundingClientRect().height));
+  const h0 = await photoH();
+  await p.click('.tab[data-cat="tryon"]'); await settle(400);
+  eq(await p.evaluate(() => [sel, $('panel').classList.contains('try-full'), cat !== 'tryon']), ['outfit', true, true], 'the tab opens Try on straight away');
+  eq(await photoH(), h0, 'the photo keeps its size');
+  eq(await p.evaluate(() => { const b = $('panelBody'); return b.scrollHeight <= b.clientHeight + 1 && $('dockGrip').hidden; }), true, 'the wardrobe fits the dock');
+  const fill = () => p.evaluate(() => document.querySelector('.try-tile[data-idea="suit"] svg path').getAttribute('fill'));
+  const before = await fill();
+  await p.click('.try-tab[data-tab="color"]'); await p.click('.try-tile[data-color="burgundy"]');
+  await p.click('.try-tab[data-tab="pattern"]'); await p.click('.try-tile[data-pattern="pinstripe"]');
+  await p.click('.try-tab[data-tab="fabric"]'); await p.click('.try-tile[data-fabric="velvet"]');
+  await p.click('.try-tab[data-tab="outfits"]');
+  assert(before !== await fill() && /6e1f2e/i.test(await fill()), 'the suit picture is burgundy now');
+  eq(await p.evaluate(() => [...document.querySelectorAll('.try-tab.set')].map((b) => b.dataset.tab)), ['color', 'pattern', 'fabric'], 'chosen tabs are marked');
+  let req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
+  await applyTool(p); const body = JSON.parse((await req).postData());
+  eq([body.prompt, body.part], ['a sharp, tailored business suit with a crisp shirt, mainly in burgundy, with pinstripes, made of velvet', 'full'], 'one request with the style words');
+  await p.waitForFunction(() => job && job.status === 'done', null, { timeout: 30000 });
+  eq(await p.evaluate(() => job.look), 'Burgundy pinstripe velvet suit', 'the look is named');
+  await p.click('#cancelBtn'); await settle(200);
+  await p.click('.try-tile.none'); await settle(150);
+  eq(await p.evaluate(() => [tryOn.idea, $('applyBtn').disabled]), [null, true], 'None: nothing to send');
+  eq(state.errs, [], 'no page errors');
+}, { viewport: { width: 390, height: 844 } });
+test('try on: a refused outfit lowers a raised sheet so the message shows', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await p.click('.tab[data-cat="tryon"]'); await settle(300);
+  await p.evaluate(() => { sheetUp(true); job = { requestId: 'x', tool: 'outfit', title: 'Try on', session: ed.session, status: 'failed', error: "This photo or outfit can't be used.", refunded: true, baseIdx: 0 }; renderEditor(); });
+  await settle(200);
+  eq(await p.evaluate(() => [$('editorScreen').classList.contains('sheet-up'), $('jobBar').hidden]), [false, false], 'sheet down, message visible');
+}, { viewport: { width: 390, height: 844 } });
+test('dock grip: the sheet follows the finger while dragged, then settles', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'retouch', null, 'glowup'); await settle(400);
+  eq(await p.evaluate(() => $('dockGrip').hidden), false, 'Glow Up has more than the dock holds at this size');
+  const g = await p.$('#dockGrip'), r = await g.boundingBox(), x = r.x + r.width / 2, y = r.y + r.height / 2;
+  const h = () => p.evaluate(() => document.querySelector('#editorScreen .side').getBoundingClientRect().height);
+  const h0 = await h();
+  await p.mouse.move(x, y); await p.mouse.down(); await p.mouse.move(x, y - 60, { steps: 6 });
+  const mid = await h();
+  assert(mid > h0 + 40 && mid < h0 + 80, `follows the finger (${h0} -> ${mid})`);
+  await p.mouse.move(x, y - 120, { steps: 6 }); await p.mouse.up(); await settle(300);
+  eq(await p.evaluate(() => $('editorScreen').classList.contains('sheet-up')), true, 'settles open');
+}, { viewport: { width: 360, height: 740 } });
 
 // 2026-11-02: Paste in Try on > Your photo said "couldn't read the clipboard" on Samsung phones:
 // Android's WebView refuses navigator.clipboard.read(). The app now asks Android (GlowImage.pasteImage).
@@ -2357,19 +2403,19 @@ const pasteApp = (o) => `(${((o) => {
 async function openTryPhoto(p) {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'looks', null, 'outfit');
-  await p.click('.try-seg .opt:has-text("Your photo")'); await settle(200);
+  await p.click('.try-cat[data-cat="mine"]'); await settle(200);
 }
 test('try on paste: the Android app pastes a copied picture through Android, not the WebView', async ({ p, state }) => {
   await openTryPhoto(p);
-  assert(await p.isVisible('.try-add[aria-label^="Paste"]'), 'Paste is offered');
-  await p.click('.try-add[aria-label^="Paste"]');
+  assert(await p.isVisible('.try-tile[aria-label^="Paste"]'), 'Paste is offered');
+  await p.click('.try-tile[aria-label^="Paste"]');
   await p.waitForFunction(() => !!outfitData && tryOn.closet.length === 1, null, { timeout: 10000 });
   eq(await p.evaluate(() => [window.__paste.calls, $('applyBtn').disabled, $('toast').classList.contains('on') && $('toast').classList.contains('err')]), [1, false, false], 'one native read, picked, ready to try on, no error');
   eq(state.errs, [], 'no page errors');
 }, { init: pasteApp({}) });
 test('try on paste: nothing copied says how to copy a picture, and the message sits above the tools, not over the face', async ({ p }) => {
   await openTryPhoto(p);
-  await p.click('.try-add[aria-label^="Paste"]');
+  await p.click('.try-tile[aria-label^="Paste"]');
   await p.waitForFunction(() => /no picture to paste/.test($('toast').textContent));
   const r = await p.evaluate(() => { const t = $('toast').getBoundingClientRect(), s = document.querySelector('#editorScreen .side').getBoundingClientRect(), c = $('canvas') ? $('canvas').getBoundingClientRect() : null;
     return { tBottom: t.bottom, sTop: s.top, tTop: t.top, mid: innerHeight / 2 }; });
@@ -2378,8 +2424,8 @@ test('try on paste: nothing copied says how to copy a picture, and the message s
 }, { init: pasteApp({ empty: true }), viewport: { width: 412, height: 915 } });
 test('try on paste: an older Android app (no native paste) shows no Paste button instead of an error', async ({ p }) => {
   await openTryPhoto(p);
-  eq(await p.isVisible('.try-add[aria-label^="Add"]'), true, 'Add is there');
-  eq(await p.$('.try-add[aria-label^="Paste"]'), null, 'no Paste');
+  eq(await p.isVisible('.try-tile[aria-label^="Add"]'), true, 'Add is there');
+  eq(await p.$('.try-tile[aria-label^="Paste"]'), null, 'no Paste');
 }, { init: pasteApp({ old: true }) });
 test('try on paste: in a browser, Paste uses the web clipboard and Ctrl+V adds a copied picture', async ({ p, state }) => {
   await p.addInitScript(() => {
@@ -2392,7 +2438,7 @@ test('try on paste: in a browser, Paste uses the web clipboard and Ctrl+V adds a
     } } });
   });
   await openTryPhoto(p);
-  await p.click('.try-add[aria-label^="Paste"]');
+  await p.click('.try-tile[aria-label^="Paste"]');
   await p.waitForFunction(() => tryOn.closet.length === 1, null, { timeout: 10000 });
   eq(await p.evaluate(() => window.__reads), 1, 'web clipboard read once');
   // Ctrl+V with a picture on the clipboard (a paste event carrying a file).
@@ -3647,11 +3693,11 @@ test('quick actions: six tiles on the Editor home, the sample link moves beside 
   // On a phone the whole grid fits above the tab bar without scrolling.
   const fit = await p.evaluate(() => { const g = $('qaGrid').getBoundingClientRect(), n = $('nav').getBoundingClientRect(); return [Math.round(g.bottom), Math.round(n.top)]; });
   assert(fit[0] <= fit[1], `grid ends above the tab bar (${fit})`);
-  for (const [qa, toolId, tab] of [['tryon', 'outfit', 'looks'], ['smooth', 'fsmooth', 'retouch'], ['remove', 'erase', 'ai']]) {
+  for (const [qa, toolId, tab] of [['tryon', 'outfit', null], ['smooth', 'fsmooth', 'retouch'], ['remove', 'erase', 'ai']]) {
     if (qa !== 'tryon') { await p.evaluate(() => { selectTool(null, { discard: true }); showScreen('editorHome'); }); await settle(200); }
     const fc = p.waitForEvent('filechooser'); await p.click(`#qaGrid .qa[data-qa="${qa}"]`); await (await fc).setFiles(fx('tall-916.jpg'));
     await p.waitForFunction((x) => screen === 'editorScreen' && sel === x, toolId, { timeout: 30000 });
-    eq(await p.evaluate(() => cat), tab, `${qa} opens on its tab`);
+    if (tab) eq(await p.evaluate(() => cat), tab, `${qa} opens on its tab`);
     await idle(p);
   }
   eq(state.errs, [], 'no page errors');

@@ -1034,8 +1034,8 @@ dialog .sheet-head .t-section, dialog.alert .t-section { font-family: var(--font
 .try-parts .opt { min-height: 36px; padding: 0 var(--s3); }
 .try-looks { align-items: center; }
 .try-looks-label { flex: none; color: var(--muted); font-size: 0.75rem; font-weight: 700; margin-right: 2px; }
-.try-look { flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 12px; background: var(--surface-2) center top / cover no-repeat; }
-.try-look[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.try-look:not(.try-tile) { flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 12px; background: var(--surface-2) center top / cover no-repeat; }
+.try-look:not(.try-tile)[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
 
 /* ---------- Settings rows and the in-app help pages ---------- */
 .set-list { display: grid; border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; background: var(--surface); }
@@ -1708,3 +1708,68 @@ dialog.studio-view .studio-row { padding: var(--s3) var(--gutter) calc(var(--sa-
 .try-card span { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 0.9375rem; overflow-wrap: anywhere; }
 .tool .name { letter-spacing: -0.015em; }
 @media (max-width: 959px) { #editorScreen .side > .tools .tool .name { font-size: 0.6875rem; line-height: 1rem; } }
+/* ---------- Try on wardrobe (2026-11-02) ----------
+   Its own tab; the panel reads like a clothes changer: Outfits / Color / Pattern / Fabric / Part,
+   then categories, then a row of outfit pictures starting with None, + Yours and Describe. The dock
+   keeps its height, so the photo stays the same size. */
+.try-tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--s1)); }
+.try-tabs::-webkit-scrollbar, .try-cats::-webkit-scrollbar, .try-strip::-webkit-scrollbar { display: none; }
+.try-tab { position: relative; flex: 1 0 auto; min-height: 34px; padding: 0 10px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 0.875rem; font-weight: 500; white-space: nowrap; }
+.try-tab[aria-selected="true"] { color: var(--rose); font-weight: 700; }
+.try-tab[aria-selected="true"]::after { content: ""; position: absolute; left: 50%; bottom: 2px; width: 16px; height: 2px; margin-left: -8px; border-radius: 1px; background: var(--rose); }
+.try-tab.set::before { content: ""; position: absolute; top: 6px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--rose); }
+.try-cats { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 1px 0;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
+.try-cat { flex: none; min-height: 34px; padding: 0 12px; border: 3px solid transparent; background-clip: padding-box; border-radius: 18px; background-color: transparent;
+  color: var(--muted); font: inherit; font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+.try-cat[aria-pressed="true"] { background-color: color-mix(in srgb, var(--rose) 18%, var(--surface)); color: var(--rose); }
+.try-strip { --tw: 60px; --th: 78px; display: flex; align-items: flex-start; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 6px 2px 5px; margin: 0 calc(-1 * var(--gutter)); padding-left: var(--gutter); padding-right: var(--gutter);
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+@media (max-height: 800px) { .try-strip { --tw: 58px; --th: 74px; } }
+/* A tile is one card, its name inside at the bottom (as in shop apps), so the row stays short. */
+.try-tile { position: relative; flex: none; display: flex; flex-direction: column; align-items: center; width: var(--tw); height: var(--th); padding: 3px 3px 0; border: 0; border-radius: 12px;
+  background: var(--surface-2); color: var(--muted); font: inherit; text-align: center; }
+.try-tile .well { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; display: grid; place-items: center; border-radius: 9px; background: center / cover no-repeat; color: var(--text); }
+.try-tile .well > svg { width: 100%; height: 100%; }
+.try-tile.outfit { background: #ece7df; color: #4b463e; }
+.try-tile.outfit[aria-pressed="true"] .name { color: #15140f; }
+.try-tile.add .well { color: var(--rose); }
+.try-tile.add .well > svg, .try-tile.none .well > svg { width: 24px; height: 24px; }
+.try-tile.none { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line); }
+.try-tile.none[aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--line), 0 0 0 2px var(--surface), 0 0 0 4px var(--rose); }
+.try-tile.none .well { color: var(--muted); }
+.try-tile.swatch .well > svg { width: 34px; height: 34px; border-radius: 50%; box-shadow: 0 0 0 1px rgb(255 255 255 / 0.12), inset 0 0 0 1px rgb(0 0 0 / 0.15); }
+.try-tile.photo .well { background-color: #ece7df; }
+.try-tile.locked { opacity: 0.55; }
+.try-tile .name { flex: none; display: block; width: 100%; padding: 0 1px; font-size: 0.65625rem; line-height: 1.25rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.try-tile[aria-pressed="true"] .name { color: var(--text); font-weight: 700; }
+.try-tile[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--rose); }
+.try-tile[aria-pressed="true"]:not(.none):not(.add)::after { content: ""; position: absolute; right: -5px; top: -5px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--rose) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231a1206' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E") center / 12px no-repeat;
+  box-shadow: 0 0 0 2px var(--surface); }
+.try-sep { flex: none; align-self: center; width: 1px; height: 44px; background: var(--line); }
+.try-tile .try-remove { position: absolute; top: -8px; left: -8px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgb(0 0 0 / 0.35); }
+.try-tile .try-remove svg { width: 12px; height: 12px; }
+.try-words { display: block; }
+.try-words input { min-height: 40px; background: var(--surface-2); }
+.try-hint { margin: 6px 0 0; color: var(--muted); font-size: 0.8125rem; line-height: 1.15rem; }
+@media (max-width: 959px) and (min-height: 601px) {
+  #editorScreen .side > .panel.try-full:not(.live) .panel-head, #editorScreen .side > .panel.try-full:not(.live) .panel-note { display: none; }
+  #editorScreen .side > .panel.try-full:not(.live) { padding-top: 2px; overflow: visible; }
+  #editorScreen .side > .panel.try-full:not(.live) .panel-body { gap: 2px; padding-top: 0; padding-bottom: 0; -webkit-mask-image: none; mask-image: none; }
+  /* Cancel and Try on float as a glass pill just above the dock, over the photo's lower edge, so
+     the wardrobe gets the whole dock and the photo keeps its size. */
+  #editorScreen .side > .panel.try-full:not(.live) .panel-actions { position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%); z-index: 9;
+    width: min(300px, calc(100vw - 2 * var(--gutter))); padding: 5px; border-radius: 28px; grid-template-columns: 44px 1fr; gap: 8px;
+    background: rgb(14 14 16 / 0.55); -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2); box-shadow: 0 8px 24px rgb(0 0 0 / 0.3); }
+  #editorScreen .side > .panel.try-full:not(.live) #cancelBtn { color: #fff; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.25); }
+  #editorScreen .side > .panel.try-full:not(.live) #applyBtn:disabled { background: rgb(255 255 255 / 0.14); color: rgb(255 255 255 / 0.7); }
+  #editorScreen.sheet-up .side > .panel.try-full:not(.live) .panel-actions { bottom: calc(100% + 10px); }
+  #editorScreen:has(.panel.try-full:not([hidden])) .zoom-hint { display: none; }
+}
+/* While the grip is dragged the sheet follows the finger (no rise animation mid-drag); a job bar
+   sits above Try on's floating buttons. */
+@media (max-width: 959px) and (min-height: 601px) {
+  #editorScreen.sheet-drag .side > .panel { animation: none !important; }
+  #editorScreen:has(.panel.try-full:not([hidden])) .side > .jobbar { bottom: calc(100% + 74px); }
+}

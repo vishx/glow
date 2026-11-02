@@ -147,9 +147,10 @@ const CATS = {
     ["face", "Face", ["feyes", "fteeth", "fbigeyes", "fslim", "fnose", "smile", "faces"]],   // Smile, Face repair: retired, testers only
     ["makeup", "Makeup", ["fglam", "flips", "fblush", "flashes", "fliner", "fshadow", "fbrows", "feyecolor", "fcontour", "fhighlight", "fbronzer"]],
     ["hair", "Hair", ["hcolor"]]],
-  // Try on is one tool with its own outfit choices inside (the separate Suit and Sundress tiles left the menu).
-  looks: [["tryon", "Try on", ["outfit"]],
-    ["styles", "Styles", ["headshot", "fashion", "golden"]],
+  // Try on has its own tab (2026-11-02: inside Looks it was easy to miss). Its tab opens the tool
+  // straight away: its panel is a whole wardrobe (tryon.js), so there is no row of tools to pick from.
+  tryon: [["tryon", "Try on", ["outfit"]]],
+  looks: [["styles", "Styles", ["headshot", "fashion", "golden"]],
     ["filters", "Filters", FILTER_IDS]],
   edit: [["crop", "Crop", ["crop"]],
     ["light", "Light", ["exposure", "light", "contrast", "highlights", "shadows", "whites", "blacks"]],
@@ -183,7 +184,7 @@ const ADVANCED = [["camlooks", "Camera looks", ["mylook"]], ["body", "Body (subt
 // Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
 // another tool, or (body reshaping) didn't fit Glow Studio. Their code stays so saved drafts still replay.
 const RETIRED = RETIRED_TOOLS;   // features.js: retired tools are switches that default to off
-const TAB_NAMES = { retouch: "Beauty", looks: "Looks", edit: "Adjust", bg: "Background", ai: "AI" };
+const TAB_NAMES = { retouch: "Beauty", tryon: "Try on", looks: "Looks", edit: "Adjust", bg: "Background", ai: "AI" };
 // Where a tool lives: its tab, or null for tools reached through Search only.
 function tabFor(id) {
   for (const [c, groups] of Object.entries(CATS)) for (const [, , ids] of groups) if (ids.includes(id)) return [c, null];
@@ -221,7 +222,8 @@ function say(text, isErr, action) {
 function placeToast(t) {
   t.style.top = "";
   if (screen !== "editorScreen" || innerWidth >= 960) return;
-  const side = document.querySelector("#editorScreen .side"), r = side && side.getBoundingClientRect();
+  // Above Try on's floating buttons when they show.
+  const side = document.querySelector("#editorScreen #panel.try-full:not([hidden]) .panel-actions") || document.querySelector("#editorScreen .side"), r = side && side.getBoundingClientRect();
   if (!r || !r.height) return;
   const top = r.top - t.offsetHeight - 12;
   if (top > t.getBoundingClientRect().top) t.style.top = `${Math.round(top)}px`;
@@ -493,7 +495,7 @@ function renderQuickActions() {
 // Opens the editor on its own photo, then the tool on its tab.
 function openToolAfterPick(id) {
   if (!id || !TOOL[id] || screen !== "editorScreen") return;
-  const home = tabFor(id); if (home) { cat = home[0]; store.set("glowCat", cat); }
+  const home = tabFor(id); if (home && tabCat(home[0])) { cat = home[0]; store.set("glowCat", cat); }
   selectTool(id);
 }
 
@@ -1184,13 +1186,16 @@ function groupsFor(c) {
 // A tab whose tools are all switched off is hidden; if it was the open one, the first tab with
 // tools opens instead (Search still lists every tool that is on).
 const tabHasTools = (c) => CATS[c].some(([, , ids]) => ids.some((id) => TOOL[id] && toolShown(id)));
-function ensureCat() { if (!tabHasTools(cat)) cat = Object.keys(CATS).find(tabHasTools) || cat; }
+// A launcher tab opens its one tool instead of showing a row of tools (Try on).
+const LAUNCH_TABS = { tryon: "outfit" };
+const tabCat = (c) => !!CATS[c] && !LAUNCH_TABS[c];
+function ensureCat() { if (!tabCat(cat) || !tabHasTools(cat)) cat = Object.keys(CATS).find((c) => tabCat(c) && tabHasTools(c)) || "retouch"; }
 function renderTabs() {
   ensureCat();
   document.querySelectorAll("#tabs .tab").forEach((t) => {
     t.hidden = !tabHasTools(t.dataset.cat);
-    const on = t.dataset.cat === cat;
-    t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1;
+    const on = LAUNCH_TABS[t.dataset.cat] ? sel === LAUNCH_TABS[t.dataset.cat] : t.dataset.cat === cat && !(sel && Object.values(LAUNCH_TABS).includes(sel));
+    t.setAttribute("aria-selected", String(on)); t.tabIndex = on || (t.dataset.cat === cat && !LAUNCH_TABS[t.dataset.cat]) ? 0 : -1;
   });
   $("searchBox").hidden = !searching;
 }
@@ -1345,6 +1350,10 @@ function setSearching(on) {
 }
 $("tabs").addEventListener("click", (e) => {
   const t = e.target.closest(".tab"); if (!t) return;
+  if (LAUNCH_TABS[t.dataset.cat]) {
+    if (searching) setSearching(false);
+    Platform.haptic(); selectTool(LAUNCH_TABS[t.dataset.cat]); return;
+  }
   if (sel) selectTool(null);
   if (searching) { searching = false; toolsOpen = false; $("searchInput").value = ""; }
   cat = t.dataset.cat; store.set("glowCat", cat); $("tools").scrollTo(0, 0);
@@ -1393,7 +1402,7 @@ function selectTool(id, opts = {}) {
   else discardPending();
   if (cr) closeCrop();
   if (id !== sel) { panelCollapsed = false; filterAmt = 100; }   // a newly opened tool always shows its controls
-  if (searching && id) { searching = false; $("searchInput").value = ""; $("editorScreen").classList.remove("tools-open"); const home = tabFor(id); if (home) cat = home[0]; }
+  if (searching && id) { searching = false; $("searchInput").value = ""; $("editorScreen").classList.remove("tools-open"); const home = tabFor(id); if (home && tabCat(home[0])) cat = home[0]; }
   if (refining && !(id && TOOL[id] && TOOL[id].kind === "adjust")) endRefine(false);
   sel = id; strokes = []; toolsOpen = false; panelBuilt = null; reshapeNote = null; picking = null;
   dropper = false; $("stage").classList.remove("dropping");
@@ -1801,10 +1810,32 @@ function sheetUp(on) {
 (() => {
   const g = document.createElement("button"); g.type = "button"; g.id = "dockGrip"; g.className = "dock-grip"; g.hidden = true;
   g.setAttribute("aria-controls", "panelBody"); g.innerHTML = "<i></i>";
-  let y0 = null;
-  g.addEventListener("pointerdown", (e) => { y0 = e.clientY; });
-  g.addEventListener("pointerup", (e) => { const dy = y0 == null ? 0 : e.clientY - y0; y0 = null;
-    if (Math.abs(dy) > 12) { sheetUp(dy < 0); g.dataset.swiped = "1"; } });
+  // The sheet follows the finger while dragged (it glides, then settles open or closed on release).
+  let y0 = null, h0 = 0, lo = 0, hi = 0, moved = false, wasUp = false;
+  const side = () => document.querySelector("#editorScreen .side");
+  g.addEventListener("pointerdown", (e) => {
+    const es = $("editorScreen"), sd = side(); if (!sd) return;
+    y0 = e.clientY; moved = false; wasUp = es.classList.contains("sheet-up");
+    sheetUp(false); lo = sd.getBoundingClientRect().height;
+    sheetUp(true); hi = Math.max(lo, sd.getBoundingClientRect().height);
+    h0 = wasUp ? hi : lo;
+    es.classList.add("sheet-drag"); sd.style.transition = "none"; sd.style.minHeight = "0"; sd.style.height = `${h0}px`;
+    try { g.setPointerCapture(e.pointerId); } catch {}
+  });
+  g.addEventListener("pointermove", (e) => {
+    if (y0 == null) return; const dy = e.clientY - y0; if (Math.abs(dy) > 4) moved = true;
+    side().style.height = `${Math.max(lo, Math.min(hi, h0 - dy))}px`;
+  });
+  const end = (e) => {
+    if (y0 == null) return; const sd = side(), es = $("editorScreen");
+    const h = sd.getBoundingClientRect().height, dy = e.clientY - y0; y0 = null;
+    if (!moved) { sd.style.height = ""; sd.style.minHeight = ""; sd.style.transition = ""; es.classList.remove("sheet-drag"); sheetUp(wasUp); return; }
+    const up = Math.abs(dy) > 40 ? dy < 0 : h > (lo + hi) / 2;
+    sd.style.transition = "height 180ms cubic-bezier(.2,.8,.2,1)"; sd.style.height = `${up ? hi : lo}px`;
+    setTimeout(() => { sd.style.height = ""; sd.style.minHeight = ""; sd.style.transition = ""; es.classList.remove("sheet-drag"); sheetUp(up); }, 190);
+    g.dataset.swiped = "1";
+  };
+  g.addEventListener("pointerup", end); g.addEventListener("pointercancel", end);
   g.addEventListener("click", () => { if (g.dataset.swiped) { delete g.dataset.swiped; return; } sheetUp(!$("editorScreen").classList.contains("sheet-up")); });
   $("panel").prepend(g); sheetUp(false);
 })();
@@ -1816,6 +1847,8 @@ function fitDock() {
   const up = es.classList.contains("sheet-up");
   es.classList.remove("no-tools", "sheet-up", "dock-compact");   // measure at the dock's normal height
   p.classList.toggle("try-compact", sel === "outfit" && tryCompact());
+  // Try on's wardrobe needs the whole dock: no title row or note (the button carries the price).
+  p.classList.toggle("try-full", sel === "outfit" && !tryCompact() && dockPortrait());
   const b = $("panelBody");
   const overflows = () => p.scrollHeight > p.clientHeight + 1 || (b && b.scrollHeight > b.clientHeight + 1);
   // A free tool with one row of controls keeps the row of neighbouring tools (so the next filter or
@@ -2605,6 +2638,9 @@ function renderJob() {
   const show = !!job && job.session === ed.session && screen === "editorScreen" && !reviewing();
   bar.hidden = !show;
   if (!show) return;
+  // A failure must be seen: the raised sheet hides the bar, so it comes down (2026-11-02: the
+  // refusal message only showed after the owner swiped the sheet down).
+  if (["failed", "unknown"].includes(job.status) && $("editorScreen").classList.contains("sheet-up")) sheetUp(false);
   const working = job.status === "starting" || (job.status === "processing" && following);
   $("jobSpin").hidden = !working;
   let text = `${job.title} ${JOB_TEXT[job.status] || ""}`;
