@@ -553,7 +553,8 @@ const VIEWS = {
     if (arg.startsWith("c/")) return supportConversation(Number(arg.slice(2)));
     const [status, query = ""] = arg.split("?q=");
     const d = await api("support", { status, q: decodeURIComponent(query) });
-    const rows = d.rows || [], st = d.stats;
+    // Before the admin server update the list comes back as a plain array, with no numbers.
+    const rows = Array.isArray(d) ? d : d.rows || [], st = Array.isArray(d) ? null : d.stats;
     const search = h("input", { type: "search", placeholder: "Search name, email, words or #number", "aria-label": "Search support", value: decodeURIComponent(query), style: "flex:1 1 220px",
       onkeydown: (e) => { if (e.key === "Enter") show(`support/${status}${search.value.trim() ? "?q=" + encodeURIComponent(search.value.trim()) : ""}`); } });
     const FILTERS = [["open", "Needs reply", st?.open], ["pending", "Waiting on customer", st?.pending], ["closed", "Closed", null], ["all", "All", null]];
