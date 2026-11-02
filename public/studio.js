@@ -8,6 +8,8 @@
 // cost: credits per result (the server's ai_edit_cost, migration 021). me: the Me selfies go along.
 // check: compare the face before and after (styles that redraw the whole picture are skipped).
 // added: when a trend joined (shown as New for a week). season: [fromMonthDay, toMonthDay] it shows.
+// Trends with a sample picture (made once with the real pipeline on the AI-generated sample person).
+const TREND_SAMPLES = [];
 const TRENDS = [
   { mode: "trend_figurine", name: "Mini Me figurine", desc: "You as a boxed collectible on a desk", icon: "pro", added: "2026-11-02" },
   { mode: "trend_yearbook", name: "Yearbook '98", desc: "A 90s school portrait", icon: "camera", added: "2026-11-02" },
@@ -16,7 +18,7 @@ const TRENDS = [
   { mode: "trend_thennow", name: "Then & Now", desc: "Hug your younger self (add a childhood photo)", icon: "mylook", extra: "child", added: "2026-11-02" },
   { mode: "trend_snow", name: "First snow", desc: "Soft snow and winter light", icon: "sparkle", season: ["11-15", "02-28"], added: "2026-11-02" },
   { mode: "trend_holiday", name: "Holiday card", desc: "Cozy lights and a decorated tree", icon: "star", season: ["11-15", "01-06"], added: "2026-11-02" },
-].map((t) => ({ ...t, cost: 2, me: true }));
+].map((t) => ({ ...t, cost: 2, me: true, sample: TREND_SAMPLES.includes(t.mode) ? `samples/trends/${t.mode}.webp` : null }));
 const HEADSHOTS = [
   { mode: "hs_office", name: "Office", desc: "Business attire, studio gray" },
   { mode: "hs_creative", name: "Creative", desc: "Smart casual, warm interior" },
@@ -252,7 +254,7 @@ function choices(items, mode, max = 99) {
   for (const t of items) {
     const on = studio.picked.has(t.mode), b = document.createElement("button");
     b.className = "studio-pick"; b.dataset.mode = t.mode; b.setAttribute(mode === "one" ? "aria-checked" : "aria-pressed", String(on)); if (mode === "one") b.setAttribute("role", "radio");
-    b.innerHTML = `<span class="studio-ic">${icon(t.icon || "sparkle")}</span><b>${esc(t.name)}</b>${t.desc ? `<small>${esc(t.desc)}</small>` : ""}` +
+    b.innerHTML = (t.sample ? `<img class="studio-sample" src="${t.sample}" alt="" loading="lazy">` : `<span class="studio-ic">${icon(t.icon || "sparkle")}</span>`) + `<b>${esc(t.name)}</b>${t.desc ? `<small>${esc(t.desc)}</small>` : ""}` +
       (isNew(t) ? `<span class="studio-badge">New</span>` : t.season ? `<span class="studio-badge">Seasonal</span>` : "") + `<span class="studio-cost">${t.cost}${icon("sparkle")}</span>`;
     b.addEventListener("click", () => {
       if (mode === "one") { studio.picked.clear(); studio.picked.add(t.mode); }
@@ -301,15 +303,63 @@ async function studioJob(item, body, onLabel) {
   const h = { pending: null };
   const requestId = rid();
   h.pending = { requestId, id: null, mode: item.mode };
-  const res = await call("enhance", { method: "POST", timeout: AI_POST_TIMEOUT, body: JSON.stringify({ ...body, mode: item.mode, tool: item.mode, from: "studio", platform: PLATFORM, build: APP_BUILD, request_id: requestId }) });
-  h.pending.id = res.id || null;
-  // A clip can take a few minutes: keep following it (checking is free) rather than give up.
-  let url, tries = item.video ? 3 : 1;
-  for (;;) {
-    try { url = await followEnhance(h, url === undefined ? res : null, onLabel || (() => {}), "studio"); break; }
-    catch (err) { if (!err.lost || --tries <= 0 || !h.pending) throw err; url = null; }
+  // Kept on the phone until the job ends, so a job still running when the app is closed (or the
+  // connection drops) is fetched on the next open instead of being paid for and lost.
+  await rememberJob({ requestId, mode: item.mode, name: item.name, kind: studio.kind, video: !!item.video, at: Date.now() });
+  let keep = false;
+  try {
+    let res;
+    try { res = await call("enhance", { method: "POST", timeout: AI_POST_TIMEOUT, body: JSON.stringify({ ...body, mode: item.mode, tool: item.mode, from: "studio", platform: PLATFORM, build: APP_BUILD, request_id: requestId }) }); }
+    catch (err) { keep = !err.answered; if (keep) err.message = "Glow Studio lost the connection. It will check on this when you next open the app; nothing is charged twice."; throw err; }
+    h.pending.id = res.id || null;
+    // A clip can take a few minutes: keep following it (checking is free) rather than give up.
+    let url, tries = item.video ? 3 : 1;
+    for (;;) {
+      try { url = await followEnhance(h, url === undefined ? res : null, onLabel || (() => {}), "studio"); break; }
+      catch (err) { if (!err.lost || --tries <= 0 || !h.pending) { keep = !!(err.lost && h.pending); throw err; } url = null; }
+    }
+    return { url, requestId };
+  } finally { if (!keep) await forgetJob(requestId); }
+}
+
+// ---------- Jobs that outlive the app ----------
+// Replicate keeps a result for about an hour, so jobs older than that are dropped unchecked
+// (a job that failed was refunded by the server either way).
+const JOBS_KEY = "studioPending", JOB_TTL = 55 * 60000;
+let jobsLock = Promise.resolve();
+const jobsEdit = (f) => (jobsLock = jobsLock.then(async () => {
+  let list = [];
+  try { list = (await Drafts.read(JOBS_KEY)) || []; } catch {}
+  const next = f(list.filter((j) => Date.now() - j.at < JOB_TTL));
+  await Drafts.write(JOBS_KEY, next).catch(() => {});
+  return next;
+}).catch(() => []));
+const rememberJob = (j) => jobsEdit((l) => [...l.filter((x) => x.requestId !== j.requestId), j]);
+const forgetJob = (id) => jobsEdit((l) => l.filter((x) => x.requestId !== id));
+async function resumeStudioJobs() {
+  const jobs = await jobsEdit((l) => l);
+  if (!jobs.length || studio.running) return;
+  const kind = jobs[jobs.length - 1].kind, mine = jobs.filter((j) => j.kind === kind);
+  Object.assign(studio, { kind, photo: null, extra: null, refs: [], picked: new Set(), running: true,
+    results: mine.map((j) => ({ mode: j.mode, name: j.name, video: j.video, status: "working", requestId: j.requestId, startedAt: j.at, resumed: true })) });
+  track("studio_resume", { kind, count: mine.length });
+  for (const r of studio.results) {
+    const h = { pending: { requestId: r.requestId, id: null, mode: r.mode } };
+    try {
+      const out = await followEnhance(h, null, () => {}, "studio");
+      if (r.video) r.url = typeof out === "string" ? out : null; else r.data = await enhResultData(out);
+      r.status = r.video && !r.url ? "failed" : "done";
+      await forgetJob(r.requestId);
+    } catch (err) {
+      r.status = "failed"; r.error = err.message;
+      if (!err.lost) await forgetJob(r.requestId);   // ended (refunded) or never started: nothing left to fetch
+    }
   }
-  return { url, requestId };
+  studio.running = false; refreshAccount();
+  const ok = studio.results.filter((r) => r.status === "done").length;
+  // Other tools' jobs wait for the next open.
+  if (ok) say(`Your ${STUDIO_KINDS[kind].title} from earlier ${ok === 1 ? "is" : "are"} ready.`, false, { label: "Open", run: () => { $("studio").showModal(); $("studioTitle").textContent = STUDIO_KINDS[kind].title; renderStudio(); } });
+  renderStudioIfOpen();
 }
 
 async function runStudio() {
@@ -482,7 +532,7 @@ function openStudioResult(i) {
     add("Edit", async () => { v.close(); $("studio").close(); const p = await readPhoto(dataToBlob(r.data), r.name + ".jpg"); await openPhoto(p.work, p.original, { name: r.name }); });
   }
   // "Face changed? Try again free": once per result, within 15 minutes (the server checks too).
-  if (r.requestId && !r.retried && !r.retryOf && Date.now() - r.startedAt < 15 * 60000 && r.mode !== "colorize") {
+  if (r.requestId && studio.photo && !r.retried && !r.retryOf && Date.now() - r.startedAt < 15 * 60000 && r.mode !== "colorize") {
     add(r.drift > DRIFT_LIMIT ? "Face changed? Try again free" : "Try again free", async () => {
       v.close(); r.retried = true;
       const again = { ...r, status: "working", data: null, url: null, drift: 0, requestId: null, retryOf: r.requestId };
@@ -599,3 +649,4 @@ function firstGlow() {
   if (b.lastChild && b.lastChild.nodeType === 3 && b.lastChild.textContent !== lbl) b.lastChild.textContent = lbl;
 }
 firstGlow();
+setTimeout(() => { resumeStudioJobs().catch(() => {}); }, 2500);

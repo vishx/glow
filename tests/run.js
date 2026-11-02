@@ -3094,6 +3094,24 @@ test('studio audit: two takes per headshot, own motion words, results kept, comp
   eq(await p.evaluate(() => FEATURE_DEFAULTS['studio:trend:figurine']), true, 'each trend has an admin switch');
 }, { start: 'enhance', camera: false, plan: 'pro', quota: 60 });
 
+test('studio: a job cut off by a lost connection or a closed app is fetched on the next open, never charged twice', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome' && !!account);
+  await p.click('.studio-card[data-kind="oldphoto"]'); await p.waitForSelector('#studio[open]');
+  const fc = p.waitForEvent('filechooser'); await p.click('#studioBody .studio-slot'); await (await fc).setFiles(PORTRAIT);
+  await p.waitForSelector('#studioBody .studio-slot img');
+  state.ai.dropPost = true;   // charged on the server, but the answer never arrives
+  await p.click('#studioGo');
+  await p.waitForSelector('.studio-res.failed', { timeout: 60000 });
+  assert(/next open/.test(await p.textContent('.studio-res.failed')), 'says it will check later: ' + await p.textContent('.studio-res.failed'));
+  eq(await p.evaluate(async () => (await Drafts.read('studioPending')).map((j) => j.mode)), ['oldphoto'], 'the job is kept on the phone');
+  // The app is closed and opened again.
+  await p.reload(); await p.waitForFunction(() => screen === 'enhanceHome' && !!account);
+  await p.waitForFunction(() => /Old photo from earlier is ready/.test(document.body.innerText), null, { timeout: 30000 });
+  eq(await p.evaluate(async () => [(await Drafts.read('studioPending')).length, studio.results.map((r) => r.status)]), [0, ['done']], 'fetched and forgotten');
+  eq(state.aiBodies.filter((b) => b.from === 'studio').length, 1, 'one request, one charge');
+  await p.click('.studio-card[data-kind="oldphoto"]'); await p.waitForSelector('.studio-res.done');
+}, { start: 'enhance', camera: false, plan: 'pro', quota: 40, ai: { server: 'patched' } });
+
 test('controls: closing the sheet while Enhance works stops waiting and keeps the job to check later', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);

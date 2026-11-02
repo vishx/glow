@@ -1571,3 +1571,4 @@ dialog.studio-view .studio-row { padding: var(--s3) var(--gutter) calc(var(--sa-
 .studio-field { display: block; margin-top: var(--s3); }
 .studio-field input { width: 100%; min-height: 44px; padding: 0 var(--s3); border-radius: var(--r-well); border: 1px solid var(--control); background: var(--surface); color: var(--text); font: inherit; }
 .studio-vars { margin-top: var(--s2); }
+.studio-pick .studio-sample { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: calc(var(--r-well) - 4px); margin-bottom: var(--s2); background: var(--surface-2); }
