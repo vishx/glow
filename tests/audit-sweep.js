@@ -34,9 +34,14 @@ const inspect = () => {
   const scroller = (el) => { for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) { const cs = getComputedStyle(a); if (/(auto|scroll)/.test(cs.overflowX + cs.overflowY)) return a; } return null; };
   const ctl = [...root.querySelectorAll('button, a[href], input, select, [role=slider], [role=tab], [role=radio], [role=switch]')].filter(vis);
   const label = (el) => (el.id ? '#' + el.id : '') + (el.getAttribute('aria-label') || el.textContent || el.className || el.tagName).trim().replace(/\s+/g, ' ').slice(0, 40);
-  const rects = ctl.map((el) => ({ el, r: el.getBoundingClientRect(), sc: scroller(el) }));
+  // What of a box is really on screen: cut by every ancestor that clips (a scrolling list shows only its window).
+  const clip = (el, r0) => { let r = { left: r0.left, top: r0.top, right: r0.right, bottom: r0.bottom };
+    for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) { const cs = getComputedStyle(a); if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+      const q = a.getBoundingClientRect(); if (cs.overflowX !== 'visible') { r.left = Math.max(r.left, q.left); r.right = Math.min(r.right, q.right); } if (cs.overflowY !== 'visible') { r.top = Math.max(r.top, q.top); r.bottom = Math.min(r.bottom, q.bottom); } }
+    r.width = r.right - r.left; r.height = r.bottom - r.top; return r; };
+  const rects = ctl.map((el) => ({ el, r: clip(el, el.getBoundingClientRect()), sc: scroller(el) })).filter((x) => x.r.width > 1 && x.r.height > 1);
   for (const { el, r, sc } of rects) {
-    if (sc) { const s = sc.getBoundingClientRect(); if (s.left < -1 || s.right > vw + 1 || s.top < -1 || s.bottom > vh + 1) issues.push(`scroll area offscreen: ${label(sc)} ${Math.round(s.top)}..${Math.round(s.bottom)}`); continue; }
+    if (sc) { const s = clip(sc, sc.getBoundingClientRect()); if (s.left < -1 || s.right > vw + 1 || s.top < -1 || s.bottom > vh + 1) issues.push(`scroll area offscreen: ${label(sc)} ${Math.round(s.top)}..${Math.round(s.bottom)}`); continue; }
     if (r.right > vw + 1 || r.left < -1 || r.bottom > vh + 1 || r.top < -1) issues.push(`offscreen: ${label(el)} [${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}]`);
   }
   for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {

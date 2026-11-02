@@ -1372,6 +1372,7 @@ test('layout: Search covers every tool in a taller catalog; the last tools scrol
   await p.click('#searchBtn'); eq(await p.evaluate(() => [searching, !$('searchBox').hidden]), [true, true], 'search open');
   eq(await p.evaluate(() => document.activeElement.id), 'searchInput', 'focus in the search field');
   const tall = await p.evaluate(() => $('tools').getBoundingClientRect().height); assert(tall > 300, 'taller catalog ' + tall);
+  eq(JSON.stringify(await stageBox(p)), JSON.stringify(s0), 'the catalog rises over the photo instead of shrinking it');
   eq(await p.evaluate(() => new Set([...document.querySelectorAll('#tools .tool')].map((b) => b.dataset.tool)).size), await p.evaluate(() => TOOLS.filter((t) => !RETIRED.includes(t.id) && !IN_TRY_ON.includes(t.id)).length), 'every tool still offered is in Search');
   await p.fill('#searchInput', 'blur'); eq(await p.$$eval('#tools .tool', (x) => x.map((b) => b.dataset.tool)), ['bgblur', 'enhance'], 'search (Enhance by its everyday word "blurry")');
   await p.click('.tool[data-tool="bgblur"]'); await idle(p);

@@ -1803,12 +1803,18 @@ function fitDock() {
   if (!can) sheetUp(false); else if (sheetFor !== sel) { sheetFor = sel; sheetUp(false); }
   if (!sel) sheetFor = null;
   const up = es.classList.contains("sheet-up");
-  es.classList.remove("no-tools", "sheet-up");   // measure at the dock's normal height
+  es.classList.remove("no-tools", "sheet-up", "dock-compact");   // measure at the dock's normal height
   p.classList.toggle("try-compact", sel === "outfit" && tryCompact());
   const b = $("panelBody");
+  const overflows = () => p.scrollHeight > p.clientHeight + 1 || (b && b.scrollHeight > b.clientHeight + 1);
+  // A free tool with one row of controls keeps the row of neighbouring tools (so the next filter or
+  // background is one tap away); its name shows on its tile, so the title row steps aside. AI tools
+  // keep their title, price and note.
+  if (can && TOOL[sel] && TOOL[sel].kind !== "ai" && !p.querySelector(".panel-head .head-extra")) { es.classList.add("dock-compact"); if (overflows()) es.classList.remove("dock-compact"); }
   // Try on has its own pickers, so the row of other tools steps aside and the photo gets the room.
-  if (sel === "outfit" && !ed.demo && !panelCollapsed && !p.hidden && dockFixed()) es.classList.add("no-tools");
-  else if (sel && !panelCollapsed && !p.hidden && dockFixed() && (p.scrollHeight > p.clientHeight + 1 || (b && b.scrollHeight > b.clientHeight + 1))) es.classList.add("no-tools");
+  if (es.classList.contains("dock-compact")) {}
+  else if (sel === "outfit" && !ed.demo && !panelCollapsed && !p.hidden && dockFixed()) es.classList.add("no-tools");
+  else if (sel && !panelCollapsed && !p.hidden && dockFixed() && overflows()) es.classList.add("no-tools");
   // The grip shows when the controls still don't fit the dock.
   const over = can && b && b.scrollHeight > b.clientHeight + 1;
   if (up && can) es.classList.add("sheet-up");
@@ -5001,6 +5007,7 @@ function goBack() {
     // Back closes what's open first (a refine brush, a tool, the crop), like the panel's Cancel,
     // and only then leaves the editor.
     if (refining) { endRefine(); return true; }
+    if ($("editorScreen").classList.contains("sheet-up")) { sheetUp(false); return true; }   // a lifted panel goes back down first
     if (sel && !$("cancelBtn").disabled && $("cancelBtn").offsetParent) { $("cancelBtn").click(); return true; }
     if (!$("backBtn").disabled) $("backBtn").click(); return true;
   }
@@ -5071,3 +5078,5 @@ track("app_open", { dest: START_DEST, last: store.get("glowLastDest") || "" });
 // The website's offline cache. The phone app has its files on the phone (and gets new ones by live
 // update, liveupdate.js), so it doesn't use it.
 if (!native && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+// Turning the phone, or the keyboard changing the screen height, re-checks what fits the dock.
+{ let t = 0; window.addEventListener("resize", () => { clearTimeout(t); t = setTimeout(() => { if (screen === "editorScreen" && sel) fitDock(); }, 150); }); }
