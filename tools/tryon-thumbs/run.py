@@ -17,7 +17,7 @@ def req(method, path, body=None, token=None):
 def data(im, q=90):
     b = io.BytesIO(); im.save(b, "JPEG", quality=q); return "data:image/jpeg;base64," + base64.b64encode(b.getvalue()).decode()
 def run(name, img, body):
-    for attempt in range(2):
+    for attempt in range(4):
         st, s = req("POST", "/auth/v1/signup", {"data": {}}); token = s.get("access_token")
         if not token: print(name, "signup", st, s); time.sleep(20); continue
         st, r = req("POST", "/functions/v1/enhance", {"image": data(img), "platform": "web", "request_id": str(uuid.uuid4()), **body}, token)
@@ -29,7 +29,7 @@ def run(name, img, body):
             o = o[-1] if isinstance(o, list) else o
             with urllib.request.urlopen(o, timeout=150) as f: open(D + "out/%s.jpg" % name, "wb").write(f.read())
             return {"status": "ok", "secs": round(time.time() - t0)}
-        print(name, st, r.get("status"), r.get("error"))
+        print(name, st, r.get("status"), r.get("error")); time.sleep(15)
     return {"status": "failed", "error": r.get("error") if isinstance(r, dict) else None}
 os.makedirs(D + "out", exist_ok=True)
 stage = open(D + "trigger.txt").read().split()[0]
@@ -46,6 +46,6 @@ else:
     outfits = re.findall(r'^  \["(\w+)", "[^"]*", "([^"]*)", "(\w+)"', src, re.M)
     only = open(D + "trigger.txt").read().split()[1:]
     jobs = [(i, base, {"mode": "outfit", "tool": "outfit", "prompt": w, "part": p}) for i, w, p in outfits if not only or i in only]
-with ThreadPoolExecutor(4) as ex:
+with ThreadPoolExecutor(1) as ex:
     for (n, *_), r in zip(jobs, ex.map(lambda j: run(*j), jobs)): res[n] = r; print(n, r)
 json.dump(res, open(D + "out/results-%s.json" % stage, "w"), indent=1)
