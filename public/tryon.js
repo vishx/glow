@@ -125,9 +125,9 @@ async function tryCheck() {
   const base = committed();
   if (tryOn.checkFor === base) return;
   tryOn.checkFor = base; tryOn.check = null;
-  let msg = "";
+  let msg = "", boxesOk = false;
   try {
-    const boxes = await faceBoxes(base);
+    const boxes = await faceBoxes(base); boxesOk = boxes.length > 0;
     if (!boxes.length) msg = "No person found. Try on works on a photo of you.";
     else if (boxes.length > 1 && boxes[1].w * boxes[1].h > boxes[0].w * boxes[0].h * 0.7) msg = "Works best with one person in the photo. The largest person is dressed.";
     // How much of her is below the chin, in face heights: about 2 for a head-and-shoulders photo,
@@ -137,7 +137,11 @@ async function tryCheck() {
   if (tryOn.checkFor !== base) return;
   tryOn.check = msg;
   // The panel has no room for a note line, so the check is said once per photo, just above the dock.
-  if (msg && sel === "outfit" && tryOn.checkSaid !== base) { tryOn.checkSaid = base; say(msg); }
+  // The first time, a stance tip (2026-11-03, owner: a twisted pose makes clothes look awkward; the
+  // try-on apps ask for a straight, front-on pose). Her own pose is kept, so the tip comes first.
+  let tip = "";
+  try { if (!msg && boxesOk && !localStorage.getItem("glowTryTip")) { tip = "Best fit: stand straight, facing the camera, arms a little away from your body."; localStorage.setItem("glowTryTip", "1"); } } catch {}
+  if ((msg || tip) && sel === "outfit" && tryOn.checkSaid !== base) { tryOn.checkSaid = base; say(msg || tip); }
   if (sel === "outfit") renderPanel();
 }
 

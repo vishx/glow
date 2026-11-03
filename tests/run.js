@@ -269,7 +269,9 @@ test('camera pro: lens buttons zoom with a glide, pinch and the dial zoom, and t
   await vfPtr(p, 'pointerdown', 1, 150, 400); await vfPtr(p, 'pointerdown', 2, 250, 400);
   await vfPtr(p, 'pointermove', 1, 50, 400); await vfPtr(p, 'pointermove', 2, 350, 400);
   eq(await p.evaluate(() => [Math.round(cam.zoom * 10) / 10, $('camDial').hidden, $('camDialVal').textContent]), [3, false, '3×'], 'pinch zooms with the finger and shows the dial');
-  await vfPtr(p, 'pointerup', 1, 50, 400); await vfPtr(p, 'pointerup', 2, 350, 400); await settle(1500);
+  await vfPtr(p, 'pointerup', 1, 50, 400); await vfPtr(p, 'pointerup', 2, 350, 400);
+  // The dial fades 1.2 s after the fingers lift; a busy test machine can run the timer late.
+  await p.waitForFunction(() => $('camDial').hidden, null, { timeout: 5000 }).catch(() => {});
   eq(await p.evaluate(() => [$('camDial').hidden, cam.compare]), [true, false], 'dial hides after letting go; no compare from a pinch');
   // Drag the lens pill to the right: the dial turns back toward 1×; never past the limits.
   const b = await p.evaluate(() => { const r = $('camLenses').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
@@ -2805,7 +2807,8 @@ if (faceVideo) test('camera live: follows the face, puts the look on it, and hol
   assert(bgOn.every((v, i) => Math.abs(v - bgOff[i]) < 4), `background unchanged by face effects: ${bgOn.map(Math.round)} vs ${bgOff.map(Math.round)}`);
   // Press and hold: the untouched frame, with an "Original" label; letting go brings the look back.
   await p.evaluate(() => useLook(PRESET_LOOKS[3]));
-  await p.dispatchEvent('#camCanvas', 'pointerdown', { bubbles: true }); await settle(600);
+  // The hold starts after 350 ms; with the face tracker busy the page can run that timer late.
+  await p.dispatchEvent('#camCanvas', 'pointerdown', { bubbles: true }); await p.waitForFunction(() => cam.compare, null, { timeout: 4000 }).catch(() => {});
   eq(await p.evaluate(() => [cam.compare, $('camCompare').hidden]), [true, false], 'holding shows the original');
   await p.dispatchEvent('#camCanvas', 'pointerup', { bubbles: true }); await settle(100);
   eq(await p.evaluate(() => [cam.compare, $('camCompare').hidden]), [false, true], 'letting go brings the look back');
@@ -2914,7 +2917,9 @@ if (faceVideo) test('camera live: no flicker: a missed frame fades, never cuts, 
 
 // A selfie stays a selfie: the chosen side is asked for exactly, then any camera if the phone has one.
 test('camera: the last used side is asked for exactly, with a fallback for one-camera phones', async ({ p }) => {
-  await p.goto('https://app.test/');
+  // Let the app's own camera finish opening first, so only this check's asks are counted
+  // (on a busy machine the app's start-up ask landed in the list).
+  await p.goto('https://app.test/'); await p.waitForFunction(() => cam.state === 'live', null, { timeout: 15000 });
   const asks = await p.evaluate(async () => {
     const seen = [], real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = async (c) => { seen.push(JSON.stringify(c.video.facingMode)); if (typeof c.video.facingMode === 'object') { const e = new Error('no'); e.name = 'OverconstrainedError'; throw e; } return real(c); };
