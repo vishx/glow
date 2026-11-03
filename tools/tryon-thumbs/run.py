@@ -44,7 +44,7 @@ else:
     base = Image.open(D + "base.jpg").convert("RGB")
     src = open("public/tryon.js").read()
     outfits = re.findall(r'^  \["(\w+)", "[^"]*", "([^"]*)", "(\w+)"', src, re.M)
-    only = open(D + "trigger.txt").read().split()[1:]
+    only = [w for w in open(D + "trigger.txt").read().split()[1:] if not w.isdigit()]
     jobs = [(i, base, {"mode": "outfit", "tool": "outfit", "prompt": w, "part": p}) for i, w, p in outfits if not only or i in only]
 with ThreadPoolExecutor(1) as ex:
     for (n, *_), r in zip(jobs, ex.map(lambda j: run(*j), jobs)): res[n] = r; print(n, r)
