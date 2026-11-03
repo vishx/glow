@@ -2338,7 +2338,7 @@ test('try on: one tool with ideas, your photo or words; sends the part; keeps ev
   eq([body.prompt, body.part], ['a red satin slip dress, mainly in navy blue', 'top'], 'words are sent as written, with the color and part picked before');
 });
 
-test('try on wardrobe: its own tab, the photo keeps its size, pictures take the color, pattern and fabric go in the request, None sends nothing', async ({ p, state }) => {
+test('try on wardrobe: its own tab, the photo keeps its size, outfit photos show the picked color, pattern and fabric go in the request, None sends nothing', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT); await settle(300);
   const photoH = () => p.evaluate(() => Math.round($('stage').getBoundingClientRect().height));
   const h0 = await photoH();
@@ -2346,13 +2346,15 @@ test('try on wardrobe: its own tab, the photo keeps its size, pictures take the 
   eq(await p.evaluate(() => [sel, $('panel').classList.contains('try-full'), cat !== 'tryon']), ['outfit', true, true], 'the tab opens Try on straight away');
   eq(await photoH(), h0, 'the photo keeps its size');
   eq(await p.evaluate(() => { const b = $('panelBody'); return b.scrollHeight <= b.clientHeight + 1 && $('dockGrip').hidden; }), true, 'the wardrobe fits the dock');
-  const fill = () => p.evaluate(() => document.querySelector('.try-tile[data-idea="suit"] svg path').getAttribute('fill'));
-  const before = await fill();
+  // Outfits are real photos; a photo can't change color, so the picked swatch sits on the picked outfit.
+  const tag = () => p.evaluate(() => { const t = document.querySelector('.try-tile[data-idea="suit"]'); const g = t.querySelector('.try-tag'); return [t.querySelector('.well').style.backgroundImage.includes('samples/tryon/suit.webp'), g ? g.innerHTML : null]; });
+  eq(await tag(), [true, null], 'the suit is a photo, with no swatch yet');
   await p.click('.try-tab[data-tab="color"]'); await p.click('.try-tile[data-color="burgundy"]');
   await p.click('.try-tab[data-tab="pattern"]'); await p.click('.try-tile[data-pattern="pinstripe"]');
   await p.click('.try-tab[data-tab="fabric"]'); await p.click('.try-tile[data-fabric="velvet"]');
   await p.click('.try-tab[data-tab="outfits"]');
-  assert(before !== await fill() && /6e1f2e/i.test(await fill()), 'the suit picture is burgundy now');
+  const [isPhoto, sw] = await tag();
+  assert(isPhoto && /6e1f2e/i.test(sw || ''), 'the picked suit wears a burgundy swatch');
   eq(await p.evaluate(() => [...document.querySelectorAll('.try-tab.set')].map((b) => b.dataset.tab)), ['color', 'pattern', 'fabric'], 'chosen tabs are marked');
   let req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
   await applyTool(p); const body = JSON.parse((await req).postData());
