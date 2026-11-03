@@ -2496,7 +2496,11 @@ async function startAiEdit(t) {
     } else if (t.id === "outfit") {
       // Try on: an outfit photo, or words for one, and which part to change. Her face stays hers.
       const r = tryRequest(); if (!r) throw new Error("Pick an outfit first.");
-      body = { image: await uploadable(base, aiMaxSide(t.id), aiMaxPixels(t.id)), mode: "outfit", extra: r.extra, prompt: r.prompt, part: r.part };
+      const image = await uploadable(base, aiMaxSide(t.id), aiMaxPixels(t.id));
+      // The AI returns the shape of the last picture it is given (the outfit), so a 4:5 product
+      // photo turned a head-to-toe 2:3 photo into a crop at the knees. The outfit goes on a card
+      // with her photo's shape, so the result keeps her framing (checked on the live server 2026-11-03).
+      body = { image, mode: "outfit", extra: r.extra ? await tryOutfitCard(r.extra, image) : r.extra, prompt: r.prompt, part: r.part };
       keep = { look: r.label };
     } else if (t.id === "expand") {
       const x = await expandInputs(base); body = { image: x.image, mode: "expand", mask: x.mask }; keep = { place: x.place };
@@ -2644,6 +2648,7 @@ function renderJob() {
   const working = job.status === "starting" || (job.status === "processing" && following);
   $("jobSpin").hidden = !working;
   let text = `${job.title} ${JOB_TEXT[job.status] || ""}`;
+  if (job.tool === "outfit" && working) text = "Tailoring your look…";
   if (job.status === "processing" && !following) text = `${job.title} may still be processing.`;
   if (job.status === "unknown") text += ` ${job.error || ""} Glow Studio won't charge you again to check.`;
   if (job.status === "failed") text += ` ${job.error}` + (job.refunded ? " Glow Studio's server returned the AI credit." : account ? ` Your balance shows ${balanceText(account)}.` : "");

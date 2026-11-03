@@ -41,6 +41,9 @@ const TRY_OUTFITS = [
   ["varsity", "Varsity", "a vintage varsity jacket", "top", ["varsity", "#2b3a5c", "#efe3cc"]],
 ];
 const TRY_IDEA = Object.fromEntries(TRY_OUTFITS.map((x) => [x[0], x]));
+// Each outfit is shown as a real photo of the sample model wearing it (made with Try on itself,
+// 2026-11-03: the owner found the drawn outfits childish; every premium try-on app shows photos).
+const tryShot = (id) => `samples/tryon/${id}.webp`;
 const TRY_CATS = [
   ["mine", "My outfits"],
   ["popular", "Popular", ["suit", "sundress", "lbd", "leather", "blazer", "gown", "street", "denim", "trench"]],
@@ -63,7 +66,7 @@ const TRY_PATTERNS = [["", "Plain", ""], ["stripes", "Stripes", "stripes"], ["pi
 const TRY_FABRICS = [["", "Any", ""], ["cotton", "Cotton", "cotton"], ["linen", "Linen", "linen"], ["denim", "Denim", "denim"], ["satin", "Satin", "silk satin"],
   ["leather", "Leather", "leather"], ["knit", "Knit", "chunky knit"], ["velvet", "Velvet", "velvet"], ["tweed", "Tweed", "tweed"], ["corduroy", "Corduroy", "corduroy"]];
 const TRY_PARTS = [["Auto", "auto"], ["Top", "top"], ["Bottom", "bottom"], ["Full look", "full"]];
-const TRY_TABS = [["outfits", "Outfits"], ["color", "Color"], ["pattern", "Pattern"], ["fabric", "Fabric"], ["part", "Part"]];
+const TRY_TABS = [["outfits", "Outfits"], ["color", "Color"], ["pattern", "Pattern"], ["fabric", "Fabric"], ["part", "Fit"]];
 // The sample's prepared previews (made with the earlier Suit and Summer dress tools).
 const TRY_DEMO = { suit: "suit", sundress: "sundress" };
 const CLOSET_MAX = 8, LOOKS_MAX = 8;
@@ -139,17 +142,7 @@ async function tryCheck() {
 }
 
 // ---------- Outfit pictures ----------
-// Flat fashion sketches drawn here (no downloads): front views on a light card, like the product
-// shots in shop apps. They take on the color, pattern and fabric she picks.
-const G_TEE = "M23 7Q30 11 37 7L46 10L54 20L48 24L45 20L45 39L15 39L15 20L12 24L6 20L14 10Z";
-const G_LONG = "M23 7Q30 11 37 7L46 10Q51 13 52 21L55 38L49 39L45 23L45 39L15 39L15 23L11 39L5 38L8 21Q9 13 14 10Z";
-const G_COAT = "M23 7Q30 11 37 7L46 10Q51 13 52 21L55 50L49 51L46 25L47 67L13 67L14 25L11 51L5 50L8 21Q9 13 14 10Z";
-const G_PANTS = "M16 38L44 38L46 72L35 72L30 47L25 72L14 72Z";
-const G_STRAP = "M21 14Q30 17 39 14L40 30L50 60Q30 65 10 60L20 30Z";
-const G_GOWN = "M21 14Q30 17 39 14L40 30L54 72Q30 75 6 72L20 30Z";
-const G_SHEATH = "M19 9Q30 13 41 9L46 11L48 19L42 20L41 31L44 58Q30 61 16 58L19 31L18 20L12 19L14 11Z";
-const G_MAXI = "M23 7Q30 11 37 7L46 10Q51 13 52 21L55 38L49 39L45 24L44 31L52 72Q30 75 8 72L16 31L15 24L11 39L5 38L8 21Q9 13 14 10Z";
-const G_KNITDRESS = "M23 7Q30 11 37 7L46 10Q51 13 52 21L55 38L49 39L45 24L45 60Q30 62 15 60L15 24L11 39L5 38L8 21Q9 13 14 10Z";
+// Swatches for the Color, Pattern and Fabric rows (drawn here, no downloads).
 let gUid = 0;
 const gLine = (d, w = 1, o = 0.28) => `<path d="${d}" fill="none" stroke="#000" stroke-opacity="${o}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
 function gPattern(id, kind, base) {
@@ -175,48 +168,6 @@ function gPattern(id, kind, base) {
       return `<linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="${kind === "f-velvet" ? 0 : 0.05}"/><stop offset=".42" stop-color="#fff" stop-opacity="${kind === "f-velvet" ? 0.12 : 0.38}"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="${kind === "f-velvet" ? 0.35 : 0.18}"/></linearGradient>`;
   }
   return "";
-}
-// One sketch: shape, main color, second color (shirt, trousers), pattern on the main piece, finish.
-function outfitSVG(pic, o = {}) {
-  let [shape, main, second, pattern, finish] = pic;
-  if (o.color) main = o.color;
-  if (o.pattern !== undefined && o.pattern !== null) pattern = o.pattern;
-  if (o.fabric) finish = "f-" + o.fabric;
-  second = second || main;
-  const pid = `gp${++gUid}`, fid = `gf${gUid}`;
-  const defs = (pattern ? gPattern(pid, pattern, main) : "") + (finish && finish !== "zipside" ? gPattern(fid, finish, main) : "");
-  const fill = (d) => `<path d="${d}" fill="${main}"/>` + (pattern ? `<path d="${d}" fill="url(#${pid})"/>` : "") + (finish && finish !== "zipside" ? `<path d="${d}" fill="url(#${fid})"/>` : "") + gLine(d, 0.8, 0.22);
-  const plain = (d, c) => `<path d="${d}" fill="${c}"/>` + gLine(d, 0.8, 0.22);
-  const inner = (c) => `<path d="M25 8L35 8L34 39L26 39Z" fill="${c}"/>`;
-  const lapels = gLine("M25 8L27 21L30 26L33 21L35 8") + `<circle cx="30" cy="30" r=".9" fill="#000" fill-opacity=".35"/><circle cx="30" cy="35" r=".9" fill="#000" fill-opacity=".35"/>`;
-  const straps = gLine("M22 14L23 5M38 14L37 5", 1, 0.45);
-  let s = "";
-  switch (shape) {
-    case "suit": s = plain(G_PANTS, main) + fill(G_LONG) + `<path d="M25 8L30 25L35 8Z" fill="${second}"/>` + lapels; break;
-    case "tux": s = plain(G_PANTS, main) + fill(G_LONG) + `<path d="M25 8L30 25L35 8Z" fill="${second}"/>` + lapels + `<path d="M27 10L30 11.5L33 10L33 13L30 11.5L27 13Z" fill="#111"/>`; break;
-    case "blazer": s = fill(G_LONG) + `<path d="M25 8L30 26L35 8Z" fill="${second}"/>` + lapels; break;
-    case "jacket": s = fill(G_LONG) + inner(second) + gLine("M25 8L25 39M35 8L35 39") + (finish === "zipside" ? gLine("M33 9L28 22L31 39", 0.9, 0.5) : gLine("M17 22L23 22M37 22L43 22", 0.9)); break;
-    case "jacketpants": s = plain(G_PANTS, second) + fill(G_LONG) + inner("#1d1b1e") + gLine("M25 8L25 39M35 8L35 39M15 37L45 37"); break;
-    case "trench": s = fill(G_COAT) + gLine("M25 8L27 20L30 24L33 20L35 8M30 24L30 67M14 34L46 34", 0.9) + `<rect x="14" y="32.5" width="32" height="3" fill="#000" fill-opacity=".14"/>`; break;
-    case "coat": s = fill(G_COAT) + gLine("M25 8L27 20L30 24L33 20L35 8M30 24L30 67", 0.9); break;
-    case "shirt": s = plain(G_PANTS, second) + fill(G_LONG) + gLine("M23 7L27 13L30 10L33 13L37 7M30 10L30 39"); break;
-    case "teejeans": s = plain(G_PANTS, second) + gLine("M30 38L30 46M19 41L23 41M37 41L41 41", 0.8, 0.3) + fill(G_TEE) + gLine("M24 8Q30 13 36 8", 0.8); break;
-    case "linenset": s = fill(G_PANTS) + fill(G_LONG) + gLine("M23 7L27 13L30 10L33 13L37 7M30 10L30 39"); break;
-    case "polo": s = plain(G_PANTS, second) + fill(G_TEE) + gLine("M24 7L27 12L30 9L33 12L36 7M30 9L30 16"); break;
-    case "hoodie": s = fill(G_LONG) + `<path d="M21 10Q21 1 30 1Q39 1 39 10Q30 15 21 10Z" fill="${main}"/>` + gLine("M21 10Q21 1 30 1Q39 1 39 10Q30 15 21 10ZM22 29L38 29L36 37L24 37Z") + gLine("M28 13L27 20M32 13L33 20", 0.8); break;
-    case "sweater": s = fill(G_LONG) + gLine("M24 8Q30 12 36 8M17 36L43 36M22 14L22 34M30 14L30 34M38 14L38 34", 0.8, 0.22); break;
-    case "puffer": s = fill(G_LONG) + gLine("M15 16L45 16M15 22.5L45 22.5M15 29L45 29M15 35L45 35M30 9L30 39", 0.9, 0.35); break;
-    case "track": s = fill(G_PANTS) + fill(G_LONG) + gLine("M30 8L30 39M8 21L5 38M52 21L55 38", 0.9, 0.35); break;
-    case "varsity": s = fill(G_LONG) + `<path d="M8 21Q9 13 14 10L15 23L11 39L5 38ZM52 21Q51 13 46 10L45 23L49 39L55 38Z" fill="${second}"/>` + gLine("M30 8L30 39M15 37L45 37") + `<circle cx="22" cy="20" r="2.4" fill="${second}"/>`; break;
-    case "strap": s = straps + fill(G_STRAP) + gLine("M21 30Q30 32 40 30", 0.8); break;
-    case "gown": s = straps + fill(G_GOWN) + gLine("M21 30Q30 32 40 30", 0.8); break;
-    case "sheath": s = fill(G_SHEATH) + gLine("M23 10Q30 15 37 10", 0.8); break;
-    case "sequin": s = fill(G_SHEATH) + [[24, 24], [33, 28], [27, 36], [36, 44], [22, 48], [30, 52], [38, 34], [26, 16], [34, 18]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r=".9" fill="#fff" opacity=".85"/>`).join(""); break;
-    case "maxi": s = fill(G_MAXI) + gLine("M16 31Q30 33 44 31", 0.8); break;
-    case "shirtdress": s = fill(G_KNITDRESS) + gLine("M23 7L27 13L30 10L33 13L37 7M30 10L30 60") + `<rect x="15" y="29" width="30" height="3" fill="#000" fill-opacity=".16"/>`; break;
-    case "knitdress": s = fill(G_KNITDRESS) + gLine("M24 8Q30 12 36 8M15 57L45 57M21 14L21 55M27 14L27 55M33 14L33 55M39 14L39 55", 0.7, 0.18); break;
-  }
-  return `<svg viewBox="0 0 60 75" aria-hidden="true" focusable="false"><defs>${defs}</defs>${s}</svg>`;
 }
 // A square swatch of a color, pattern or fabric.
 function swatchSVG(base, pattern, finish) {
@@ -340,7 +291,9 @@ function tryStrip(body) {
     (TRY_CATS.find((c) => c[0] === tryOn.cat) || TRY_CATS[1])[2].forEach((id) => {
       const it = TRY_IDEA[id]; if (!it) return;
       const on = tryOn.src === "ideas" && tryOn.idea === id;
-      const b = tryTile({ cls: "outfit", pic: outfitSVG(it[4], style), label: it[1], on, onClick: () => { tryOn.src = "ideas"; tryOn.idea = id; tryChanged(); } });
+      const b = tryTile({ cls: "shot", img: tryShot(id), label: it[1], on, onClick: () => { tryOn.src = "ideas"; tryOn.idea = id; tryChanged(); } });
+      // A photo can't take her color, pattern or fabric, so the picked one sits on the tile as a swatch.
+      if (on && tryStyleWords()) { const t = document.createElement("i"); t.className = "try-tag"; t.innerHTML = swatchSVG(style.color || FABRIC_BASE[style.fabric] || "#e9e3da", style.pattern || "", style.fabric ? "f-" + style.fabric : ""); b.querySelector(".well").append(t); }
       b.dataset.idea = id; row.append(b);
     });
   }
@@ -377,13 +330,25 @@ function trySwatches(body, kind) {
 }
 function tryPartRow(body) {
   const row = tryKeepScroll(document.createElement("div"), "part"); row.className = "try-strip parts"; row.setAttribute("role", "group"); row.setAttribute("aria-label", "What to change");
-  const pics = { auto: ["suit", "#c9b9a3", "#f4f1ec"], top: ["blazer", "#c9a14a", "#f4f1ec"], bottom: ["teejeans", "#d9d4cc", "#c9a14a"], full: ["suit", "#c9a14a", "#f4f1ec"] };
+  const pics = { top: "blazer", bottom: "casual", full: "suit" };
   TRY_PARTS.forEach(([label, v]) => {
-    const b = tryTile({ cls: "outfit part", pic: v === "auto" ? "" : outfitSVG(pics[v]), icon: v === "auto" ? "sparkle" : "", label, on: tryOn.part === v,
+    const b = tryTile({ cls: v === "auto" ? "add part" : "shot part " + v, img: v === "auto" ? "" : tryShot(pics[v]), icon: v === "auto" ? "sparkle" : "", label, on: tryOn.part === v,
       aria: v === "auto" ? "Auto: the AI decides what to change" : `Change the ${label.toLowerCase()}`, onClick: () => { tryOn.part = v; tryChanged(); } });
     b.dataset.part = v; row.append(b);
   });
   body.append(row);
+}
+
+// The outfit picture centered on a plain light card with the shape of her photo (never cropped).
+async function tryOutfitCard(outfit, photo) {
+  const [o, ph] = await Promise.all([loadImg(outfit), loadImg(photo)]);
+  const r = ph.naturalWidth / ph.naturalHeight, ow = o.naturalWidth, oh = o.naturalHeight;
+  if (Math.abs(ow / oh - r) < 0.01) return outfit;
+  const w = ow / oh > r ? ow : Math.round(oh * r), h = ow / oh > r ? Math.round(ow / r) : oh;
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const x = c.getContext("2d"); x.fillStyle = "#f0eeea"; x.fillRect(0, 0, w, h);
+  x.drawImage(o, Math.round((w - ow) / 2), Math.round((h - oh) / 2));
+  return c.toDataURL("image/jpeg", 0.9);
 }
 
 async function tryPasted(f) {
@@ -473,7 +438,7 @@ function tryDemoPanel(body) {
   const ids = [...ready, ...TRY_CATS[1][2].filter((id) => !ready.includes(id))];
   ids.forEach((id) => {
     const it = TRY_IDEA[id], has = ready.includes(id), pic = has ? `${DEMO_DIR}thumbs/${TRY_DEMO[id]}.jpg` : "";
-    const b = tryTile({ cls: has ? "photo" : "outfit locked", img: pic, pic: has ? "" : outfitSVG(it[4]), label: it[1], on: tryDemoOn() === id,
+    const b = tryTile({ cls: has ? "photo" : "shot locked", img: pic || tryShot(id), label: it[1], on: tryDemoOn() === id,
       aria: has ? `${it[1]}, prepared preview` : `${it[1]}, needs your own photo`,
       onClick: () => { if (has) { tryOn.demoShown = id; showDemoPreview(TRY_DEMO[id], "outfit"); } else say(`Try ${it[1].toLowerCase()} on your own photo: tap Use your photo.`); } });
     b.dataset.idea = id; row.append(b);
