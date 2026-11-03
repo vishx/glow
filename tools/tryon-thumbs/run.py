@@ -48,4 +48,4 @@ else:
     jobs = [(i, base, {"mode": "outfit", "tool": "outfit", "prompt": w, "part": p}) for i, w, p in outfits if not only or i in only]
 with ThreadPoolExecutor(1) as ex:
     for (n, *_), r in zip(jobs, ex.map(lambda j: run(*j), jobs)): res[n] = r; print(n, r)
-json.dump(res, open(D + "out/results-%s.json" % stage, "w"), indent=1)
+json.dump(res, open(D + "out/results-%s-%d.json" % (stage, time.time()), "w"), indent=1)
