@@ -1949,7 +1949,7 @@ test('nav: five tabs file every tool still offered once, retired tools nowhere, 
       tabs: [...document.querySelectorAll('#tabs .tab')].map((t) => t.textContent.trim()),
       bodyOnlyInSearch: TOOLS.filter((t) => t.kind === 'body').every((t) => tabFor(t.id) === null) };
   });
-  eq(c, { missing: [], twice: [], unknown: [], tabs: ['Beauty', 'Looks', 'Adjust', 'Background', 'AI'], bodyOnlyInSearch: true }, 'every tool filed once, five tabs, body tools advanced');
+  eq(c, { missing: [], twice: [], unknown: [], tabs: ['Beauty', 'Try on', 'Looks', 'Adjust', 'Background', 'AI'], bodyOnlyInSearch: true }, 'every tool filed once, six tabs, body tools advanced');
   for (const cat of ['retouch', 'looks', 'edit', 'bg', 'ai']) {
     await p.click(`.tab[data-cat="${cat}"]`);
     const r = await p.evaluate(() => [[...document.querySelectorAll('#tools .tool')].pop().id, document.querySelectorAll(['bwaist', 'bhips', 'barms', 'bslimlegs', 'blegs'].map((x) => `#tools .tool[data-tool="${x}"]`).join(',')).length]);
@@ -3554,7 +3554,7 @@ test('features: with no server answer every released tool shows and retired tool
   for (const id of expect) assert(all.includes(id), id + ' offered');
   for (const id of await p.evaluate(() => RETIRED)) assert(!all.includes(id), id + ' (retired) hidden');
   const c = state.featureChecks[0]; eq([c.p_platform, typeof c.p_build], ['web', 'number'], 'platform and build sent');
-  eq(await p.evaluate(() => $$tabs()), ['retouch', 'looks', 'edit', 'bg', 'ai'], 'all five tabs');
+  eq(await p.evaluate(() => $$tabs()), ['retouch', 'tryon', 'looks', 'edit', 'bg', 'ai'], 'all six tabs');
   eq(state.errs, [], 'no page errors');
 }, { features: 404, init: () => { window.$$tabs = () => [...document.querySelectorAll('#tabs .tab')].filter((t) => !t.hidden).map((t) => t.dataset.cat); } });
 
@@ -3578,7 +3578,7 @@ test('features: switched-off tools leave the tabs and Search, an empty tab disap
   for (const id of ['erase', 'fill', 'custom', 'fsmooth']) assert(!all.includes(id), id + ' hidden');
   assert(all.includes('smile'), 'retired Smile switched on for testers shows');
   await p.evaluate(() => setSearching(false));
-  eq(await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')].filter((t) => !t.hidden).map((t) => t.dataset.cat)), ['retouch', 'looks', 'edit', 'bg'], 'AI tab gone (all its tools off)');
+  eq(await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')].filter((t) => !t.hidden).map((t) => t.dataset.cat)), ['retouch', 'tryon', 'looks', 'edit', 'bg'], 'AI tab gone (all its tools off)');
   // Opening a hidden tool any other way (Recent, an old link) is refused.
   await p.evaluate(() => selectTool('fsmooth')); await settle(200);
   eq(await p.evaluate(() => sel), null, 'not opened'); assert(/isn't available/.test(await toast(p)), 'says so');
