@@ -1,11 +1,11 @@
 {
- "version": "202610361-6ff1347a49",
+ "version": "202610361-150de86039",
  "build": 202610361,
  "minNative": {
   "android": 4,
   "ios": 2
  },
- "created": "2026-11-03T08:27:32.305Z",
+ "created": "2026-11-03T08:28:08.825Z",
  "files": [
   {
    "file_name": "admin.html",
@@ -364,7 +364,7 @@
   },
   {
    "file_name": "samples/tryon/blazer.webp",
-   "file_hash": "3430e334a76cacda624e6d25ae85ba41461f7079ce764d9322eeab666bd4e6d7",
+   "file_hash": "528059fe5207ae925876b638fdd4ee5765c1e47f8185930910b11c12f524746e",
    "download_url": "https://glow-photo-enhancer.vercel.app/samples/tryon/blazer.webp"
   },
   {
@@ -379,17 +379,17 @@
   },
   {
    "file_name": "samples/tryon/denim.webp",
-   "file_hash": "675d89c9503afbe56090fad90020b5a9c30eb8f80581e5e39a52bac944e3b63f",
+   "file_hash": "94f95f8b4a1f2ca384563cb269cb28f1cb1888f4c3d67fa566431760a12241ef",
    "download_url": "https://glow-photo-enhancer.vercel.app/samples/tryon/denim.webp"
   },
   {
    "file_name": "samples/tryon/gown.webp",
-   "file_hash": "078aac229e9a539f1671b778a844f734cfd682ad27b323a14a9805c78c2e9fa0",
+   "file_hash": "0a183e8c021b7ffb4d5304c7850e7b7b408c47972fc11500882da4e03293d20c",
    "download_url": "https://glow-photo-enhancer.vercel.app/samples/tryon/gown.webp"
   },
   {
    "file_name": "samples/tryon/guest.webp",
-   "file_hash": "5e10133bfe385dedf990a9ca8085b00173f04e2507b0a49dffe14991caa065ed",
+   "file_hash": "4e9f003b8b6b746bef67d54930e7a0d860eb2f01902bd8def834b713f34e5928",
    "download_url": "https://glow-photo-enhancer.vercel.app/samples/tryon/guest.webp"
   },
   {
@@ -409,12 +409,12 @@
   },
   {
    "file_name": "samples/tryon/lbd.webp",
-   "file_hash": "e6dbf3a861b23154372af0fde49fe21c157f13433fecb784cc6012d8a9747025",
+   "file_hash": "bba729f1ba96129a3fdb63c81790166d701d10224acdb30b2519db731af5f114",
    "download_url": "https://glow-photo-enhancer.vercel.app/samples/tryon/lbd.webp"
   },
   {
    "file_name": "samples/tryon/leather.webp",
-   "file_hash": "35f1d0d0abf4d26eb2f44782832966e583590bcb7513cc09312209b7ec14916f",
+   "file_hash": "82ea6faf9d2df758ce7963507da43fd12b6d903f604cdadbd4710ee290e29d26",
    "download_url": "https://glow-photo-enhancer.vercel.app/samples/tryon/leather.webp"
   },
   {
@@ -459,22 +459,22 @@
   },
   {
    "file_name": "samples/tryon/street.webp",
-   "file_hash": "802e245fd34e24d388f1281b1a0ffcd86985c683e83e7b12c69a980223d1032d",
+   "file_hash": "ab1eb10c2749c42c122a12ff243e7ab85aa6c767b8ae0682caf16cee7aeca918",
    "download_url": "https://glow-photo-enhancer.vercel.app/samples/tryon/street.webp"
   },
   {
    "file_name": "samples/tryon/suit.webp",
-   "file_hash": "399bc5ad544c92932846d09e87161be2163835a812498105398a91832574b158",
+   "file_hash": "f64f2487c7ebcd148b1aa151ebc82bc4ad5b5736b92bbf6dab11ea19f4db3d56",
    "download_url": "https://glow-photo-enhancer.vercel.app/samples/tryon/suit.webp"
   },
   {
    "file_name": "samples/tryon/sundress.webp",
-   "file_hash": "33da00bcb9d155b0f86c33ac46f22556d18a253a43cd8ad4c653d9260ade5b4d",
+   "file_hash": "f6b711d318ba682724bdaf1f260bc8d8731a96bf54895536d1485b1250dde296",
    "download_url": "https://glow-photo-enhancer.vercel.app/samples/tryon/sundress.webp"
   },
   {
    "file_name": "samples/tryon/trench.webp",
-   "file_hash": "5a326e395e72030ea77f03df226e6f2214a00b3f5b849ec3ef57a1ed84b35ab7",
+   "file_hash": "d56747922784bb0b040205c54a7c2d4aff836361edfdefc9fe641581182cb87d",
    "download_url": "https://glow-photo-enhancer.vercel.app/samples/tryon/trench.webp"
   },
   {
