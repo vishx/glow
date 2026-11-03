@@ -19,7 +19,7 @@
 // The build number sent with each check, so a switch can require a newer app (min build).
 // Bump it (YYYYMMDD, or YYYYMMDD + one more digit for a second release that day) whenever a
 // release changes how a switchable feature behaves.
-const APP_BUILD = 202610358;
+const APP_BUILD = 202610360;
 
 // Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
 // another tool, or (body reshaping) didn't fit Glow Studio. Their code stays so saved drafts still
@@ -122,8 +122,9 @@ const FEATURE_AREAS = [
     ["money:web", "Web checkout", true, "Pro and credit packs by card on the website (RevenueCat Web Billing, Stripe). Needs the web key in app.js."],
     ["money:ads", "Watch an ad for a credit", true, "Free plan."],
     ["money:intro", "Pro screen at the first result", true, "Once per install, after the first Enhance result or editor save. Phone app only."],
-    ["share:app", "Share Glow Studio card", true, "The QR card offered after saving."],
-    ["share:video", "Before & after video", true, "Share a 5-second reveal video after saving an Enhance result."],
+    ["share:app", "Share Glow Studio link", true, "The Share Glow Studio link in Settings (sends the app's address)."],
+    ["share:pair", "Before & after in Share", true, "The Share sheet offers Before & after (and Video) when the original has the same shape."],
+    ["share:video", "Before & after video", true, "The Share sheet's 5-second reveal video."],
   ]],
   ["Retired tools", RETIRED_TOOLS.map((id) => ["tool:" + id, RETIRED_NAMES[id] || id, false])],
 ];

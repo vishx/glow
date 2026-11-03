@@ -1096,7 +1096,7 @@ async function enhDownload() {
     const date = enh.demo ? "" : await photoDate(enh.original && enh.original.blob);
     const where = await Platform.savePhotos([{ data, clean, date, name }]);
     track("save", { from: "enhance", demo: !!enh.demo, marked: marked.marked, where: String(where || "") });
-    enh.saved = { data, where, name };
+    enh.saved = { data, clean, date, where, name };
     if (enh.fromBatch) enh.fromBatch.saved = true;
     showEnhShare();
     if (!enh.demo) HomeAdd.afterSave("enhance");
@@ -1110,19 +1110,21 @@ function showEnhShare() {
   $("enhShareImg").src = enh.saved.data;
   $("enhSavedText").textContent = SAVED_LABEL[enh.saved.where] || "Saved";
   $("enhAnother").hidden = !!enh.fromBatch;
-  $("enhVideo").hidden = !VIDEO_TYPE || !enh.base || !featureOn("share:video");
   $("enhAnother").innerHTML = enh.fromCamera ? "Take another" + icon("camera") : "Enhance another" + icon("sparkle");
   const st = $("enhSavedState"); st.style.animation = "none"; void st.offsetWidth; st.style.animation = "";
   showScreen("enhanceShare");
   fitEnhFrame();
   $("alertLive").textContent = $("enhSavedText").textContent + ".";
 }
-setIcon($("enhShareBack"), "back"); setIcon($("enhShareBtn"), "share"); setIcon(document.querySelector("#enhSavedState .ok"), "check");
+setIcon($("enhShareBack"), "back"); setIcon(document.querySelector("#enhSavedState .ok"), "check");
+$("enhShareBtn").innerHTML = icon("share") + "<span>Share</span>";
 $("enhShareBack").addEventListener("click", () => { showScreen("enhanceResult"); fitEnhFrame(); });
 $("enhShareDone").addEventListener("click", enhExit);
-$("enhShareBtn").addEventListener("click", async () => {
-  try { await Platform.savePhotos([{ data: enh.saved.data, name: enh.saved.name }], { share: true }); track("share", { from: "enhance" }); }
-  catch (err) { if (!(err && err.name === "AbortError")) say("Couldn't open sharing. Try again.", true); }
+// One Share button: the Share sheet with the photo ready to send, plus Before & after and the
+// 5-second reveal video (the Enhance's own before, at the same shape).
+$("enhShareBtn").addEventListener("click", () => {
+  if (!enh.saved) return;
+  ShareSheet.open({ photo: enh.saved.data, clean: enh.saved.clean, before: enh.base, date: enh.saved.date, name: enh.saved.name, saved: enh.saved.where, from: "enhance" });
 });
 $("enhAnother").addEventListener("click", () => (enh.fromCamera ? enhExit() : enhancePick()));
 
@@ -1151,12 +1153,8 @@ function drawReveal(x, W, H, before, after, split, mark) {
   };
   if (split > 0.08) pill("Before", 40 * u, false);
   if (split < 0.92) pill("After", 40 * u, true);
-  if (mark) {
-    x.font = `600 ${40 * u}px Fraunces, Georgia, serif`;
-    const t = "Glow Studio", w = x.measureText(t).width + 48 * u, h = 72 * u, X = (W - w) / 2, Y = H - h - 44 * u;
-    x.fillStyle = "rgba(13, 13, 16, 0.62)"; x.beginPath(); (x.roundRect ? x.roundRect(X, Y, w, h, h / 2) : x.rect(X, Y, w, h)); x.fill();
-    x.fillStyle = "#ffe3a3"; x.textBaseline = "middle"; x.fillText(t, X + 24 * u, Y + h / 2 + 2);
-  }
+  // The same Glow Studio badge as on saved photos, in the same corner.
+  if (mark && mark.m) { x.save(); x.textBaseline = "alphabetic"; x.textAlign = "left"; drawBadge(x, mark.m, mark.icon); x.restore(); }
 }
 // The split over time (1 = all Before): hold, reveal, hold, back to the middle.
 function revealAt(t) {
@@ -1167,12 +1165,14 @@ function revealAt(t) {
   if (t < 4.3) return 0.5 * ease((t - 3.4) / 0.9);
   return 0.5;
 }
-async function makeRevealVideo(beforeUrl, afterUrl, mark) {
+// canvas: where to record (the Share sheet passes its own, so the preview is the recording).
+async function makeRevealVideo(beforeUrl, afterUrl, mark, canvas) {
   const [b, a] = await Promise.all([loadImg(beforeUrl), loadImg(afterUrl)]);
   const s = Math.min(1, 1080 / a.naturalWidth, 1920 / a.naturalHeight);
   const W = Math.round(a.naturalWidth * s / 2) * 2, H = Math.round(a.naturalHeight * s / 2) * 2;
-  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const c = canvas || document.createElement("canvas"); c.width = W; c.height = H;
   const x = c.getContext("2d"); x.imageSmoothingQuality = "high";
+  if (mark) { await markFonts(); const m = markLayout(x, W, H), ic = await loadBadgeIcon(); mark = { m, icon: ic && iconAt(ic, Math.round(m.icon)) }; }
   drawReveal(x, W, H, b, a, 1, mark);
   const rec = new MediaRecorder(c.captureStream(30), { mimeType: VIDEO_TYPE, videoBitsPerSecond: 8e6 });
   const parts = []; rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) parts.push(ev.data); };
@@ -1183,19 +1183,6 @@ async function makeRevealVideo(beforeUrl, afterUrl, mark) {
   rec.stop(); await done;
   return new Blob(parts, { type: VIDEO_TYPE.split(";")[0] });
 }
-$("enhVideo").addEventListener("click", async () => {
-  const btn = $("enhVideo");
-  if (btn.disabled || !enh.current || !enh.base) return;
-  btn.disabled = true; const label = btn.innerHTML; btn.textContent = "Making your video…";
-  try {
-    const blob = await makeRevealVideo(enh.base, enh.current, wantMark());
-    Platform.haptic("success");
-    const where = await Platform.shareVideo(blob, `glow-studio-before-after-${Date.now()}`);
-    track("share_video", { from: "enhance", where, type: blob.type });
-    if (where === "downloaded") say("Video downloaded. Post it from your Downloads.");
-  } catch (err) { if (!(err && err.name === "AbortError")) say("Couldn't make the video. Try again.", true); }
-  finally { btn.disabled = false; btn.innerHTML = label; }
-});
 $("enhEdit").addEventListener("click", editEnhanced);
 
 // Hands the enhanced photo to the editor as its first step, so Undo there goes back to the original.

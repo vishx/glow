@@ -61,10 +61,12 @@ test('camera: auto-save off keeps Save, Retake and Edit photo, and saves once', 
   for (const id of ['#saveShotBtn', '#retakeBtn', '#editShotBtn']) assert(await p.isVisible(id), id + ' visible');
   await settle(800); eq(state.downloads.length, 0, 'nothing saved before Save');
   await p.click('#saveShotBtn'); await downloads(state, 1); await settle(400);
-  eq(state.downloads.length, 1, 'one file'); assert(await p.isDisabled('#saveShotBtn'), 'Save disabled after saving');
-  assert(/Saved/.test(await p.textContent('#saveShotBtn')), 'button says Saved');
+  eq(state.downloads.length, 1, 'one file');
+  eq(await p.textContent('#saveShotBtn'), 'Share', 'once saved, Save turns into Share');
   assert(/^Download started/.test(await toast(p)), 'browser save says download started, not saved to library: ' + await toast(p));
-  await p.click('#saveShotBtn', { force: true }); await settle(500); eq(state.downloads.length, 1, 'no duplicate on second tap');
+  await p.click('#saveShotBtn'); await p.waitForSelector('#shareSheet[open]'); await settle(300);
+  eq(await p.evaluate(() => [$('shSave').disabled, $('shSave').textContent]), [true, 'Saved'], 'the sheet knows it is saved');
+  eq(state.downloads.length, 1, 'no duplicate save');
 }, { start: 'camera', init: () => { localStorage.setItem('glowAutoSave', 'off'); } });
 
 test('camera: auto-save is on by default, and Android saves download to the phone instead of the share sheet', async ({ p, state }) => {
@@ -84,8 +86,9 @@ test('camera: auto-save on saves each capture once, with the original only when 
   await p.click('#shutter'); await downloads(state, 2); await settle(500);
   const names = state.downloads.map((d) => d.name);
   eq(names.length, 2, 'two files'); assert(names.some((n) => /-original\.jpg$/.test(n)), 'original saved: ' + names);
-  assert(await p.isDisabled('#saveShotBtn'), 'Save shows as done'); await p.click('#saveShotBtn', { force: true }); await settle(400);
-  eq(state.downloads.length, 2, 'manual Save after auto-save adds nothing');
+  eq(await p.textContent('#saveShotBtn'), 'Share', 'Save shows as done: it is Share now'); await p.click('#saveShotBtn'); await p.waitForSelector('#shareSheet[open]'); await settle(400);
+  eq(state.downloads.length, 2, 'tapping it after auto-save saves nothing more');
+  await p.click('#shareSheet [data-close]');
   const sizes = state.downloads.map((d) => imageSize(d.file)); eq(sizes[0].w, sizes[1].w, 'original and look are the same size');
   // Edit photo, apply one change, Save: the original isn't saved a second time.
   await p.click('#editShotBtn'); await p.waitForFunction(() => screen === 'editorScreen');
@@ -1135,6 +1138,24 @@ test('settings in the Android app: share sheet without a "Link copied" toast, bu
   window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: { Share: { share: async (d) => { window.__shared = d; throw new Error('Share canceled'); } } } };
 } });
 
+test('share in the Android app: Share opens the phone share sheet (never a silent save to the album); Save goes to the album', async ({ p }) => {
+  await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
+  const r = await p.evaluate(async () => {
+    const img = newCanvas(40, 50); img.getContext('2d').fillRect(0, 0, 40, 50); const data = img.toDataURL('image/jpeg');
+    const shared = await Platform.savePhotos([{ data, name: 'glow-studio-t' }], { share: true });
+    const saved = await Platform.savePhotos([{ data, name: 'glow-studio-u' }]);
+    let cancel = ''; window.__cancel = true; try { await Platform.shareFiles([await Platform.photoFile({ data, name: 'x' })]); } catch (e) { cancel = e.name; }
+    return { shared, saved, sheet: window.__log.filter((x) => x === 'share').length, album: window.__log.filter((x) => x === 'album').length, cancel };
+  });
+  eq(r, { shared: 'shared', saved: 'photos', sheet: 2, album: 1, cancel: 'AbortError' }, 'Share uses the sheet, Save the album, a closed sheet is quiet');
+}, { start: 'enhance', camera: false, init: () => {
+  window.__log = [];
+  window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: {
+    Share: { share: async () => { window.__log.push('share'); if (window.__cancel) throw new Error('Share canceled'); } },
+    Filesystem: { writeFile: async ({ path }) => ({ uri: 'file:///cache/' + path }) },
+    Media: { getAlbums: async () => ({ albums: [{ name: 'Glow Studio', identifier: 'a' }] }), createAlbum: async () => {}, savePhoto: async () => { window.__log.push('album'); } } } };
+} });
+
 // 2026-10-31: a 1200x1600 photo ran Real-ESRGAN out of GPU memory; the credit came back but the
 // error toast sat behind the sheet and said "lost the connection", so nothing seemed to happen.
 const OOM = 'CUDA out of memory. Tried to allocate 3.66 GiB. GPU 0 has a total capacity of 14.56 GiB of which 3.28 GiB is free.';
@@ -1900,26 +1921,45 @@ test('mark: free users can\'t switch the mark off; the switch offers Pro', async
   eq(await p.evaluate(() => $('markToggle').checked), true, 'still on; the paywall opened instead');
   eq(await p.evaluate(() => wantMark()), true, 'free saves are marked even with the old off setting');
 }, { start: 'enhance', camera: false });
-test('mark: Share and Download give the same marked file; Share Glow card only on request, and its QR scans', async ({ p, state }) => {
+test('share: Save then Share sends the same marked file; the Share sheet offers Photo, Before & after and Video, and nothing is sent until Share is tapped', async ({ p, state }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'looks', 'filters', 'filter:glow'); await applyTool(p); await idle(p);
-  await p.evaluate(() => { window.__shared = []; navigator.canShare = () => true; navigator.share = async (d) => { for (const f of d.files) window.__shared.push(await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); })); }; });
+  await p.evaluate(() => { window.__shared = []; navigator.canShare = () => true; navigator.share = async (d) => { for (const f of d.files) window.__shared.push({ name: f.name, data: await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); }) }); }; });
   await p.click('#saveBtn'); await p.waitForFunction(() => window.__shared.length === 1);
-  const shared = await p.evaluate(() => window.__shared[0]);
+  const saved = await p.evaluate(() => window.__shared[0].data);
   const expected = await p.evaluate(async () => { const o = await renderExport(); return (await addMark(o.data, isPng(o.data))).data; });
-  eq(shared.split(',')[1], expected.split(',')[1], 'share sheet gets the same marked file the download path makes');
-  eq(await p.evaluate(() => document.querySelectorAll('#ask[open]').length), 0, 'no card or dialog opened by itself');
-  assert(await p.isVisible('.toast-act'), 'a quiet Share Glow offer after saving'); eq(await p.textContent('.toast-act'), 'Share Glow Studio', 'offer label');
-  await p.click('.toast-act'); await p.waitForSelector('#ask[open] #askImg');
-  eq(await p.evaluate(() => window.__shared.length), 1, 'nothing shared until chosen');
-  await p.addScriptTag({ path: path.join(__dirname, 'vendor', 'jsQR.js') });
-  const qr = await p.evaluate(async () => { const i = await loadImg($('askImg').src), c = newCanvas(i.naturalWidth, i.naturalHeight), x = c.getContext('2d'); x.drawImage(i, 0, 0);
-    const d = x.getImageData(0, c.height - 280, 340, 280); const r = jsQR(d.data, d.width, d.height); return r && r.data; });
-  eq(qr, 'https://glow-photo-enhancer.vercel.app', 'the card QR scans to the public address');
-  await p.click('#ask .btn:has-text("Save card")'); const [card] = await downloads(state, 1);
-  assert(/glow-studio-share-card/.test(card.file), 'card saved only when chosen');
+  eq(saved.split(',')[1], expected.split(',')[1], 'the save gets the marked file');
+  eq(await p.evaluate(() => document.querySelectorAll('dialog[open]').length), 0, 'no card or dialog opened by itself');
+  eq(await p.textContent('.toast-act'), 'Share', 'the saved toast offers Share');
+  await p.click('.toast-act'); await p.waitForSelector('#shareSheet[open]');
+  await p.waitForFunction(() => $('shFormats').querySelectorAll('button').length >= 2);
+  eq(await p.evaluate(() => [...$('shFormats').querySelectorAll('button')].map((b) => b.textContent).slice(0, 2)), ['Photo', 'Before & after'], 'formats');
+  eq(await p.evaluate(() => [$('shSave').disabled, $('shSave').textContent]), [true, 'Saved'], 'the photo is already saved');
+  eq(await p.evaluate(() => window.__shared.length), 1, 'nothing sent until Share is tapped');
+  await p.click('#shShare'); await p.waitForFunction(() => window.__shared.length === 2);
+  eq(await p.evaluate(() => window.__shared[1].data.split(',')[1]), expected.split(',')[1], 'Share sends the same marked photo');
+  await p.click('#shFormats button:has-text("Before & after")'); await p.waitForFunction(() => !$('shShare').disabled && $('shImg').src.startsWith('data:image/jpeg'));
+  const dims = await p.evaluate(async () => { const a = await loadImg($('shImg').src), o = await loadImg(ed.hist[0].data); return [a.naturalWidth, a.naturalHeight, o.naturalWidth, o.naturalHeight]; });
+  assert(dims[0] > dims[1], 'portrait photo: before and after side by side ' + dims);
+  await p.click('#shShare'); await p.waitForFunction(() => window.__shared.length === 3);
+  assert(/glow-studio-before-after-\d+\.jpg$/.test(await p.evaluate(() => window.__shared[2].name)), 'before & after file name');
+  await p.click('#shSave'); await p.waitForFunction(() => window.__shared.length === 4);   // touch browsers save through the sheet
+  eq(await p.evaluate(() => $('shSave').textContent), 'Saved', 'Before & after saved');
+  await p.click('#shareSheet [data-close]'); await p.waitForFunction(() => !$('shareSheet').open);
+  eq(await p.evaluate(() => document.querySelectorAll('#editorHome .recent').length <= 1), true, 'before & after not added to Recent');
   eq([state.posts.length, state.used], [0, 0], 'no AI request, no credit');
 }, { viewport: { width: 390, height: 844 } });
+test('share: the editor Share button opens the sheet without saving; Save there saves once', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT);
+  await tool(p, 'looks', 'filters', 'filter:glow'); await applyTool(p); await idle(p);
+  await p.evaluate(() => $('shareBtn').click()); await p.waitForSelector('#shareSheet[open]');
+  eq(await p.evaluate(() => [$('shSave').disabled, $('shSave').textContent, ed.savedIdx === ed.idx]), [false, 'Save', false], 'not saved yet');
+  await p.click('#shSave'); const d = await downloads(state, 1);
+  assert(/glow-studio-\d+\.(jpg|png)$/.test(d[0].name), 'saved file ' + d[0].name);
+  eq(await p.evaluate(() => [$('shSave').textContent, ed.savedIdx === ed.idx]), ['Saved', true], 'saved, and the editor knows');
+  await p.click('#shShare'); await settle(400);
+  eq(await p.evaluate(() => /Copied|Download/.test($('toast').textContent)), true, 'no share sheet on a computer: copied or downloaded');
+}, { mobile: false, touch: false });
 test('view: full view keeps the preview, zoom and comparison, and Back closes it', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await tool(p, 'looks', 'filters', 'filter:glow'); await p.waitForFunction(() => !!ed.pending);
@@ -3664,7 +3704,7 @@ test('features: camera face shape, makeup and filters off hide their Adjust sett
   eq(state.errs, [], 'no page errors');
 }, { start: 'camera', features: { 'camera:face': false, 'camera:makeup': false, 'camera:filters': false, 'camera:ai': false, 'camera:flash': false } });
 
-test('features: credit packs, ads and the share card off hide their buttons; a Pro user out of credits gets a message, not packs', async ({ p, state }) => {
+test('features: credit packs, ads and the share link off hide their buttons; a Pro user out of credits gets a message, not packs', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => !!account && Features.checkedAt > 0, null, { timeout: 10000 }); await settle(200);
   eq(await p.evaluate(() => [$('creditsPacks').hidden, $('pwPacks').hidden]), [true, true], 'pack buttons hidden');
   await p.evaluate(() => openPacks('out')); await settle(200);
@@ -3737,16 +3777,21 @@ test('golden hour: Enhance result plays the gold moment; saving adds it to Recen
   await p.click('#askActions button:has-text("Clear")'); await p.waitForFunction(() => document.querySelector('#enhanceHome .recents').hidden);
 }, { start: 'enhance', camera: false });
 
-test('golden hour: before & after video is made and shared (downloaded on a computer)', async ({ p, state }) => {
+test('golden hour: Enhance Share opens the sheet; the before & after video is made there, then shared (downloaded on a computer)', async ({ p, state }) => {
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   const fc = p.waitForEvent('filechooser'); await p.click('#enhPick'); await (await fc).setFiles(PORTRAIT);
   await p.waitForSelector('#enhSheet[open]'); await p.click('#enhGo');
   await p.waitForFunction(() => screen === 'enhanceResult', null, { timeout: 30000 });
   await p.click('#enhDownload'); await downloads(state, 1); await p.waitForFunction(() => screen === 'enhanceShare');
-  assert(await p.isVisible('#enhVideo'), 'video button shown');
-  await p.click('#enhVideo'); const d = await downloads(state, 2, 30000);
+  await p.click('#enhShareBtn'); await p.waitForSelector('#shareSheet[open]');
+  await p.waitForSelector('#shFormats button:has-text("Video")');
+  await p.click('#shFormats button:has-text("Video")');
+  await p.waitForFunction(() => !$('shShare').disabled && !$('shVideo').hidden, null, { timeout: 30000 });
+  await p.click('#shShare'); const d = await downloads(state, 2, 30000);
   assert(/glow-studio-before-after-\d+\.(mp4|webm)$/.test(d[1].name), 'video file: ' + d[1].name);
   assert(require('fs').statSync(d[1].file).size > 20000, 'video has content');
+  await p.click('#shSave'); const d3 = await downloads(state, 3, 10000);
+  assert(/\.(mp4|webm)$/.test(d3[2].name), 'video saved');
   eq(await p.evaluate(() => document.querySelectorAll('#enhanceHome .recent').length), 1, 'the video is not added to Recent');
 }, { start: 'enhance', camera: false, mobile: false, touch: false });
 

@@ -1773,3 +1773,34 @@ dialog.studio-view .studio-row { padding: var(--s3) var(--gutter) calc(var(--sa-
   #editorScreen.sheet-drag .side > .panel { animation: none !important; }
   #editorScreen:has(.panel.try-full:not([hidden])) .side > .jobbar { bottom: calc(100% + 74px); }
 }
+
+/* ---------- Share sheet ----------
+   The picture that will be sent, what to send (Photo / Before & after / Video), then Save and the
+   gold Share. The picture is never cropped: it sits whole in a fixed stage, so switching formats
+   doesn't make the buttons jump. */
+dialog.share-sheet[open] { display: flex; flex-direction: column; gap: var(--s3); padding-top: var(--s3); overflow: hidden; }
+.sh-head { display: flex; align-items: center; justify-content: space-between; min-height: 44px; }
+.sh-head h2 { margin: 0; }
+.sh-stage { position: relative; flex: none; display: grid; place-items: center; height: clamp(150px, calc(92dvh - 300px), 470px);
+  border-radius: var(--r-card); background: var(--surface-2); overflow: hidden; }
+.sh-stage > img, .sh-stage > canvas, .sh-stage > video { grid-area: 1 / 1; width: 100%; height: 100%; object-fit: contain; display: block; transition: opacity 200ms; }
+.sh-stage > [hidden] { display: none; }
+.sh-busy { position: absolute; left: 50%; bottom: var(--s3); transform: translateX(-50%); display: flex; align-items: center; gap: var(--s2); white-space: nowrap;
+  padding: 8px 16px 8px 12px; border-radius: 999px; background: rgb(13 13 16 / 0.74); color: #fff; font-weight: 600; font-size: 0.875rem; }
+.sh-busy[hidden] { display: none; }
+.sh-formats { flex: none; }
+.sh-formats button { min-height: 40px; }
+.sh-note { margin: calc(var(--s1) * -1) 0 0; text-align: center; font-size: 0.8125rem; line-height: 1.125rem; }
+.sh-acts { display: grid; grid-template-columns: 1fr 1.7fr; gap: var(--s3); }
+.sh-acts .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 56px; border-radius: 28px; font-size: 1.0625rem; }
+.sh-acts .btn svg { width: 20px; height: 20px; }
+@media (orientation: landscape) and (max-height: 560px) {
+  dialog.share-sheet[open] { display: grid; grid-template-columns: 1.3fr 1fr; grid-template-rows: auto 1fr auto auto; column-gap: var(--s4); width: min(96vw, 760px); max-width: none; }
+  .sh-head { grid-column: 1 / -1; }
+  .sh-stage { grid-column: 1; grid-row: 2 / 5; height: calc(92dvh - 120px); }
+  .sh-formats, .sh-note, .sh-acts { grid-column: 2; }
+  .sh-formats { align-self: end; }
+  .sh-acts { grid-template-columns: 1fr; }
+}
+.sh-formats button { white-space: nowrap; }
+@media (orientation: landscape) and (max-height: 560px) { .sh-formats button { font-size: 0.8125rem; padding: 0 6px; } }

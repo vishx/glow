@@ -1,5 +1,5 @@
 // Caches the app shell so Glow Studio opens instantly from the home screen.
-const CACHE = "glow-v86";
+const CACHE = "glow-v88";
 // index.html asks for each script and stylesheet as "name?v=<this number>", so a page and its files
 // always come from the same release, even when a slow network falls back to saved copies.
 const V = CACHE.slice(6), ver = (f) => (/\.(js|css)$/.test(f) && f !== "/faceworker.js" && f !== "/legal.css" ? `${f}?v=${V}` : f);
@@ -7,7 +7,7 @@ const V = CACHE.slice(6), ver = (f) => (/\.(js|css)$/.test(f) && f !== "/facewor
 // previews are cached as they are first fetched (below), so they work offline only after
 // someone has opened them once. Help, Privacy, Terms and Licenses open inside the app, so they are
 // in the shell too.
-const SHELL = ["/", "/styles.css", "/icons.js", "/liveupdate.js", "/features.js", "/platform.js", "/engine.js", "/livebeauty.js", "/faceworker.js", "/app.js", "/camerapro.js", "/tryon.js", "/enhance.js", "/studio.js", "/homescreen.js", "/enhance.css", "/splash/halo.webp", "/splash/core.webp", "/splash/sparkle.webp", "/manifest.json", "/icon-192.png", "/icon-512.png",
+const SHELL = ["/", "/styles.css", "/icons.js", "/liveupdate.js", "/features.js", "/platform.js", "/engine.js", "/livebeauty.js", "/faceworker.js", "/app.js", "/camerapro.js", "/tryon.js", "/enhance.js", "/studio.js", "/share.js", "/homescreen.js", "/enhance.css", "/splash/halo.webp", "/splash/core.webp", "/splash/sparkle.webp", "/manifest.json", "/icon-192.png", "/icon-512.png",
   "/samples/demo-v2/intro.jpg", "/samples/demo-v2/thumb.jpg",
   "/support.html", "/privacy.html", "/terms.html", "/licenses.html", "/legal.css"].map(ver);
 

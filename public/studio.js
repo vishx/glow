@@ -511,7 +511,7 @@ function openStudioResult(i) {
   if (r.video) add("Save the clip", () => saveClip(r), "btn glow");
   else {
     add("Save", () => saveStudio([r]), "btn glow");
-    add("Share", () => saveStudio([r], true));
+    add("Share", () => shareStudio(r));
     // Before and after: hold the picture (or this button) to see the photo it was made from.
     if (studio.photo) {
       const img = pic.querySelector("img"), show = (on) => {
@@ -576,6 +576,14 @@ async function saveStudio(list, share = false) {
     list.forEach((r) => { r.saved = true; });
     say(where === "photos" ? `Saved ${items.length === 1 ? "to Photos" : `${items.length} photos to Photos`}.` : where === "shared" ? "Ready to save or share." : "Saved.");
   } catch (err) { if (err && err.name !== "AbortError") say(err.message || "Couldn't save.", true); }
+}
+// Share: the Share sheet with this result (and Before & after when it kept the photo's shape).
+async function shareStudio(r) {
+  try {
+    const it = await studioSaveItem(r, 0), marked = it.data !== r.data;
+    ShareSheet.open({ photo: it.data, clean: marked ? r.data : null, before: studio.photo || null, name: it.name, saved: null, from: "studio",
+      save: async () => { const where = await Platform.savePhotos([it]); r.saved = true; return where; } });
+  } catch (err) { say(err.message || "Couldn't open sharing.", true); }
 }
 // A grid of the results with their names: the shareable "salon test-drive".
 async function collageOf(list) {

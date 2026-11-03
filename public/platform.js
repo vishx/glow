@@ -154,14 +154,17 @@ const Platform = {
   // "downloaded" (the browser started a download). Throws AbortError if the user cancels.
   // { download: true } skips the share sheet, for saves the user didn't tap for (auto-save);
   // { share: true } asks for the share sheet on computers too (the editor's Share button).
+  // One photo item as the File that is saved or shared (format, date and all).
+  async photoFile(it) {
+    let blob = it.blob || (await (await fetch(it.data)).blob());
+    if (!it.raw && !/original/.test(it.name)) blob = await asSaved(blob);
+    if (it.date) blob = await withPhotoDate(blob, it.date);
+    const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
+    return new File([blob], `${it.name}.${ext}`, { type: blob.type || "image/jpeg" });
+  },
   async savePhotos(items, opts = {}) {
-    const files = await Promise.all(items.map(async (it) => {
-      let blob = it.blob || (await (await fetch(it.data)).blob());
-      if (!it.raw && !/original/.test(it.name)) blob = await asSaved(blob);
-      if (it.date) blob = await withPhotoDate(blob, it.date);
-      const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
-      return new File([blob], `${it.name}.${ext}`, { type: blob.type || "image/jpeg" });
-    }));
+    const files = await Promise.all(items.map((it) => this.photoFile(it)));
+    if (opts.share) return this.shareFiles(files);
     // The home screens' "Recent" row (kept on this device only), once the save went through.
     const where = await this.savePhotoFiles(files, opts);
     // Recents keep the unmarked picture (item.clean) when there is one, so re-editing a free save
@@ -175,6 +178,36 @@ const Platform = {
       await Recents.add(rec);
     })().catch(() => {});
     return where;
+  },
+  // The phone's own share sheet with these files (photos or a video), and nothing else: never a
+  // silent save. Where there is no share sheet (most computer browsers) one photo is copied to the
+  // clipboard, ready to paste, and anything else is downloaded. Says which: "shared", "copied" or
+  // "downloaded". Throws AbortError when the person closes the sheet without picking anything.
+  async shareFiles(files) {
+    if (native && plugins.Filesystem && plugins.Share) {
+      const uris = [];
+      for (const f of files) uris.push((await plugins.Filesystem.writeFile({ path: f.name, data: (await fileData(f)).split(",")[1], directory: "CACHE" })).uri);
+      try { await plugins.Share.share({ title: "Glow Studio", files: uris }); }
+      catch (err) { if (/cancel/i.test((err && err.message) || "")) throw Object.assign(new Error("cancelled"), { name: "AbortError" }); throw err; }
+      return "shared";
+    }
+    if (navigator.share && navigator.canShare && navigator.canShare({ files })) {
+      await navigator.share({ files, title: "Glow Studio" });
+      return "shared";
+    }
+    if (files.length === 1 && /^image\//.test(files[0].type) && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+      try {
+        const png = files[0].type === "image/png" ? files[0] : await toPng(files[0]);
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+        return "copied";
+      } catch {}
+    }
+    for (const f of files) {
+      const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    }
+    return "downloaded";
   },
   async savePhotoFiles(files, opts) {
     if (native && plugins.Media) {
@@ -208,14 +241,20 @@ const Platform = {
   },
 
   // A short video (the before/after reveal): the share sheet where there is one, otherwise a download.
-  async shareVideo(blob, name) {
-    const ext = /mp4/.test(blob.type) ? "mp4" : "webm", f = new File([blob], `${name}.${ext}`, { type: blob.type });
-    if (native && plugins.Filesystem && plugins.Share) {
-      const uri = (await plugins.Filesystem.writeFile({ path: f.name, data: (await fileData(f)).split(",")[1], directory: "CACHE" })).uri;
-      await plugins.Share.share({ title: "Glow Studio", files: [uri] });
-      return "shared";
+  videoFile(blob, name) { return new File([blob], `${name}.${/mp4/.test(blob.type) ? "mp4" : "webm"}`, { type: blob.type }); },
+  async shareVideo(blob, name) { return this.shareFiles([this.videoFile(blob, name)]); },
+  // Keeps a video: the phone app puts it in the Glow Studio album (Gallery, Photos), browsers download it.
+  async saveVideo(blob, name) {
+    const f = this.videoFile(blob, name);
+    if (native && plugins.Media && plugins.Filesystem && plugins.Media.saveVideo) {
+      try {
+        const uri = (await plugins.Filesystem.writeFile({ path: f.name, data: (await fileData(f)).split(",")[1], directory: "CACHE" })).uri;
+        let album = null;
+        if (window.Capacitor.getPlatform() === "android") { try { album = ((await plugins.Media.getAlbums()).albums || []).find((a) => a.name === "Glow Studio") || null; } catch {} }
+        await plugins.Media.saveVideo({ path: uri, albumIdentifier: album && album.identifier, fileName: name });
+        return "photos";
+      } catch (err) { console.warn("Saving the video to the library failed", err); return this.shareFiles([f]); }
     }
-    if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: "Glow Studio" }); return "shared"; }
     const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name;
     document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     return "downloaded";
@@ -259,6 +298,12 @@ const Platform = {
   },
 };
 
+// A picture as PNG (the only image type every browser's clipboard takes).
+async function toPng(blob) {
+  const bmp = await createImageBitmap(blob), c = document.createElement("canvas");
+  c.width = bmp.width; c.height = bmp.height; c.getContext("2d").drawImage(bmp, 0, 0);
+  return new Promise((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error("png"))), "image/png"));
+}
 const fileData = (f) => new Promise((ok, fail) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => fail(fr.error); fr.readAsDataURL(f); });
 
 // Phone app: save straight into a "Glow Studio" album.
@@ -324,7 +369,7 @@ const Recents = {
     return c.toDataURL("image/jpeg", 0.8);
   },
   async add(files) {
-    const keep = files.filter((f) => /^image\//.test(f.type || "image/") && !/share-card|original/i.test(f.name));
+    const keep = files.filter((f) => /^image\//.test(f.type || "image/") && !/share-card|before-after|original/i.test(f.name));
     if (!keep.length) return;
     const fresh = [];
     for (const f of keep) fresh.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, ts: Date.now(), name: f.name.replace(/\.\w+$/, ""), thumb: await this.thumb(f), blob: f });

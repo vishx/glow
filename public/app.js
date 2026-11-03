@@ -13,7 +13,7 @@ const CONFIG = {
   // From AdMob > Apps > Ad units (rewarded). These are Google's test units until real ones are added.
   admobRewardIos: "ca-app-pub-3940256099942544/1712485313",
   admobRewardAndroid: "ca-app-pub-3940256099942544/5224354917",
-  // Glow Studio's public address: encoded in the Share Glow Studio QR card, and printed under "Glow Studio" in the
+  // Glow Studio's public address: sent by Settings > Share Glow Studio, and printed under "Glow Studio" in the
   // badge on free saves unless badgeLine says otherwise. This is the project's production domain
   // on Vercel. Leave it "" and Share Glow Studio is not offered.
   publicUrl: "https://glow-photo-enhancer.vercel.app",
@@ -2902,17 +2902,31 @@ async function saveEdit(opts) {
   const stamp = Date.now(), items = [{ data: out.data, clean, date, name: ed.demo ? `glow-studio-ai-sample-${demoSaveTag()}${stamp}` : `glow-studio-${stamp}` }];
   const withOrig = !ed.demo && store.get("glowSaveOrig") === "on" && !ed.originalSaved && ed.original && ed.original.blob;
   if (withOrig) items.unshift({ blob: ed.original.blob, name: `glow-studio-${stamp}-original` });
-  try {
-    const where = await Platform.savePhotos(items, { share });
-    track(share ? "share" : "save", { from: "editor", edits: ed.idx, demo: !!ed.demo, marked: !!out.marked, where: String(where || "") });
+  const done = (where) => {
     ed.savedIdx = ed.idx; if (withOrig) ed.originalSaved = true;
     ed.lastExport = { w: out.w, h: out.h, original: ed.original ? [ed.original.w, ed.original.h] : null };
     saveDraft(); renderEditor();
-    // One quiet offer per session to make a Share Glow Studio card; nothing happens unless it's tapped.
-    const offer = CONFIG.publicUrl && !shareOffered && featureOn("share:app") ? { label: "Share Glow Studio", run: () => openShareCard(out.data) } : null;
-    if (offer) shareOffered = true;
-    say(savedText(where, items.length, exportNote(out)), false, offer);
-    if (!share && !ed.demo) { introOffer("editor"); HomeAdd.afterSave("editor"); }
+  };
+  // The photo it was made from, for Before & after (the sheet checks the shapes still match).
+  const sheet = (saved) => ({ photo: out.data, clean, before: ed.hist[0] && ed.hist[0].data, date, name: items[items.length - 1].name, saved, from: "editor" });
+  if (share) {
+    // Share: the sheet with the finished photo, sent with one more tap. Its Save keeps it the
+    // editor's way (with the original too when that setting is on).
+    savingEdit = false;
+    ShareSheet.open({ ...sheet(null), save: async () => {
+      const where = await Platform.savePhotos(items);
+      track("save", { from: "editor", edits: ed.idx, demo: !!ed.demo, marked: !!out.marked, where: String(where || ""), via: "share" });
+      done(where); return where;
+    } });
+    return true;
+  }
+  try {
+    const where = await Platform.savePhotos(items);
+    track("save", { from: "editor", edits: ed.idx, demo: !!ed.demo, marked: !!out.marked, where: String(where || "") });
+    done(where);
+    // Saved: the toast offers Share, which opens the Share sheet with this same photo.
+    say(savedText(where, items.length, exportNote(out)), false, { label: "Share", run: () => ShareSheet.open(sheet(where)) });
+    if (!ed.demo) { introOffer("editor"); HomeAdd.afterSave("editor"); }
     return true;
   } catch (err) {
     if (err && err.name === "AbortError") return false;
@@ -2936,7 +2950,6 @@ const isPro = () => (account && account.plan ? account.plan === "pro" : new Date
 const PRO_MARK_DEFAULT = "on";
 const proMarkOn = () => (store.get("glowMark") || PRO_MARK_DEFAULT) !== "off";
 const wantMark = () => !isPro() || proMarkOn();
-let shareOffered = false;
 const BADGE_LINE = CONFIG.badgeLine === "none" ? "" : CONFIG.badgeLine || PUBLIC_HOST;
 async function markFonts() {
   try { await Promise.all([document.fonts.load('500 40px Fraunces'), document.fonts.load("600 20px Figtree")]); } catch {}
@@ -3038,38 +3051,6 @@ async function markForSave(data, png) {
   return { data: m.data, marked: true };
 }
 
-// ---------- Share Glow Studio card (only when chosen) ----------
-// The saved photo with a footer under it: a QR code for Glow Studio's public address and "Try Glow Studio".
-// Nothing is shared or sent until the person picks Share or Save on the preview.
-function loadScript(src) {
-  return new Promise((ok, bad) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = bad; document.head.append(s); });
-}
-async function makeShareCard(photo) {
-  if (!window.qrcode) await loadScript("vendor/qrcode.js");
-  await markFonts();
-  const img = await loadImg(photo), W = 1080, F = 280, k = Math.min(W / img.naturalWidth, 1350 / img.naturalHeight);
-  const pw = Math.round(img.naturalWidth * k), ph = Math.round(img.naturalHeight * k), c = newCanvas(W, ph + F), ctx = c.getContext("2d");
-  ctx.fillStyle = "#f7f3ea"; ctx.fillRect(0, 0, W, ph + F);
-  ctx.drawImage(img, Math.round((W - pw) / 2), 0, pw, ph);
-  const q = window.qrcode(0, "M"); q.addData(CONFIG.publicUrl); q.make();
-  const n = q.getModuleCount(), cell = Math.floor(200 / (n + 8)), qs = cell * (n + 8), qx = 48, qy = ph + Math.round((F - qs) / 2);
-  ctx.fillStyle = "#ffffff"; ctx.fillRect(qx, qy, qs, qs); ctx.fillStyle = "#15140f";
-  for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (q.isDark(r, col)) ctx.fillRect(qx + (col + 4) * cell, qy + (r + 4) * cell, cell, cell);
-  const tx = qx + qs + 40;
-  ctx.fillStyle = "#15140f"; ctx.font = MARK_SERIF(76); ctx.fillText("Try Glow Studio", tx, ph + F / 2 + 4);
-  ctx.fillStyle = "#625d52"; ctx.font = MARK_SANS(30); ctx.fillText(PUBLIC_HOST, tx, ph + F / 2 + 52);
-  return c.toDataURL("image/jpeg", 0.92);
-}
-async function openShareCard(photo) {
-  track("share_card", {});
-  let card;
-  try { card = await makeShareCard(photo); } catch { say("Couldn't make the share card. Try again.", true); return; }
-  const c = await ask({ title: "Share Glow Studio", text: "Your photo with a QR code to Glow Studio underneath. Nothing is sent until you choose.", image: card, caption: "Share card preview",
-    actions: [{ label: "Share card", value: "share" }, { label: "Save card", value: "save", kind: "ghost" }, { label: "Close", value: "", kind: "ghost" }] });
-  if (!c) return;
-  try { const where = await Platform.savePhotos([{ data: card, name: `glow-studio-share-card-${Date.now()}` }], { download: c === "save" }); say(savedText(where, 1)); }
-  catch (err) { if (!(err && err.name === "AbortError")) say(saveFailText(), true); }
-}
 // Back keeps the session; it's waiting on the Editor landing under "Continue editing".
 // The editor's Back goes to where the photo came from: the Enhance result (or its Share screen) or
 // the camera; otherwise Editor home. The edit itself stays as the draft either way (Resume).
@@ -4190,8 +4171,9 @@ function renderReview() {
   $("nav").hidden = screen !== "cameraScreen" ? $("nav").hidden : !!s;
   if (s) {
     $("reviewImg").src = s.processed || s.raw; $("camState").hidden = true; $("camNote").hidden = true;
-    $("saveShotBtn").disabled = s.saved || !!s.saving;
-    $("saveShotBtn").innerHTML = s.saved ? icon("check") + "Saved" : s.saving ? "Saving…" : "Save";
+    // Once saved, Save turns into Share (the Share sheet with the saved photo), like Enhance's.
+    $("saveShotBtn").disabled = !!s.saving || (s.saved && !s.shareData);
+    $("saveShotBtn").innerHTML = s.saved ? (s.shareData ? icon("share") + "Share" : icon("check") + "Saved") : s.saving ? "Saving…" : "Save";
   }
   const g = $("camGallery");
   if (cam.thumb) { g.innerHTML = `<img alt="" src="${cam.thumb}">`; } else setIcon(g, "gallery");
@@ -4241,6 +4223,7 @@ function saveShot(s, auto, note = "") {
       const where = await Platform.savePhotos(items, { download: auto });
       track("save", { from: "camera", auto: !!auto, look: lookId, marked, where: String(where || "") });
       s.saved = true; if (withOrig || !s.processed) s.originalSaved = true;
+      { const m = items[items.length - 1]; s.shareData = { photo: m.data || await blobToData(m.blob), clean: m.clean || null, where }; }
       if (cam.shot === s || ed.shotStamp === s.stamp) say(savedText(where, items.length, note));
       if (ed.shotStamp === s.stamp) {
         ed.originalSaved = ed.originalSaved || s.originalSaved;
@@ -4259,7 +4242,11 @@ function saveShot(s, auto, note = "") {
 $("retakeBtn").addEventListener("click", () => {
   cam.shot = null; renderReview(); $("nav").hidden = false; startCamera();
 });
-$("saveShotBtn").addEventListener("click", () => { if (cam.shot) saveShot(cam.shot, false); });
+$("saveShotBtn").addEventListener("click", () => {
+  const s = cam.shot; if (!s) return;
+  if (s.saved && s.shareData) { ShareSheet.open({ photo: s.shareData.photo, clean: s.shareData.clean, before: s.processed ? s.raw : null, name: `glow-studio-${s.stamp}`, saved: s.shareData.where, from: "camera" }); return; }
+  saveShot(s, false);
+});
 $("editShotBtn").addEventListener("click", async () => {
   const s = cam.shot; if (!s) return;
   if (!(await confirmReplace())) return;

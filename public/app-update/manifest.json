@@ -1,11 +1,11 @@
 {
- "version": "202610358-ebf852a7c5",
- "build": 202610358,
+ "version": "202610360-69892fa8ad",
+ "build": 202610360,
  "minNative": {
   "android": 4,
   "ios": 2
  },
- "created": "2026-11-02T23:42:30.750Z",
+ "created": "2026-11-03T05:50:52.772Z",
  "files": [
   {
    "file_name": "admin.html",
@@ -14,7 +14,7 @@
   },
   {
    "file_name": "app.js",
-   "file_hash": "90f2255428689f3243786a8da63812a2d72caf1f35b443b9362607c9b0f2de17",
+   "file_hash": "0c24bb75a3f96949a2eed026827c6a76c299bf91a330b561008654971e5663aa",
    "download_url": "https://glow-photo-enhancer.vercel.app/app.js"
   },
   {
@@ -34,12 +34,12 @@
   },
   {
    "file_name": "enhance.css",
-   "file_hash": "f22daaa91bcdbf019a00b24db9f1f3fd094661f738a7dd54fac726cf572073c7",
+   "file_hash": "bcff7a3dcdf6ff565ce7ddddae4ca5812f926625b3842daa17b25f4735124f74",
    "download_url": "https://glow-photo-enhancer.vercel.app/enhance.css"
   },
   {
    "file_name": "enhance.js",
-   "file_hash": "630cbfac0716df867eed7a65172c412c1cafcb7ba85c9cb2263457555a32c280",
+   "file_hash": "fd7d6de311e68bfc50c8ebe5ac0ad0d1f4a2b4f72c9ca00842cc9990dd2ed8be",
    "download_url": "https://glow-photo-enhancer.vercel.app/enhance.js"
   },
   {
@@ -54,7 +54,7 @@
   },
   {
    "file_name": "features.js",
-   "file_hash": "a7817d289b60be9f1035a7868e826ef298c3ec37498dc8a3b02be2eb75931c71",
+   "file_hash": "067212cbed234e2cafd969fab2fe1fdb54cd848a59b247a030dd05f9f1b4e7db",
    "download_url": "https://glow-photo-enhancer.vercel.app/features.js"
   },
   {
@@ -89,7 +89,7 @@
   },
   {
    "file_name": "index.html",
-   "file_hash": "134328769bd565200c834ffa4a227e83c654608d4347d0bbadcfc0c44a661130",
+   "file_hash": "b408eb276737e3a6399a0b7b068ee2cb4916f7c9a464a91e4e208a6255aa314b",
    "download_url": "https://glow-photo-enhancer.vercel.app/index.html"
   },
   {
@@ -119,7 +119,7 @@
   },
   {
    "file_name": "platform.js",
-   "file_hash": "fae4195ea610733ba0c52692c63e79a1d5b843b96d63de8b25eb1bdb0259a853",
+   "file_hash": "91a048eb5637cfec71838cdda7cb5c02ac044708a3f59bf58db108b9c8bf2468",
    "download_url": "https://glow-photo-enhancer.vercel.app/platform.js"
   },
   {
@@ -358,6 +358,11 @@
    "download_url": "https://glow-photo-enhancer.vercel.app/samples/trends/trend_yearbook.webp"
   },
   {
+   "file_name": "share.js",
+   "file_hash": "7b5bd4a5d9aa6451e90bafa880d1dc8e861e2707ebc05faa22b177270e604c46",
+   "download_url": "https://glow-photo-enhancer.vercel.app/share.js"
+  },
+  {
    "file_name": "splash/core.webp",
    "file_hash": "3193ec963d91b952ac80186b9c87930caeaab7d7be1a19a70a633887c09063c1",
    "download_url": "https://glow-photo-enhancer.vercel.app/splash/core.webp"
@@ -374,12 +379,12 @@
   },
   {
    "file_name": "studio.js",
-   "file_hash": "8d6dc59398c7354773cc50378e6572cb8a86f91b749fc4a1930c066ee1553fa4",
+   "file_hash": "c93e579b116f8f987502e558a3198d250e8b2395b61e21df47cb82db2befcf6c",
    "download_url": "https://glow-photo-enhancer.vercel.app/studio.js"
   },
   {
    "file_name": "styles.css",
-   "file_hash": "3044a88f18e58125c030501511e09733685414e71d2060361b990511637ff0a1",
+   "file_hash": "7ca7b7f16d91ccbaea1b48b3b1bcf67a20fee639feead983a3c7e8ad0cb7b864",
    "download_url": "https://glow-photo-enhancer.vercel.app/styles.css"
   },
   {
@@ -389,7 +394,7 @@
   },
   {
    "file_name": "sw.js",
-   "file_hash": "eca6c1221a4be919b4d3918defcc413b5cf77f9ad8940ae8fbb6c0f4c74d92ba",
+   "file_hash": "3f89408642c61a6ba49c89619935caf677fbbcd7c5b2a01148291ac6bd515eba",
    "download_url": "https://glow-photo-enhancer.vercel.app/sw.js"
   },
   {
