@@ -63,7 +63,7 @@ const TRY_PATTERNS = [["", "Plain", ""], ["stripes", "Stripes", "stripes"], ["pi
 const TRY_FABRICS = [["", "Any", ""], ["cotton", "Cotton", "cotton"], ["linen", "Linen", "linen"], ["denim", "Denim", "denim"], ["satin", "Satin", "silk satin"],
   ["leather", "Leather", "leather"], ["knit", "Knit", "chunky knit"], ["velvet", "Velvet", "velvet"], ["tweed", "Tweed", "tweed"], ["corduroy", "Corduroy", "corduroy"]];
 const TRY_PARTS = [["Auto", "auto"], ["Top", "top"], ["Bottom", "bottom"], ["Full look", "full"]];
-const TRY_TABS = [["outfits", "Outfits"], ["color", "Color"], ["pattern", "Pattern"], ["fabric", "Fabric"], ["part", "Part"]];
+const TRY_TABS = [["outfits", "Outfits"], ["color", "Color"], ["pattern", "Pattern"], ["fabric", "Fabric"], ["part", "Fit"]];
 // The sample's prepared previews (made with the earlier Suit and Summer dress tools).
 const TRY_DEMO = { suit: "suit", sundress: "sundress" };
 const CLOSET_MAX = 8, LOOKS_MAX = 8;
@@ -384,6 +384,18 @@ function tryPartRow(body) {
     b.dataset.part = v; row.append(b);
   });
   body.append(row);
+}
+
+// The outfit picture centered on a plain light card with the shape of her photo (never cropped).
+async function tryOutfitCard(outfit, photo) {
+  const [o, ph] = await Promise.all([loadImg(outfit), loadImg(photo)]);
+  const r = ph.naturalWidth / ph.naturalHeight, ow = o.naturalWidth, oh = o.naturalHeight;
+  if (Math.abs(ow / oh - r) < 0.01) return outfit;
+  const w = ow / oh > r ? ow : Math.round(oh * r), h = ow / oh > r ? Math.round(ow / r) : oh;
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const x = c.getContext("2d"); x.fillStyle = "#f0eeea"; x.fillRect(0, 0, w, h);
+  x.drawImage(o, Math.round((w - ow) / 2), Math.round((h - oh) / 2));
+  return c.toDataURL("image/jpeg", 0.9);
 }
 
 async function tryPasted(f) {

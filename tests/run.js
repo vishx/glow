@@ -2320,6 +2320,8 @@ test('try on: one tool with ideas, your photo or words; sends the part; keeps ev
   req = p.waitForRequest((r) => r.url().includes('/functions/v1/enhance') && r.method() === 'POST');
   await applyTool(p); body = JSON.parse((await req).postData());
   eq([body.mode, body.part, body.extra.startsWith('data:image/'), body.prompt], ['outfit', 'top', true, undefined], 'a photo sends the picture and the part');
+  // The AI copies the shape of the last picture, so the 600x400 outfit is sent on a card shaped like her photo (full body kept).
+  eq(await p.evaluate(async (b) => { const [o, ph] = await Promise.all([loadImg(b.extra), loadImg(b.image)]); return Math.abs(o.naturalWidth / o.naturalHeight - ph.naturalWidth / ph.naturalHeight) < 0.02; }, body), true, 'the outfit card has the photo\'s shape');
   await p.waitForFunction(() => job && job.status === 'done' && tryLooksNow().length === 2, null, { timeout: 30000 });
   // Flip back to the first look: free, nothing sent.
   const posts = state.posts.length;
