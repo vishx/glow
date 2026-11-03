@@ -1,11 +1,11 @@
 {
- "version": "202610361-150de86039",
+ "version": "202610361-dcc0efa5b9",
  "build": 202610361,
  "minNative": {
   "android": 4,
   "ios": 2
  },
- "created": "2026-11-03T08:28:08.825Z",
+ "created": "2026-11-03T16:35:07.798Z",
  "files": [
   {
    "file_name": "admin.html",
@@ -539,7 +539,7 @@
   },
   {
    "file_name": "tryon.js",
-   "file_hash": "7593079f15fad5bb86f99206541bb15e358d89f90a6d7648307f394b83cc7c04",
+   "file_hash": "f46014c6504e444947a574586e3952f68bf41e2524037b741b75afc1d8d2186c",
    "download_url": "https://glow-photo-enhancer.vercel.app/tryon.js"
   },
   {

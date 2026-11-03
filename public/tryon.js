@@ -66,12 +66,31 @@ const TRY_PATTERNS = [["", "Plain", ""], ["stripes", "Stripes", "stripes"], ["pi
 const TRY_FABRICS = [["", "Any", ""], ["cotton", "Cotton", "cotton"], ["linen", "Linen", "linen"], ["denim", "Denim", "denim"], ["satin", "Satin", "silk satin"],
   ["leather", "Leather", "leather"], ["knit", "Knit", "chunky knit"], ["velvet", "Velvet", "velvet"], ["tweed", "Tweed", "tweed"], ["corduroy", "Corduroy", "corduroy"]];
 const TRY_PARTS = [["Auto", "auto"], ["Top", "top"], ["Bottom", "bottom"], ["Full look", "full"]];
-const TRY_TABS = [["outfits", "Outfits"], ["color", "Color"], ["pattern", "Pattern"], ["fabric", "Fabric"], ["part", "Fit"]];
+const TRY_TABS = [["outfits", "Outfits"], ["shoes", "Shoes"], ["color", "Color"], ["pattern", "Pattern"], ["fabric", "Fabric"], ["part", "Fit"]];
+// Shoes (2026-11-03 research, /mnt/project-files/glow-tryon-wardrobe/shoes-research.md): no try-on
+// app changes the shoes to suit the outfit, so a gown kept her sneakers. "Match" (the default) asks
+// for the shoes stored with each outfit; "Keep mine" keeps hers; a shoe type changes the shoes, or,
+// with no outfit picked (None), only the shoes. Shoes change only when her feet are in the photo.
+const TRY_SHOES = [["match", "Match outfit", ""], ["keep", "Keep mine", ""], ["heels", "Heels", "elegant high heels"], ["flats", "Flats", "ballet flats"],
+  ["loafers", "Loafers", "leather loafers"], ["sneakers", "Sneakers", "clean white sneakers"], ["boots", "Boots", "leather ankle boots"], ["sandals", "Sandals", "strappy sandals"]];
+const TRY_SHOE_FOR = { suit: "sleek black leather shoes", sundress: "tan strappy sandals", lbd: "black heels", leather: "black ankle boots", blazer: "pointed loafers",
+  gown: "elegant strappy heels", street: "chunky sneakers", denim: "white sneakers", trench: "ankle boots", guest: "strappy heels", maxi: "flat sandals",
+  shirtdress: "white sneakers", knitdress: "knee-high boots", sequin: "metallic heels", oxford: "leather loafers", tux: "black patent dress shoes",
+  casual: "white sneakers", linen: "leather sandals", hoodie: "sneakers", polo: "loafers", knit: "ankle boots", coat: "leather ankle boots",
+  puffer: "winter boots", sporty: "running sneakers", varsity: "retro sneakers" };
+const tryShoe = () => TRY_SHOES.find((x) => x[0] === tryOn.shoes) || TRY_SHOES[0];
+// The words for her shoes, or "" when they stay as they are.
+function tryShoeWords() {
+  if (tryOn.feet === false || tryOn.shoes === "keep") return "";
+  const t = tryShoe();
+  if (t[2]) return t[2];
+  return tryOn.src === "ideas" && TRY_IDEA[tryOn.idea] ? TRY_SHOE_FOR[tryOn.idea] || "" : "shoes that suit the outfit";
+}
 // The sample's prepared previews (made with the earlier Suit and Summer dress tools).
 const TRY_DEMO = { suit: "suit", sundress: "sundress" };
 const CLOSET_MAX = 8, LOOKS_MAX = 8;
 
-const tryOn = { src: "ideas", idea: "suit", color: "", pattern: "", fabric: "", words: "", part: "auto", tab: "outfits", cat: "popular",
+const tryOn = { src: "ideas", idea: "suit", color: "", pattern: "", fabric: "", shoes: "match", feet: null, words: "", part: "auto", tab: "outfits", cat: "popular",
   closet: null, check: null, checkFor: "", checkSaid: "", demoShown: null, scroll: {} };
 // Every look made on this photo: { label, data, full, baseIdx }. Kept on the device with the
 // session, so leaving and coming back (or a reload) still shows them; nothing is charged to look again.
@@ -108,23 +127,42 @@ function tryStyleWords() {
 }
 function tryRequest() {
   const part = (dflt) => (tryOn.part === "auto" ? dflt : tryOn.part);
-  if (tryOn.src === "photo") return outfitData ? { extra: outfitData, part: tryOn.part, label: "Your outfit" } : null;
+  // Shoes go with a full look (not when only the top changes); "Keep mine" says so, as the AI may
+  // otherwise restyle them with a dress.
+  const feetOn = (p) => p !== "top";
+  const withShoes = (text, p) => {
+    if (!feetOn(p)) return text;
+    const sh = tryShoeWords();
+    const add = sh ? `with ${sh}` : tryOn.shoes === "keep" && tryOn.feet !== false ? "keeping their own shoes" : "";
+    return (add ? (text ? `${text}, ${add}` : add) : text).slice(0, 200);
+  };
+  if (tryOn.src === "photo") {
+    if (!outfitData) return null;
+    const pr = withShoes("", tryOn.part);
+    return { extra: outfitData, part: tryOn.part, label: "Your outfit", ...(pr ? { prompt: pr } : {}) };
+  }
   const style = tryStyleWords();
   if (tryOn.src === "words") {
     const w = tryOn.words.trim().slice(0, 160); if (!w) return null;
-    return { prompt: style ? `${w}, ${style}` : w, part: tryOn.part, label: w.length > 24 ? w.slice(0, 22) + "…" : w };
+    return { prompt: withShoes(style ? `${w}, ${style}` : w, tryOn.part), part: tryOn.part, label: w.length > 24 ? w.slice(0, 22) + "…" : w };
   }
-  const i = TRY_IDEA[tryOn.idea]; if (!i) return null;
+  const i = TRY_IDEA[tryOn.idea];
+  if (!i) {
+    // No outfit, a shoe type: only the shoes change.
+    const t = tryShoe();
+    if (!t[2] || tryOn.feet === false) return null;
+    return { prompt: `${t[2]} instead of the current shoes, keeping the clothes exactly as they are`, part: "auto", label: t[1], shoesOnly: true };
+  }
   const bits = [tryOn.color ? tryColor()[0] : "", tryOn.pattern ? tryPattern()[1].toLowerCase() : "", tryOn.fabric ? tryFabric()[1].toLowerCase() : ""].filter(Boolean);
   const name = bits.length ? `${bits[0]} ${[...bits.slice(1), i[1].toLowerCase()].join(" ")}` : i[1];
-  return { prompt: style ? `${i[2]}, ${style}` : i[2], part: part(i[3]), label: name.charAt(0).toUpperCase() + name.slice(1) };
+  return { prompt: withShoes(style ? `${i[2]}, ${style}` : i[2], part(i[3])), part: part(i[3]), label: name.charAt(0).toUpperCase() + name.slice(1) };
 }
 
 // A free look at her photo before anything is charged: try-on needs the clothes to be in it.
 async function tryCheck() {
   const base = committed();
   if (tryOn.checkFor === base) return;
-  tryOn.checkFor = base; tryOn.check = null;
+  tryOn.checkFor = base; tryOn.check = null; tryOn.feet = null;
   let msg = "", boxesOk = false;
   try {
     const boxes = await faceBoxes(base); boxesOk = boxes.length > 0;
@@ -133,6 +171,8 @@ async function tryCheck() {
     // How much of her is below the chin, in face heights: about 2 for a head-and-shoulders photo,
     // 3 to 4 from the waist up, 7 head to toe.
     else if ((1 - boxes[0].y - boxes[0].h) / boxes[0].h < 2.5) msg = "Little of your outfit shows here, so the AI guesses the rest. A waist-up photo works best.";
+    // Head to toe is about 7 face heights; her feet are in the photo from about 5.5 (shoes can change).
+    if (boxes.length) tryOn.feet = (1 - boxes[0].y - boxes[0].h) / boxes[0].h >= 5.5;
   } catch { msg = ""; }
   if (tryOn.checkFor !== base) return;
   tryOn.check = msg;
@@ -202,7 +242,7 @@ const tryStyleOn = () => tryOn.src !== "photo";
 
 function tryTabs(body) {
   const row = document.createElement("div"); row.className = "try-tabs"; row.setAttribute("role", "tablist"); row.setAttribute("aria-label", "Try on");
-  const set = { color: !!tryOn.color, pattern: !!tryOn.pattern, fabric: !!tryOn.fabric, part: tryOn.part !== "auto" };
+  const set = { shoes: tryOn.shoes !== "match", color: !!tryOn.color, pattern: !!tryOn.pattern, fabric: !!tryOn.fabric, part: tryOn.part !== "auto" };
   TRY_TABS.forEach(([k, label]) => {
     const b = document.createElement("button"); b.type = "button"; b.className = "try-tab"; b.dataset.tab = k; b.setAttribute("role", "tab");
     b.setAttribute("aria-selected", String(tryOn.tab === k)); b.textContent = label;
@@ -332,6 +372,25 @@ function trySwatches(body, kind) {
   });
   body.append(row);
 }
+// Shoes: Match outfit (default), Keep mine, or a type; one line says what will happen.
+function tryShoesRow(body) {
+  const row = tryKeepScroll(document.createElement("div"), "shoes"); row.className = "try-cats try-shoes"; row.setAttribute("role", "group"); row.setAttribute("aria-label", "Shoes");
+  TRY_SHOES.forEach(([k, label]) => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "try-cat"; b.dataset.shoes = k; b.textContent = label;
+    b.setAttribute("aria-pressed", String(tryOn.shoes === k));
+    b.addEventListener("click", () => { if (tryOn.shoes === k) return; Platform.haptic(); tryOn.shoes = k; tryChanged(); });
+    row.append(b);
+  });
+  const p = document.createElement("p"); p.className = "try-hint"; p.id = "tryShoesHint";
+  const i = tryOn.src === "ideas" ? TRY_IDEA[tryOn.idea] : null, t = tryShoe();
+  const topOnly = (tryOn.part === "auto" ? (i ? i[3] : "auto") : tryOn.part) === "top";
+  p.textContent = tryOn.feet === false ? "Your feet aren't in this photo, so your shoes stay as they are. A head-to-toe photo lets the shoes change too."
+    : tryOn.src === "ideas" && !i ? (t[2] ? `Only your shoes change, to ${t[1].toLowerCase()}. Your clothes stay as they are.` : "Pick a shoe type to change only your shoes.")
+    : topOnly ? "Only the top changes, so your shoes stay as they are."
+    : tryOn.shoes === "keep" ? "Your own shoes stay."
+    : t[2] ? `With ${t[2]}.` : i ? `Shoes to match: ${TRY_SHOE_FOR[i[0]]}.` : "Shoes that suit the outfit.";
+  body.append(row, p);
+}
 function tryPartRow(body) {
   const row = tryKeepScroll(document.createElement("div"), "part"); row.className = "try-strip parts"; row.setAttribute("role", "group"); row.setAttribute("aria-label", "What to change");
   const pics = { top: "blazer", bottom: "casual", full: "suit" };
@@ -420,6 +479,7 @@ function tryOnPanel(body) {
     if (tryOn.src === "words") tryWords(body); else tryCats(body);
     tryStrip(body);
   } else if (tryOn.tab === "part") tryPartRow(body);
+  else if (tryOn.tab === "shoes") tryShoesRow(body);
   else trySwatches(body, tryOn.tab);
   tryRestoreScroll(body);
   tryCheck();

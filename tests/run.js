@@ -2408,6 +2408,27 @@ test('try on wardrobe: its own tab, the photo keeps its size, outfit photos show
   eq(await p.evaluate(() => [tryOn.idea, $('applyBtn').disabled]), [null, true], 'None: nothing to send');
   eq(state.errs, [], 'no page errors');
 }, { viewport: { width: 390, height: 844 } });
+test('try on shoes: matching shoes by default, Keep mine, a shoe type, shoes only, and none without feet in the photo', async ({ p }) => {
+  await p.goto('https://app.test/'); await pick(p, PORTRAIT); await settle(300);
+  await p.click('.tab[data-cat="tryon"]'); await settle(400);
+  // The sample portrait has no feet: shoes stay, and the Shoes tab says why.
+  await p.waitForFunction(() => tryOn.feet === false);
+  await p.click('.try-tab[data-tab="shoes"]'); await settle(150);
+  assert(/feet aren't in this photo/.test(await p.textContent('#tryShoesHint')), 'no feet: the tab explains');
+  eq(await p.evaluate(() => tryRequest().prompt), 'a sharp, tailored business suit with a crisp shirt', 'no feet: no shoe words');
+  // Head to toe (as the photo check finds it): the suit comes with the shoes stored for it.
+  const req = () => p.evaluate(() => { tryOn.feet = true; return tryRequest(); });
+  eq((await req()).prompt, 'a sharp, tailored business suit with a crisp shirt, with sleek black leather shoes', 'matching shoes by default');
+  await p.click('.try-cat[data-shoes="keep"]'); eq((await req()).prompt, 'a sharp, tailored business suit with a crisp shirt, keeping their own shoes', 'Keep mine says so');
+  await p.click('.try-cat[data-shoes="heels"]'); eq((await req()).prompt, 'a sharp, tailored business suit with a crisp shirt, with elegant high heels', 'a shoe type');
+  eq(await p.evaluate(() => document.querySelector('.try-tab[data-tab="shoes"]').classList.contains('set')), true, 'the Shoes tab is marked');
+  // None and a shoe type: only the shoes change.
+  await p.click('.try-tab[data-tab="outfits"]'); await p.click('.try-tile.none'); await settle(150);
+  const r = await req(); eq([r.prompt, r.part, r.label], ['elegant high heels instead of the current shoes, keeping the clothes exactly as they are', 'auto', 'Heels'], 'shoes only');
+  // A top only never changes the shoes.
+  await p.click('.try-tile[data-idea="leather"]'); eq((await req()).prompt, 'a black leather biker jacket over a plain T-shirt', 'a jacket leaves the shoes');
+});
+
 test('try on: a refused outfit lowers a raised sheet so the message shows', async ({ p }) => {
   await p.goto('https://app.test/'); await pick(p, PORTRAIT);
   await p.click('.tab[data-cat="tryon"]'); await settle(300);

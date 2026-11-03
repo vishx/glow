@@ -62,6 +62,7 @@ for i, pose in POSE.items():
             with urllib.request.urlopen(o, timeout=150) as f: open(D + "out/%s.jpg" % i, "wb").write(f.read())
             break
         print(i, st, r.get("status"), r.get("error")); time.sleep(15)
+        if "paused here" in str(r.get("error")): break
     res[i] = "ok" if os.path.exists(D + "out/%s.jpg" % i) else (r.get("error") if isinstance(r, dict) else "failed")
     print(i, res[i], flush=True)
 json.dump(res, open(D + "out/results-%d.json" % time.time(), "w"), indent=1)
