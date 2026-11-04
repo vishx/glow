@@ -429,7 +429,12 @@ const fakeSpeech = () => {
   window.SpeechRecognition = window.webkitSpeechRecognition = class { start() { window.__rec = this; window.__starts++; } abort() { window.__aborts++; } stop() {} };
   window.__say = (text, i = 0) => window.__rec.onresult({ resultIndex: i, results: Object.assign([], { [i]: Object.assign([{ transcript: text }], { isFinal: false }), length: i + 1 }) });
 };
-test('camera voice: off until turned on; "Cheese" takes the photo, other words don\'t; the mic stops with the camera', async ({ p, state }) => {
+test('camera voice: on by default, so the camera listens as it opens', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  eq(await p.evaluate(() => [voiceWanted(), window.__starts, $('camVoice').hidden]), [true, 1, false], 'listening without being turned on');
+}, { start: 'camera', voiceDefault: true, init: () => {
+  window.__starts = 0; window.SpeechRecognition = window.webkitSpeechRecognition = class { start() { window.__starts++; } abort() {} stop() {} }; } });
+test('camera voice: the setting turns it on; "Cheese" takes the photo, other words don\'t; the mic stops with the camera', async ({ p, state }) => {
   await p.goto('https://app.test/'); await camLive(p);
   eq(await p.evaluate(() => [voiceWanted(), $('camVoice').hidden, window.__starts]), [false, true, 0], 'off by default: not listening');
   await p.click('#camSettingsBtn');

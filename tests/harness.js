@@ -57,6 +57,8 @@ exports.launch = async (opts = {}) => {
   if (!opts.markIntro) await ctx.addInitScript(() => { localStorage.setItem('glowBadgeSeen', '1'); localStorage.setItem('glowProBadgeSeen', '1'); });
   if (opts.mark) await ctx.addInitScript((v) => { localStorage.setItem('glowMark', v); }, opts.mark);
   // Camera auto-save is on by default in the app; most checks were written with it off.
+  // Voice commands are on by default; other checks run without the microphone listening.
+  if (!opts.voiceDefault) await ctx.addInitScript(() => { if (!localStorage.getItem('glowVoice')) localStorage.setItem('glowVoice', 'off'); });
   if (!opts.autoSaveDefault) await ctx.addInitScript(() => { if (!localStorage.getItem('glowAutoSave')) localStorage.setItem('glowAutoSave', 'off'); });
   if (opts.init) await ctx.addInitScript(opts.init);
   // Glow always opens on Enhance; most checks here start where they always did (Camera), and
