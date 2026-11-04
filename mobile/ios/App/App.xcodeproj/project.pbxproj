@@ -22,6 +22,7 @@
 		A1C0DE020000000000B00002 /* BeautyRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE020000000000F00002 /* BeautyRenderer.swift */; };
 		A1C0DE030000000000B00003 /* FaceTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE030000000000F00003 /* FaceTracker.swift */; };
 		A1C0DE070000000000B00007 /* PalmTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE070000000000F00007 /* PalmTracker.swift */; };
+		A1C0DE080000000000B00008 /* VoiceListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE080000000000F00008 /* VoiceListener.swift */; };
 		A1C0DE040000000000B00004 /* FaceGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE040000000000F00004 /* FaceGeometry.swift */; };
 		A1C0DE050000000000B00005 /* Look.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE050000000000F00005 /* Look.swift */; };
 /* End PBXBuildFile section */
@@ -44,6 +45,7 @@
 		A1C0DE020000000000F00002 /* BeautyRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeautyRenderer.swift; sourceTree = "<group>"; };
 		A1C0DE030000000000F00003 /* FaceTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceTracker.swift; sourceTree = "<group>"; };
 		A1C0DE070000000000F00007 /* PalmTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalmTracker.swift; sourceTree = "<group>"; };
+		A1C0DE080000000000F00008 /* VoiceListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceListener.swift; sourceTree = "<group>"; };
 		A1C0DE040000000000F00004 /* FaceGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceGeometry.swift; sourceTree = "<group>"; };
 		A1C0DE050000000000F00005 /* Look.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Look.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -103,6 +105,7 @@
 				A1C0DE020000000000F00002 /* BeautyRenderer.swift */,
 				A1C0DE030000000000F00003 /* FaceTracker.swift */,
 				A1C0DE070000000000F00007 /* PalmTracker.swift */,
+				A1C0DE080000000000F00008 /* VoiceListener.swift */,
 				A1C0DE040000000000F00004 /* FaceGeometry.swift */,
 				A1C0DE050000000000F00005 /* Look.swift */,
 			);
@@ -198,6 +201,7 @@
 				A1C0DE020000000000B00002 /* BeautyRenderer.swift in Sources */,
 				A1C0DE030000000000B00003 /* FaceTracker.swift in Sources */,
 				A1C0DE070000000000B00007 /* PalmTracker.swift in Sources */,
+				A1C0DE080000000000B00008 /* VoiceListener.swift in Sources */,
 				A1C0DE040000000000B00004 /* FaceGeometry.swift in Sources */,
 				A1C0DE050000000000B00005 /* Look.swift in Sources */,
 			);
@@ -340,7 +344,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -362,7 +366,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (

@@ -29,6 +29,7 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         CAPPluginMethod(name: "setFlash", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setPalm", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setKeys", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setVoice", returnType: CAPPluginReturnPromise),
     ]
     private static let stillMax: CGFloat = 4032
 
@@ -37,6 +38,7 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
     private var palmSeen = false            // main queue only
     private var keyMode = "shoot"           // main queue only: "shoot", "zoom" or "volume"
     private var keyInteraction: AnyObject?  // AVCaptureEventInteraction (iOS 17.2+)
+    private var voice: VoiceListener?       // main queue only
     private var renderer: BeautyRenderer?
     private var mtkView: MTKView?
     private let session = AVCaptureSession()
@@ -332,6 +334,7 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         tracker.reset()
         palmSeen = false
         updateKeys()
+        voice?.setOn(false)
         frameLock.lock(); frame = nil; frameLock.unlock()
     }
 
@@ -431,6 +434,27 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
     @objc func setPalm(_ call: CAPPluginCall) {
         palm.setOn(call.getBool("on", false))
         call.resolve(["ok": true])
+    }
+
+    /// Voice commands: listens while the camera is open (asks for the microphone and speech
+    /// recognition the first time). Answers { ok } | { denied } | { unavailable }; events "voice"
+    /// { text, id } | { error }.
+    @objc func setVoice(_ call: CAPPluginCall) {
+        let on = call.getBool("on", false)
+        DispatchQueue.main.async {
+            guard on else { self.voice?.setOn(false); call.resolve(["ok": true]); return }
+            VoiceListener.authorize { st in
+                guard st == "ok" else { call.resolve([st: true]); return }
+                if self.voice == nil {
+                    let v = VoiceListener()
+                    v.onText = { [weak self] text, id in self?.notifyListeners("voice", data: ["text": text, "id": id]) }
+                    v.onError = { [weak self] e in self?.notifyListeners("voice", data: ["error": e]) }
+                    self.voice = v
+                }
+                self.voice?.setOn(true)
+                call.resolve(["ok": true])
+            }
+        }
     }
 
     /// The volume buttons (and Camera Control) work the shutter or zoom while the camera is open,

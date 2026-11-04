@@ -17,12 +17,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght,SOFT,WONK@9..144,400..600,0..100,0..1&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=93">
+<link rel="stylesheet" href="styles.css?v=97">
 <script>/* Dark is the default look (gold reads best on dark); Light and System stay in Settings. Set before first paint. */
 /* Golden Hour made Dark the default: a look picked before it (Light/System) is cleared once, so everyone starts on Dark; a later pick in Settings sticks. */
 try { if (localStorage.getItem("glowThemeV") !== "2") { localStorage.removeItem("glowTheme"); localStorage.setItem("glowThemeV", "2"); } } catch (e) {}
 try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system") document.documentElement.dataset.theme = gt; } catch (e) { document.documentElement.dataset.theme = "dark"; }</script>
-<link rel="stylesheet" href="enhance.css?v=93">
+<link rel="stylesheet" href="enhance.css?v=97">
 </head>
 <body>
 <!-- Launch animation: the icon's lens opens and the app shows through (enhance.js removes it). -->
@@ -169,6 +169,7 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
       <button data-q="level" aria-pressed="false">Level</button>
       <button data-q="hdr" aria-pressed="false" hidden>HDR</button>
       <button data-q="palm" aria-pressed="false">Palm</button>
+      <button data-q="voice" aria-pressed="false" hidden>Voice</button>
       <button data-q="more" class="cq-more">More settings</button>
     </div>
     <div class="viewfinder" id="viewfinder">
@@ -185,6 +186,7 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
       <p class="vf-pill cam-locked" id="camLocked" hidden>AE/AF lock</p>
       <div class="cam-palm" id="camPalm" aria-hidden="true" hidden><span data-icon="palm"></span></div>
       <p class="vf-pill cam-palm-hint" id="camPalmHint" hidden></p>
+      <p class="cam-voice" id="camVoice" title="Listening for “Cheese”" hidden><span data-icon="mic"></span><span class="sr-only">Voice commands are listening</span></p>
       <button class="cam-float" id="camFloat" aria-label="Take photo (floating shutter). Drag to move it" hidden></button>
       <div class="cam-fx" id="camFx" aria-hidden="true" hidden><i class="fx-wash"></i><i></i><i class="fx-leak"></i><i></i><i class="fx-grain"></i><span class="fx-date"></span></div>
       <img id="reviewImg" alt="The photo you just took" hidden>
@@ -459,6 +461,10 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
   <div class="setting">
     <label class="toggle">Show palm <input type="checkbox" role="switch" id="csPalm" aria-describedby="csPalmHelp"></label>
     <p class="fine" id="csPalmHelp">Show your open hand to the camera and hold it still. A 2-second countdown starts, so you can lower your hand before the photo.</p>
+  </div>
+  <div class="setting" hidden>
+    <label class="toggle">Voice commands <input type="checkbox" role="switch" id="csVoice" aria-describedby="csVoiceHelp"></label>
+    <p class="fine" id="csVoiceHelp">Say “Cheese”, “Smile”, “Capture” or “Shoot” to take a photo. Uses the microphone only while the camera is open.</p>
   </div>
   <div class="setting" id="csKeysRow" hidden>
     <label class="toggle">Press volume buttons to <select id="csKeys" aria-describedby="csKeysHelp">
@@ -749,19 +755,19 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
   <div class="stack" id="askActions"></div>
 </dialog>
 
-<script src="liveupdate.js?v=93"></script>
-<script src="features.js?v=93"></script>
-<script src="icons.js?v=93"></script>
-<script src="platform.js?v=93"></script>
-<script src="engine.js?v=93"></script>
-<script src="livebeauty.js?v=93"></script>
-<script src="app.js?v=93"></script>
-<script src="camerapro.js?v=93"></script>
-<script src="shoot.js?v=93"></script>
-<script src="tryon.js?v=93"></script>
-<script src="enhance.js?v=93"></script>
-<script src="studio.js?v=93"></script>
-<script src="share.js?v=93"></script>
-<script src="homescreen.js?v=93"></script>
+<script src="liveupdate.js?v=97"></script>
+<script src="features.js?v=97"></script>
+<script src="icons.js?v=97"></script>
+<script src="platform.js?v=97"></script>
+<script src="engine.js?v=97"></script>
+<script src="livebeauty.js?v=97"></script>
+<script src="app.js?v=97"></script>
+<script src="camerapro.js?v=97"></script>
+<script src="shoot.js?v=97"></script>
+<script src="tryon.js?v=97"></script>
+<script src="enhance.js?v=97"></script>
+<script src="studio.js?v=97"></script>
+<script src="share.js?v=97"></script>
+<script src="homescreen.js?v=97"></script>
 </body>
 </html>

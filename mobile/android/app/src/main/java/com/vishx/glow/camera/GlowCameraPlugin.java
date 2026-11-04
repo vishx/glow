@@ -88,8 +88,11 @@ import java.util.concurrent.TimeUnit;
  *   events: "face" { ready, failed, seen, cy }
  *   setPalm({ on })   -> events "palm" { hand: [score, x, y, w, h] | null } (upright, unmirrored frame, 0..1)
  *   setKeys({ mode: "shoot" | "zoom" | "volume" }) -> while the camera is open, events "key" { key: "up" | "down", repeat }
+ *   setVoice({ on }) -> { ok } | { denied } | { unavailable }; events "voice" { text, id } | { error }
  */
-@CapacitorPlugin(name = "GlowCamera", permissions = { @Permission(strings = { Manifest.permission.CAMERA }, alias = "camera") })
+@CapacitorPlugin(name = "GlowCamera", permissions = {
+    @Permission(strings = { Manifest.permission.CAMERA }, alias = "camera"),
+    @Permission(strings = { Manifest.permission.RECORD_AUDIO }, alias = "microphone") })
 public class GlowCameraPlugin extends Plugin {
     private static final String TAG = "GlowCamera";
     private static final int STILL_MAX = 4032;
@@ -106,6 +109,7 @@ public class GlowCameraPlugin extends Plugin {
     private FaceTracker tracker;
     private PalmTracker palm;
     private boolean palmSeen;
+    private VoiceListener voice;   // main thread only
     /** The live camera plugin, for MainActivity's volume keys. */
     static volatile GlowCameraPlugin live;
     /** What the volume keys do while the camera is open: "shoot", "zoom" or "volume" (the phone's own). */
@@ -337,7 +341,13 @@ public class GlowCameraPlugin extends Plugin {
         holdUpright(false);
         tracker.reset();
         palmSeen = false;
+        if (voice != null) voice.setOn(false);
         synchronized (frameLock) { hasFrame = false; frameNew = false; }
+    }
+
+    @Override protected void handleOnPause() {
+        super.handleOnPause();
+        main.post(() -> { if (voice != null) voice.setOn(false); });   // the page turns it back on with the camera
     }
 
     @Override protected void handleOnDestroy() {
@@ -502,6 +512,35 @@ public class GlowCameraPlugin extends Plugin {
     @PluginMethod public void setPalm(PluginCall call) {
         palm.setOn(Boolean.TRUE.equals(call.getBoolean("on", false)));
         JSObject o = new JSObject(); o.put("ok", true); call.resolve(o);
+    }
+
+    /** Voice commands: listens while the camera is open (asks for the microphone the first time). */
+    @PluginMethod public void setVoice(PluginCall call) {
+        boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
+        if (on && getPermissionState("microphone") != PermissionState.GRANTED) { requestPermissionForAlias("microphone", call, "micPermission"); return; }
+        voiceOn(call, on);
+    }
+
+    @PermissionCallback private void micPermission(PluginCall call) {
+        if (getPermissionState("microphone") == PermissionState.GRANTED) voiceOn(call, true);
+        else { JSObject o = new JSObject(); o.put("denied", true); call.resolve(o); }
+    }
+
+    private void voiceOn(PluginCall call, boolean on) {
+        main.post(() -> {
+            JSObject o = new JSObject();
+            if (on && !VoiceListener.available(getContext())) { o.put("unavailable", true); call.resolve(o); return; }
+            if (voice == null && on) voice = new VoiceListener(getContext(), new VoiceListener.Listener() {
+                @Override public void onText(String text, int id) {
+                    JSObject e = new JSObject(); e.put("text", text); e.put("id", id); notifyListeners("voice", e);
+                }
+                @Override public void onError(String error) {
+                    JSObject e = new JSObject(); e.put("error", error); notifyListeners("voice", e);
+                }
+            });
+            if (voice != null) voice.setOn(on);
+            o.put("ok", true); call.resolve(o);
+        });
     }
 
     @PluginMethod public void setKeys(PluginCall call) {

@@ -1862,3 +1862,11 @@ dialog.share-sheet[open] { display: flex; flex-direction: column; gap: var(--s3)
 .cam-settings .cs-h:first-of-type { margin-top: var(--s2); }
 .cam-settings .cs-all { width: 100%; margin-top: var(--s4); }
 @media (prefers-reduced-motion: reduce) { .cam-palm { transition: none; } .cam-palm.held { animation: none; } }
+
+/* Voice commands: a small microphone while listening, gold when a photo word is heard. */
+.cam-voice { position: absolute; z-index: 2; top: 112px; left: 12px; margin: 0; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: #0008; color: #fff; box-shadow: 0 0 0 1px #fff3; pointer-events: none; transition: background 0.2s, color 0.2s; }
+.cam-voice[hidden] { display: none; }
+.cam-voice svg { width: 16px; height: 16px; }
+.cam-voice.heard { background: var(--cam-gold); color: #111; animation: palm-pop 0.35s ease-out; }
+@media (prefers-reduced-motion: reduce) { .cam-voice.heard { animation: none; } }
