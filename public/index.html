@@ -17,12 +17,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght,SOFT,WONK@9..144,400..600,0..100,0..1&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=88">
+<link rel="stylesheet" href="styles.css?v=91">
 <script>/* Dark is the default look (gold reads best on dark); Light and System stay in Settings. Set before first paint. */
 /* Golden Hour made Dark the default: a look picked before it (Light/System) is cleared once, so everyone starts on Dark; a later pick in Settings sticks. */
 try { if (localStorage.getItem("glowThemeV") !== "2") { localStorage.removeItem("glowTheme"); localStorage.setItem("glowThemeV", "2"); } } catch (e) {}
 try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system") document.documentElement.dataset.theme = gt; } catch (e) { document.documentElement.dataset.theme = "dark"; }</script>
-<link rel="stylesheet" href="enhance.css?v=88">
+<link rel="stylesheet" href="enhance.css?v=91">
 </head>
 <body>
 <!-- Launch animation: the icon's lens opens and the app shows through (enhance.js removes it). -->
@@ -168,6 +168,8 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
       <button data-q="grid" aria-pressed="false">Grid</button>
       <button data-q="level" aria-pressed="false">Level</button>
       <button data-q="hdr" aria-pressed="false" hidden>HDR</button>
+      <button data-q="palm" aria-pressed="false">Palm</button>
+      <button data-q="more" class="cq-more">More settings</button>
     </div>
     <div class="viewfinder" id="viewfinder">
       <canvas id="camCanvas" aria-label="Camera preview" role="img"></canvas>
@@ -181,6 +183,9 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
         <button class="cf-lock" id="camLock" aria-label="Lock focus and exposure" aria-pressed="false"></button>
       </div>
       <p class="vf-pill cam-locked" id="camLocked" hidden>AE/AF lock</p>
+      <div class="cam-palm" id="camPalm" aria-hidden="true" hidden><span data-icon="palm"></span></div>
+      <p class="vf-pill cam-palm-hint" id="camPalmHint" hidden></p>
+      <button class="cam-float" id="camFloat" aria-label="Take photo (floating shutter). Drag to move it" hidden></button>
       <div class="cam-fx" id="camFx" aria-hidden="true" hidden><i class="fx-wash"></i><i></i><i class="fx-leak"></i><i></i><i class="fx-grain"></i><span class="fx-date"></span></div>
       <img id="reviewImg" alt="The photo you just took" hidden>
       <video id="camVideo" playsinline muted hidden></video>
@@ -448,6 +453,38 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
 <input type="file" id="outfitFile" accept="image/*" hidden>
 <input type="file" id="scanFile" accept="image/*" capture="environment" hidden>
 
+<dialog class="sheet cam-settings" id="camSettings" aria-labelledby="camSetTitle">
+  <div class="sheet-head"><h2 class="t-section" id="camSetTitle">Camera settings</h2><button class="icon-btn" data-close aria-label="Close camera settings"></button></div>
+  <h3 class="cs-h">Shooting methods</h3>
+  <div class="setting">
+    <label class="toggle">Show palm <input type="checkbox" role="switch" id="csPalm" aria-describedby="csPalmHelp"></label>
+    <p class="fine" id="csPalmHelp">Show your open hand to the camera and hold it still. A 2-second countdown starts, so you can lower your hand before the photo.</p>
+  </div>
+  <div class="setting" id="csKeysRow" hidden>
+    <label class="toggle">Press volume buttons to <select id="csKeys" aria-describedby="csKeysHelp">
+      <option value="shoot">Take a photo</option><option value="zoom">Zoom in or out</option><option value="volume">Change the volume</option></select></label>
+    <p class="fine" id="csKeysHelp">While the camera is open.</p>
+  </div>
+  <div class="setting">
+    <label class="toggle">Floating shutter button <input type="checkbox" role="switch" id="csFloat" aria-describedby="csFloatHelp"></label>
+    <p class="fine" id="csFloatHelp">An extra shutter you can drag anywhere on the screen, for one-handed selfies.</p>
+  </div>
+  <div class="setting">
+    <label class="toggle">Swipe up or down to switch cameras <input type="checkbox" role="switch" id="csSwipe"></label>
+  </div>
+  <h3 class="cs-h">Selfies</h3>
+  <div class="setting">
+    <label class="toggle">Save selfies as previewed <input type="checkbox" role="switch" id="csMirror" aria-describedby="csMirrorHelp"></label>
+    <p class="fine" id="csMirrorHelp">On: mirrored, the way you see yourself on screen. Off: the way others see you.</p>
+  </div>
+  <h3 class="cs-h">General</h3>
+  <div class="setting">
+    <label class="toggle">Shutter sound <input type="checkbox" role="switch" id="csSound"></label>
+    <label class="toggle">Vibration feedback <input type="checkbox" role="switch" id="csVibrate"></label>
+  </div>
+  <button class="btn ghost cs-all" id="csAll">All Glow Studio settings</button>
+</dialog>
+
 <dialog class="sheet" id="settings" aria-labelledby="settingsTitle">
   <div class="sheet-head"><h2 class="t-section" id="settingsTitle">Settings</h2><button class="icon-btn" data-close aria-label="Close settings"></button></div>
   <div class="plan-card">
@@ -712,18 +749,19 @@ try { var gt = localStorage.getItem("glowTheme") || "dark"; if (gt !== "system")
   <div class="stack" id="askActions"></div>
 </dialog>
 
-<script src="liveupdate.js?v=88"></script>
-<script src="features.js?v=88"></script>
-<script src="icons.js?v=88"></script>
-<script src="platform.js?v=88"></script>
-<script src="engine.js?v=88"></script>
-<script src="livebeauty.js?v=88"></script>
-<script src="app.js?v=88"></script>
-<script src="camerapro.js?v=88"></script>
-<script src="tryon.js?v=88"></script>
-<script src="enhance.js?v=88"></script>
-<script src="studio.js?v=88"></script>
-<script src="share.js?v=88"></script>
-<script src="homescreen.js?v=88"></script>
+<script src="liveupdate.js?v=91"></script>
+<script src="features.js?v=91"></script>
+<script src="icons.js?v=91"></script>
+<script src="platform.js?v=91"></script>
+<script src="engine.js?v=91"></script>
+<script src="livebeauty.js?v=91"></script>
+<script src="app.js?v=91"></script>
+<script src="camerapro.js?v=91"></script>
+<script src="shoot.js?v=91"></script>
+<script src="tryon.js?v=91"></script>
+<script src="enhance.js?v=91"></script>
+<script src="studio.js?v=91"></script>
+<script src="share.js?v=91"></script>
+<script src="homescreen.js?v=91"></script>
 </body>
 </html>

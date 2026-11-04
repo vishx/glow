@@ -149,6 +149,7 @@ const ICONS = {
   "ftone": "<circle cx=\"12\" cy=\"12\" r=\"8\" /><path d=\"M12 4a8 8 0 0 1 0 16Z\" fill=\"currentColor\" fill-opacity=\".22\" stroke=\"none\"/><path d=\"M12 4v16\"/><path d=\"M15 8.5h2M15 12h3M15 15.5h2\"/>",
   "fskin": "<circle cx=\"12\" cy=\"12\" r=\"8\" fill=\"currentColor\" fill-opacity=\".22\" stroke=\"none\"/><circle cx=\"12\" cy=\"12\" r=\"8\"/><path d=\"M8.5 9.5a4.5 4.5 0 0 1 3.5-2.2\"/><path fill=\"currentColor\" stroke=\"none\" d=\"M15.5 12.6c0.43 1.49 0.91 1.97 2.4 2.4-1.49 0.43-1.97 0.91-2.4 2.4-0.43-1.49-0.91-1.97-2.4-2.4 1.49-0.43 1.97-0.91 2.4-2.4Z\"/>",
   "bgcolor": "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"4.5\" fill=\"currentColor\" fill-opacity=\".4\" stroke=\"none\"/><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"4.5\"/><circle cx=\"12\" cy=\"10\" r=\"3\" fill=\"var(--bg, #fff)\"/><path d=\"M6.5 21a5.5 5.5 0 0 1 11 0\" fill=\"var(--bg, #fff)\"/><circle cx=\"12\" cy=\"10\" r=\"3\"/><path d=\"M6.5 21a5.5 5.5 0 0 1 11 0\"/>",
+  "palm": "<path d=\"M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8\"/><path d=\"M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-6-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15\"/>",
   "addhome": "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"4.5\" fill=\"currentColor\" fill-opacity=\".22\" stroke=\"none\"/><rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"4.5\"/><path d=\"M12 8.5v7M8.5 12h7\"/>",
 };
 function icon(name) {

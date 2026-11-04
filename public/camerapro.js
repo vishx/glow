@@ -376,7 +376,8 @@ $("viewfinder").addEventListener("pointermove", (e) => {
     if (vfGest.kind === "tap" && Math.hypot(dx, dy) > 10) {
       clearTimeout(compareT);
       // A vertical slide while the focus square is up changes exposure, like the phones' sun slider.
-      vfGest.kind = vfGest.focusShown && cam.evr && Math.abs(dy) > Math.abs(dx) ? "ev" : "none";
+      // Otherwise a quick up or down swipe switches cameras (shoot.js), like Samsung's camera.
+      vfGest.kind = vfGest.focusShown && cam.evr && Math.abs(dy) > Math.abs(dx) ? "ev" : Math.abs(dy) > Math.abs(dx) * 1.5 ? "swipe" : "none";
       if (vfGest.kind === "ev") { $("camFocus").classList.remove("dim"); clearTimeout(focusTimer); }
     }
     if (vfGest.kind === "ev") camSetEv(vfGest.ev - dy / 90);
@@ -396,6 +397,7 @@ const vfUp = (e) => {
     if (cam.focus && cam.focus.locked) camUnlock();
     camFocusAt(q.x, q.y);
   } else if (g.kind === "ev") armFocusFade();
+  else if (g.kind === "swipe" && typeof camSwipe === "function") camSwipe(q.x - g.x, q.y - g.y, performance.now() - g.t);
 };
 ["pointerup", "pointercancel"].forEach((n) => $("viewfinder").addEventListener(n, vfUp));
 $("viewfinder").addEventListener("pointerleave", (e) => { if (vfGest && vfGest.kind === "hold") endCompare(); });
@@ -448,6 +450,7 @@ function renderQuick() {
   const q = $("camQuick");
   q.querySelectorAll("[data-q]").forEach((b) => {
     const k = b.dataset.q;
+    if (!["grid", "level", "hdr"].includes(k)) return;   // Palm and More settings: shoot.js
     if (k === "hdr") b.hidden = !cam.hdrAvail;
     b.setAttribute("aria-pressed", String(camOpt({ grid: "glowGrid", level: "glowLevel", hdr: "glowHdr" }[k])));
   });
@@ -458,7 +461,8 @@ $("camMore").addEventListener("click", () => {
 });
 $("camQuick").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-q]"); if (!b) return;
-  const k = { grid: "glowGrid", level: "glowLevel", hdr: "glowHdr" }[b.dataset.q], on = !camOpt(k);
+  const k = { grid: "glowGrid", level: "glowLevel", hdr: "glowHdr" }[b.dataset.q]; if (!k) return;
+  const on = !camOpt(k);
   if (b.dataset.q === "level" && on) await askMotion();
   store.set(k, on ? "on" : "off"); Platform.haptic(); renderQuick(); layoutCamFrame();
   track("setting", { [b.dataset.q]: on });

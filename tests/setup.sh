@@ -10,6 +10,7 @@ base=https://storage.googleapis.com/mediapipe-models
 fetch() { [ -s "tests/.assets/$1" ] || curl -fsSL -o "tests/.assets/$1" "$2"; }
 fetch selfie_segmenter.tflite "$base/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite"
 fetch face_landmarker.task "$base/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+fetch gesture_recognizer.task "$base/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task"
 fetch blaze_face_short_range.tflite "$base/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite"
 fetch pose_landmarker_lite.task "$base/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
 fetch hair_segmenter.tflite "$base/image_segmenter/hair_segmenter/float32/latest/hair_segmenter.tflite"
@@ -19,5 +20,16 @@ fetch efficientdet_lite0.tflite "$base/object_detector/efficientdet_lite0/float1
 if command -v ffmpeg >/dev/null && [ ! -s tests/.assets/face.y4m ]; then
   ffmpeg -loglevel error -y -loop 1 -i public/samples/demo-v2/original.png -t 3 -r 15 \
     -vf "scale=720:-2,crop=720:960:0:'(ih-960)/2+10*sin(2*PI*t/3)',format=yuv420p" tests/.assets/face.y4m
+fi
+# Show palm checks: an open hand (fingers up) and a fist, from MediaPipe's own test pictures.
+fetch right_hands.jpg https://storage.googleapis.com/mediapipe-assets/right_hands.jpg
+fetch fist.jpg https://storage.googleapis.com/mediapipe-assets/fist.jpg
+if command -v ffmpeg >/dev/null && [ ! -s tests/.assets/palm.y4m ]; then
+  ffmpeg -loglevel error -y -loop 1 -i tests/.assets/right_hands.jpg -t 3 -r 15 \
+    -vf "crop=340:382:370:0,scale=400:-2,pad=720:960:280:180:0xd8d2c8,format=yuv420p" tests/.assets/palm.y4m
+fi
+if command -v ffmpeg >/dev/null && [ ! -s tests/.assets/fist.y4m ]; then
+  ffmpeg -loglevel error -y -loop 1 -i tests/.assets/fist.jpg -t 3 -r 15 \
+    -vf "scale=720:-2,pad=720:960:0:(oh-ih)/2:0xd8d2c8,format=yuv420p" tests/.assets/fist.y4m
 fi
 echo "Ready. Optional: set GLOW_TEST_FACE=/path/to/portrait.jpg to also run the face-tool checks."
