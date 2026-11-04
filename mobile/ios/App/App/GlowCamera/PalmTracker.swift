@@ -17,7 +17,6 @@ final class PalmTracker {
     private var starting = false
     private var busy = false
     private var sentAt: Double = 0
-    private var lastTs = 0
 
     func setOn(_ v: Bool) {
         on = v
@@ -30,11 +29,12 @@ final class PalmTracker {
                 }
                 let o = GestureRecognizerOptions()
                 o.baseOptions.modelAssetPath = path
-                o.runningMode = .video
+                // Image mode: each look finds the hand afresh; looks take turns between the whole
+                // picture and crops of it, which video mode's tracking doesn't expect.
+                o.runningMode = .image
                 o.numHands = 2
                 o.minHandDetectionConfidence = 0.5
                 o.minHandPresenceConfidence = 0.5
-                o.minTrackingConfidence = 0.5
                 self.rec = try GestureRecognizer(options: o)
                 self.ready = true
             } catch { self.failed = true }
@@ -48,19 +48,38 @@ final class PalmTracker {
         return on && ready && !busy && now - sentAt >= (FaceTracker.hot ? 0.33 : 0.16)
     }
 
-    /// Looks for an open palm. `turn` as in FaceTracker. Answers [score, x, y, w, h] (a box in the
-    /// unturned, upright frame, 0..1), or nil for none.
-    func detect(_ pb: CVPixelBuffer, turn: Int, _ done: @escaping ([Float]?) -> Void) {
+    private static let ci = CIContext(options: [.useSoftwareRenderer: false])
+
+    /// Looks for an open palm in `region` ([x, y, w, h] of the upright frame, 0..1; nil = all of it),
+    /// cut from the full-size frame so a far hand keeps its detail. `turn` as in FaceTracker.
+    /// Answers [score, x, y, w, h] (a box in the whole upright frame, 0..1), or nil for none.
+    func detect(_ pb: CVPixelBuffer, turn: Int, region: [Float]?, _ done: @escaping ([Float]?) -> Void) {
         busy = true
         sentAt = CACurrentMediaTime()
         queue.async {
             var hand: [Float]?
-            let img: MPImage? = turn == 0 ? (try? MPImage(pixelBuffer: pb, orientation: .up))
-                : FaceTracker.turned(CIImage(cvPixelBuffer: pb), turn).flatMap { try? MPImage(uiImage: $0) }
-            if let r = self.rec, let img = img {
-                let ts = max(self.lastTs + 1, Int(CACurrentMediaTime() * 1000))
-                self.lastTs = ts
-                hand = PalmTracker.best(try? r.recognize(videoFrame: img, timestampInMilliseconds: ts), turn)
+            let full = CIImage(cvPixelBuffer: pb)
+            let W = full.extent.width, H = full.extent.height
+            var im = full
+            var r: [Float]? = nil
+            if let g = region, g.count == 4, !(g[0] <= 0 && g[1] <= 0 && g[2] >= 1 && g[3] >= 1) {
+                // Core Image's y axis points up.
+                let rect = CGRect(x: CGFloat(g[0]) * W, y: H - CGFloat(g[1] + g[3]) * H, width: CGFloat(g[2]) * W, height: CGFloat(g[3]) * H).integral
+                if rect.width >= 16 && rect.height >= 16 {
+                    im = full.cropped(to: rect)
+                    im = im.transformed(by: CGAffineTransform(translationX: -rect.origin.x, y: -rect.origin.y))
+                    r = g
+                }
+            }
+            // At most 480 px on the long side (the model looks at 192 px itself).
+            let k = min(1, 480 / max(im.extent.width, im.extent.height))
+            if k < 1 { im = im.transformed(by: CGAffineTransform(scaleX: k, y: k)) }
+            let ui: UIImage? = turn == 0
+                ? PalmTracker.ci.createCGImage(im, from: im.extent).map { UIImage(cgImage: $0) }
+                : FaceTracker.turned(im, turn)
+            if let rec = self.rec, let u = ui, let img = try? MPImage(uiImage: u) {
+                hand = PalmTracker.best(try? rec.recognize(image: img), turn)
+                if let h = hand, let g = r { hand = [h[0], g[0] + h[1] * g[2], g[1] + h[2] * g[3], h[3] * g[2], h[4] * g[3]] }
             }
             self.busy = false
             done(hand)

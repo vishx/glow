@@ -25,13 +25,21 @@ const nativeMissing = { palm: false, keys: false, voice: false };
 const palmAvailable = () => featureOn("camera:palm") && !nativeMissing.palm;
 const palmWanted = () => shootOn("palm") && palmAvailable();
 const PALM_MODEL = "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task";
-const PALM_SIDE = 480;    // a hand at arm's length is still big enough for the model at this size
+const PALM_SIDE = 480;    // the copy (or crop) sent to the hand model; it looks at 192 px itself
 const PALM_HOLD = 450;    // ms an open palm must stay in view (so a wave doesn't take a photo)
 const PALM_SECS = 2;      // the countdown after a palm, like Samsung's
 
 // ---------- Show palm ----------
+// The hand model looks at a 192-pixel copy of whatever it is given, so in the whole frame a hand at
+// arm's length or farther is only a few pixels and is missed (a hand under ~15% of the frame tall,
+// 2026-11-04 test). Like body-tracking systems, Show palm therefore also looks in close-up crops:
+// around the face (a raised selfie hand is beside the head), around a hand it has just seen, and,
+// with no face, across the frame. That finds hands down to ~5% of the frame (~2.4 m away).
+// The phone apps cut the crop from the full-size camera picture (setPalm's region).
 
-const palm = { worker: null, ready: false, failed: false, busy: false, sent: 0, tick: 0, since: 0, cool: 0, hideT: 0 };
+const palm = { worker: null, ready: false, failed: false, busy: false, sent: 0, tick: 0, since: 0, cool: 0, hideT: 0,
+  look: 0, last: null, lastAt: 0, missAt: 0, face: null, region: null };
+const PALM_SCORE = 0.5;   // with the half-second hold (the model's scores for a clear open hand run ~0.55-0.9)
 function palmWorker() {
   if (palm.worker || palm.failed) return;
   try {
@@ -42,29 +50,84 @@ function palmWorker() {
       const m = e.data;
       if (m.type === "ready") palm.ready = true;
       else if (m.type === "failed") { palm.failed = true; palm.ready = false; reportError(`Show palm hand finder failed: ${m.error || ""}`); }
-      else if (m.type === "result") { palm.busy = false; if (!cam.native) onHand(m.hand); }
+      else if (m.type === "result") { palm.busy = false; if (!cam.native) onHand(fromRegion(m.hand, m.region)); }
     };
     w.onerror = () => { palm.failed = true; palm.ready = false; };
     w.postMessage({ type: "init", base, model });
   } catch { palm.failed = true; }
 }
-// Web camera: a small copy of the frame to the worker, about six times a second.
+// The picture's size (upright), for square crops.
+function palmFrameSize() {
+  if (cam.native) return [cam.native.w || 3, cam.native.h || 4];
+  const v = $("camVideo"); return [v.videoWidth || 3, v.videoHeight || 4];
+}
+// The face as a box in the picture (0..1): from the web camera's face finder, or the phone app's.
+function palmFaceBox() {
+  if (cam.native) return palm.face && performance.now() - palm.face.at < 1500 ? palm.face.box : null;
+  const lf = typeof liveFace !== "undefined" ? liveFace : null;
+  if (!lf || !lf.pts || !lf.seen || !lf.size) return null;
+  const [W, H] = lf.size; let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+  for (const [x, y] of lf.pts) { x0 = Math.min(x0, x / W); y0 = Math.min(y0, y / H); x1 = Math.max(x1, x / W); y1 = Math.max(y1, y / H); }
+  return x1 > x0 && y1 > y0 ? [x0, y0, x1 - x0, y1 - y0] : null;
+}
+// A square of `side` pixels centred on (cx, cy) (0..1), kept inside the picture: [x, y, w, h] in 0..1.
+function palmSquare(cx, cy, side) {
+  const [W, H] = palmFrameSize(), sp = Math.min(side, W, H), w = sp / W, h = sp / H;
+  return [Math.min(Math.max(cx - w / 2, 0), 1 - w), Math.min(Math.max(cy - h / 2, 0), 1 - h), w, h];
+}
+// Where to look next: around a hand just seen; otherwise taking turns between the whole picture and
+// a close-up (around the face, or across the frame when there is no face).
+function palmRegion() {
+  const now = performance.now(), [W, H] = palmFrameSize(), short = Math.min(W, H);
+  if (palm.last && now - palm.lastAt < 700) {
+    const [, x, y, w, h] = palm.last;
+    return palmSquare(x + w / 2, y + h / 2, Math.max(Math.max(w * W, h * H) * 3.2, short * 0.3));
+  }
+  const n = palm.look++;
+  if (n % 2 === 0) return null;   // the whole picture: a hand close to the lens, or anywhere
+  const f = palmFaceBox();
+  if (f) {
+    // Head and shoulders, about four face-heights across, a little below the face's middle.
+    const fh = Math.max(f[3] * H, f[2] * W);
+    return palmSquare(f[0] + f[2] / 2, f[1] + f[3] * 0.6, Math.max(fh * 4.2, short * 0.35));
+  }
+  // No face: the upper middle, then the upper left and right (thirds overlapping).
+  const k = ((n - 1) / 2) % 3, cx = [0.5, 0.3, 0.7][k];
+  return palmSquare(cx, 0.42, short * 0.62);
+}
+// A hand found in a crop, back in the whole picture.
+function fromRegion(hand, r) {
+  if (!Array.isArray(hand) || !r) return hand;
+  return [hand[0], r[0] + hand[1] * r[2], r[1] + hand[2] * r[3], hand[3] * r[2], hand[4] * r[3]];
+}
+// Web camera: a copy of the frame (or of a crop of it) to the worker, about six times a second.
 const palmCopy = newCanvas(1, 1);
 function palmWebTick() {
   const v = $("camVideo"), now = performance.now();
   if (palm.busy && now - palm.sent > 4000) palm.busy = false;
   if (cam.native || cam.state !== "live" || cam.shot || !palm.ready || palm.busy || !v.videoWidth || now - palm.sent < 160) return;
-  const W = v.videoWidth, H = v.videoHeight, s = Math.min(1, PALM_SIDE / Math.max(W, H)), w = Math.round(W * s), h = Math.round(H * s);
+  const W = v.videoWidth, H = v.videoHeight, region = palmRegion();
+  const [sx, sy, sw, sh] = region ? [region[0] * W, region[1] * H, region[2] * W, region[3] * H] : [0, 0, W, H];
+  const s = Math.min(1, PALM_SIDE / Math.max(sw, sh)), w = Math.max(1, Math.round(sw * s)), h = Math.max(1, Math.round(sh * s));
   if (palmCopy.width !== w || palmCopy.height !== h) { palmCopy.width = w; palmCopy.height = h; }
-  palmCopy.getContext("2d").drawImage(v, 0, 0, w, h);
+  palmCopy.getContext("2d").drawImage(v, sx, sy, sw, sh, 0, 0, w, h);
   palm.busy = true; palm.sent = now;
   createImageBitmap(palmCopy).then((image) => {
     if (!palm.worker) { image.close(); palm.busy = false; return; }
-    palm.worker.postMessage({ type: "frame", image, t: now }, [image]);
+    palm.worker.postMessage({ type: "frame", image, t: now, region }, [image]);
   }).catch(() => { palm.busy = false; });
+}
+// Phone apps: where the next look goes (an older app ignores the region and looks at the whole frame).
+function palmNativeRegion() {
+  if (!cam.native || !palmWanted() || cam.state !== "live") return;
+  const r = palmRegion();
+  if (String(r) === String(palm.region)) return;
+  palm.region = r;
+  NativeCam.setPalm({ on: true, region: r || [0, 0, 1, 1] }).catch(() => {});
 }
 function palmApply() {
   const on = palmWanted() && cam.state === "live";
+  palm.region = null; palm.last = null;
   if (cam.native) NativeCam.setPalm({ on }).catch(() => { nativeMissing.palm = true; renderShootQuick(); });
   else if (on) { palmWorker(); if (!palm.tick) palm.tick = setInterval(palmWebTick, 60); }
   if (!on || cam.native) { clearInterval(palm.tick); palm.tick = 0; }
@@ -72,18 +135,27 @@ function palmApply() {
   renderShootQuick();
 }
 // hand: [score, x, y, w, h], a box in the camera's upright, unmirrored picture (0..1), or null.
+// A miss now and then (the next look was elsewhere) doesn't restart the hold; 400 ms without one does.
 function onHand(hand) {
-  const now = performance.now();
-  const ok = Array.isArray(hand) && hand.length === 5 && hand.every(Number.isFinite) && hand[0] >= 0.6 && hand[4] >= 0.08 &&
-    palmWanted() && cam.state === "live" && !cam.shot && !cam.shooting && !cam.counting && now > palm.cool && !document.querySelector("dialog[open]");
-  if (!ok) { palm.since = 0; if (!cam.counting) showPalmBox(null); return; }
+  const now = performance.now(), f = palmFaceBox();
+  const ready = palmWanted() && cam.state === "live" && !cam.shot && !cam.shooting && !cam.counting && now > palm.cool && !document.querySelector("dialog[open]");
+  // Big enough: about half a face tall next to a face (any distance), or 3.5% of the picture.
+  const ok = ready && Array.isArray(hand) && hand.length === 5 && hand.every(Number.isFinite) && hand[0] >= PALM_SCORE &&
+    (f ? hand[4] >= 0.4 * f[3] : hand[4] >= 0.035);
+  if (!ok) {
+    if (!ready || !palm.since || now - palm.lastAt > 400) { palm.since = 0; palm.last = null; if (!cam.counting) showPalmBox(null); }
+    palmNativeRegion();
+    return;
+  }
+  palm.last = hand; palm.lastAt = now;
   if (!palm.since) palm.since = now;
   const held = now - palm.since >= PALM_HOLD;
   showPalmBox(hand, held);
   if (held) firePalm();
+  palmNativeRegion();
 }
 async function firePalm() {
-  palm.since = 0; palm.cool = performance.now() + 3500;
+  palm.since = 0; palm.last = null; palm.cool = performance.now() + 3500;
   Platform.haptic("success");
   const secs = Math.max(PALM_SECS, timerSecs());
   $("alertLive").textContent = `Palm seen. Taking the photo in ${secs} seconds.`;
@@ -132,7 +204,10 @@ function onKey(m) {
   } else if (mode === "shoot" && !m.down) camShutter(undefined, "volume");
 }
 if (NativeCam) {
-  NativeCam.addListener("palm", (m) => onHand(m && Array.isArray(m.hand) ? m.hand.map(Number) : null));
+  NativeCam.addListener("palm", (m) => {
+    if (m && Array.isArray(m.face) && m.face.length === 4) palm.face = { box: m.face.map(Number), at: performance.now() };
+    onHand(m && Array.isArray(m.hand) ? m.hand.map(Number) : null);
+  });
   NativeCam.addListener("key", onKey);
 }
 

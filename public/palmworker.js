@@ -1,14 +1,17 @@
 // Show palm, for the web camera: looks for an open hand facing the camera with MediaPipe's
 // gesture recognizer, off the main thread (like faceworker.js, and loaded the same way). The phone
 // apps run the same model natively (PalmTracker.java / PalmTracker.swift).
-// Messages in: init { base, model }, frame { image, t } (an ImageBitmap, closed here).
+// Messages in: init { base, model }, frame { image, t, region } (an ImageBitmap, closed here; region
+// = the crop of the picture it shows, passed back with the answer).
 // Messages out: ready, failed { error }, result { hand } where hand is [score, x, y, w, h]
-// (a box in the frame, 0..1) or null.
+// (a box in the image sent, 0..1) or null, and region.
 let rec = null, vision = null, fileset = null, model = "";
 const make = (delegate) => vision.GestureRecognizer.createFromOptions(fileset, {
-  baseOptions: { modelAssetPath: model, delegate }, runningMode: "VIDEO", numHands: 2,
-  minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+  baseOptions: { modelAssetPath: model, delegate }, runningMode: "IMAGE", numHands: 2,
+  minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5,
 });
+// IMAGE mode: every look finds the hand afresh, since looks take turns between the whole picture
+// and crops of it (the VIDEO mode's tracking assumes one view that moves smoothly).
 self.onmessage = async (e) => {
   const m = e.data;
   if (m.type === "init") {
@@ -25,9 +28,9 @@ self.onmessage = async (e) => {
   }
   if (m.type !== "frame") return;
   let hand = null;
-  try { hand = best(rec.recognizeForVideo(m.image, m.t)); } catch {}
+  try { hand = best(rec.recognize(m.image)); } catch {}
   if (m.image.close) m.image.close();
-  self.postMessage({ type: "result", hand });
+  self.postMessage({ type: "result", hand, region: m.region || null });
 };
 // The surest open palm with its fingers pointing up (middle fingertip above the wrist).
 function best(r) {

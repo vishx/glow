@@ -35,7 +35,6 @@ final class PalmTracker {
     volatile boolean on, ready, failed;
     private volatile boolean busy, starting;
     private volatile long sentAt;
-    private long lastTs;
 
     PalmTracker(Context ctx) { this.ctx = ctx.getApplicationContext(); }
 
@@ -47,8 +46,10 @@ final class PalmTracker {
             try {
                 BaseOptions base = BaseOptions.builder().setModelAssetPath(MODEL).setDelegate(Delegate.CPU).build();
                 GestureRecognizer.GestureRecognizerOptions o = GestureRecognizer.GestureRecognizerOptions.builder()
-                    .setBaseOptions(base).setRunningMode(RunningMode.VIDEO).setNumHands(2)
-                    .setMinHandDetectionConfidence(0.5f).setMinHandPresenceConfidence(0.5f).setMinTrackingConfidence(0.5f).build();
+                    .setBaseOptions(base).setRunningMode(RunningMode.IMAGE).setNumHands(2)
+                    .setMinHandDetectionConfidence(0.5f).setMinHandPresenceConfidence(0.5f).build();
+                // IMAGE mode: each look finds the hand afresh; looks take turns between the whole
+                // picture and crops of it, which VIDEO mode's tracking doesn't expect.
                 rec = GestureRecognizer.createFromOptions(ctx, o);
                 ready = true;
             } catch (Throwable t) { failed = true; Log.e(TAG, "palm model failed", t); }
@@ -72,9 +73,7 @@ final class PalmTracker {
             Bitmap upright = upright0;
             try {
                 upright = FaceTracker.turned(upright0, turn, true);
-                long ts = Math.max(lastTs + 1, SystemClock.uptimeMillis());
-                lastTs = ts;
-                hand = best(rec.recognizeForVideo(new BitmapImageBuilder(upright).build(), ts), turn);
+                hand = best(rec.recognize(new BitmapImageBuilder(upright).build()), turn);
             } catch (Throwable t) {
                 Log.w(TAG, "palm detect", t);
             } finally {

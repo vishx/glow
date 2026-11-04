@@ -371,6 +371,21 @@ if (fs.existsSync(palmVideo)) test('camera palm: the timer, when longer, is used
   await p.waitForFunction(() => !!cam.counting, null, { timeout: 60000 });
   eq(await p.evaluate(() => $('camCount').textContent), '5', 'the 5-second timer is longer, so it is used');
 }, videoOpts(palmVideo, () => { localStorage.setItem('glowAutoSave', 'off'); localStorage.setItem('glowPalm', 'off'); }));
+const palmFarVideo = path.join(__dirname, '.assets/palmfar.y4m');
+if (fs.existsSync(palmFarVideo)) test('camera palm: a small hand far from the camera is found in a close-up and takes the photo', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  await p.waitForFunction(() => palm.ready, null, { timeout: 60000 });
+  // Whole-frame looks only (the old way): the hand is too small to find.
+  await p.evaluate(() => { window.__region = palmRegion; palmRegion = () => null; });
+  await settle(4000);
+  eq(await p.evaluate(() => [!!cam.counting, !!cam.shot, $('camPalm').hidden]), [false, false, true], 'the whole frame alone misses a far hand');
+  await p.evaluate(() => { palmRegion = window.__region; });
+  await p.waitForFunction(() => !$('camPalm').hidden, null, { timeout: 30000 });
+  const box = await p.evaluate(() => { const r = $('camPalm').getBoundingClientRect(), v = $('viewfinder').getBoundingClientRect(); return [(r.left + r.width / 2 - v.left) / v.width, (r.top + r.height / 2 - v.top) / v.height, r.width]; });
+  assert(box[0] < 0.4 && box[1] < 0.4 && box[2] < 140, 'the gold box sits on the small hand (upper left in the mirrored preview): ' + box);
+  await p.waitForFunction(() => !!cam.shot, null, { timeout: 30000 });
+  eq((await camEvents(p, state, 'capture')).map((e) => e.how), ['palm'], 'taken by the palm');
+}, videoOpts(palmFarVideo, () => { localStorage.setItem('glowAutoSave', 'off'); }));
 if (fs.existsSync(fistVideo)) test('camera palm: a fist never takes a photo', async ({ p }) => {
   await p.goto('https://app.test/'); await camLive(p);
   await p.waitForFunction(() => palm.ready, null, { timeout: 60000 });

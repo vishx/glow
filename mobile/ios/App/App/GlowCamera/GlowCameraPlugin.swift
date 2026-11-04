@@ -36,6 +36,8 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
     private let tracker = FaceTracker()
     private let palm = PalmTracker()
     private var palmSeen = false            // main queue only
+    private var palmRegion: [Float]?        // where Show palm looks next ([x, y, w, h], 0..1), set by the page
+    private let palmLock = NSLock()
     private var keyMode = "shoot"           // main queue only: "shoot", "zoom" or "volume"
     private var keyInteraction: AnyObject?  // AVCaptureEventInteraction (iOS 17.2+)
     private var voice: VoiceListener?       // main queue only
@@ -409,30 +411,46 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         } }
         let now = CACurrentMediaTime()
         if now - lightAt > 0.4 { lightAt = now; light = measureLight(pb) }
-        if !look.needsFace {
+        if !look.needsFace && !palm.on {
             if tracker.snap().pts != nil { tracker.reset(); sendFace() }
         } else if tracker.canSend(now) {
             tracker.detect(pb, W: W, H: H, turn: faceTurn()) { [weak self] in self?.sendFace() }
         }
         if palm.canSend(now) {
-            palm.detect(pb, turn: faceTurn()) { [weak self] hand in self?.sendPalm(hand) }
+            palmLock.lock(); let region = palmRegion; palmLock.unlock()
+            palm.detect(pb, turn: faceTurn(), region: region) { [weak self] hand in self?.sendPalm(hand) }
         }
     }
 
     // ---------- Show palm and the volume buttons ----------
 
-    /// Tells the page about an open palm (every look while one is in view, and once when it goes).
+    /// Tells the page what every look found (it picks where the next look goes), with the face's box
+    /// [x, y, w, h] of the upright picture (0..1) when the face finder has one.
     private func sendPalm(_ hand: [Float]?) {
+        let f = tracker.snap()
+        var face: [Double]?
+        if let p = f.pts, f.seen > 0, f.W > 0, f.H > 0, p.count >= 4 {
+            var x0 = Float.greatestFiniteMagnitude, y0 = x0, x1 = -x0, y1 = -x0
+            for i in stride(from: 0, to: p.count - 1, by: 2) { x0 = min(x0, p[i]); x1 = max(x1, p[i]); y0 = min(y0, p[i + 1]); y1 = max(y1, p[i + 1]) }
+            if x1 > x0 && y1 > y0 { face = [x0 / Float(f.W), y0 / Float(f.H), (x1 - x0) / Float(f.W), (y1 - y0) / Float(f.H)].map { Double($0) } }
+        }
         DispatchQueue.main.async {
-            if hand == nil && !self.palmSeen { return }
             self.palmSeen = hand != nil
             let h: Any = hand.map { $0.map { Double($0) } } ?? NSNull()
-            self.notifyListeners("palm", data: ["hand": h])
+            var d: [String: Any] = ["hand": h]
+            if let face = face { d["face"] = face }
+            self.notifyListeners("palm", data: d)
         }
     }
 
     @objc func setPalm(_ call: CAPPluginCall) {
         palm.setOn(call.getBool("on", false))
+        var region: [Float]?
+        if let a = call.getArray("region") as? [NSNumber], a.count == 4 {
+            let r = a.map { min(1, max(0, $0.floatValue)) }
+            if r[2] > 0.02 && r[3] > 0.02 { region = r }
+        }
+        palmLock.lock(); palmRegion = region; palmLock.unlock()
         call.resolve(["ok": true])
     }
 

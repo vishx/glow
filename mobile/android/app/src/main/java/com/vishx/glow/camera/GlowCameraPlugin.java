@@ -109,6 +109,8 @@ public class GlowCameraPlugin extends Plugin {
     private FaceTracker tracker;
     private PalmTracker palm;
     private boolean palmSeen;
+    /** Where Show palm looks next: [x, y, w, h] of the upright picture (0..1), set by the page. */
+    private volatile float[] palmRegion = { 0, 0, 1, 1 };
     private VoiceListener voice;   // main thread only
     /** The live camera plugin, for MainActivity's volume keys. */
     static volatile GlowCameraPlugin live;
@@ -428,17 +430,19 @@ public class GlowCameraPlugin extends Plugin {
             }
             long now = SystemClock.uptimeMillis();
             if (now - lightAt > 400) { lightAt = now; light = measureLight(w, h, rs); }
-            if (!look.needsFace()) {
+            if (!look.needsFace() && !palm.on) {
                 // The Original look needs no face tracking.
                 if (tracker.snap().pts != null) { tracker.reset(); sendFace(); }
             } else if (tracker.canSend(now)) {
                 Bitmap small = smallUpright(w, h, rs, rot, 320);
                 if (small != null) tracker.detect(small, W, H, faceTurn(), this::sendFace);
             }
-            // Show palm: a bigger copy than the face finder's, so a hand at arm's length is found.
+            // Show palm: the part of the picture the page asked for, cut from the full-size frame,
+            // so a far hand keeps its detail (the hand model shrinks what it's given to 192 px).
             if (palm.canSend(now) && !capturing) {
-                Bitmap pb = smallUpright(w, h, rs, rot, 480);
-                if (pb != null) palm.detect(pb, faceTurn(), this::sendPalm);
+                final float[] r = palmRegion;
+                Bitmap pb = uprightCrop(w, h, rs, rot, r, 480);
+                if (pb != null) palm.detect(pb, faceTurn(), (hand) -> sendPalm(fromRegion(hand, r)));
             }
         } catch (Throwable t) {
             Log.w(TAG, "frame", t);
@@ -464,6 +468,45 @@ public class GlowCameraPlugin extends Plugin {
         m.postScale(s, s);
         m.postRotate(rot);
         return Bitmap.createBitmap(detFull, 0, 0, w, h, m, true);
+    }
+
+    /** A part of the frame ([x, y, w, h] of the upright picture, 0..1), turned upright, at most `side` px. */
+    private Bitmap uprightCrop(int w, int h, int rs, int rot, float[] r, int side) {
+        if (r == null || r.length != 4 || (r[0] <= 0 && r[1] <= 0 && r[2] >= 1 && r[3] >= 1)) return smallUpright(w, h, rs, rot, side);
+        int tw = rs / 4;
+        if (detFull == null || detFull.getWidth() != tw || detFull.getHeight() != h) {
+            if (detFull != null) detFull.recycle();
+            detFull = Bitmap.createBitmap(tw, h, Bitmap.Config.ARGB_8888);
+        }
+        synchronized (frameLock) {
+            ByteBuffer b = frameBuf.duplicate();
+            b.position(0);
+            detFull.copyPixelsFromBuffer(b);
+        }
+        // The region's corners in the camera's own (unturned) frame: upright = raw turned `rot` clockwise.
+        float[] xs = new float[2], ys = new float[2];
+        float[][] corners = { { r[0], r[1] }, { r[0] + r[2], r[1] + r[3] } };
+        for (int i = 0; i < 2; i++) {
+            float u = corners[i][0], v = corners[i][1];
+            if (rot == 90) { xs[i] = v; ys[i] = 1 - u; }
+            else if (rot == 180) { xs[i] = 1 - u; ys[i] = 1 - v; }
+            else if (rot == 270) { xs[i] = 1 - v; ys[i] = u; }
+            else { xs[i] = u; ys[i] = v; }
+        }
+        int x0 = Math.max(0, Math.round(Math.min(xs[0], xs[1]) * w)), y0 = Math.max(0, Math.round(Math.min(ys[0], ys[1]) * h));
+        int x1 = Math.min(w, Math.round(Math.max(xs[0], xs[1]) * w)), y1 = Math.min(h, Math.round(Math.max(ys[0], ys[1]) * h));
+        if (x1 - x0 < 16 || y1 - y0 < 16) return smallUpright(w, h, rs, rot, side);
+        Matrix m = new Matrix();
+        float s = Math.min(1f, (float) side / Math.max(x1 - x0, y1 - y0));
+        m.postScale(s, s);
+        m.postRotate(rot);
+        return Bitmap.createBitmap(detFull, x0, y0, x1 - x0, y1 - y0, m, true);
+    }
+
+    /** A hand found in a crop, back in the whole upright picture. */
+    private static float[] fromRegion(float[] hand, float[] r) {
+        if (hand == null || r == null || r.length != 4) return hand;
+        return new float[] { hand[0], r[0] + hand[1] * r[2], r[1] + hand[2] * r[3], hand[3] * r[2], hand[4] * r[3] };
     }
 
     /** Average brightness of the picture (0-255), from a 24×24 grid of samples. */
@@ -497,20 +540,39 @@ public class GlowCameraPlugin extends Plugin {
     }
 
     /** Tells the page about an open palm (every look while one is in view, and once when it goes). */
+    /** Every look's answer goes to the page (it picks where the next look goes), with the face's box
+     *  [x, y, w, h] of the upright picture (0..1) when the face finder has one. */
     private void sendPalm(float[] hand) {
-        if (hand == null && !palmSeen) return;
         palmSeen = hand != null;
         JSObject o = new JSObject();
-        if (hand != null) {
-            java.util.List<Double> a = new java.util.ArrayList<>();
-            for (float f : hand) a.add((double) f);
-            o.put("hand", new com.getcapacitor.JSArray(a));
-        } else o.put("hand", JSObject.NULL);
+        o.put("hand", hand != null ? floats(hand) : JSObject.NULL);
+        FaceTracker.Snap f = tracker.snap();
+        if (f.pts != null && f.seen > 0 && f.W > 0 && f.H > 0) {
+            float x0 = Float.MAX_VALUE, y0 = Float.MAX_VALUE, x1 = -Float.MAX_VALUE, y1 = -Float.MAX_VALUE;
+            for (int i = 0; i + 1 < f.pts.length; i += 2) {
+                x0 = Math.min(x0, f.pts[i]); x1 = Math.max(x1, f.pts[i]); y0 = Math.min(y0, f.pts[i + 1]); y1 = Math.max(y1, f.pts[i + 1]);
+            }
+            if (x1 > x0 && y1 > y0) o.put("face", floats(new float[] { x0 / f.W, y0 / f.H, (x1 - x0) / f.W, (y1 - y0) / f.H }));
+        }
         notifyListeners("palm", o);
+    }
+
+    private static com.getcapacitor.JSArray floats(float[] v) {
+        java.util.List<Double> a = new java.util.ArrayList<>();
+        for (float x : v) a.add((double) x);
+        return new com.getcapacitor.JSArray(a);
     }
 
     @PluginMethod public void setPalm(PluginCall call) {
         palm.setOn(Boolean.TRUE.equals(call.getBoolean("on", false)));
+        try {
+            com.getcapacitor.JSArray a = call.getArray("region");
+            if (a != null && a.length() == 4) {
+                float[] r = new float[4];
+                for (int i = 0; i < 4; i++) r[i] = (float) Math.min(1, Math.max(0, a.getDouble(i)));
+                if (r[2] > 0.02f && r[3] > 0.02f) palmRegion = r;
+            } else palmRegion = new float[] { 0, 0, 1, 1 };
+        } catch (Throwable ignored) { palmRegion = new float[] { 0, 0, 1, 1 }; }
         JSObject o = new JSObject(); o.put("ok", true); call.resolve(o);
     }
 
