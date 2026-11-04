@@ -3,6 +3,9 @@
 //  - Show palm: hold an open hand up to the camera; after a moment a 2-second countdown starts
 //    (or the timer, when it is longer) and the photo is taken. The hand finder is MediaPipe's
 //    gesture recognizer: natively in the phone apps (PalmTracker), in palmworker.js on the web.
+//  - Voice commands: say "Cheese", "Smile", "Capture" or "Shoot" (Samsung's words) and the photo is
+//    taken. Off by default (it needs the microphone). The phone apps listen on the phone itself
+//    (VoiceListener); the web camera uses the browser's speech recognition where it has one.
 //  - Volume buttons take the photo or zoom (phone apps; the phone's own volume when set so).
 //  - A floating shutter you can drag anywhere, for one-handed selfies.
 //  - Swipe up or down on the preview to switch cameras.
@@ -12,12 +15,12 @@
 // Loaded after camerapro.js and shares its globals (cam, $, store, NativeCam, camShutter...).
 
 const SHOOT = { palm: ["glowPalm", "on"], keys: ["glowVolKeys", "shoot"], float: ["glowFloatShutter", "off"], swipe: ["glowSwipeFlip", "on"],
-  mirror: ["glowMirror", "on"], sound: ["glowShutterSound", "on"], vibrate: ["glowCamHaptics", "on"] };
+  voice: ["glowVoice", "off"], mirror: ["glowMirror", "on"], sound: ["glowShutterSound", "on"], vibrate: ["glowCamHaptics", "on"] };
 const shootGet = (k) => store.get(SHOOT[k][0]) || SHOOT[k][1];
 const shootOn = (k) => shootGet(k) === "on";
 // An older phone app without the native hand finder (before versionCode 7) answers setPalm with
 // an error: Show palm is then hidden there instead of seeming to do nothing.
-const nativeMissing = { palm: false, keys: false };
+const nativeMissing = { palm: false, keys: false, voice: false };
 const palmAvailable = () => featureOn("camera:palm") && !nativeMissing.palm;
 const palmWanted = () => shootOn("palm") && palmAvailable();
 const PALM_MODEL = "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task";
@@ -132,6 +135,98 @@ if (NativeCam) {
   NativeCam.addListener("key", onKey);
 }
 
+// ---------- Voice commands ----------
+// Like a Galaxy's "Voice commands": a photo word anywhere in what was heard takes the photo (with
+// the timer, when one is set). Each thing said fires at most once, then a short cool-down.
+
+const VOICE_WORDS = ["cheese", "smile", "capture", "shoot", "take a picture", "take a photo"];
+const WebSpeech = !NativeCam && (window.SpeechRecognition || window.webkitSpeechRecognition) || null;
+const voiceAvailable = () => featureOn("camera:voice") && (NativeCam ? !nativeMissing.voice : !!WebSpeech);
+const voiceWanted = () => shootOn("voice") && voiceAvailable();
+const voice = { rec: null, on: false, heard: new Set(), cool: 0, restartT: 0, fails: 0, listening: false };
+// The photo word in a piece of speech, or "".
+function voiceWord(text) {
+  const t = ` ${String(text || "").toLowerCase().replace(/[^a-z' ]+/g, " ").replace(/\s+/g, " ").trim()} `;
+  return VOICE_WORDS.find((w) => t.includes(` ${w} `) || t.includes(` ${w}s `)) || "";
+}
+// text: what was heard so far; id: the piece of speech it belongs to (fires once per piece).
+function onVoice(text, id) {
+  const w = voiceWord(text), now = performance.now();
+  if (!w || voice.heard.has(id)) return;
+  if (!voiceWanted() || screen !== "cameraScreen" || cam.state !== "live" || cam.shot || cam.shooting || cam.counting || now < voice.cool || document.querySelector("dialog[open]")) return;
+  voice.heard.add(id); voice.cool = now + 2500;
+  if (voice.heard.size > 50) voice.heard = new Set([id]);
+  Platform.haptic("success");
+  $("alertLive").textContent = `Heard "${w}". Taking the photo.`;
+  showVoice("heard");
+  track("voice_shot", { engine: NativeCam ? "native" : "web", word: w });
+  camShutter(undefined, "voice");
+}
+// The small microphone in the viewfinder while listening (it pulses gold when a word is heard).
+function showVoice(state) {
+  const el = $("camVoice");
+  el.hidden = !state;
+  el.classList.toggle("heard", state === "heard");
+  if (state === "heard") { clearTimeout(el.t); el.t = setTimeout(() => el.classList.remove("heard"), 900); }
+}
+function voiceBlocked(msg) {
+  store.set(SHOOT.voice[0], "off"); voiceStop(); renderShootQuick();
+  say(msg || "Allow the microphone for Glow Studio to use voice commands", true);
+}
+function voiceApply() {
+  const on = voiceWanted() && cam.state === "live" && screen === "cameraScreen" && !cam.shot;
+  if (on === voice.on) return;
+  voice.on = on;
+  if (!on) { voiceStop(); return; }
+  if (NativeCam) {
+    NativeCam.setVoice({ on: true }).then((r) => {
+      if (r && r.denied) voiceBlocked();
+      else if (r && r.unavailable) voiceBlocked("Voice commands need speech recognition, which this phone doesn't have");
+      else if (voice.on) showVoice("on");
+    }).catch(() => { nativeMissing.voice = true; voice.on = false; showVoice(null); renderShootQuick(); });
+  } else webVoiceStart();
+}
+function voiceStop() {
+  voice.on = false; clearTimeout(voice.restartT); showVoice(null);
+  if (NativeCam) { if (!nativeMissing.voice) NativeCam.setVoice({ on: false }).catch(() => {}); return; }
+  const r = voice.rec; voice.rec = null;
+  if (r) { r.onend = r.onerror = r.onresult = null; try { r.abort(); } catch {} }
+}
+// The browser's recognizer stops by itself after a while (or a silence): it is started again.
+function webVoiceStart() {
+  if (!voice.on || voice.rec || !WebSpeech) return;
+  const r = new WebSpeech();
+  r.lang = "en-US"; r.continuous = true; r.interimResults = true; r.maxAlternatives = 3;
+  const run = (voice.run = (voice.run || 0) + 1);
+  r.onresult = (e) => {
+    voice.fails = 0;
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const alts = Array.from(e.results[i]).map((a) => a.transcript).join(" ");
+      onVoice(alts, `w${run}.${i}`);
+    }
+  };
+  r.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") { voice.rec = null; voiceBlocked(); return; }
+    if (e.error !== "no-speech" && e.error !== "aborted") voice.fails++;
+  };
+  r.onend = () => {
+    if (voice.rec !== r) return;
+    voice.rec = null;
+    if (!voice.on) return;
+    if (voice.fails > 5) { voiceBlocked("Voice commands stopped: speech recognition isn't working right now"); return; }
+    voice.restartT = setTimeout(webVoiceStart, voice.fails ? 1000 : 150);
+  };
+  try { r.start(); voice.rec = r; showVoice("on"); } catch { voice.fails++; voice.restartT = setTimeout(webVoiceStart, 1000); }
+}
+if (NativeCam) {
+  NativeCam.addListener("voice", (m) => {
+    if (!m) return;
+    if (m.error === "denied") { voiceBlocked(); return; }
+    if (m.error) { voiceBlocked("Voice commands stopped: speech recognition isn't working right now"); return; }
+    onVoice(m.text, `n${m.id}`);
+  });
+}
+
 // ---------- Floating shutter ----------
 
 function floatPos() {
@@ -229,10 +324,11 @@ $("cameraScreen").addEventListener("pointerdown", () => { if (shootOn("sound") &
 
 // ---------- Camera settings sheet ----------
 
-const CS_SWITCHES = { csPalm: "palm", csFloat: "float", csSwipe: "swipe", csMirror: "mirror", csSound: "sound", csVibrate: "vibrate" };
+const CS_SWITCHES = { csPalm: "palm", csVoice: "voice", csFloat: "float", csSwipe: "swipe", csMirror: "mirror", csSound: "sound", csVibrate: "vibrate" };
 function openCamSettings() {
   for (const [id, k] of Object.entries(CS_SWITCHES)) $(id).checked = shootOn(k);
   $("csPalm").closest(".setting").hidden = !palmAvailable();
+  $("csVoice").closest(".setting").hidden = !voiceAvailable();
   $("csKeysRow").hidden = !NativeCam || nativeMissing.keys;
   $("csKeys").value = shootGet("keys");
   $("camQuick").hidden = true; $("camMore").setAttribute("aria-expanded", "false");
@@ -245,6 +341,7 @@ for (const [id, k] of Object.entries(CS_SWITCHES)) {
     store.set(SHOOT[k][0], e.target.checked ? "on" : "off"); Platform.haptic();
     track("setting", { [`cam_${k}`]: e.target.checked });
     if (k === "palm") palmApply();
+    if (k === "voice") { voiceStop(); voiceApply(); }
     if (k === "float") floatApply();
     if (k === "sound" && e.target.checked) { audioCtx(); shutterSound(); }
   });
@@ -256,10 +353,19 @@ $("csAll").addEventListener("click", () => { $("camSettings").close(); openSetti
 function renderShootQuick() {
   const b = $("camQuick").querySelector('[data-q="palm"]');
   b.hidden = !palmAvailable(); b.setAttribute("aria-pressed", String(palmWanted()));
+  const v = $("camQuick").querySelector('[data-q="voice"]');
+  v.hidden = !voiceAvailable(); v.setAttribute("aria-pressed", String(voiceWanted()));
 }
 $("camQuick").addEventListener("click", (e) => {
   const b = e.target.closest("[data-q]"); if (!b) return;
   if (b.dataset.q === "more") { openCamSettings(); return; }
+  if (b.dataset.q === "voice") {
+    const on = !shootOn("voice");
+    store.set(SHOOT.voice[0], on ? "on" : "off"); Platform.haptic(); voiceStop(); voiceApply(); renderShootQuick();
+    say(on ? `Voice commands on: say "Cheese" to take a photo` : "Voice commands off");
+    track("setting", { cam_voice: on });
+    return;
+  }
   if (b.dataset.q !== "palm") return;
   const on = !shootOn("palm");
   store.set(SHOOT.palm[0], on ? "on" : "off"); Platform.haptic(); palmApply();
@@ -271,10 +377,14 @@ $("camQuick").addEventListener("click", (e) => {
 
 function shootStart() {
   palm.since = 0; palm.cool = performance.now() + 1200;   // a hand already up as the camera opens waits a moment
-  palmApply(); keysApply(); floatApply(); palmHint();
+  palmApply(); keysApply(); floatApply(); palmHint(); voice.on = false; voiceApply();
 }
+// The phone app stops listening when it goes to the background; listening resumes on return.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) voiceStop(); else if (cam.state === "live") voiceApply();
+});
 function shootStop() {
-  clearInterval(palm.tick); palm.tick = 0; palm.since = 0; palm.busy = false;
+  clearInterval(palm.tick); palm.tick = 0; palm.since = 0; palm.busy = false; voiceStop();
   showPalmBox(null); $("camPalmHint").hidden = true; $("camFloat").hidden = true;
 }
 renderShootQuick();

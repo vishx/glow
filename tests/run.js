@@ -420,6 +420,42 @@ if (fs.existsSync(palmVideo)) test('camera settings: the gear opens Camera setti
   await p.waitForFunction(() => !!cam.shot, null, { timeout: 10000 });
   eq((await camEvents(p, state, 'capture')).map((e) => e.how).pop(), 'volume', 'shoot mode: a press takes the photo');
 }, videoOpts(palmVideo, () => { localStorage.setItem('glowAutoSave', 'off'); localStorage.setItem('glowPalm', 'off'); }));
+// Voice commands: the browser's recognizer is replaced by a stand-in the test speaks through.
+const fakeSpeech = () => {
+  localStorage.setItem('glowAutoSave', 'off'); localStorage.setItem('glowPalm', 'off');
+  window.__starts = 0; window.__aborts = 0;
+  window.SpeechRecognition = window.webkitSpeechRecognition = class { start() { window.__rec = this; window.__starts++; } abort() { window.__aborts++; } stop() {} };
+  window.__say = (text, i = 0) => window.__rec.onresult({ resultIndex: i, results: Object.assign([], { [i]: Object.assign([{ transcript: text }], { isFinal: false }), length: i + 1 }) });
+};
+test('camera voice: off until turned on; "Cheese" takes the photo, other words don\'t; the mic stops with the camera', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  eq(await p.evaluate(() => [voiceWanted(), $('camVoice').hidden, window.__starts]), [false, true, 0], 'off by default: not listening');
+  await p.click('#camSettingsBtn');
+  eq(await p.evaluate(() => [$('csVoice').closest('.setting').hidden, $('csVoice').checked]), [false, false], 'Voice commands in Camera settings, off');
+  await p.click('#csVoice'); await p.evaluate(() => $('camSettings').close());
+  eq(await p.evaluate(() => [store.get('glowVoice'), window.__starts, window.__rec.continuous, window.__rec.interimResults, $('camVoice').hidden]), ['on', 1, true, true, false], 'on: listening, with the mic shown');
+  await p.evaluate(() => window.__say('hello there how are you')); await settle(400);
+  eq(await p.evaluate(() => !!cam.shot), false, 'other words do nothing');
+  await p.evaluate(() => window.__say('okay say cheese', 1));
+  await p.waitForFunction(() => !!cam.shot, null, { timeout: 10000 });
+  eq((await camEvents(p, state, 'capture')).map((e) => e.how), ['voice'], 'one photo, taken by voice');
+  eq((await camEvents(p, state, 'voice_shot')).map((e) => e.word), ['cheese'], 'the word is counted');
+  await p.click('#retakeBtn'); await camLive(p);
+  await p.evaluate(() => window.__rec.onend()); await settle(400);
+  const starts = await p.evaluate(() => window.__starts);
+  assert(starts >= 2, 'listening starts again when the recognizer stops by itself: ' + starts);
+  await p.evaluate(() => window.__say('Smile!')); await p.waitForFunction(() => !!cam.shot, null, { timeout: 10000 });
+  eq((await camEvents(p, state, 'capture')).map((e) => e.how), ['voice', 'voice'], '"Smile" works too');
+  await p.click('#retakeBtn'); await camLive(p);
+  await p.click('#camMore');
+  eq(await p.evaluate(() => $('camQuick').querySelector('[data-q=voice]').getAttribute('aria-pressed')), 'true', 'the Voice chip shows it on');
+  const ab = await p.evaluate(() => window.__aborts);
+  await p.click('#camQuick [data-q=voice]');
+  eq(await p.evaluate((n) => [store.get('glowVoice'), window.__aborts > n, $('camVoice').hidden], ab), ['off', true, true], 'the chip turns it off and the mic stops');
+  await p.click('#camQuick [data-q=voice]'); await settle(100);
+  await p.evaluate(() => window.__rec.onerror({ error: 'not-allowed' }));
+  eq(await p.evaluate(() => [store.get('glowVoice'), $('camVoice').hidden]), ['off', true], 'microphone refused: turns itself off and says why');
+}, { start: 'camera', init: fakeSpeech });
 test('camera filters: 13 filters, film effects over the preview and in the photo, Strength scales them', async ({ p }) => {
   await p.goto('https://app.test/'); await camLive(p);
   eq(await p.evaluate(() => FILTERS.map((f) => f.id)), ['none', 'glow', 'film', 'warm', 'soft', 'matte', 'clear', 'vivid', 'cool', 'digicam', 'disposable', 'instant', 'mono', 'noir'], 'the filter list');

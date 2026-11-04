@@ -81,6 +81,10 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Glow Studio uses the camera so you can take photos and see live beauty effects.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Glow Studio listens while the camera is open so you can say “Cheese” to take a photo (Voice commands, which you turn on).</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Glow Studio recognizes “Cheese”, “Smile”, “Capture” or “Shoot” to take a photo when Voice commands are on.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Glow Studio opens photos you choose so you can edit them.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

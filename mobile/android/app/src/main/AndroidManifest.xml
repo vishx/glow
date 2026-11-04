@@ -56,5 +56,12 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Voice commands in the camera ("Cheese"), only while the camera is open and switched on. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- So the phone's speech recognition can be found (Android 11+). -->
+    <queries>
+        <intent><action android:name="android.speech.RecognitionService" /></intent>
+    </queries>
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>

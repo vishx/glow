@@ -1,5 +1,5 @@
 // Caches the app shell so Glow Studio opens instantly from the home screen.
-const CACHE = "glow-v91";
+const CACHE = "glow-v92";
 // index.html asks for each script and stylesheet as "name?v=<this number>", so a page and its files
 // always come from the same release, even when a slow network falls back to saved copies.
 const V = CACHE.slice(6), ver = (f) => (/\.(js|css)$/.test(f) && f !== "/faceworker.js" && f !== "/palmworker.js" && f !== "/legal.css" ? `${f}?v=${V}` : f);
