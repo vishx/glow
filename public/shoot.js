@@ -4,7 +4,8 @@
 //    (or the timer, when it is longer) and the photo is taken. The hand finder is MediaPipe's
 //    gesture recognizer: natively in the phone apps (PalmTracker), in palmworker.js on the web.
 //  - Voice commands: say "Cheese", "Smile", "Capture" or "Shoot" (Samsung's words) and the photo is
-//    taken. Off by default (it needs the microphone). The phone apps listen on the phone itself
+//    taken. On by default in the phone apps (the phone asks for the microphone the first time);
+//    off on the web, where browsers may send the audio to their maker. The phone apps listen on the phone itself
 //    (VoiceListener); the web camera uses the browser's speech recognition where it has one.
 //  - Volume buttons take the photo or zoom (phone apps; the phone's own volume when set so).
 //  - A floating shutter you can drag anywhere, for one-handed selfies.
@@ -15,7 +16,7 @@
 // Loaded after camerapro.js and shares its globals (cam, $, store, NativeCam, camShutter...).
 
 const SHOOT = { palm: ["glowPalm", "on"], keys: ["glowVolKeys", "shoot"], float: ["glowFloatShutter", "off"], swipe: ["glowSwipeFlip", "on"],
-  voice: ["glowVoice", "off"], mirror: ["glowMirror", "on"], sound: ["glowShutterSound", "on"], vibrate: ["glowCamHaptics", "on"] };
+  voice: ["glowVoice", NativeCam ? "on" : "off"], mirror: ["glowMirror", "on"], sound: ["glowShutterSound", "on"], vibrate: ["glowCamHaptics", "on"] };
 const shootGet = (k) => store.get(SHOOT[k][0]) || SHOOT[k][1];
 const shootOn = (k) => shootGet(k) === "on";
 // An older phone app without the native hand finder (before versionCode 7) answers setPalm with
@@ -170,8 +171,9 @@ function showVoice(state) {
   if (state === "heard") { clearTimeout(el.t); el.t = setTimeout(() => el.classList.remove("heard"), 900); }
 }
 function voiceBlocked(msg) {
+  const chosen = store.get(SHOOT.voice[0]) === "on";   // turned on by the person, not just the default
   store.set(SHOOT.voice[0], "off"); voiceStop(); renderShootQuick();
-  say(msg || "Allow the microphone for Glow Studio to use voice commands", true);
+  if (chosen) say(msg || "Allow the microphone for Glow Studio to use voice commands", true);
 }
 function voiceApply() {
   const on = voiceWanted() && cam.state === "live" && screen === "cameraScreen" && !cam.shot;
