@@ -405,7 +405,11 @@ if (fs.existsSync(palmVideo)) test('camera settings: the gear opens Camera setti
   await p.click('#retakeBtn'); await camLive(p);
   // Swipe up or down on the preview switches cameras (the fake device has one, so the button is shown for the check).
   await p.evaluate(() => { $('camFlip').hidden = false; window.__flips = 0; $('camFlip').addEventListener('click', () => { window.__flips++; }, { capture: true }); });
-  await vfPtr(p, 'pointerdown', 1, 200, 500); await vfPtr(p, 'pointermove', 1, 202, 470); await vfPtr(p, 'pointermove', 1, 205, 380); await vfPtr(p, 'pointerup', 1, 205, 380);
+  // One quick motion (separate round trips can pass the 350 ms hold that shows the original).
+  await p.evaluate(() => { const r = $('viewfinder').getBoundingClientRect();
+    for (const [type, x, y] of [['pointerdown', 200, 500], ['pointermove', 202, 470], ['pointermove', 205, 380], ['pointerup', 205, 380]])
+      $('viewfinder').dispatchEvent(new PointerEvent(type, { pointerId: 1, clientX: r.left + x, clientY: r.top + y, bubbles: true, isPrimary: true })); });
+  await settle(300);
   await settle(300);
   eq(await p.evaluate(() => [window.__flips, $('camFocus').hidden]), [1, true], 'a swipe up switches cameras, without focusing');
   await camLive(p);

@@ -45,6 +45,7 @@ const VENDOR_URLS = {
   "vendor/hair_segmenter.tflite": "https://storage.googleapis.com/mediapipe-models/image_segmenter/hair_segmenter/float32/latest/hair_segmenter.tflite",
   "vendor/magic_touch.tflite": "https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite",
   "vendor/efficientdet_lite0.tflite": "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
+  "vendor/gesture_recognizer.task": "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
 };
 const vendorUrl = (rel) => {
   if (VENDOR_URLS[rel]) return VENDOR_URLS[rel];
