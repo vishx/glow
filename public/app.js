@@ -221,6 +221,8 @@ function say(text, isErr, action) {
 // instead of across the top where it hid the face.
 function placeToast(t) {
   t.style.top = "";
+  // Enhance Result: just above the controls, so it never covers the Before and After labels.
+  if (screen === "enhanceResult" && innerWidth < 960) { const d = $("enhDock"), q = d && d.getBoundingClientRect(); if (q && q.height) t.style.top = Math.max(0, q.top - t.offsetHeight - 12) + "px"; return; }
   if (screen !== "editorScreen" || innerWidth >= 960) return;
   // Above Try on's floating buttons when they show.
   const side = document.querySelector("#editorScreen #panel.try-full:not([hidden]) .panel-actions") || document.querySelector("#editorScreen .side"), r = side && side.getBoundingClientRect();
@@ -1875,6 +1877,8 @@ function buildPanel(t) {
   if ((t.kind === "face" || t.kind === "hair") && picking && picking.tool === t.id) colorPicker(t, body);
   else if (t.kind === "face" || t.kind === "body" || t.kind === "hair") {
     body.append(slider("Strength", 0, 100, faceSet.amt[t.id] ?? 50, null, (v) => { faceSet.amt[t.id] = v; saveFace(); preview(); }));
+    // Shades come right after Strength, so the main choice is in view in the dock.
+    if (SHADES[t.id]) body.append(colorRow(t));
     if (STYLES[t.id]) {
       const row = options(STYLES[t.id], (v) => v === faceSet.style[t.id], (v) => { faceSet.style[t.id] = v; saveFace(); renderPanel(true); preview(); });
       row.setAttribute("role", "group"); row.setAttribute("aria-label", "Style");
@@ -1884,7 +1888,6 @@ function buildPanel(t) {
       }
       body.append(row);
     }
-    if (SHADES[t.id]) body.append(colorRow(t));
   } else if (t.kind === "filter") {
     // How much of the filter to use; 100 is the full filter (what earlier versions applied).
     body.append(slider("Strength", 0, 100, filterAmt, (v) => {
@@ -1924,19 +1927,20 @@ function buildPanel(t) {
     }, () => {}, (v) => (v / 100).toFixed(1) + "×");
     const zi = z.querySelector("input"); zi.id = "cropZoom"; zi.setAttribute("aria-valuetext", `${(zi.value / 100).toFixed(1)} times`);
     zi.addEventListener("input", () => zi.setAttribute("aria-valuetext", `${(zi.value / 100).toFixed(1)} times`));
-    body.append(z);
     // Straighten: -45..45 degrees in tenths, 0 in the middle (a tap on the value resets it).
     const st = slider("Straighten", -450, 450, Math.round((cr.angle || 0) * 10), (v) => setOrient({ angle: v / 10 }), () => {},
       (v) => (v > 0 ? "+" : "") + (v / 10).toFixed(1) + "°");
     st.querySelector("input").id = "cropStraighten"; st.classList.add("straighten");
-    body.append(st);
+    // Straighten and the two flips share one row, so all crop controls fit the phone's dock.
     const flips = document.createElement("div"); flips.className = "opts crop-flips"; flips.setAttribute("role", "group"); flips.setAttribute("aria-label", "Flip");
-    for (const [label, axis, on] of [["Flip ↔", "h", cr.flipH], ["Flip ↕", "v", cr.flipV]]) {
-      const b = document.createElement("button"); b.className = "opt"; b.textContent = label; b.setAttribute("aria-pressed", String(!!on));
+    const row = document.createElement("div"); row.className = "crop-row"; row.append(st, flips); body.append(row);
+    // Zoom comes last: phones pinch (the hint says so), so on a phone it is the row that scrolls.
+    body.append(z);
+    for (const [label, axis, on] of [["Flip left to right", "h", cr.flipH], ["Flip upside down", "v", cr.flipV]]) {
+      const b = document.createElement("button"); b.className = "opt flip-" + axis; b.innerHTML = icon("flip"); b.setAttribute("aria-label", label); b.title = label; b.setAttribute("aria-pressed", String(!!on));
       b.addEventListener("click", () => { flipCrop(axis); b.setAttribute("aria-pressed", String(axis === "h" ? !!cr.flipH : !!cr.flipV)); panelState(TOOL.crop); });
       flips.append(b);
     }
-    body.append(flips);
     // Rotate and Reset sit in the panel's title row, so the crop controls stay short.
     const rot = document.createElement("button"); rot.className = "icon-btn head-extra"; rot.innerHTML = icon("rotate"); rot.setAttribute("aria-label", "Rotate 90°");
     rot.addEventListener("click", rotateCrop);
@@ -4880,7 +4884,7 @@ $("plans").addEventListener("keydown", (e) => {
   e.preventDefault(); const other = document.querySelector(`.plan:not([data-plan="${plan}"])`); other.click(); other.focus();
 });
 $("pwPacks").addEventListener("click", () => { $("paywall").close(); openPacks(); });
-const buyLabel = () => (plan === "yearly" ? (yearlyTrial ? `Start ${yearlyTrial}-day free trial` : "Continue with yearly") : "Continue with weekly");
+const buyLabel = () => (!canBuy() ? "Get Pro in the phone app" : plan === "yearly" ? (yearlyTrial ? `Start ${yearlyTrial}-day free trial` : "Continue with yearly") : "Continue with weekly");
 // The store tells our server through RevenueCat; check a few times until Pro shows up.
 async function afterPurchase() {
   for (let i = 0; i < 6; i++) {

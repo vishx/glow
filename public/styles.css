@@ -1830,3 +1830,29 @@ dialog.share-sheet[open] { display: flex; flex-direction: column; gap: var(--s3)
 .cam-settings .cs-h:first-of-type { margin-top: var(--s2); }
 .cam-settings .cs-all { width: 100%; margin-top: var(--s4); }
 @media (prefers-reduced-motion: reduce) { .cam-palm { transition: none; } .cam-palm.held { animation: none; } }
+/* ---------- 2026-11-04 audit: the dock's own room ----------
+   The phone's gesture bar was counted twice under the dock (once by the dock, again by the tool
+   panel and the tab bar), which left an empty strip under Apply and hid a row of controls (lip
+   shades, Glow Up choices, Straighten). The dock keeps its height, so the photo keeps its size. */
+@media (max-width: 959px) and (min-height: 601px) {
+  #editorScreen .side { padding-bottom: 0; }
+  /* The grip floats on the panel's top edge instead of taking a row of its own. */
+  #editorScreen .dock-grip:not([hidden]) { position: absolute; top: 0; left: 50%; margin: 0 0 0 -32px; height: 14px; z-index: 2; }
+  #editorScreen .dock-grip:not([hidden]) ~ .panel-head { padding-top: 6px; }
+}
+/* Crop: Straighten and the two flips on one row. */
+.crop-row { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.crop-row > .slider { flex: 1 1 auto; min-width: 0; }
+.crop-row .crop-flips { flex: none; margin: 0; flex-wrap: nowrap; gap: 0; }
+#editorScreen .panel .crop-flips .opt { width: 44px; min-width: 44px; padding: 0; display: grid; place-items: center; }
+.crop-flips .opt svg { width: 20px; height: 20px; }
+.crop-flips .flip-v svg { transform: rotate(90deg); }
+/* Camera review: the shot is taken, so flash, shape, timer and the quick settings step aside
+   (as in the iPhone camera and Snapchat). Settings stays. */
+#cameraScreen.reviewing .cam-left > *, #cameraScreen.reviewing #camTimer, #cameraScreen.reviewing #camMore { visibility: hidden; pointer-events: none; }
+#cameraScreen.reviewing #camQuick { display: none; }
+@media (max-width: 959px) and (min-height: 601px) {
+  /* The buttons sit at the bottom of the dock in every tool (no gap under them). */
+  #editorScreen .side > .panel:not(.live):not(.try-full) .panel-actions { margin-top: auto; }
+  #editorScreen .side > .panel:not(.live) .panel-body { -webkit-mask-image: linear-gradient(transparent 0, #000 4px, #000 calc(100% - 8px), transparent); mask-image: linear-gradient(transparent 0, #000 4px, #000 calc(100% - 8px), transparent); }
+}

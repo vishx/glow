@@ -4145,6 +4145,23 @@ test('live update: the website never checks and keeps its offline cache', async 
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome'); await settle(4000);
   eq([hits.n, await p.evaluate(() => LiveUpdate.native)], [0, false], 'web untouched');
 }, { start: 'enhance', camera: false });
+test('dock: on a phone with a gesture bar, the main controls of each tool are in view (lip shades, Straighten and flips, first Glow Up choices)', async ({ p }) => {
+  const ins = () => { document.documentElement.style.setProperty('--safe-area-inset-top', '47px'); document.documentElement.style.setProperty('--safe-area-inset-bottom', '34px'); };
+  await p.goto('https://app.test/'); await p.evaluate(ins); await pick(p, fx('coords-600x400.png'));
+  const stage0 = await p.evaluate(() => Math.round($('stage').getBoundingClientRect().height));
+  const inView = (sel) => p.evaluate((sel) => { const b = $('panelBody').getBoundingClientRect(), a = document.querySelector('#panel .panel-actions').getBoundingClientRect();
+    return [...document.querySelectorAll(sel)].slice(0, 3).every((e) => { const r = e.getBoundingClientRect(); return r.height > 0 && r.top >= b.top - 1 && r.bottom <= Math.min(b.bottom, a.top) + 1; }); }, sel);
+  await tool(p, 'edit', 'crop', 'crop');
+  eq(await inView('#cropStraighten, .crop-flips .opt'), true, 'Straighten and flips in view');
+  await p.click('#cancelBtn'); await settle(300);
+  await tool(p, 'retouch', 'makeup', 'flips');
+  eq(await inView('#panel .color-row .swatch'), true, 'lip shades in view');
+  eq(await p.evaluate(() => { const a = document.querySelector('#panel .panel-actions').getBoundingClientRect(); return Math.round(innerHeight - a.bottom) <= 34 + 12; }), true, 'no empty strip under Apply');
+  await p.click('#cancelBtn'); await settle(300);
+  await tool(p, 'retouch', '', 'glowup');
+  eq(await inView('#panel .glow-group .opt'), true, 'Glow Up shows its first choices to tick');
+  eq(await p.evaluate(() => Math.round($('stage').getBoundingClientRect().height)), stage0, 'photo keeps its size');
+});
 test('audit: the live-update manifest matches every file in public/ (run mobile/live-update.mjs after changes)', async () => {
   const crypto = require('crypto');
   const m = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/app-update/manifest.json'), 'utf8'));
