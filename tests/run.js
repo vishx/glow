@@ -1077,7 +1077,7 @@ test('settings: Enhance defaults, subscription details, share the app, and sugge
   await p.goto('https://app.test/'); await p.waitForFunction(() => screen === 'enhanceHome');
   await p.evaluate(() => store.set('glow.enhDefaults', JSON.stringify({ blur: 2 })));
   await p.click('#enhSettingsBtn'); await p.waitForSelector('#settings[open]');
-  eq(await p.$$eval('#enhPrefsList select', (s) => s.map((x) => x.dataset.k + '=' + x.value)), ['face=2', 'bg=2', 'retouch=0', 'colors=0', 'blur=2', 'texture=2'], 'each tool shows its default');
+  eq(await p.$$eval('#enhPrefsList select', (s) => s.map((x) => x.dataset.k + '=' + x.value)), ['face=2', 'bg=2', 'retouch=0', 'colors=0', 'blur=2'], 'each tool shows its default');
   await p.selectOption('#enhPrefsList select[data-k=face]', '3'); await p.selectOption('#enhPrefsList select[data-k=blur]', '0');
   eq(await p.evaluate(() => JSON.parse(store.get('glow.enhDefaults'))), { face: 3 }, 'changes saved; the standard level needs no entry');
   await p.click('#enhPrefsReset'); eq(await p.evaluate(() => store.get('glow.enhDefaults')), '{}', 'reset');
@@ -3295,7 +3295,7 @@ test('ideas: credit history, trust promises, natural texture switch and subtle b
   assert(/Enhance.*−1/.test(rows[0]) && /refunded/.test(rows[1]) && /Credit pack.*\+10/.test(rows[2]), 'use, refund, pack: ' + rows.join(' | '));
   await p.evaluate(() => $('creditsSheet').close());
   eq(await p.evaluate(() => document.querySelectorAll('#settings .promises li').length), 4, 'four promises in Settings');
-  eq(await p.evaluate(() => [ENH_TOGGLES.some(([k]) => k === 'texture'), enhToggleOn('texture'), typeof keepTexture]), [true, true, 'function'], 'Natural texture on by default');
+  eq(await p.evaluate(() => [ENH_TOGGLES.some(([k]) => k === 'texture'), typeof keepTexture, ENH_TEXTURE > 0]), [false, 'function', true], 'Natural texture automatic (no separate switch)');
   eq(await p.evaluate(() => [TOOL.bposture.kind, TOOL.btailor.kind, tabFor('bposture'), ADVANCED.some((g) => g[2].includes('btailor'))]), ['body', 'body', null, true], 'body tools reached through Search');
 });
 
@@ -3822,7 +3822,7 @@ test('features: Camera and Editor tabs off open Enhance, hide every way in, and 
   eq(state.used, 1, 'charged once, as usual');
   eq(await p.evaluate(() => $('enhMore').hidden), true, 'no More tools (Editor) on the result');
   const keys = await p.evaluate(() => [...document.querySelectorAll('.enh-t[data-k]')].map((b) => b.dataset.k));
-  eq(keys, ['face', 'bg', 'retouch', 'texture'], 'Colors and Background Blur switches hidden');
+  eq(keys, ['face', 'bg', 'retouch'], 'Colors and Background Blur switches hidden');
   await p.click('#enhDownload'); await downloads(state, 1); await p.waitForFunction(() => screen === 'enhanceShare');
   eq(await p.evaluate(() => $('enhEdit').hidden), true, 'no Edit more in the editor');
   eq(state.errs, [], 'no page errors');

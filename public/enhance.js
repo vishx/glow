@@ -22,28 +22,32 @@ const ENH_COLORS = ["glow", "warm", "vivid", "soft", "cool", "film", "mono"];
 const ENH_TOGGLES = [["face", "Face Enhancer", "face", ["Disabled", "1", "2", "3"], 2], ["bg", "Background Enhancer", "upscale", ["Disabled", "1", "2", "3"], 2],
   ["retouch", "Face Retouch", "fsmooth", ["Disabled", "1", "2", "3"], 0],
   ["colors", "Colors", "palette", ["Disabled", "Auto", ...ENH_COLORS.map((id) => (id === "warm" ? "Warm" : FILTERS.find((f) => f.id === id).name))], 0],
-  ["blur", "Background Blur", "bgblur", ["Disabled", "Low", "Medium", "High"], 0],
-  // Natural texture (on by default): the photo's own fine skin texture is laid back over the restored
-  // faces, so they never look plastic. Off gives the smooth AI faces.
-  ["texture", "Natural texture", "fblemish", ["Disabled", "Light", "On"], 2]];
-const ENH_TEXTURE = [0, 0.35, 0.65];
+  ["blur", "Background Blur", "bgblur", ["Disabled", "Low", "Medium", "High"], 0]];
+// Natural texture (2026-11-04: automatic, no longer its own tool): the photo's own fine skin
+// texture is laid back over the restored faces, so they never look plastic. When the photo was
+// already sharper than the AI's face (a good phone selfie), more of it comes back (enh.sharpRatio).
+const ENH_TEXTURE = 0.55, ENH_TEXTURE_SHARP = 0.95;
 const ENH_MIX = [0, 0.4, 1, 1], ENH_DETAIL = { face: 0.9, bg: 1.1 };   // level 3's extra detail, faces gentler
-// Face Retouch: the editor's own skin and eye steps, each level stronger (Glow Up's one-pass recipe).
+// Face Retouch: the editor's own skin and eye steps, each level clearly stronger (Glow Up's one-pass
+// recipe). 2026-11-04: shine removal added and every level made visible at phone size, the way
+// beauty apps' retouch reads at a glance; fsmooth puts fine texture back, so pores stay.
 const ENH_RETOUCH = [null,
-  [["fblemish", 0.6], ["fsmooth", 0.45], ["ftone", 0.2], ["fundereye", 0.35], ["feyes", 0.25]],
-  [["fblemish", 0.85], ["fsmooth", 0.8], ["ftone", 0.35], ["fundereye", 0.55], ["feyes", 0.4], ["fteeth", 0.4]],
-  [["fblemish", 1], ["fsmooth", 1], ["fsmooth", 0.7], ["ftone", 0.5], ["fundereye", 0.75], ["feyes", 0.55], ["fteeth", 0.6]]];
+  [["fblemish", 0.75], ["fsmooth", 0.7], ["fshine", 0.6], ["ftone", 0.4], ["fundereye", 0.55], ["feyes", 0.35]],
+  [["fblemish", 0.9], ["fsmooth", 0.95], ["fshine", 0.9], ["ftone", 0.55], ["fundereye", 0.75], ["feyes", 0.5], ["fteeth", 0.4]],
+  [["fblemish", 1], ["fsmooth", 1], ["fsmooth", 0.35], ["fshine", 1], ["fshine", 0.6], ["ftone", 0.7], ["fundereye", 0.95], ["feyes", 0.65], ["fteeth", 0.6]]];
 // Colors: each look is its own grade, made for Enhance and applied in full after Auto (which evens
 // the light and takes out most of a color cast). wb: white balance gains; gamma < 1 brightens;
 // lift: matte blacks; sat: saturation (vib: gentler on already-strong colors and skin);
-// shadow/high: tints added to the dark and light tones; bloom: a soft glow.
+// shadow/high: tints added to the dark and light tones; bloom: a soft glow; curve: an S tone curve;
+// grain and vig: film grain and a soft vignette. Near-white, near-neutral areas (sky, walls, a white
+// shirt) keep their own white in every look (whites: how much), the way phone cameras grade.
 const ENH_LOOKS = {
-  glow: { wb: [1.04, 1, 0.96], gamma: 0.9, contrast: 0.96, lift: 0.015, sat: 1.08, high: [0.03, 0.01, 0.005], bloom: 0.22 },
-  warm: { wb: [1.08, 1.01, 0.88], gamma: 0.97, contrast: 1.04, sat: 1.1, vib: true, high: [0.02, 0.01, -0.02] },
+  glow: { wb: [1.04, 1, 0.96], gamma: 0.9, contrast: 0.96, lift: 0.015, sat: 1.08, high: [0.03, 0.01, 0.005], bloom: 0.2, whites: 1 },
+  warm: { wb: [1.08, 1.01, 0.88], gamma: 0.97, contrast: 1.04, sat: 1.1, vib: true, high: [0.02, 0.01, -0.02], whites: 1 },
   vivid: { gamma: 0.98, contrast: 1.12, sat: 1.45, vib: true },
-  soft: { gamma: 0.93, contrast: 0.82, lift: 0.07, sat: 0.8, high: [0.01, 0.008, 0.012], bloom: 0.18 },
-  cool: { wb: [0.9, 0.99, 1.12], gamma: 0.99, contrast: 1.05, sat: 0.97, shadow: [-0.01, 0.01, 0.035] },
-  film: { gamma: 0.98, contrast: 1.1, lift: 0.07, sat: 0.8, shadow: [-0.02, 0.025, 0.045], high: [0.045, 0.02, -0.025] },
+  soft: { gamma: 0.95, contrast: 0.9, lift: 0.035, sat: 0.94, vib: true, high: [0.008, 0.006, 0.004], bloom: 0.14, whites: 1 },
+  cool: { wb: [0.92, 0.99, 1.1], gamma: 0.99, contrast: 1.05, sat: 0.97, shadow: [-0.01, 0.01, 0.035], whites: 1 },
+  film: { gamma: 0.97, curve: 0.35, lift: 0.075, sat: 0.82, shadow: [-0.025, 0.03, 0.05], high: [0.05, 0.025, -0.03], grain: 0.6, vig: 0.22, whites: 0.6 },
   mono: { contrast: 1.15, lift: 0.02, mono: true },
 };
 const enhDefaults = () => { try { return JSON.parse(store.get("glow.enhDefaults") || "{}"); } catch { return {}; } };
@@ -51,7 +55,7 @@ const enhDefaults = () => { try { return JSON.parse(store.get("glow.enhDefaults"
 // page (features.js), which hides them and leaves them out of the picture.
 const enhToggleOn = (k) => k === "face" || k === "bg" || featureOn("enhance:" + k);
 const enh = {
-  lookThumbs: {},                                     // each Colors look on the small copy
+  lookThumbs: {}, levelPics: {},                      // each Colors look on the small copy; each level close up
   src: null, original: null, name: "", demo: false,   // the picked photo (working size) and its untouched file
   ai: null, base: null, faces: [],                    // the AI result, the photo at the result's size, face outlines (0–1)
   lv: {}, cache: new Map(), current: null, token: 0,  // each tool's level and the composites made so far
@@ -624,6 +628,19 @@ async function prepareResult() {
   x.imageSmoothingQuality = "high"; x.drawImage(o, 0, 0, W, H);
   enh.base = c.toDataURL("image/jpeg", 0.94); enh.size = [W, H];
   try { enh.faces = await enhFaces(enh.src, o); } catch { enh.faces = []; }
+  enh.sharpRatio = 1;
+  try { if (enh.faces.length) enh.sharpRatio = faceSharpness(o, W, H) / Math.max(0.01, faceSharpness(a, W, H)); } catch { /* keep 1 */ }
+}
+// Fine detail on the main face (mean difference between neighbouring pixels), drawn at the
+// result's size, so the photo and the AI result can be compared.
+function faceSharpness(img, W, H) {
+  const P = enh.faces[0], xs = P.map((p) => p[0] * W), ys = P.map((p) => p[1] * H);
+  const x0 = Math.max(0, Math.min(...xs)), y0 = Math.max(0, Math.min(...ys)), w = Math.max(8, Math.min(W, Math.max(...xs)) - x0), h = Math.max(8, Math.min(H, Math.max(...ys)) - y0);
+  const k = Math.min(1, 600 / w), cw = Math.round(w * k), ch = Math.round(h * k), c = newCanvas(cw, ch), x = c.getContext("2d", { willReadFrequently: true });
+  x.drawImage(img, x0 * img.naturalWidth / W, y0 * img.naturalHeight / H, w * img.naturalWidth / W, h * img.naturalHeight / H, 0, 0, cw, ch);
+  const d = x.getImageData(0, 0, cw, ch).data; let s = 0, n = 0;
+  for (let y = 0; y < ch; y++) for (let i = (y * cw + 1) * 4, e = (y + 1) * cw * 4; i < e; i += 4) { s += Math.abs(d[i + 1] - d[i - 3]); n++; }
+  return s / Math.max(1, n);
 }
 function showEnhResult() {
   const saved = enhDefaults();
@@ -631,7 +648,7 @@ function showEnhResult() {
   if (!enh.faces.length) { enh.lv.face = 2; enh.lv.retouch = 0; }
   enh.strength = 100;   // Pro Edit opens at full strength (renderProPanel sets the slider)
   enh.cache.clear(); enh.cache.set(enhAIKey(), enh.ai); enh.current = enh.ai; enh.saved = null;
-  enh.thumb = null; enh.lookThumbs = {};   // a small copy for the level pictures (ten full-size copies would weigh on a phone)
+  enh.thumb = null; enh.lookThumbs = {}; enh.levelPics = {}; enh.levelRun = (enh.levelRun || 0) + 1;   // a small copy for the level pictures (ten full-size copies would weigh on a phone)
   loadImg(enh.ai).then((im) => { const k = 200 / Math.max(im.naturalWidth, im.naturalHeight), c = newCanvas(Math.round(im.naturalWidth * k), Math.round(im.naturalHeight * k));
     c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); enh.thumb = c.toDataURL("image/jpeg", 0.8); return lookThumbs(); }).catch(() => {});
   closeLevels(true); fillLevels("face");
@@ -793,7 +810,7 @@ function renderProPanel() {
   $("enhChanges").replaceChildren(...(enh.changes || []).map(([t, ok]) => { const s = document.createElement("span"); s.textContent = t; if (ok) s.className = "ok"; return s; }));
 }
 $("enhStrength").addEventListener("input", () => {
-  enh.strength = Number($("enhStrength").value); $("enhStrengthVal").textContent = enh.strength + "%";
+  enh.strength = Number($("enhStrength").value); enh.levelPics = {}; $("enhStrengthVal").textContent = enh.strength + "%";
   clearTimeout(renderProPanel.t); renderProPanel.t = setTimeout(updateComposite, 120);
 });
 // Measures the change between the photo and the result: light, white balance, contrast, faces.
@@ -843,6 +860,7 @@ function openLevels(k) {
   lvState.k = k; lvState.was = enh.lv[k];
   fillLevels(k);
   markLevel();
+  if (k !== "colors") levelPics(k);
   $("enhToggles").hidden = true; $("enhLevels").hidden = false;
   requestAnimationFrame(fitEnhFrame);   // (the dock keeps one height, so the photo stays the same size)
   $("enhLvRow").querySelector('[aria-checked="true"]')?.scrollIntoView({ inline: "center", block: "nearest" });
@@ -857,10 +875,45 @@ function fillLevels(k) {
     const b = document.createElement("button");
     b.className = "enh-lv" + (i === 0 ? " off" : ""); b.dataset.i = i; b.setAttribute("role", "radio");
     // Colors shows each look as it will really come out (same steps, on the small copy).
-    const pic = (k === "colors" && i > 0 && enh.lookThumbs[i]) || thumb;
+    const pic = (k === "colors" && i > 0 && enh.lookThumbs[i]) || (enh.levelPics[k] && enh.levelPics[k][i]) || thumb;
     b.innerHTML = `<img alt="" src="${pic}"><span>${name}</span>`;
     return b;
   }));
+}
+// Each level's picture, close up (the face, or for Blur and Background the face with the room
+// beside it), from that level really made: made one by one in the background when a tool opens,
+// kept with the result, so each level looks different on its button and opens at once later.
+// One picture is made at a time (the face and people finders can't run two at once), the
+// chosen level first in line after whatever is already being made.
+let enhChain = Promise.resolve();
+function enhQueue(fn) { const p = enhChain.then(fn); enhChain = p.catch(() => {}); return p; }
+async function levelPics(k) {
+  const names = ENH_TOGGLES.find((t) => t[0] === k)[3], run = (enh.levelRun = (enh.levelRun || 0) + 1), pics = (enh.levelPics[k] ||= {});
+  for (let i = 0; i < names.length; i++) {
+    if (pics[i]) continue;
+    const lv = { ...enh.lv, [k]: i }, key = enhKey(lv);
+    let src = enh.cache.get(key);
+    if (!src) {
+      await new Promise((r) => setTimeout(r, 60)); if (run !== enh.levelRun || lvState.k !== k) return;
+      src = await enhQueue(() => enh.cache.get(key) || composeEnhanced(lv)); enh.cache.set(key, src);
+    }
+    pics[i] = await closeUp(src, k === "blur" || k === "bg");
+    if (run !== enh.levelRun || lvState.k !== k) return;
+    const img = $("enhLvRow").querySelector(`.enh-lv[data-i="${i}"] img`); if (img) img.src = pics[i];
+  }
+}
+async function closeUp(src, wide) {
+  const im = await loadImg(src), W = im.naturalWidth, H = im.naturalHeight, ow = 152, oh = 104;
+  let cx = W / 2, cy = H / 2, fw = W * 0.5;
+  if (enh.faces.length) {
+    const P = enh.faces[0], xs = P.map((p) => p[0] * W), ys = P.map((p) => p[1] * H);
+    cx = (Math.min(...xs) + Math.max(...xs)) / 2; cy = (Math.min(...ys) + Math.max(...ys)) / 2; fw = Math.max(...xs) - Math.min(...xs);
+  }
+  const w = Math.min(W, fw * (wide ? 2.6 : 1.55)), h = Math.min(H, w * oh / ow);
+  const x0 = Math.max(0, Math.min(W - w, cx - w / 2 + (wide ? fw * 0.45 : 0))), y0 = Math.max(0, Math.min(H - h, cy - h * (wide ? 0.5 : 0.46)));
+  const c = newCanvas(ow, oh), x = c.getContext("2d"); x.imageSmoothingQuality = "high";
+  x.drawImage(im, x0, y0, w, h, 0, 0, ow, oh);
+  return c.toDataURL("image/jpeg", 0.85);
 }
 function markLevel() {
   const k = lvState.k, saved = enhDefaults(), def = ENH_TOGGLES.find((t) => t[0] === k)[4];
@@ -878,6 +931,7 @@ $("enhLvRow").addEventListener("click", (e) => {
   const b = e.target.closest(".enh-lv"); if (!b || !lvState.k) return;
   Platform.haptic();
   enh.lv[lvState.k] = Number(b.dataset.i); markLevel(); updateComposite();
+  enh.levelPics = { [lvState.k]: enh.levelPics[lvState.k] };   // the other tools' pictures carry the old level
 });
 $("enhDefault").addEventListener("change", () => {
   const d = enhDefaults(), k = lvState.k, def = ENH_TOGGLES.find((t) => t[0] === k)[4];
@@ -891,14 +945,15 @@ $("enhLvDone").addEventListener("click", () => closeLevels(true));
 
 // Face and Background Enhancer at 2, nothing else (and Pro Edit at full strength): the AI result as it came.
 const proKey = (st) => (enh.style === PRO_MODE ? ":" + st : "");
-const enhAIKey = () => "22000" + proKey(100);
-const enhKey = () => ENH_TOGGLES.map(([k]) => enh.lv[k]).join("") + proKey(enh.strength);
+// (with a face, the standard result also carries the photo's own skin texture, so it is composed)
+const enhAIKey = () => (enh.faces.length && enh.style !== PRO_MODE ? "ai" : "22000" + proKey(100));
+const enhKey = (lv = enh.lv) => ENH_TOGGLES.map(([k]) => lv[k]).join("") + proKey(enh.strength);
 async function updateComposite() {
   const key = enhKey(), token = ++enh.token;
   if (enh.cache.has(key)) { showComposite(enh.cache.get(key)); return; }
   const slow = setTimeout(() => { if (token === enh.token) $("enhWorking").classList.add("on"); }, 120);
   try {
-    const out = await composeEnhanced(enh.lv);
+    const lv = { ...enh.lv }, out = await enhQueue(() => enh.cache.get(key) || composeEnhanced(lv));
     enh.cache.set(key, out);
     if (token === enh.token) showComposite(out);
   } catch (err) { if (token === enh.token) say(err.message || "Couldn't make that change.", true); }
@@ -933,7 +988,7 @@ async function composeEnhanced(lv) {
     x.drawImage(b, 0, 0, W, H); x.globalAlpha = enh.strength / 100; x.drawImage(a, 0, 0, W, H);
     out = c.toDataURL("image/jpeg", 0.94);
   }
-  if (faces && ENH_TEXTURE[lv.texture] && enh.style !== PRO_MODE) out = await keepTexture(out, ENH_TEXTURE[lv.texture]);
+  if (faces && lv.face && enh.style !== PRO_MODE) out = await keepTexture(out, enh.sharpRatio > 1.08 ? ENH_TEXTURE_SHARP : ENH_TEXTURE);
   const rt = ENH_RETOUCH[lv.retouch];
   if (rt && faces) out = await glowUp(out, { face: rt }, { faces: enh.faces });   // the faces found on the photo: same framing as the result
   if (lv.colors) out = await enhColors(out, lv.colors);
@@ -996,23 +1051,39 @@ async function enhLook(src, L) {
     x.save(); x.globalCompositeOperation = "screen"; x.globalAlpha = L.bloom;
     drawWith(x, `blur(${Math.max(2, Math.round(Math.max(c.width, c.height) / 150))}px) brightness(0.9)`, (y) => y.drawImage(img, 0, 0, c.width, c.height)); x.restore();
   }
-  const wb = L.wb || [1, 1, 1], g = L.gamma || 1, ct = L.contrast || 1, lift = L.lift || 0, sat = L.sat ?? 1, sh = L.shadow || [0, 0, 0], hi = L.high || [0, 0, 0];
-  const lut = [0, 1, 2].map((ch) => { const t = new Float32Array(256); for (let v = 0; v < 256; v++) { let u = Math.min(1, (v / 255) * wb[ch]); u = Math.pow(u, g); u = (u - 0.5) * ct + 0.5; t[v] = lift + Math.max(0, Math.min(1, u)) * (1 - lift); } return t; });
-  const a = x.getImageData(0, 0, c.width, c.height), d = a.data;
+  const wb = L.wb || [1, 1, 1], g = L.gamma || 1, ct = L.contrast || 1, lift = L.lift || 0, sat = L.sat ?? 1, sh = L.shadow || [0, 0, 0], hi = L.high || [0, 0, 0], cv = L.curve || 0;
+  const tone = (u) => { u = Math.pow(u, g); if (cv) u += cv * (u - 0.5) * (1 - Math.abs(2 * u - 1)); u = (u - 0.5) * ct + 0.5; return lift + Math.max(0, Math.min(1, u)) * (1 - lift); };
+  const lut = [0, 1, 2].map((ch) => { const t = new Float32Array(256); for (let v = 0; v < 256; v++) t[v] = tone(Math.min(1, (v / 255) * wb[ch])); return t; });
+  const flat = new Float32Array(256); for (let v = 0; v < 256; v++) flat[v] = tone(v / 255);   // the same tones, no color shift
+  const W = c.width, Hh = c.height, gs = Math.max(1, Math.round(Math.max(W, Hh) / 1100)), vig = L.vig || 0, grain = (L.grain || 0) * 0.06, wk = L.whites || 0;
+  const a = x.getImageData(0, 0, W, Hh), d = a.data;
   for (let i = 0; i < d.length; i += 4) {
     let r = lut[0][d[i]], gg = lut[1][d[i + 1]], b = lut[2][d[i + 2]];
     const l = 0.3 * r + 0.59 * gg + 0.11 * b, s2 = (1 - l) * (1 - l), h2 = l * l;
-    r += sh[0] * s2 + hi[0] * h2; gg += sh[1] * s2 + hi[1] * h2; b += sh[2] * s2 + hi[2] * h2;
+    // How white and neutral the pixel was: those keep their white (no yellow sky, no blue shirt).
+    const o0 = d[i] / 255, o1 = d[i + 1] / 255, o2 = d[i + 2] / 255, ol = 0.3 * o0 + 0.59 * o1 + 0.11 * o2;
+    const keep = wk * smoothstep(0.72, 0.93, ol) * (1 - smoothstep(0.06, 0.2, Math.max(o0, o1, o2) - Math.min(o0, o1, o2)));
+    r += (sh[0] * s2 + hi[0] * h2) * (1 - keep); gg += (sh[1] * s2 + hi[1] * h2) * (1 - keep); b += (sh[2] * s2 + hi[2] * h2) * (1 - keep);
+    if (keep > 0) { r += (flat[d[i]] - r) * keep; gg += (flat[d[i + 1]] - gg) * keep; b += (flat[d[i + 2]] - b) * keep; }
     if (L.mono) { r = gg = b = l; }
     else if (sat !== 1) {
       const s = Math.max(r, gg, b) - Math.min(r, gg, b), k = L.vib ? 1 + (sat - 1) * (1 - Math.min(1, s * 1.6)) : sat, m = 0.3 * r + 0.59 * gg + 0.11 * b;
       r = m + (r - m) * k; gg = m + (gg - m) * k; b = m + (b - m) * k;
+    }
+    if (vig || grain) {
+      const p = i >> 2, px = p % W, py = (p / W) | 0;
+      let f = 1;
+      if (vig) { const dx = px / W - 0.5, dy = py / Hh - 0.5; f -= vig * Math.min(1, (dx * dx + dy * dy) * 2.2) ** 1.5; }
+      const n = grain ? (enhNoise((px / gs) | 0, (py / gs) | 0) - 0.5) * grain * (1 - Math.abs(2 * l - 1) * 0.6) : 0;
+      r = r * f + n; gg = gg * f + n; b = b * f + n;
     }
     d[i] = r * 255; d[i + 1] = gg * 255; d[i + 2] = b * 255;
   }
   x.putImageData(a, 0, 0);
   return encode(c, src);
 }
+// Film grain: the same speckle at every size (a hash of the grain cell).
+const enhNoise = (x, y) => { const h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return h - Math.floor(h); };
 // The Colors pictures: each look on the small copy, made once per result.
 async function lookThumbs() {
   const t = enh.thumb; if (!t) return;

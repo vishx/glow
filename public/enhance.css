@@ -249,7 +249,10 @@ dialog.enh-sheet::backdrop { background: rgb(10 8 12 / .72); backdrop-filter: bl
 .enh-frame .enh-zoom { top: auto; bottom: var(--s3); right: var(--s3); min-height: 32px; display: inline-flex; align-items: center; gap: 6px; border: 0; font: inherit; font-weight: 600;
   font-variant-numeric: tabular-nums; cursor: pointer; }
 .enh-frame .enh-zoom svg { width: 16px; height: 16px; }
-.enh-working { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(0 0 0 / .25); pointer-events: none; opacity: 0; transition: opacity 160ms; }
+.enh-working { position: absolute; left: 50%; bottom: var(--s4); transform: translateX(-50%); display: flex; align-items: center; gap: var(--s2);
+  padding: 6px 14px 6px 8px; border-radius: 999px; background: rgb(0 0 0 / .6); color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); pointer-events: none; opacity: 0; transition: opacity 160ms; }
+.enh-working .spinner.small { border-color: rgb(255 255 255 / .25); border-top-color: var(--accent); }
 .enh-working.on { opacity: 1; }
 
 .enh-dock { flex: none; display: grid; }

@@ -902,6 +902,21 @@ function faceOps(ctx, P, amt, toolId) {
         dab(l, lerpPt(P[10], P[9], 0.6), faceW * 0.12, faceW * 0.06, Math.atan2(up[0], -up[1]), "#fff6ee", a * 0.2, "soft-light");
       });
     },
+    fshine(a) {
+      // Takes the oily shine off forehead, nose and cheeks: patches brighter and paler than the skin
+      // around them take that skin's tone, with their own fine texture kept, so they never go flat.
+      const wide = filtered(ctx.canvas, `blur(${Math.max(4, Math.round(faceW / 9))}px)`), bd = wide.getContext("2d").getImageData(faceBox.x0, faceBox.y0, faceBox.w, faceBox.h).data;
+      const fine = filtered(ctx.canvas, `blur(${Math.max(1, Math.round(faceW / 200))}px)`), fd = fine.getContext("2d").getImageData(faceBox.x0, faceBox.y0, faceBox.w, faceBox.h).data;
+      pixelPass(ctx, skinMask(), faceBox, (d, i, m) => {
+        const l = lum(fd[i], fd[i + 1], fd[i + 2]) / 255, lb = lum(bd[i], bd[i + 1], bd[i + 2]) / 255;
+        const sat = (Math.max(fd[i], fd[i + 1], fd[i + 2]) - Math.min(fd[i], fd[i + 1], fd[i + 2])) / Math.max(1, Math.max(fd[i], fd[i + 1], fd[i + 2]));
+        const satB = (Math.max(bd[i], bd[i + 1], bd[i + 2]) - Math.min(bd[i], bd[i + 1], bd[i + 2])) / Math.max(1, Math.max(bd[i], bd[i + 1], bd[i + 2]));
+        const w = m * Math.min(1, a) * smoothstep(0.015, 0.11, l - lb) * smoothstep(0.42, 0.62, l) * (0.55 + 0.45 * smoothstep(-0.02, 0.08, satB - sat));
+        // The skin's own tone at about the brightness of the skin around, plus the pixel's fine detail.
+        const tl = (lb + (l - lb) * 0.3) * 255, k = tl / Math.max(1, lb * 255);
+        for (let ch = 0; ch < 3; ch++) { const v = bd[i + ch] * k + 0.7 * (d[i + ch] - fd[i + ch]); d[i + ch] += (v - d[i + ch]) * w * 0.92; }
+      });
+    },
     fundereye(a) {
       const mask = softMask(W, H, faceW / 45, (m) => {
         for (const e of eyes) { const low = Math.max(...e.poly.map((p) => p[1])); m.beginPath(); m.ellipse(e.c[0], low + e.w * 0.28, e.w * 0.55, e.w * 0.24, 0, 0, 7); m.fill(); }
@@ -1301,7 +1316,7 @@ async function faceEdit(src, toolId, amt, pick) {
 // Glow Up, the on-device part: face steps in one pass, then gentle face shape, then light and color.
 // `g` is { face: [[tool, strength, shade, style]...], slim: 0–1, light: bool }. A photo without a
 // clear face still gets its light and color.
-const GLOW_ORDER = ["fblemish", "fsmooth", "ftone", "fundereye", "fskin", "feyes", "fteeth", "fbrows", "fshadow", "fliner", "flashes", "feyecolor", "fcontour", "fbronzer", "fblush", "fhighlight", "flips", "fglam"];
+const GLOW_ORDER = ["fblemish", "fsmooth", "fshine", "ftone", "fundereye", "fskin", "feyes", "fteeth", "fbrows", "fshadow", "fliner", "flashes", "feyecolor", "fcontour", "fbronzer", "fblush", "fhighlight", "flips", "fglam"];
 async function glowUp(src, g, pick) {
   let out = src;
   const face = (g.face || []).slice().sort((x, y) => GLOW_ORDER.indexOf(x[0]) - GLOW_ORDER.indexOf(y[0]));
@@ -1821,7 +1836,7 @@ async function backdrop(src, bg, o = {}) {
 // The blur then grows with distance: in a full-length photo the floor is sharp at their feet and
 // softer toward the horizon, and everything above that is the far background. Levels 1–3 are
 // Low, Medium and High, and even High keeps the room recognizable.
-const BLUR_LEVELS = [0, 0.0022, 0.0036, 0.0055, 0.0085];   // blur radius, as a share of the photo's width (4: the editor's Strong)
+const BLUR_LEVELS = [0, 0.0018, 0.0038, 0.0068, 0.0095];   // blur radius, as a share of the photo's width (4: the editor's Strong); each level clearly stronger
 async function portraitBlur(src, level = 2) {
   const img = await loadImg(src), c = canvasFor(img), cx = c.getContext("2d", { willReadFrequently: true });
   cx.drawImage(img, 0, 0, c.width, c.height);
@@ -1839,8 +1854,9 @@ async function portraitBlur(src, level = 2) {
   const fh = Math.max(0, ...main.map((b) => b[3])), fy = Math.max(0, ...main.map((b) => b[1] + b[3] / 2));
   const full = main.length && feet - fy > 5 * fh, horizon = fy + 1.5 * fh;   // the camera is about at chest height
   const sharp = cx.getImageData(0, 0, W, H).data;
-  const half = cleanBackground(c, alpha, R / 2).getContext("2d").getImageData(0, 0, W, H).data;
-  const most = cleanBackground(c, alpha, R).getContext("2d").getImageData(0, 0, W, H).data;
+  const keepOut = alpha.wide || alpha;   // the room alone, without the person's edge
+  const half = cleanBackground(c, keepOut, R / 2).getContext("2d").getImageData(0, 0, W, H).data;
+  const most = cleanBackground(c, keepOut, R).getContext("2d").getImageData(0, 0, W, H).data;
   const out = newCanvas(W, H), ox = out.getContext("2d", { willReadFrequently: true }), od = ox.createImageData(W, H), D = od.data;
   for (let y = 0; y < H; y++) {
     // 0 = in focus, 1 = the far background. On the floor: how far that row is from their feet.
@@ -1853,6 +1869,13 @@ async function portraitBlur(src, level = 2) {
   }
   ox.putImageData(od, 0, 0); ox.drawImage(subjectLayer(c, alpha), 0, 0);
   return out.toDataURL("image/jpeg", 0.92);
+}
+// Shrinks a 0–1 mask by r pixels (the smallest value nearby, rows then columns).
+function erode(a, w, h, r) {
+  const t = new Float32Array(w * h), o = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let m = 1; for (let k = Math.max(0, x - r), e = Math.min(w - 1, x + r); k <= e; k++) m = Math.min(m, a[y * w + k]); t[y * w + x] = m; }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let m = 1; for (let k = Math.max(0, y - r), e = Math.min(h - 1, y + r); k <= e; k++) m = Math.min(m, t[k * w + x]); o[y * w + x] = m; }
+  return o;
 }
 // The alpha (0–1 per pixel of c) of the people whose faces are `boxes` (pixels of c).
 async function peopleMatte(c, boxes) {
@@ -1897,13 +1920,24 @@ async function peopleMatte(c, boxes) {
   // The same edge refinement as matte(), finer: snap the outline, then follow the hair.
   let q = guided(I, p, w, h, Math.max(4, Math.round(w / 150)), 1e-3);
   q = guided(I, q, w, h, Math.max(2, Math.round(w / 400)), 2e-4);
-  const ac = newCanvas(w, h), acx = ac.getContext("2d"), ad = acx.createImageData(w, h);
-  for (let i = 0; i < w * h; i++) ad.data[i * 4 + 3] = Math.round(smoothstep(0.15, 0.85, q[i]) * 255);
-  acx.putImageData(ad, 0, 0);
-  const out = newCanvas(W, H), ox = out.getContext("2d", { willReadFrequently: true });
-  ox.imageSmoothingQuality = "high"; ox.drawImage(ac, 0, 0, W, H);
-  const ab = ox.getImageData(0, 0, W, H).data, alpha = new Float32Array(W * H);
-  for (let i = 0; i < alpha.length; i++) alpha[i] = ab[i * 4 + 3] / 255;
+  // A firm cutout, pulled in a little from the edge and then feathered, so no strip of the room
+  // stays sharp beside an ear, jaw or shoulder (the background blurs right up to the person).
+  // `wide` (the edge as found, hair fringe included) is what the blurred room leaves out, so no
+  // dark halo of hair is smeared around the head.
+  const wide = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) { wide[i] = smoothstep(0.15, 0.85, q[i]); q[i] = smoothstep(0.3, 0.9, q[i]); }
+  q = erode(q, w, h, Math.max(1, Math.round(w / 450)));
+  const full = (m, feather) => {
+    const ac = newCanvas(w, h), acx = ac.getContext("2d"), ad = acx.createImageData(w, h);
+    for (let i = 0; i < w * h; i++) ad.data[i * 4 + 3] = Math.round(m[i] * 255);
+    acx.putImageData(ad, 0, 0);
+    const out = newCanvas(W, H), ox = out.getContext("2d", { willReadFrequently: true });
+    ox.imageSmoothingQuality = "high"; drawWith(ox, feather ? `blur(${Math.max(1, Math.round(W / 900))}px)` : "none", (y) => y.drawImage(ac, 0, 0, W, H));
+    const ab = ox.getImageData(0, 0, W, H).data, a = new Float32Array(W * H);
+    for (let i = 0; i < a.length; i++) a[i] = ab[i * 4 + 3] / 255;
+    return a;
+  };
+  const alpha = full(q, true); alpha.wide = full(wide, false);
   return alpha;
 }
 // The mask an AI scene repaints: white wherever the background is, including the soft edge of her
