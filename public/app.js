@@ -3823,10 +3823,12 @@ async function startCamera() {
   if (gen !== cam.gen) return;
   drawFrame(); renderCamFx();
   if (typeof camProStart === "function") camProStart();
+  if (typeof shootStart === "function") shootStart();
 }
 function stopCamera() {
   cam.gen++;
   if (typeof camProStop === "function") camProStop();
+  if (typeof shootStop === "function") shootStop();
   if (cam.counting) cam.counting.stop();
   cancelAnimationFrame(cam.raf);
   if (cam.nativeOn) {
@@ -3914,6 +3916,7 @@ async function startNativeCamera(gen) {
   $("camFlip").hidden = (r.cameras || 1) < 2;
   cam.nativeStart = r;
   if (typeof camProStart === "function") camProStart(r);
+  if (typeof shootStart === "function") shootStart();
   nativeLoop();
 }
 // The viewfinder's box as fractions of the window: the native picture fills just that box.
@@ -4078,9 +4081,9 @@ $("camTimer").addEventListener("click", () => {
   say(n ? `Timer: ${n} seconds` : "Timer off"); track("setting", { timer: n });
 });
 // Counts down on the photo before the shot. Resolves true to take it, false if cancelled or the camera stopped.
-async function camCountdown() {
+// `n`: seconds (Show palm uses its own short countdown; shoot.js).
+async function camCountdown(n = timerSecs()) {
   if (cam.counting) { cam.counting.stop(); return false; }
-  const n = timerSecs();
   if (!n) return true;
   const job = (cam.counting = { cancel: false }), gen = cam.gen, el = $("camCount");
   const stopped = new Promise((r) => { job.stop = () => { job.cancel = true; r(); }; });
@@ -4106,12 +4109,16 @@ $("flashBtn").addEventListener("click", async () => {
 // Capture: the preview and the photo match, mirroring included. The untouched frame is kept
 // as the original; the look is baked into a second copy at the same size.
 const canvasBlob = (c, type = "image/jpeg", q = 0.95) => new Promise((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error("Couldn't take the photo."))), type, q));
-$("shutter").addEventListener("click", async () => {
+$("shutter").addEventListener("click", () => camShutter());
+// The shutter, the floating shutter, the volume buttons and Show palm (shoot.js) all take the
+// photo here. secs: a countdown other than the timer's; how: what took it (for the numbers).
+async function camShutter(secs, how = "button") {
   const v = $("camVideo"); if ((!cam.native && !v.videoWidth) || cam.state !== "live" || cam.shot || cam.shooting) return;
-  if (!(await camCountdown())) return;
+  if (!(await camCountdown(secs))) return;
   if ((!cam.native && !v.videoWidth) || cam.state !== "live" || cam.shot || cam.shooting) return;
-  track("capture", { look: lookId });
+  track("capture", { look: lookId, how });
   Platform.haptic("heavy");
+  if (typeof shutterSound === "function") shutterSound();
   cam.shooting = true;
   const lit = await screenFlashOn(v).catch(() => null), torchOff = lit ? null : await webFlashOn(v).catch(() => null);
   if (!lit) { const flash = document.createElement("div"); flash.className = "cam-flash"; document.body.append(flash); setTimeout(() => flash.remove(), 400); }
@@ -4135,6 +4142,8 @@ $("shutter").addEventListener("click", async () => {
     shot = { raw: raw.toDataURL("image/jpeg", 0.92), rawBlob: await canvasBlob(raw), processed, w: raw.width, h: raw.height,
       look: looked ? lookName() : null, stamp, saved: false, originalSaved: false, saving: null };
     }
+    // "Save selfies as previewed" off: the selfie is saved the way others see you (shoot.js).
+    if (typeof unmirrorShot === "function") shot = await unmirrorShot(shot);
   } catch {
     say("Couldn't take the photo. Try again.", true); return;
   } finally { if (lit) { lit.remove(); if (lit.restore) lit.restore(); } if (torchOff) torchOff(); cam.shooting = false; }
@@ -4148,7 +4157,7 @@ $("shutter").addEventListener("click", async () => {
     $("alertLive").textContent = "Photo taken. Saving it now.";
     saveShot(shot, true);
   } else $("alertLive").textContent = "Photo taken. Save it, edit it, or retake.";
-});
+}
 // The part of a W×H frame the photo keeps: what the preview shows inside the photo frame
 // (object-fit: cover, Adjust's face position, the photo shape and zoom; camerapro.js).
 function visibleRect(W, H) {
@@ -4368,7 +4377,7 @@ async function showBuild() {
   $("buildId").textContent = `Version ${APP_BUILD} (${fp || "unknown"}) · ${where}${luText}${id ? ` · ID ${id.slice(0, 8)}` : ""}${Features.tester ? " · Tester" : ""}`;
   $("buildId").title = `${FEATURES}. Tap to copy your account ID.`;
 }
-$("camSettingsBtn").addEventListener("click", openSettings);
+// The camera's gear opens Camera settings (shoot.js), like the phones' cameras; it links on to all settings.
 $("homeSettingsBtn").addEventListener("click", openSettings);
 $("themeSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { store.set("glowTheme", b.dataset.theme); applyTheme(); track("setting", { theme: b.dataset.theme }); } });
 // The Glow Studio mark: always on for free saves (the switch shows it, and tapping it offers Pro);

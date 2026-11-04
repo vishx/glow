@@ -86,6 +86,8 @@ import java.util.concurrent.TimeUnit;
  *   setZoom({ zoom })   focus({ x, y, lock } | { reset })   setExposure({ ev })   setFlash({ mode: "off" | "auto" | "on" })
  *   start also takes { hdr } and returns { zoomMin, zoomMax, lenses, ev: [min, max, step], focus, hdr }
  *   events: "face" { ready, failed, seen, cy }
+ *   setPalm({ on })   -> events "palm" { hand: [score, x, y, w, h] | null } (upright, unmirrored frame, 0..1)
+ *   setKeys({ mode: "shoot" | "zoom" | "volume" }) -> while the camera is open, events "key" { key: "up" | "down", repeat }
  */
 @CapacitorPlugin(name = "GlowCamera", permissions = { @Permission(strings = { Manifest.permission.CAMERA }, alias = "camera") })
 public class GlowCameraPlugin extends Plugin {
@@ -102,6 +104,12 @@ public class GlowCameraPlugin extends Plugin {
     volatile boolean mirror = true;
 
     private FaceTracker tracker;
+    private PalmTracker palm;
+    private boolean palmSeen;
+    /** The live camera plugin, for MainActivity's volume keys. */
+    static volatile GlowCameraPlugin live;
+    /** What the volume keys do while the camera is open: "shoot", "zoom" or "volume" (the phone's own). */
+    private volatile String keyMode = "shoot";
     private BeautyRenderer renderer;
     private GLSurfaceView glView;
     private ProcessCameraProvider provider;
@@ -170,6 +178,8 @@ public class GlowCameraPlugin extends Plugin {
 
     @Override public void load() {
         tracker = new FaceTracker(getContext());
+        palm = new PalmTracker(getContext());
+        live = this;
         // When the phone gets warm, face tracking runs less often so it cools down instead of slowing to a crawl.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
@@ -326,6 +336,7 @@ public class GlowCameraPlugin extends Plugin {
         hideView();
         holdUpright(false);
         tracker.reset();
+        palmSeen = false;
         synchronized (frameLock) { hasFrame = false; frameNew = false; }
     }
 
@@ -411,8 +422,13 @@ public class GlowCameraPlugin extends Plugin {
                 // The Original look needs no face tracking.
                 if (tracker.snap().pts != null) { tracker.reset(); sendFace(); }
             } else if (tracker.canSend(now)) {
-                Bitmap small = smallUpright(w, h, rs, rot);
+                Bitmap small = smallUpright(w, h, rs, rot, 320);
                 if (small != null) tracker.detect(small, W, H, faceTurn(), this::sendFace);
+            }
+            // Show palm: a bigger copy than the face finder's, so a hand at arm's length is found.
+            if (palm.canSend(now) && !capturing) {
+                Bitmap pb = smallUpright(w, h, rs, rot, 480);
+                if (pb != null) palm.detect(pb, faceTurn(), this::sendPalm);
             }
         } catch (Throwable t) {
             Log.w(TAG, "frame", t);
@@ -421,8 +437,8 @@ public class GlowCameraPlugin extends Plugin {
         }
     }
 
-    /** A copy of the frame turned upright, at most 320 pixels on its long side (the model looks at a 256px face crop). */
-    private Bitmap smallUpright(int w, int h, int rs, int rot) {
+    /** A copy of the frame turned upright, at most `side` pixels on its long side (the face model looks at a 256px face crop). */
+    private Bitmap smallUpright(int w, int h, int rs, int rot, int side) {
         int tw = rs / 4;
         if (detFull == null || detFull.getWidth() != tw || detFull.getHeight() != h) {
             if (detFull != null) detFull.recycle();
@@ -434,7 +450,7 @@ public class GlowCameraPlugin extends Plugin {
             detFull.copyPixelsFromBuffer(b);
         }
         Matrix m = new Matrix();
-        float s = Math.min(1f, 320f / Math.max(w, h));
+        float s = Math.min(1f, (float) side / Math.max(w, h));
         m.postScale(s, s);
         m.postRotate(rot);
         return Bitmap.createBitmap(detFull, 0, 0, w, h, m, true);
@@ -468,6 +484,43 @@ public class GlowCameraPlugin extends Plugin {
         o.put("seen", seen);
         if (seen && s.H > 0) o.put("cy", (s.pts[FaceGeometry.BROW * 2 + 1] + s.pts[FaceGeometry.CHIN * 2 + 1]) / 2 / s.H);
         notifyListeners("face", o);
+    }
+
+    /** Tells the page about an open palm (every look while one is in view, and once when it goes). */
+    private void sendPalm(float[] hand) {
+        if (hand == null && !palmSeen) return;
+        palmSeen = hand != null;
+        JSObject o = new JSObject();
+        if (hand != null) {
+            java.util.List<Double> a = new java.util.ArrayList<>();
+            for (float f : hand) a.add((double) f);
+            o.put("hand", new com.getcapacitor.JSArray(a));
+        } else o.put("hand", JSObject.NULL);
+        notifyListeners("palm", o);
+    }
+
+    @PluginMethod public void setPalm(PluginCall call) {
+        palm.setOn(Boolean.TRUE.equals(call.getBoolean("on", false)));
+        JSObject o = new JSObject(); o.put("ok", true); call.resolve(o);
+    }
+
+    @PluginMethod public void setKeys(PluginCall call) {
+        String m = call.getString("mode", "shoot");
+        keyMode = "zoom".equals(m) || "volume".equals(m) ? m : "shoot";
+        call.resolve();
+    }
+
+    /** From MainActivity: true when the camera used the key (so the phone's volume stays as it is). */
+    public static boolean onVolumeKey(int keyCode, boolean down, int repeat) {
+        GlowCameraPlugin p = live;
+        if (p == null || p.camera == null || "volume".equals(p.keyMode)) return false;
+        if (keyCode != android.view.KeyEvent.KEYCODE_VOLUME_UP && keyCode != android.view.KeyEvent.KEYCODE_VOLUME_DOWN) return false;
+        JSObject o = new JSObject();
+        o.put("key", keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP ? "up" : "down");
+        o.put("down", down);
+        o.put("repeat", repeat);
+        p.notifyListeners("key", o);
+        return true;
     }
 
     // ---------- Settings ----------

@@ -339,6 +339,89 @@ test('camera pro: photo shapes dim the rest and crop the photo; grid, level, 5s 
   eq(await p.evaluate(() => { cam.screenFlash = false; renderFlashBtn(); const seq = [$('flashBtn').getAttribute('aria-label')]; for (let i = 0; i < 3; i++) { cycleRearFlash(); seq.push($('flashBtn').getAttribute('aria-label')); } return seq; }),
     ['Flash auto', 'Flash on', 'Flash off', 'Flash auto'], 'back flash cycles Auto, On, Off');
 }, { start: 'camera' });
+// ---------- Shooting methods (shoot.js): Show palm, camera settings ----------
+// The fake camera shows an open hand (palm.y4m) or a fist (fist.y4m), made by setup.sh from
+// MediaPipe's own test pictures. The real gesture model runs on the CPU here.
+const palmVideo = path.join(__dirname, '.assets/palm.y4m'), fistVideo = path.join(__dirname, '.assets/fist.y4m');
+const videoOpts = (f, init) => ({ start: 'camera', args: ['--use-file-for-fake-video-capture=' + f], init });
+const camEvents = async (p, state, name) => { await p.evaluate(() => flushTelemetry()); await settle(400); return state.events.filter((e) => e.name === name).map((e) => e.props || {}); };
+if (fs.existsSync(palmVideo)) test('camera palm: an open hand held up shows a gold box, counts down 2 seconds, then takes the photo', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  eq(await p.evaluate(() => [palmWanted(), $('camPalmHint').hidden, $('camPalmHint').textContent]), [true, false, 'Show your palm to take a photo'], 'on by default, with a short how-to note');
+  await p.waitForFunction(() => palm.ready, null, { timeout: 60000 });
+  await p.waitForFunction(() => !$('camPalm').hidden, null, { timeout: 30000 });
+  const box = await p.evaluate(() => { const r = $('camPalm').getBoundingClientRect(), v = $('viewfinder').getBoundingClientRect(); return [(r.left + r.width / 2 - v.left) / v.width, r.width, r.height]; });
+  assert(box[0] < 0.5 && box[1] > 60 && box[2] > 60, 'the box is on the hand, mirrored like the selfie preview (left half): ' + box);
+  await p.waitForFunction(() => !!cam.counting, null, { timeout: 20000 });
+  eq(await p.evaluate(() => [$('camCount').textContent, $('camCount').hidden]), ['2', false], 'a 2-second countdown');
+  await p.waitForFunction(() => !!cam.shot, null, { timeout: 20000 });
+  eq((await camEvents(p, state, 'capture')).map((e) => e.how), ['palm'], 'one photo, taken by the palm');
+  eq((await camEvents(p, state, 'palm_shot')).length, 1, 'counted once');
+  await p.click('#retakeBtn'); await camLive(p); await settle(1500);
+  eq(await p.evaluate(() => !!cam.shot), false, 'a cool-down after reopening: no instant second photo');
+}, videoOpts(palmVideo, () => { localStorage.setItem('glowAutoSave', 'off'); }));
+if (fs.existsSync(palmVideo)) test('camera palm: the timer, when longer, is used; Show palm off never looks for hands', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  await p.click('#camMore');
+  eq(await p.evaluate(() => [$('camQuick').querySelector('[data-q=palm]').getAttribute('aria-pressed'), palm.worker]), ['false', null], 'off: the Palm chip is off and no hand finder loads');
+  await settle(4000);
+  eq(await p.evaluate(() => [!!cam.shot, $('camPalm').hidden]), [false, true], 'no photo while off');
+  await p.evaluate(() => store.set('glowTimer', '5')); await p.click('#camQuick [data-q=palm]');
+  eq(await p.evaluate(() => [store.get('glowPalm'), $('camQuick').querySelector('[data-q=palm]').getAttribute('aria-pressed')]), ['on', 'true'], 'the Palm chip turns it on');
+  await p.waitForFunction(() => !!cam.counting, null, { timeout: 60000 });
+  eq(await p.evaluate(() => $('camCount').textContent), '5', 'the 5-second timer is longer, so it is used');
+}, videoOpts(palmVideo, () => { localStorage.setItem('glowAutoSave', 'off'); localStorage.setItem('glowPalm', 'off'); }));
+if (fs.existsSync(fistVideo)) test('camera palm: a fist never takes a photo', async ({ p }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  await p.waitForFunction(() => palm.ready, null, { timeout: 60000 });
+  await settle(5000);
+  eq(await p.evaluate(() => [!!cam.shot, !!cam.counting, $('camPalm').hidden]), [false, false, true], 'no box, no countdown, no photo');
+}, videoOpts(fistVideo, () => { localStorage.setItem('glowAutoSave', 'off'); }));
+if (fs.existsSync(palmVideo)) test('camera settings: the gear opens Camera settings; floating shutter, swipe to switch, selfies as others see you, volume buttons', async ({ p, state }) => {
+  await p.goto('https://app.test/'); await camLive(p);
+  await p.click('#camSettingsBtn');
+  eq(await p.evaluate(() => [$('camSettings').open, $('settings').open, ['csPalm', 'csFloat', 'csSwipe', 'csMirror', 'csSound', 'csVibrate'].map((id) => $(id).checked), $('csKeysRow').hidden]),
+    [true, false, [false, false, true, true, true, true], true], 'Camera settings with phone-camera defaults; volume buttons only in the phone app');
+  await p.click('#csAll');
+  eq(await p.evaluate(() => [$('camSettings').open, $('settings').open]), [false, true], 'All Glow Studio settings goes on to Settings');
+  await p.evaluate(() => $('settings').close());
+  // Floating shutter: on, tap takes the photo, a drag moves it (remembered).
+  await p.click('#camSettingsBtn'); await p.click('#csFloat'); await p.evaluate(() => $('camSettings').close());
+  eq(await p.evaluate(() => [store.get('glowFloatShutter'), $('camFloat').hidden]), ['on', false], 'floating shutter shows');
+  const fb = await p.evaluate(() => { const r = $('camFloat').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+  await p.mouse.move(fb[0], fb[1]); await p.mouse.down(); await p.mouse.move(fb[0] - 100, fb[1] - 150, { steps: 5 }); await p.mouse.up(); await settle(200);
+  const moved = await p.evaluate(() => { const r = $('camFloat').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2, store.get('glowFloatPos'), !!cam.shot]; });
+  assert(Math.abs(moved[0] - (fb[0] - 100)) < 3 && Math.abs(moved[1] - (fb[1] - 150)) < 3 && moved[2] && !moved[3], 'a drag moves it and takes no photo: ' + moved);
+  await p.mouse.click(moved[0], moved[1]); await p.waitForFunction(() => !!cam.shot, null, { timeout: 10000 });
+  eq(await p.evaluate(() => [$('camFocus').hidden, $('camFloat').hidden]), [true, true], 'a tap takes the photo (and doesn\'t focus there); hidden on review');
+  // As previewed (mirrored): the hand, on the right of the camera picture, is on the left of the photo.
+  const side = () => p.evaluate(async () => { const i = await loadImg(cam.shot.raw), c = newCanvas(16, 16), x = c.getContext('2d'); x.drawImage(i, 0, 0, 16, 16); const d = x.getImageData(0, 0, 16, 16).data;
+    let l = 0, r = 0; for (let y = 0; y < 16; y++) for (let k = 0; k < 16; k++) { const v = d[(y * 16 + k) * 4 + 2]; if (k < 8) l += v; else r += v; } return l > r ? 'left' : 'right'; });
+  const mirrored = await side();
+  await p.click('#retakeBtn'); await camLive(p);
+  await p.click('#camSettingsBtn'); await p.click('#csMirror'); await p.evaluate(() => $('camSettings').close());
+  await p.click('#shutter'); await p.waitForFunction(() => !!cam.shot, null, { timeout: 10000 });
+  const plain = await side();
+  assert(mirrored !== plain, 'Save selfies as previewed off flips the selfie the way others see you: ' + [mirrored, plain]);
+  eq((await camEvents(p, state, 'capture')).map((e) => e.how), ['float', 'button'], 'what took each photo is counted');
+  await p.click('#retakeBtn'); await camLive(p);
+  // Swipe up or down on the preview switches cameras (the fake device has one, so the button is shown for the check).
+  await p.evaluate(() => { $('camFlip').hidden = false; window.__flips = 0; $('camFlip').addEventListener('click', () => { window.__flips++; }, { capture: true }); });
+  // One quick motion (separate round trips can pass the 350 ms hold that shows the original).
+  await p.evaluate(() => { const r = $('viewfinder').getBoundingClientRect();
+    for (const [type, x, y] of [['pointerdown', 200, 500], ['pointermove', 202, 470], ['pointermove', 205, 380], ['pointerup', 205, 380]])
+      $('viewfinder').dispatchEvent(new PointerEvent(type, { pointerId: 1, clientX: r.left + x, clientY: r.top + y, bubbles: true, isPrimary: true })); });
+  await settle(300);
+  await settle(300);
+  eq(await p.evaluate(() => [window.__flips, $('camFocus').hidden]), [1, true], 'a swipe up switches cameras, without focusing');
+  await camLive(p);
+  // Volume buttons (the phone apps send "key" events): shoot or zoom.
+  await p.evaluate(() => { store.set('glowVolKeys', 'zoom'); onKey({ key: 'up', down: true }); onKey({ key: 'up', down: true }); });
+  assert(await p.evaluate(() => cam.zoom > 1.2), 'zoom mode: volume up zooms in');
+  await p.evaluate(() => { store.set('glowVolKeys', 'shoot'); onKey({ key: 'down', down: true }); onKey({ key: 'down', down: false }); });
+  await p.waitForFunction(() => !!cam.shot, null, { timeout: 10000 });
+  eq((await camEvents(p, state, 'capture')).map((e) => e.how).pop(), 'volume', 'shoot mode: a press takes the photo');
+}, videoOpts(palmVideo, () => { localStorage.setItem('glowAutoSave', 'off'); localStorage.setItem('glowPalm', 'off'); }));
 test('camera filters: 13 filters, film effects over the preview and in the photo, Strength scales them', async ({ p }) => {
   await p.goto('https://app.test/'); await camLive(p);
   eq(await p.evaluate(() => FILTERS.map((f) => f.id)), ['none', 'glow', 'film', 'warm', 'soft', 'matte', 'clear', 'vivid', 'cool', 'digicam', 'disposable', 'instant', 'mono', 'noir'], 'the filter list');
@@ -3389,7 +3472,7 @@ test('audit: every script the app loads is in the offline app shell', async () =
   // The shell list is mapped through ver() (scripts and styles as name?v=<release>), as index.html asks for them.
   const V = sw.match(/const CACHE = "glow-v(\d+)"/)[1];
   const shell = JSON.parse(sw.match(/const SHELL = (\[[\s\S]*?\])(?:\.map\(ver\))?;/)[1])
-    .map((f) => (/\.(js|css)$/.test(f) && f !== '/faceworker.js' && f !== '/legal.css' ? `${f}?v=${V}` : f));
+    .map((f) => (/\.(js|css)$/.test(f) && f !== '/faceworker.js' && f !== '/palmworker.js' && f !== '/legal.css' ? `${f}?v=${V}` : f));
   const scripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => '/' + m[1].replace(/^\//, '')).filter((s) => !/^\/\//.test(s) && !/^\/https?:/.test(s));
   const css = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g)].map((m) => '/' + m[1].replace(/^\//, '')).filter((s) => !/^\/https?:/.test(s));
   const missing = scripts.concat(css).filter((f) => !shell.includes(f));

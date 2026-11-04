@@ -19,7 +19,7 @@
 // The build number sent with each check, so a switch can require a newer app (min build).
 // Bump it (YYYYMMDD, or YYYYMMDD + one more digit for a second release that day) whenever a
 // release changes how a switchable feature behaves.
-const APP_BUILD = 202610361;
+const APP_BUILD = 202610365;
 
 // Retired from the app (Oct 30 audit): they changed the face, returned the wrong framing, duplicated
 // another tool, or (body reshaping) didn't fit Glow Studio. Their code stays so saved drafts still
@@ -74,6 +74,7 @@ const FEATURE_AREAS = [
   ["Camera", [
     ["camera:ai", "AI Enhance on photos", true, "The AI switch and the AI Enhance button after a shot."],
     ["camera:flash", "Selfie screen flash", true],
+    ["camera:palm", "Show palm to take a photo", true, "Camera settings → Shooting methods. Hand finder model (8 MB) loads only while it is on."],
     ["camera:face", "Face shape (eyes, slim, nose)", true, "Live reshaping in Adjust."],
     ["camera:makeup", "Live makeup (lips, blush, brows)", true, "In Adjust."],
     ["camera:filters", "Filters", true, "In Adjust."],

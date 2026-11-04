@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import AVKit
 import CoreMotion
 import Capacitor
 import MetalKit
@@ -26,10 +27,16 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         CAPPluginMethod(name: "focus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setExposure", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setFlash", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setPalm", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setKeys", returnType: CAPPluginReturnPromise),
     ]
     private static let stillMax: CGFloat = 4032
 
     private let tracker = FaceTracker()
+    private let palm = PalmTracker()
+    private var palmSeen = false            // main queue only
+    private var keyMode = "shoot"           // main queue only: "shoot", "zoom" or "volume"
+    private var keyInteraction: AnyObject?  // AVCaptureEventInteraction (iOS 17.2+)
     private var renderer: BeautyRenderer?
     private var mtkView: MTKView?
     private let session = AVCaptureSession()
@@ -157,6 +164,7 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
             self.pendingStart = nil
             self.holdUpright(true)
             guard self.showView() else { self.holdUpright(false); call.reject("Couldn't show the camera", "error"); return }
+            self.updateKeys()
             self.sessionQueue.async {
                 let front = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
                 // The back camera as one device over all its lenses (ultra wide, wide, telephoto), so zooming
@@ -322,6 +330,8 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         hideView()
         holdUpright(false)
         tracker.reset()
+        palmSeen = false
+        updateKeys()
         frameLock.lock(); frame = nil; frameLock.unlock()
     }
 
@@ -401,6 +411,53 @@ public class GlowCameraPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureVideoDataOu
         } else if tracker.canSend(now) {
             tracker.detect(pb, W: W, H: H, turn: faceTurn()) { [weak self] in self?.sendFace() }
         }
+        if palm.canSend(now) {
+            palm.detect(pb, turn: faceTurn()) { [weak self] hand in self?.sendPalm(hand) }
+        }
+    }
+
+    // ---------- Show palm and the volume buttons ----------
+
+    /// Tells the page about an open palm (every look while one is in view, and once when it goes).
+    private func sendPalm(_ hand: [Float]?) {
+        DispatchQueue.main.async {
+            if hand == nil && !self.palmSeen { return }
+            self.palmSeen = hand != nil
+            let h: Any = hand.map { $0.map { Double($0) } } ?? NSNull()
+            self.notifyListeners("palm", data: ["hand": h])
+        }
+    }
+
+    @objc func setPalm(_ call: CAPPluginCall) {
+        palm.setOn(call.getBool("on", false))
+        call.resolve(["ok": true])
+    }
+
+    /// The volume buttons (and Camera Control) work the shutter or zoom while the camera is open,
+    /// like the iPhone camera; "volume" leaves them to the phone. Needs iOS 17.2.
+    @objc func setKeys(_ call: CAPPluginCall) {
+        let m = call.getString("mode", "shoot")
+        DispatchQueue.main.async {
+            self.keyMode = m == "zoom" || m == "volume" ? m : "shoot"
+            self.updateKeys()
+            call.resolve()
+        }
+    }
+
+    /// Main queue.
+    private func updateKeys() {
+        guard #available(iOS 17.2, *) else { return }
+        let on = mtkView?.superview != nil && keyMode != "volume"
+        if keyInteraction == nil, on, let web = bridge?.webView {
+            let send: (String, AVCaptureEvent) -> Void = { [weak self] key, e in
+                guard e.phase == .began || e.phase == .ended else { return }
+                self?.notifyListeners("key", data: ["key": key, "down": e.phase == .began, "repeat": 0])
+            }
+            let i = AVCaptureEventInteraction(primary: { e in send("down", e) }, secondary: { e in send("up", e) })
+            web.addInteraction(i)
+            keyInteraction = i
+        }
+        (keyInteraction as? AVCaptureEventInteraction)?.isEnabled = on
     }
 
     /// Average brightness of the picture (0-255), from a 24×24 grid of samples.

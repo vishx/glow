@@ -1836,3 +1836,29 @@ dialog.share-sheet[open] { display: flex; flex-direction: column; gap: var(--s3)
 .try-strip { padding-left: calc(var(--gutter) + 10px); }
 .try-shoes .try-tile.shot .well { background-position: center 60%; }
 .try-shoes + .try-hint { margin-top: 2px; }
+
+/* ---------- Shooting methods (shoot.js, 2026-11-04): Show palm, floating shutter, camera settings ---------- */
+.cam-quick { flex-wrap: wrap; }
+/* The open hand Show palm found: a gold box that fills in once the palm has been held. */
+.cam-palm { position: absolute; z-index: 2; border: 2px solid var(--cam-gold); border-radius: 14px; box-shadow: 0 0 0 1px #0004, 0 0 18px #f3c06240;
+  pointer-events: none; transition: left 0.12s linear, top 0.12s linear, width 0.12s linear, height 0.12s linear, background-color 0.2s; }
+.cam-palm[hidden] { display: none; }
+.cam-palm span { position: absolute; top: -14px; left: 50%; translate: -50% 0; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--cam-gold); color: #15140f; }
+.cam-palm span svg { width: 17px; height: 17px; }
+.cam-palm.held { background: #f3c0622e; animation: palm-pop 0.35s ease-out; }
+@keyframes palm-pop { 50% { transform: scale(1.06); } }
+.cam-palm-hint { display: flex; align-items: center; gap: 6px; z-index: 2; width: max-content; max-width: calc(100% - 32px); text-align: center; }
+.cam-palm-hint[hidden] { display: none; }
+.cam-palm-hint svg { width: 16px; height: 16px; color: var(--cam-gold); }
+#cameraScreen .cam-palm-hint { top: 112px; }
+/* The floating shutter: a smaller copy of the shutter you can drag anywhere. */
+.cam-float { position: absolute; z-index: 3; width: 64px; height: 64px; padding: 0; border: 3px solid #fffd; border-radius: 50%; background: #ffffff38;
+  box-shadow: 0 2px 10px #0006; touch-action: none; cursor: grab; }
+.cam-float::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: #fff; transition: transform var(--t-press-up, 0.15s); }
+.cam-float:active::before { transform: scale(0.9); }
+.cam-float[hidden] { display: none; }
+.cam-settings .cs-h { margin: var(--s4) 0 var(--s2); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted, #8a8580); }
+.cam-settings .cs-h:first-of-type { margin-top: var(--s2); }
+.cam-settings .cs-all { width: 100%; margin-top: var(--s4); }
+@media (prefers-reduced-motion: reduce) { .cam-palm { transition: none; } .cam-palm.held { animation: none; } }

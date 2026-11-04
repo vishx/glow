@@ -4,7 +4,7 @@ name: Android native camera APK
 
 on:
   push:
-    branches: [claude/project-thread-bnuul9, claude/project-thread-l2q9h2, claude/project-thread-40lpfr, claude/project-thread-yogj2a, claude/project-thread-rucp5v]
+    branches: [claude/project-thread-bnuul9, claude/project-thread-l2q9h2, claude/project-thread-40lpfr, claude/project-thread-yogj2a, claude/project-thread-rucp5v, claude/project-thread-3sbnl6]
     paths: [mobile/**, public/**, .github/workflows/android-native-camera.yml]
   workflow_dispatch:
 
@@ -70,7 +70,8 @@ jobs:
             --title "Glow native camera test build (${{ steps.apk.outputs.sha }})" \
             --notes "Debug build of the native Android camera prototype for sideloading. Not for the Play Store."
 
-      - name: Keep a copy on the apk-native-camera branch
+      - name: Keep a copy on the apk-native-camera branch (skipped past GitHub's 100 MB file limit; the release page has the APK)
+        continue-on-error: true
         run: |
           NAME="${{ steps.apk.outputs.name }}"
           mkdir /tmp/out && cp "$NAME" /tmp/out/

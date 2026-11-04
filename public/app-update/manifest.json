@@ -1,11 +1,11 @@
 {
- "version": "202610361-d469e69a04",
- "build": 202610361,
+ "version": "202610365-f8b0abcde3",
+ "build": 202610365,
  "minNative": {
   "android": 4,
   "ios": 2
  },
- "created": "2026-11-04T00:30:42.459Z",
+ "created": "2026-11-04T05:52:52.549Z",
  "files": [
   {
    "file_name": "admin.html",
@@ -14,12 +14,12 @@
   },
   {
    "file_name": "app.js",
-   "file_hash": "8aba720ef1d72e1a444b929e7eebe664c06b562b1fe699b50aec1f088f023df0",
+   "file_hash": "3a57e8f9e5af4aabe5158e3c5ba7a76df363eeffd5c2da08c789dd7662b7f51c",
    "download_url": "https://glow-photo-enhancer.vercel.app/app.js"
   },
   {
    "file_name": "camerapro.js",
-   "file_hash": "6fabd448697eb519b67552df629160c98239ec860ac60f350db9f3a8b33e34ec",
+   "file_hash": "0f5537b12fc6d495e6f0747a4044ca5c5ed0b739fa7008aa583b8a7469d94653",
    "download_url": "https://glow-photo-enhancer.vercel.app/camerapro.js"
   },
   {
@@ -54,7 +54,7 @@
   },
   {
    "file_name": "features.js",
-   "file_hash": "42194875f407a8198c65a9e0e8634dd41c22a5252909754274f5b0a1b5f2454f",
+   "file_hash": "3ac651520ba5ef939a761c70a94c14ffd6593955b4fd6fd2db32f04f12d85c92",
    "download_url": "https://glow-photo-enhancer.vercel.app/features.js"
   },
   {
@@ -84,12 +84,12 @@
   },
   {
    "file_name": "icons.js",
-   "file_hash": "47d8f9e48e5740451a7ef890bd50d081a84c2a593c023517cf595420c0d7c825",
+   "file_hash": "46c98fa2c64d59c45a783fecdc598a922c4ee23593bc28104ef2773a6d8c34d1",
    "download_url": "https://glow-photo-enhancer.vercel.app/icons.js"
   },
   {
    "file_name": "index.html",
-   "file_hash": "d8f35df64cf298069a1e96b3c189ed5ad4f76fe668642adcf54d77ea4405d6d9",
+   "file_hash": "0511ff760c4702e8f1a434c5074dc4769e873cc6053b9a82e348d20ccf07fbb6",
    "download_url": "https://glow-photo-enhancer.vercel.app/index.html"
   },
   {
@@ -99,7 +99,7 @@
   },
   {
    "file_name": "licenses.html",
-   "file_hash": "ca77cf01f0b4357ccffb53d58d507be72307a86e53b5843e31d71f836543522e",
+   "file_hash": "adfb54b4a6547495c1650ed3f6b850020601c6b02b7c3092b407399289eb599a",
    "download_url": "https://glow-photo-enhancer.vercel.app/licenses.html"
   },
   {
@@ -116,6 +116,11 @@
    "file_name": "manifest.json",
    "file_hash": "d8363ed1610b55eb1c49178e48f879afa0809c224d23d0c9d947c075a581b289",
    "download_url": "https://glow-photo-enhancer.vercel.app/manifest.json"
+  },
+  {
+   "file_name": "palmworker.js",
+   "file_hash": "a38981339f39d7db2521146cd9c7e6e4e67c09511c390a717e8d8b0909e8e81b",
+   "download_url": "https://glow-photo-enhancer.vercel.app/palmworker.js"
   },
   {
    "file_name": "platform.js",
@@ -528,6 +533,11 @@
    "download_url": "https://glow-photo-enhancer.vercel.app/share.js"
   },
   {
+   "file_name": "shoot.js",
+   "file_hash": "4d0a93021c34f24246101238941c8891b58cdad990c62bc079636d54a37b5193",
+   "download_url": "https://glow-photo-enhancer.vercel.app/shoot.js"
+  },
+  {
    "file_name": "splash/core.webp",
    "file_hash": "3193ec963d91b952ac80186b9c87930caeaab7d7be1a19a70a633887c09063c1",
    "download_url": "https://glow-photo-enhancer.vercel.app/splash/core.webp"
@@ -549,7 +559,7 @@
   },
   {
    "file_name": "styles.css",
-   "file_hash": "d0e738fad40503b531930b6cceae50502daee4f6cfbd5d0849372dd0f98032fc",
+   "file_hash": "25913b725d54860d431e2ff0b5633c19212862df824954edb377595f346c79c4",
    "download_url": "https://glow-photo-enhancer.vercel.app/styles.css"
   },
   {
@@ -559,7 +569,7 @@
   },
   {
    "file_name": "sw.js",
-   "file_hash": "4e1bb2d0569e9238b9f540dcd00a91cb1218564845f5ac4e1af2b0a7096ba6b3",
+   "file_hash": "3e2bc042c32b646e211aa847bf31c9552bbcd9a090c78cac8beb35f8d197f5f2",
    "download_url": "https://glow-photo-enhancer.vercel.app/sw.js"
   },
   {
@@ -586,6 +596,11 @@
    "file_name": "vendor/face_landmarker.task",
    "file_hash": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
    "download_url": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+  },
+  {
+   "file_name": "vendor/gesture_recognizer.task",
+   "file_hash": "97952348cf6a6a4915c2ea1496b4b37ebabc50cbbf80571435643c455f2b0482",
+   "download_url": "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task"
   },
   {
    "file_name": "vendor/hair_segmenter.tflite",
