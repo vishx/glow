@@ -1834,3 +1834,5 @@ dialog.share-sheet[open] { display: flex; flex-direction: column; gap: var(--s3)
 .try-strip:has(.try-tile.shot) .try-tile.add:not(.part), .try-strip:has(.try-tile.shot) .try-tile.none { width: 50px; }
 .try-strip:has(.try-tile.shot) .try-tile.add:not(.part) .name, .try-strip:has(.try-tile.shot) .try-tile.none .name { font-size: 0.625rem; }
 .try-strip { padding-left: calc(var(--gutter) + 10px); }
+.try-shoes .try-tile.shot .well { background-position: center 60%; }
+.try-shoes + .try-hint { margin-top: 2px; }

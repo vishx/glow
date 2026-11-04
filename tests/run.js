@@ -2419,8 +2419,8 @@ test('try on shoes: matching shoes by default, Keep mine, a shoe type, shoes onl
   // Head to toe (as the photo check finds it): the suit comes with the shoes stored for it.
   const req = () => p.evaluate(() => { tryOn.feet = true; return tryRequest(); });
   eq((await req()).prompt, 'a sharp, tailored business suit with a crisp shirt, with sleek black leather shoes', 'matching shoes by default');
-  await p.click('.try-cat[data-shoes="keep"]'); eq((await req()).prompt, 'a sharp, tailored business suit with a crisp shirt, keeping their own shoes', 'Keep mine says so');
-  await p.click('.try-cat[data-shoes="heels"]'); eq((await req()).prompt, 'a sharp, tailored business suit with a crisp shirt, with elegant high heels', 'a shoe type');
+  await p.click('.try-tile[data-shoes="keep"]'); eq((await req()).prompt, 'a sharp, tailored business suit with a crisp shirt, keeping their own shoes', 'Keep mine says so');
+  await p.click('.try-tile[data-shoes="heels"]'); eq((await req()).prompt, 'a sharp, tailored business suit with a crisp shirt, with elegant high heels', 'a shoe type');
   eq(await p.evaluate(() => document.querySelector('.try-tab[data-tab="shoes"]').classList.contains('set')), true, 'the Shoes tab is marked');
   // None and a shoe type: only the shoes change.
   await p.click('.try-tab[data-tab="outfits"]'); await p.click('.try-tile.none'); await settle(150);

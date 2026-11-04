@@ -374,18 +374,20 @@ function trySwatches(body, kind) {
 }
 // Shoes: Match outfit (default), Keep mine, or a type; one line says what will happen.
 function tryShoesRow(body) {
-  const row = tryKeepScroll(document.createElement("div"), "shoes"); row.className = "try-cats try-shoes"; row.setAttribute("role", "group"); row.setAttribute("aria-label", "Shoes");
+  const row = tryKeepScroll(document.createElement("div"), "shoes"); row.className = "try-strip try-shoes"; row.setAttribute("role", "group"); row.setAttribute("aria-label", "Shoes");
+  // Photos of the sample in each shoe type, made with Try on itself (shoes only, 2026-11-04).
   TRY_SHOES.forEach(([k, label]) => {
-    const b = document.createElement("button"); b.type = "button"; b.className = "try-cat"; b.dataset.shoes = k; b.textContent = label;
-    b.setAttribute("aria-pressed", String(tryOn.shoes === k));
-    b.addEventListener("click", () => { if (tryOn.shoes === k) return; Platform.haptic(); tryOn.shoes = k; tryChanged(); });
-    row.append(b);
+    const keep = k === "keep", match = k === "match";
+    const b = tryTile({ cls: match ? "add" : keep ? "none" : "shot", icon: match ? "sparkle" : keep ? "none" : "", img: match || keep ? "" : `samples/tryon/shoe-${k}.webp`,
+      label: match ? "Match" : keep ? "Mine" : label, on: tryOn.shoes === k, aria: match ? "Shoes that match the outfit" : keep ? "Keep my own shoes" : label,
+      onClick: () => { if (tryOn.shoes === k) return; tryOn.shoes = k; tryChanged(); } });
+    b.dataset.shoes = k; row.append(b);
   });
   const p = document.createElement("p"); p.className = "try-hint"; p.id = "tryShoesHint";
   const i = tryOn.src === "ideas" ? TRY_IDEA[tryOn.idea] : null, t = tryShoe();
   const topOnly = (tryOn.part === "auto" ? (i ? i[3] : "auto") : tryOn.part) === "top";
-  p.textContent = tryOn.feet === false ? "Your feet aren't in this photo, so your shoes stay as they are. A head-to-toe photo lets the shoes change too."
-    : tryOn.src === "ideas" && !i ? (t[2] ? `Only your shoes change, to ${t[1].toLowerCase()}. Your clothes stay as they are.` : "Pick a shoe type to change only your shoes.")
+  p.textContent = tryOn.feet === false ? "Your feet aren't in this photo, so your shoes stay as they are."
+    : tryOn.src === "ideas" && !i ? (t[2] ? `Only your shoes change, to ${t[1].toLowerCase()}.` : "Pick a shoe type to change only your shoes.")
     : topOnly ? "Only the top changes, so your shoes stay as they are."
     : tryOn.shoes === "keep" ? "Your own shoes stay."
     : t[2] ? `With ${t[2]}.` : i ? `Shoes to match: ${TRY_SHOE_FOR[i[0]]}.` : "Shoes that suit the outfit.";
