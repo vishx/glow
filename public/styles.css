@@ -1807,7 +1807,6 @@ dialog.share-sheet[open] { display: flex; flex-direction: column; gap: var(--s3)
 
 /* ---------- Shooting methods (shoot.js, 2026-11-04): Show palm, floating shutter, camera settings ---------- */
 .cam-quick { flex-wrap: wrap; }
-.cam-quick .cq-more { background: #ffffff26; }
 /* The open hand Show palm found: a gold box that fills in once the palm has been held. */
 .cam-palm { position: absolute; z-index: 2; border: 2px solid var(--cam-gold); border-radius: 14px; box-shadow: 0 0 0 1px #0004, 0 0 18px #f3c06240;
   pointer-events: none; transition: left 0.12s linear, top 0.12s linear, width 0.12s linear, height 0.12s linear, background-color 0.2s; }
@@ -1817,7 +1816,7 @@ dialog.share-sheet[open] { display: flex; flex-direction: column; gap: var(--s3)
 .cam-palm span svg { width: 17px; height: 17px; }
 .cam-palm.held { background: #f3c0622e; animation: palm-pop 0.35s ease-out; }
 @keyframes palm-pop { 50% { transform: scale(1.06); } }
-.cam-palm-hint { display: flex; align-items: center; gap: 6px; z-index: 2; }
+.cam-palm-hint { display: flex; align-items: center; gap: 6px; z-index: 2; white-space: nowrap; }
 .cam-palm-hint[hidden] { display: none; }
 .cam-palm-hint svg { width: 16px; height: 16px; color: var(--cam-gold); }
 #cameraScreen .cam-palm-hint { top: 112px; }
