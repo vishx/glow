@@ -492,9 +492,9 @@ public class GlowCameraPlugin extends Plugin {
         palmSeen = hand != null;
         JSObject o = new JSObject();
         if (hand != null) {
-            com.getcapacitor.JSArray a = new com.getcapacitor.JSArray();
-            for (float f : hand) a.put((double) f);
-            o.put("hand", a);
+            java.util.List<Double> a = new java.util.ArrayList<>();
+            for (float f : hand) a.add((double) f);
+            o.put("hand", new com.getcapacitor.JSArray(a));
         } else o.put("hand", JSObject.NULL);
         notifyListeners("palm", o);
     }
