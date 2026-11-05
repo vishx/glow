@@ -431,7 +431,7 @@ async function proEditRequest(h, src, onLabel, from) {
     try {
       track("ai_start", { mode: PRO_MODE, from });
       // Pro Retouch: the same sheet retouched close up, for up to 4 people (more would be too small).
-      const retouch = !!(h.sheet && h.sheet.cells.length <= 4);
+      const retouch = h.sheet && h.sheet.cells.length <= 4 ? h.sheet.cells.length : undefined;
       const res = await call("enhance", { method: "POST", timeout: AI_POST_TIMEOUT, body: JSON.stringify({ image, mode: PRO_MODE, from: "enhance", platform: PLATFORM, build: APP_BUILD, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined, retouch }) });
       h.pending.id = res.id || null;
       return await followEnhance(h, res, onLabel, from);

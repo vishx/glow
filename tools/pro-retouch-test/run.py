@@ -15,7 +15,7 @@ else:
     b64=lambda f: "data:image/jpeg;base64,"+base64.b64encode(open(f,'rb').read()).decode()
     import uuid
     t0=time.time()
-    d=req(U+"/functions/v1/enhance-next",{"image":b64('sheet.jpg'),"mode":"pro","from":"enhance","platform":"web","request_id":str(uuid.uuid4()),"faces":b64('sheet.jpg'),"retouch":True},tok)
+    d=req(U+"/functions/v1/enhance-next",{"image":b64('sheet.jpg'),"mode":"pro","from":"enhance","platform":"web","request_id":str(uuid.uuid4()),"faces":b64('sheet.jpg'),"retouch":1},tok)
     print(json.dumps(d)[:400])
     pid=d.get("id")
     while pid and d.get("status") not in ("succeeded","failed","canceled") or (d.get("status")=="succeeded" and False):

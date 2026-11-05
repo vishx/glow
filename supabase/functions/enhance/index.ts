@@ -6,7 +6,7 @@
 // refund the server confirmed. Needs migration 006 (ai_usage.client_request_id).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { flagged, okRefs, unsafePrompt, cleanPrompt, ENHANCE_HD, FACE_SHEET, RETOUCH_SHEET, HttpError, lastOutput, MODES, okFaceSheet, okHd, okTiles, rep, tryOnMode, startPrediction, TOKEN } from "./pipeline.ts";
+import { flagged, okRefs, unsafePrompt, cleanPrompt, ENHANCE_HD, FACE_SHEET, retouchSheet, HttpError, lastOutput, MODES, okFaceSheet, okHd, okTiles, rep, tryOnMode, startPrediction, TOKEN } from "./pipeline.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -281,9 +281,10 @@ Deno.serve(async (req) => {
         }
       }
       // Pro Retouch: the same sheet, retouched close up (Pro Edit only, when the phone asks; same charge).
-      if (sheet && mode === "pro" && retouch === true && p.status !== "failed" && p.status !== "canceled") {
+      // `retouch`: how many people are on the sheet (1-4).
+      if (sheet && mode === "pro" && Number.isInteger(retouch) && retouch >= 1 && retouch <= 4 && p.status !== "failed" && p.status !== "canceled") {
         for (let i = 0; i < 2 && !retouchId; i++) {
-          try { retouchId = (await startPrediction(RETOUCH_SHEET, { image: faces }, false)).p.id; console.log("retouch sheet", retouchId); }
+          try { retouchId = (await startPrediction(retouchSheet(retouch), { image: faces }, false)).p.id; console.log("retouch sheet", retouchId); }
           catch (e) {
             console.error("retouch sheet start", (e as Error).message);
             if (!(e instanceof HttpError) || e.status !== 429 || i) break;

@@ -184,17 +184,22 @@ export const FACE_SHEET: Mode = { model: "tencentarc/gfpgan", input: { version: 
 // hair, cut from the full-size photo) goes to Nano Banana 2 with a retouch-only brief, on the same
 // charge. The phone keeps only what a retoucher's spot fixes look like (a small blemish, a stray
 // hair, a mark taken away) and never a change of shape, so identity stays the person's own.
-export const RETOUCH_SHEET: Mode = {
-  model: ["google/nano-banana-2", "google/nano-banana"],
-  input: {
-    prompt: "This image is a grid of close-up portrait crops of real people, one person per square. Retouch every square the way a professional portrait retoucher does, with small local fixes only: " +
-      "remove temporary blemishes, pimples, acne, small red spots, scratches and dry flakes; remove stray and flyaway hairs that cross the face, forehead, neck and the outline of the hair; " +
-      "remove lint, dust and small marks on skin and clothes; soften dark under-eye circles a little; clean red veins from the whites of the eyes; keep real skin pores and texture everywhere. " +
-      "Do not change anything else: keep each face shape, eyes, eyelids, eyebrows, nose, lips, teeth, ears, expression, age, makeup, skin tone, hairstyle, hair color, glasses and jewelry exactly the same. " +
-      "Keep moles, freckles, birthmarks, scars and wrinkles. Keep the same lighting, colors, sharpness and background. Keep every square exactly the same size and position, with nothing moved, zoomed or cropped. Photorealistic. Do not add anything.",
-    output_format: "png", resolution: "1K", aspect_ratio: "match_input_image",
-  },
-};
+// The brief depends on how many people are on the sheet: told "a grid" for a single face, the model
+// drew a 3 x 3 grid of the same face (test 2026-11-05), so one face is just "this close-up portrait".
+const RETOUCH_FIXES = "Retouch it the way a professional portrait retoucher does, with small local fixes only: " +
+  "remove temporary blemishes, pimples, acne, small red spots, scratches and dry flakes; remove stray and flyaway hairs that cross the face, forehead, neck and the outline of the hair; " +
+  "remove lint, dust and small marks on skin and clothes; soften dark under-eye circles a little; clean red veins from the whites of the eyes; keep real skin pores and texture everywhere. " +
+  "Do not change anything else: keep the face shape, eyes, eyelids, eyebrows, nose, lips, teeth, ears, expression, age, makeup, skin tone, hairstyle, hair color, glasses and jewelry exactly the same. " +
+  "Keep moles, freckles, birthmarks, scars and wrinkles. Keep the same lighting, colors, sharpness and background. ";
+export function retouchSheet(people: number): Mode {
+  const n = Math.max(1, Math.min(4, Math.round(people) || 1)), cols = Math.ceil(Math.sqrt(n)), rows = Math.ceil(n / cols);
+  const prompt = n === 1
+    ? "This is a close-up portrait photo of one real person. " + RETOUCH_FIXES +
+      "Keep the exact same framing: the same crop, size and position, nothing moved, zoomed or cropped, and only this one photo. Photorealistic. Do not add anything."
+    : `This image is ${cols} by ${rows} close-up portrait photos of real people laid side by side, one person per square. ` + RETOUCH_FIXES.replace("Retouch it", "Retouch every square") +
+      "Keep every square exactly the same size and position, with nothing moved, zoomed or cropped. Photorealistic. Do not add anything.";
+  return { model: ["google/nano-banana-2", "google/nano-banana"], input: { prompt, output_format: "png", resolution: "1K", aspect_ratio: "match_input_image" } };
+}
 export const FACE_SHEET_MAX = { bytes: 2_400_000, side: 1536, pixels: 1_600_000 };
 
 // Width and height of a JPEG or PNG data URL, read from its header (no decoding).
