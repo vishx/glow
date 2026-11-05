@@ -1707,7 +1707,7 @@ function alignTo(cr, C, P, Q) {
     sxx += ax * bx + ay * by; sxy += ax * by - ay * bx; qq += ax * ax + ay * ay;
   }
   const a = sxx / qq, b = sxy / qq, k = Math.hypot(a, b);
-  if (!(k > 0.75 && k < 1.33)) return null;
+  if (!(k > 0.75 && k < 1.33)) return { bad: +k.toFixed(3) };
   const tx = mp[0] - (a * mq[0] - b * mq[1]), ty = mp[1] - (b * mq[0] + a * mq[1]);
   const c = newCanvas(C, C), x = c.getContext("2d", { willReadFrequently: true });
   x.imageSmoothingQuality = "high"; x.setTransform(a, b, -b, a, tx, ty); x.drawImage(cr, 0, 0); x.setTransform(1, 0, 0, 1, 0, 0);
@@ -1741,7 +1741,7 @@ async function proRetouch(src, sheet, rtUrl) {
     // The model often answers a little zoomed or shifted: line its face up with the photo's (scale,
     // turn and move only, from the face's outline, eyes and nose), so what's left is real change.
     const al = Po && Pr ? alignTo(cr, C, Po, Pr) : null;
-    const ch = al ? retouchSpots(co.getContext("2d").getImageData(0, 0, C, C).data, al.data, C, Po, al.P) : Po && Pr ? { skip: "scale" } : null;
+    const ch = al && !al.bad ? retouchSpots(co.getContext("2d").getImageData(0, 0, C, C).data, al.data, C, Po, al.P) : al ? { skip: "scale", shift: al.bad } : null;
     if (!ch || ch.skip) { skipped++; why.push(ch ? ch.skip + (ch.shift ? " " + ch.shift : "") : Po ? "no face on retouched" : "no face"); continue; }
     why.push("ok " + ch.shift);
     people++;
