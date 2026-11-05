@@ -6,7 +6,7 @@
 // refund the server confirmed. Needs migration 006 (ai_usage.client_request_id).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { okRefs, unsafePrompt, cleanPrompt, ENHANCE_HD, FACE_SHEET, HttpError, lastOutput, MODES, okFaceSheet, okHd, okTiles, rep, tryOnMode, startPrediction, TOKEN } from "./pipeline.ts";
+import { flagged, okRefs, unsafePrompt, cleanPrompt, ENHANCE_HD, FACE_SHEET, RETOUCH_SHEET, HttpError, lastOutput, MODES, okFaceSheet, okHd, okTiles, rep, tryOnMode, startPrediction, TOKEN } from "./pipeline.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -45,22 +45,29 @@ async function finish(id: number, status: string, error: unknown = null) {
 const DONE = new Set(["succeeded", "failed", "canceled"]);
 // The model's own error (kept as it is for the admin page) in words for the app.
 const told = (p: { status: string; error?: unknown }) =>
-  p.status === "failed" ? "The AI couldn't edit this photo. Please try again, or try another photo." : p.error ?? null;
+  p.status === "failed" && flagged(p.error) ? "This photo or outfit can't be used. Glow Studio doesn't make revealing or sexual edits."
+  : p.status === "failed" ? "The AI couldn't edit this photo. Please try again, or try another photo." : p.error ?? null;
 // How long a finished Enhance waits for its face sheet (group photos) before it's answered without it.
 const FACES_WAIT_MS = 90_000;
 
 // Enhance with a face sheet keeps both Replicate ids in prediction_id as "main.faces". The edit's
 // outcome (and any refund) follows the main run only; the face sheet is an extra the app uses if
 // it finished. Until it has (or FACES_WAIT_MS passed), a finished main run reads as "processing".
-async function withFaces(p: any, facesId: string | undefined) {
-  const out = { status: p.status, faces: null as unknown };
-  if (!facesId || p.status !== "succeeded") return out;
-  try {
-    const f = await rep(`/predictions/${facesId}`);
-    if (f.status === "succeeded") out.faces = lastOutput(f.output);
-    else if (!DONE.has(f.status) && Date.now() - Date.parse(f.created_at) < FACES_WAIT_MS) out.status = "processing";
-    else if (f.status === "failed") console.error("face sheet failed", facesId, f.error ?? "");
-  } catch (e) { console.error("face sheet check", (e as Error).message); }
+// Pro Edit's Pro Retouch close-up pass is a third id ("main.faces.retouch", faces may be empty):
+// an extra the same way, waited for the same way.
+async function withFaces(p: any, facesId: string | undefined, retouchId?: string) {
+  const out = { status: p.status, faces: null as unknown, retouch: null as unknown };
+  if (p.status !== "succeeded") return out;
+  const extra = async (id: string | undefined, key: "faces" | "retouch") => {
+    if (!id) return;
+    try {
+      const f = await rep(`/predictions/${id}`);
+      if (f.status === "succeeded") out[key] = lastOutput(f.output);
+      else if (!DONE.has(f.status) && Date.now() - Date.parse(f.created_at) < FACES_WAIT_MS) out.status = "processing";
+      else if (f.status === "failed") console.error(key + " sheet failed", id, f.error ?? "");
+    } catch (e) { console.error(key + " sheet check", (e as Error).message); }
+  };
+  await Promise.all([extra(facesId, "faces"), extra(retouchId, "retouch")]);
   return out;
 }
 
@@ -107,15 +114,15 @@ async function jobStatus(row: { id: number; prediction_id: string | null; refund
       : { id: null, status: "starting", output: null, error: null, refunded: false };
   }
   try {
-    const [mainId, facesId] = row.prediction_id.split(".");
+    const [mainId, facesId, retouchId] = row.prediction_id.split(".");
     const ids = mainId.split("+"), tiled = ids.length > 1;
     const p = await mainRun(ids);
     let refunded = row.refunded;
     // An edit that fails partway through doesn't count against the limit.
     if ((p.status === "failed" || p.status === "canceled") && !refunded) { await admin.rpc("refund_ai_edit", { p_usage: row.id }); refunded = true; }
     if (DONE.has(p.status) && !row.status) await finish(row.id, p.status, p.error);
-    const w = await withFaces(p, facesId);
-    return { id: row.prediction_id, status: w.status, output: outputOf(p, tiled), tiles: tiled ? ids.length : undefined, faces: w.faces, error: told(p), refunded };
+    const w = await withFaces(p, facesId || undefined, retouchId);
+    return { id: row.prediction_id, status: w.status, output: outputOf(p, tiled), tiles: tiled ? ids.length : undefined, faces: w.faces, retouch: w.retouch || undefined, error: told(p), refunded };
   } catch (e) {
     // A brand-new prediction can briefly 404 before Replicate can read it back.
     if (e instanceof HttpError && e.status === 404) return { id: row.prediction_id, status: "starting", output: null, error: null, refunded: row.refunded };
@@ -136,7 +143,7 @@ Deno.serve(async (req) => {
       const q = new URL(req.url).searchParams, id = q.get("id"), request = q.get("request");
       // Only the user who started an edit can check on it.
       let sel = admin.from("ai_usage").select("id, prediction_id, refunded, status, created_at").eq("user_id", user.id);
-      if (id && /^[a-z0-9]+(\+[a-z0-9]+){0,3}(\.[a-z0-9]+)?$/i.test(id)) sel = sel.eq("prediction_id", id);
+      if (id && /^[a-z0-9]+(\+[a-z0-9]+){0,3}(\.[a-z0-9]+|\.[a-z0-9]*\.[a-z0-9]+)?$/i.test(id)) sel = sel.eq("prediction_id", id);
       else if (request && UUID.test(request)) sel = sel.eq("client_request_id", request);
       else return json({ error: "Bad id" }, 400);
       const { data: row } = await sel.maybeSingle();
@@ -146,7 +153,7 @@ Deno.serve(async (req) => {
     }
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-    const { image, mode, mask, extra, prompt, part, request_id, faces, hd, tiles, from, tool, platform, build, refs, retry_of } = await req.json().catch(() => ({}));
+    const { image, mode, mask, extra, prompt, part, request_id, faces, hd, tiles, from, tool, platform, build, refs, retry_of, retouch } = await req.json().catch(() => ({}));
     const requestId = typeof request_id === "string" && UUID.test(request_id) ? request_id : null;
     // A resent request is the same edit: answer with it instead of charging again.
     if (requestId) {
@@ -220,8 +227,8 @@ Deno.serve(async (req) => {
       return json({ error: msg, limit: true, usage }, 429);
     }
 
-    let facesId: string | undefined;
-    const dropFaces = () => { if (facesId) rep(`/predictions/${facesId}/cancel`, { method: "POST" }).catch(() => {}); };
+    let facesId: string | undefined, retouchId: string | undefined;
+    const dropFaces = () => { for (const id of [facesId, retouchId]) if (id) rep(`/predictions/${id}/cancel`, { method: "POST" }).catch(() => {}); };
     try {
       // Enhance with a face sheet starts the main edit without waiting, so the face sheet can start
       // right after it and both run together; the app follows the job either way.
@@ -273,18 +280,30 @@ Deno.serve(async (req) => {
           }
         }
       }
+      // Pro Retouch: the same sheet, retouched close up (Pro Edit only, when the phone asks; same charge).
+      if (sheet && mode === "pro" && retouch === true && p.status !== "failed" && p.status !== "canceled") {
+        for (let i = 0; i < 2 && !retouchId; i++) {
+          try { retouchId = (await startPrediction(RETOUCH_SHEET, { image: faces }, false)).p.id; console.log("retouch sheet", retouchId); }
+          catch (e) {
+            console.error("retouch sheet start", (e as Error).message);
+            if (!(e instanceof HttpError) || e.status !== 429 || i) break;
+            const secs = Math.min(12, Number(/resets in ~?(\d+)s/.exec((e as Error).message)?.[1] ?? 10));
+            await new Promise((r) => setTimeout(r, (secs + 1) * 1000));
+          }
+        }
+      }
       const failed = p.status === "failed" || p.status === "canceled";
-      if (failed) { dropFaces(); facesId = undefined; }
-      const pid = facesId ? `${p.id}.${facesId}` : p.id;
+      if (failed) { dropFaces(); facesId = retouchId = undefined; }
+      const pid = retouchId ? `${p.id}.${facesId ?? ""}.${retouchId}` : facesId ? `${p.id}.${facesId}` : p.id;
       await admin.from("ai_usage").update({ prediction_id: pid }).eq("id", quota.usage_id);
       // "Face changed? Try again free": one free retry of a finished edit with the same tool within
       // 15 minutes (migration 021). This charge is returned at once; the retry is marked so it's used once.
       if (!failed && typeof retry_of === "string" && UUID.test(retry_of)) await freeRetry(user.id, mode, retry_of, quota.usage_id);
       if (failed) await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });
       if (DONE.has(p.status)) await finish(quota.usage_id, p.status, p.error);
-      const w = await withFaces(p, facesId);
+      const w = await withFaces(p, facesId, retouchId);
       return json({ id: pid, status: w.status, output: outputOf(p, tileIds.length > 1), tiles: tileIds.length > 1 ? tileIds.length : undefined,
-        hd: info.model === ENHANCE_HD.model || undefined, faces: w.faces, error: told(p), refunded: failed, usage });
+        hd: info.model === ENHANCE_HD.model || undefined, faces: w.faces, retouch: w.retouch || undefined, error: told(p), refunded: failed, usage });
     } catch (e) {
       dropFaces();
       await admin.rpc("refund_ai_edit", { p_usage: quota.usage_id });

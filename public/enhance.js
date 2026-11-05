@@ -340,7 +340,7 @@ async function runEnhance() {
     if (!url || enh.src !== mine || tok.off) return;
     setSheetWorking(true, "Almost there…");
     let full;
-    const facesUrl = enh.pending && enh.pending.faces;
+    const facesUrl = enh.pending && enh.pending.faces, retouchUrl = enh.pending && enh.pending.retouch;
     try { full = await enhResultData(url); }
     catch { enh.pending = enh.pending || { done: url }; throw new Error("The result is ready but couldn't be downloaded yet. Tap Check again."); }
     if (pro) {
@@ -351,7 +351,14 @@ async function runEnhance() {
       try {
         const r = await proFinish(detail, full); full = r.data;
         track("pro_finish", { faces: r.faces, moved: r.moved, matched: r.matched, gap: r.gap, restored: detail !== enh.src });
-        enh.changes = await proChanges(enh.src, full, r.faces, { restored: detail !== enh.src }).catch(() => []);
+        // Pro Retouch: the close-up pass's spot fixes (blemishes, stray hairs), each person checked.
+        let retouched = false;
+        if (retouchUrl && enh.sheet) {
+          setSheetWorking(true, "Retouching…");
+          try { const t = await proRetouch(full, enh.sheet, retouchUrl); full = t.data; retouched = t.people > 0; track("pro_retouch", { people: t.people, skipped: t.skipped }); }
+          catch (e) { reportError("Pro Retouch failed: " + (e && e.message)); }
+        }
+        enh.changes = await proChanges(enh.src, full, r.faces, { restored: detail !== enh.src, retouched }).catch(() => []);
       }
       catch (e) { reportError("Pro Edit finish failed: " + (e && e.message)); }
     } else full = await putFacesBack(full, enh.sheet, facesUrl);
@@ -423,7 +430,9 @@ async function proEditRequest(h, src, onLabel, from) {
     h.pending = { requestId, id: null, mode: PRO_MODE };
     try {
       track("ai_start", { mode: PRO_MODE, from });
-      const res = await call("enhance", { method: "POST", timeout: AI_POST_TIMEOUT, body: JSON.stringify({ image, mode: PRO_MODE, from: "enhance", platform: PLATFORM, build: APP_BUILD, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined }) });
+      // Pro Retouch: the same sheet retouched close up, for up to 4 people (more would be too small).
+      const retouch = !!(h.sheet && h.sheet.cells.length <= 4);
+      const res = await call("enhance", { method: "POST", timeout: AI_POST_TIMEOUT, body: JSON.stringify({ image, mode: PRO_MODE, from: "enhance", platform: PLATFORM, build: APP_BUILD, request_id: requestId, faces: h.sheet ? h.sheet.data : undefined, retouch }) });
       h.pending.id = res.id || null;
       return await followEnhance(h, res, onLabel, from);
     } catch (err) {
@@ -448,7 +457,7 @@ async function followEnhance(h, first, onLabel, from) {
   while (Date.now() - started < 240000) {
     if (res && res.status === "succeeded" && res.output) {
       track("ai_done", { mode: p.mode || ENH_MODE, from, secs: Math.round((Date.now() - started) / 1000), faces: h.sheet ? h.sheet.cells.length : 0, sheet: !!res.faces });
-      p.faces = res.faces || null;
+      p.faces = res.faces || null; p.retouch = res.retouch || null;
       // A tiled Enhance answers with every tile's result, in order; the phone stitches them.
       p.done = res.tiles && Array.isArray(res.output) && p.layout && res.output.length === p.layout.tiles.length
         ? { tiles: res.output, layout: p.layout } : Array.isArray(res.output) ? res.output[0] : res.output;
@@ -825,6 +834,7 @@ async function proChanges(before, after, faces, info) {
   if (Math.abs(dc) > 0.04) out.push([dc > 0 ? "More depth" : "Softer contrast"]);
   out.push(["Color graded"]);
   if (info && info.restored) out.push(["Face detail restored"]);
+  if (info && info.retouched) out.push(["Blemishes and stray hairs cleaned"]);
   if (faces) out.push([faces === 1 ? "Face kept true" : `${faces} faces kept true`, true]);
   return out;
 }
@@ -989,7 +999,8 @@ async function composeEnhanced(lv) {
     out = c.toDataURL("image/jpeg", 0.94);
   }
   if (faces && lv.face && enh.style !== PRO_MODE) out = await keepTexture(out, enh.sharpRatio > 1.08 ? ENH_TEXTURE_SHARP : ENH_TEXTURE);
-  const rt = ENH_RETOUCH[lv.retouch];
+  // Pro Edit's Retouch levels also dodge and burn (evens blotchy light in the skin), as a retoucher would.
+  const rt = ENH_RETOUCH[lv.retouch] && (enh.style === PRO_MODE ? [...ENH_RETOUCH[lv.retouch], ["fdodge", 0.35 + 0.2 * lv.retouch]] : ENH_RETOUCH[lv.retouch]);
   if (rt && faces) out = await glowUp(out, { face: rt }, { faces: enh.faces });   // the faces found on the photo: same framing as the result
   if (lv.colors) out = await enhColors(out, lv.colors);
   if (lv.blur) out = await portraitBlur(out, lv.blur, enh.blurKeep ||= {});

@@ -30,7 +30,8 @@ const PRO_PROMPT = "Edit this photo the way a professional photographer and phot
   "Correct the white balance so whites look neutral and skin tones look natural and true. " +
   "Fix the exposure: brighten and evenly light the faces and people, recover highlights and shadows, add gentle contrast and a clean, polished, natural color grade. " +
   "Retouch skin lightly: reduce blemishes, shine and under-eye shadows while keeping real skin texture. Remove noise and sharpen the eyes and fine detail. " +
-  "Tidy the background: reduce small distractions and give it a subtle, natural depth of field so the people stand out. " +
+  // No depth of field here: background blur is the user's choice on the Result (Blur), never automatic.
+  "Tidy the background: reduce small distractions, and keep it as sharp as it is in the photo. " +
   "Keep every person exactly as they are: the same face, identity, facial features, face shape, expression, age, skin tone, hair, body, pose and clothes. " +
   "Keep the same framing, composition and place. Photorealistic. Do not add objects or text.";
 
@@ -179,6 +180,21 @@ export function tryOnMode(base: Mode, part: unknown, words: string, hasPhoto: bo
 // only restores faces it is very sure of (score 0.97 or more), so the small, soft faces of a wide
 // shot are skipped in the main pass; enlarged on the sheet they are found. No extra credit.
 export const FACE_SHEET: Mode = { model: "tencentarc/gfpgan", input: { version: "v1.4", scale: 2 } };
+// Pro Retouch (2026-11-05): Pro Edit's close-up pass. The same face sheet (each person's face and
+// hair, cut from the full-size photo) goes to Nano Banana 2 with a retouch-only brief, on the same
+// charge. The phone keeps only what a retoucher's spot fixes look like (a small blemish, a stray
+// hair, a mark taken away) and never a change of shape, so identity stays the person's own.
+export const RETOUCH_SHEET: Mode = {
+  model: ["google/nano-banana-2", "google/nano-banana"],
+  input: {
+    prompt: "This image is a grid of close-up portrait crops of real people, one person per square. Retouch every square the way a professional portrait retoucher does, with small local fixes only: " +
+      "remove temporary blemishes, pimples, acne, small red spots, scratches and dry flakes; remove stray and flyaway hairs that cross the face, forehead, neck and the outline of the hair; " +
+      "remove lint, dust and small marks on skin and clothes; soften dark under-eye circles a little; clean red veins from the whites of the eyes; keep real skin pores and texture everywhere. " +
+      "Do not change anything else: keep each face shape, eyes, eyelids, eyebrows, nose, lips, teeth, ears, expression, age, makeup, skin tone, hairstyle, hair color, glasses and jewelry exactly the same. " +
+      "Keep moles, freckles, birthmarks, scars and wrinkles. Keep the same lighting, colors, sharpness and background. Keep every square exactly the same size and position, with nothing moved, zoomed or cropped. Photorealistic. Do not add anything.",
+    output_format: "png", resolution: "1K", aspect_ratio: "match_input_image",
+  },
+};
 export const FACE_SHEET_MAX = { bytes: 2_400_000, side: 1536, pixels: 1_600_000 };
 
 // Width and height of a JPEG or PNG data URL, read from its header (no decoding).
@@ -226,8 +242,9 @@ export function okFaceSheet(v: unknown): v is string {
 }
 
 // A user prompt is plain text: one line, at most 200 characters, no control characters.
-// Words that ask for nudity or sexual content, in the languages the app is used in most.
-const UNSAFE = /\b(nude|nudity|naked|topless|bottomless|nsfw|porn\w*|sex(y|ual|ier)?|erotic\w*|lingerie|undress\w*|unclothed|see[- ]?through|bare (breasts?|chest|butt)|nipples?|genital\w*|desnud[ao]s?|nackt|nue|seins? nus?|telanjang|bugil)\b/i;
+// Words that ask for nudity, sexual content or revealing clothes (swimwear, underwear), in the
+// languages the app is used in most.
+const UNSAFE = /\b(nude|nudity|naked|topless|bottomless|nsfw|porn\w*|sex(y|ual|ier)?|erotic\w*|lingerie|undress\w*|unclothed|see[- ]?through|bare (breasts?|chest|butt)|nipples?|genital\w*|desnud[ao]s?|nackt|nue|seins? nus?|telanjang|bugil|bikinis?|biquinis?|swim ?suits?|swimwear|bathing ?suits?|monokinis?|underwear|undies|bras?|bralettes?|panties|knickers|thongs?|g-?strings?|tanga|skimpy|revealing|cleavage|(less|no|without|fewer) (clothes|clothing)|ropa interior|sujetador|sous-v[eê]tements?|unterw[aä]sche|pakaian dalam)\b/i;
 export function unsafePrompt(v: unknown): boolean {
   return typeof v === "string" && UNSAFE.test(v);
 }
@@ -289,6 +306,9 @@ export async function modelInfo(model: string | string[]): Promise<ModelInfo> {
   return (versionCache[model] = { model, version: KNOWN[model]?.official ? null : v?.id ?? null, imageKey, maskKey, props, imageList, open: !v || !Object.keys(props).length });
 }
 
+// Replicate / Google answers for an input or output the model's safety filter turned down.
+export const flagged = (e: unknown) => /flagged as sensitive|\(E005\)|IMAGE_SAFETY|unsafe content/i.test(String(e ?? ""));
+
 export const lastOutput = (o: unknown) => (Array.isArray(o) ? o[o.length - 1] : o) ?? null;
 
 // Starts one edit on Replicate and waits up to a minute for it. Charging is the caller's job.
@@ -309,6 +329,9 @@ export async function startPrediction(cfg: Mode, args: { image: string; mask?: s
     const p = await runOn(info, cfg, args, wait);
     last = { p, info };
     if (p.status !== "failed") return last;
+    // A safety refusal is about the photo or outfit, not the model: the next model would only
+    // refuse too (or be throttled), so stop here and say so honestly.
+    if (flagged(p.error)) { console.log("model declined (safety)", model, p.id, p.error ?? ""); return last; }
     console.log("model failed, trying the next", model, p.id, p.error ?? "");
   }
   if (last) return last;

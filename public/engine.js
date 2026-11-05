@@ -882,6 +882,19 @@ function faceOps(ctx, P, amt, toolId) {
         for (let ch = 0; ch < 3; ch++) d[i + ch] += (l + (bd[i + ch] - lb) - d[i + ch]) * w;
       });
     },
+    fdodge(a) {
+      // Dodge and burn: the blotchy light and dark patches in the skin (bigger than pores, smaller
+      // than the face's own shape) are brought toward the skin around them, the way a retoucher
+      // evens skin on a separate layer. Pores (finer) and cheekbones, jaw and nose (bigger) stay.
+      const fine = filtered(ctx.canvas, `blur(${Math.max(1, Math.round(faceW / 55))}px)`), fd = fine.getContext("2d").getImageData(faceBox.x0, faceBox.y0, faceBox.w, faceBox.h).data;
+      const wide = filtered(ctx.canvas, `blur(${Math.max(2, Math.round(faceW / 11))}px)`), wd = wide.getContext("2d").getImageData(faceBox.x0, faceBox.y0, faceBox.w, faceBox.h).data;
+      pixelPass(ctx, skinMask(), faceBox, (d, i, m) => {
+        const mid = lum(fd[i], fd[i + 1], fd[i + 2]) - lum(wd[i], wd[i + 1], wd[i + 2]);
+        // Only gentle patches: a strong edge there is a feature (a crease, the side of the nose).
+        const v = -Math.max(-18, Math.min(18, mid)) * 0.6 * Math.min(1, a) * m * (1 - smoothstep(14, 30, Math.abs(mid)));
+        for (let ch = 0; ch < 3; ch++) d[i + ch] = Math.max(0, Math.min(255, d[i + ch] + v));
+      });
+    },
     fskin(a) {
       const blur = filtered(ctx.canvas, `blur(${Math.max(3, Math.round(faceW / 30))}px)`), bd = blur.getContext("2d").getImageData(faceBox.x0, faceBox.y0, faceBox.w, faceBox.h).data;
       if (style("fskin") === "matte") {
@@ -1316,7 +1329,7 @@ async function faceEdit(src, toolId, amt, pick) {
 // Glow Up, the on-device part: face steps in one pass, then gentle face shape, then light and color.
 // `g` is { face: [[tool, strength, shade, style]...], slim: 0–1, light: bool }. A photo without a
 // clear face still gets its light and color.
-const GLOW_ORDER = ["fblemish", "fsmooth", "fshine", "ftone", "fundereye", "fskin", "feyes", "fteeth", "fbrows", "fshadow", "fliner", "flashes", "feyecolor", "fcontour", "fbronzer", "fblush", "fhighlight", "flips", "fglam"];
+const GLOW_ORDER = ["fblemish", "fsmooth", "fshine", "ftone", "fdodge", "fundereye", "fskin", "feyes", "fteeth", "fbrows", "fshadow", "fliner", "flashes", "feyecolor", "fcontour", "fbronzer", "fblush", "fhighlight", "flips", "fglam"];
 async function glowUp(src, g, pick) {
   let out = src;
   const face = (g.face || []).slice().sort((x, y) => GLOW_ORDER.indexOf(x[0]) - GLOW_ORDER.indexOf(y[0]));
@@ -1569,6 +1582,160 @@ async function proFinish(src, aiSrc) {
   for (let i = 0, j = 0; i < n * 4; i += 4, j += 3) { d[i] = out[j]; d[i + 1] = out[j + 1]; d[i + 2] = out[j + 2]; d[i + 3] = 255; }
   ox.putImageData(img, 0, 0);
   return { data: co.toDataURL("image/jpeg", 0.94), faces: faces.length, moved, matched, fit, gap };
+}
+
+// ---------- Pro Retouch: a retoucher's spot fixes, never a new face ----------
+// Pro Edit's close-up pass (2026-11-05) sends the face sheet to an image model with a retouch-only
+// brief. A model redraws everything, so nothing is taken whole. In each person's square only what
+// looks like a retoucher's spot fix is kept: a small thing taken away (a blemish, a stray hair, a
+// mark), where the retouched picture is smoother than the photo by a clear margin. Anything it
+// added, anything big, and anything on the eyes, brows, lips and nostrils is left as it was, and
+// a square whose face moved at all is skipped. Pores and fine texture stay the photo's own.
+const PRO_RETOUCH = { moved: 0.025, spot: 1 / 22, minDrop: 0.8, fullDrop: 2.6, maxArea: 0.45, thick: 0.08, edge: 0.04 };
+// A float box blur (three passes ≈ Gaussian) of one channel.
+function blurF(a, W, H, sigma) {
+  const out = new Float32Array(a), r = Math.max(1, Math.round((Math.sqrt(4 * sigma * sigma + 1) - 1) / 2)), tmp = new Float32Array(Math.max(W, H));
+  const pass = (len, count, step, stride) => {
+    for (let line = 0; line < count; line++) {
+      const o = line * stride;
+      for (let rep = 0; rep < 3; rep++) {
+        let sum = 0;
+        for (let k = -r; k <= r; k++) sum += out[o + Math.min(len - 1, Math.max(0, k)) * step];
+        for (let j = 0; j < len; j++) { tmp[j] = sum / (2 * r + 1); sum += out[o + Math.min(len - 1, j + r + 1) * step] - out[o + Math.max(0, j - r) * step]; }
+        for (let j = 0; j < len; j++) out[o + j * step] = tmp[j];
+      }
+    }
+  };
+  pass(W, H, 1, W); pass(H, W, W, 1);
+  return out;
+}
+// One square: the photo's crop `O` and the retouched crop `R` (both C x C RGBA), the face's
+// landmarks on each (0–1 of the square). Returns a C x C RGBA picture of the change to add
+// (128 = none), or null to leave this person as they were.
+function retouchSpots(O, R, C, Po, Pr) {
+  const P = Po.map(([x, y]) => [x * C, y * C]), Q = Pr.map(([x, y]) => [x * C, y * C]);
+  const faceW = dist(P[234], P[454]);
+  if (faceW < 40) return null;
+  const pts = [...FACE.oval, ...FACE.eyeL, ...FACE.eyeR, ...FACE.lipsOut, 1, 4, 6];
+  const shift = pts.reduce((s, i) => s + dist(P[i], Q[i]), 0) / pts.length;
+  if (shift > faceW * PRO_RETOUCH.moved) return null;
+  const n = C * C, s = Math.max(1.5, faceW * PRO_RETOUCH.spot);
+  // Detail at a spot's size: brightness, and redness (a red spot can be as bright as the skin).
+  const bands = (d) => {
+    const L = new Float32Array(n), Rd = new Float32Array(n);
+    for (let p = 0; p < n; p++) { const i = p * 4; L[p] = lum(d[i], d[i + 1], d[i + 2]); Rd[p] = d[i] - d[i + 1]; }
+    const Lb = blurF(L, C, C, s), Rb = blurF(Rd, C, C, s), e = new Float32Array(n);
+    for (let p = 0; p < n; p++) e[p] = Math.abs(L[p] - Lb[p]) + 0.5 * Math.abs(Rd[p] - Rb[p]);
+    return blurF(e, C, C, s / 2);
+  };
+  const eO = bands(O), eR = bands(R);
+  // Kept: clearly smoother than the photo (something taken away), by a margin pores never reach.
+  const w = new Float32Array(n);
+  for (let p = 0; p < n; p++) { const fall = eO[p] - eR[p]; w[p] = smoothstep(PRO_RETOUCH.minDrop, PRO_RETOUCH.fullDrop, fall) * smoothstep(0.05, 0.18, fall / (eO[p] + 1)); }
+  // Never on the features themselves, and not at the square's edge (the model can bleed there).
+  const guard = newCanvas(C, C), g = guard.getContext("2d", { willReadFrequently: true });
+  g.fillStyle = "#fff"; g.filter = `blur(${Math.max(1, Math.round(faceW / 60))}px)`;
+  for (const eye of [FACE.eyeL, FACE.eyeR]) { const e = eye.map((i) => P[i]), c = mean(e), ew = dist(P[eye[0]], P[eye[8]]); g.beginPath(); g.ellipse(c[0], c[1], ew * 0.68, ew * 0.42, Math.atan2(P[eye[8]][1] - P[eye[0]][1], P[eye[8]][0] - P[eye[0]][0]), 0, 7); g.fill(); }
+  g.lineWidth = faceW / 18; g.strokeStyle = "#fff"; g.lineJoin = "round";
+  for (const br of [FACE.browL, FACE.browR]) { tracePoly(g, br.map((i) => P[i])); g.fill(); g.stroke(); }
+  tracePoly(g, FACE.lipsOut.map((i) => P[i])); g.fill(); g.lineWidth = faceW / 40; g.stroke();
+  g.beginPath(); g.ellipse(P[2][0], P[2][1] - faceW * 0.02, faceW * 0.11, faceW * 0.06, 0, 0, 7); g.fill();
+  const gd = g.getImageData(0, 0, C, C).data, edge = C * PRO_RETOUCH.edge;
+  for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) {
+    const p = y * C + x, b = Math.min(x, y, C - 1 - x, C - 1 - y);
+    w[p] *= (1 - gd[p * 4 + 3] / 255) * smoothstep(edge, edge * 2, b);
+  }
+  // Only small things: a patch of change bigger than a spot is something else (a mole, an earring,
+  // a shadow), so it stays as it was, unless it's thin (stray hairs). Checked on a quarter-size grid.
+  const q = 4, gw = Math.ceil(C / q), gn = gw * gw, on = new Uint8Array(gn), lab = new Int32Array(gn).fill(-1);
+  for (let y = 0; y < C; y += q) for (let x = 0; x < C; x += q) if (w[y * C + x] > 0.2) on[(y / q) * gw + x / q] = 1;
+  const maxCells = (faceW * PRO_RETOUCH.maxArea) ** 2 / (q * q), drop = new Set();
+  for (let c0 = 0, id = 0; c0 < gn; c0++) {
+    if (!on[c0] || lab[c0] >= 0) continue;
+    const stack = [c0]; lab[c0] = id; let size = 0, bx0 = gw, by0 = gw, bx1 = 0, by1 = 0;
+    while (stack.length) {
+      const c = stack.pop(); size++;
+      const cx = c % gw, cy = (c - cx) / gw;
+      bx0 = Math.min(bx0, cx); bx1 = Math.max(bx1, cx); by0 = Math.min(by0, cy); by1 = Math.max(by1, cy);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx, ny = cy + dy, nc = ny * gw + nx;
+        if (nx >= 0 && ny >= 0 && nx < gw && ny < gw && on[nc] && lab[nc] < 0) { lab[nc] = id; stack.push(nc); }
+      }
+    }
+    // How thick it is: its area over its length (the box's diagonal), in face widths.
+    const thick = size * q / (Math.hypot(bx1 - bx0 + 1, by1 - by0 + 1) * faceW);
+    if (size > maxCells && thick > PRO_RETOUCH.thick) drop.add(id);
+    id++;
+  }
+  if (drop.size) for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) {
+    // A pixel takes the patch of its own grid cell, or of a neighbour (the patch's soft edge).
+    let l = -1;
+    for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) { const gx = (x >> 2) + dx, gy = (y >> 2) + dy; if (gx >= 0 && gy >= 0 && gx < gw && gy < gw && lab[gy * gw + gx] >= 0) { l = lab[gy * gw + gx]; break; } }
+    if (l >= 0 && drop.has(l)) w[y * C + x] = 0;
+  }
+  const wf = blurF(w, C, C, s / 3);
+  // The model is used to find what to fix, not to paint it: the fix itself is the photo's own skin
+  // around the spot (done at the photo's size, in proRetouch) with the retouched picture's fine
+  // texture, so a pixel's misalignment can't leave a ghost. Returned: that texture (128 = none)
+  // in RGB and how much of the fix to take in A.
+  const out = new Uint8ClampedArray(n * 4);
+  let used = 0;
+  for (let k = 0; k < 3; k++) {
+    const r = new Float32Array(n); for (let p = 0; p < n; p++) r[p] = R[p * 4 + k];
+    const rb = blurF(r, C, C, s * 2);
+    for (let p = 0; p < n; p++) out[p * 4 + k] = 128 + (r[p] - rb[p]);
+  }
+  for (let p = 0; p < n; p++) { out[p * 4 + 3] = Math.round(255 * Math.min(1, wf[p] * 1.15)); if (wf[p] > 0.3) used++; }
+  return { data: out, used: used / n, s };
+}
+// Puts the retouched spots of every square of the face sheet onto `src` (a data URL, the photo
+// at full size). `sheet` is the face sheet as sent ({ data, cells, cols, w, cell }); `rtUrl` is
+// the model's retouched sheet. Anything going wrong leaves `src` as it was.
+async function proRetouch(src, sheet, rtUrl) {
+  const [im, so, sr] = await Promise.all([loadImg(src), loadImg(sheet.data), loadImg(rtUrl)]);
+  const SW = so.naturalWidth, SH = so.naturalHeight;
+  if (Math.abs(sr.naturalWidth / sr.naturalHeight - SW / SH) > 0.02) return { data: src, people: 0, skipped: sheet.cells.length };
+  const C = sheet.cell, W = im.naturalWidth, H = im.naturalHeight;
+  const cut = (img, i) => {
+    const k = img.naturalWidth / SW, c = newCanvas(C, C), x = c.getContext("2d", { willReadFrequently: true });
+    x.imageSmoothingQuality = "high";
+    x.drawImage(img, (i % sheet.cols) * C * k, Math.floor(i / sheet.cols) * C * k, C * k, C * k, 0, 0, C, C);
+    return c;
+  };
+  const base = newCanvas(W, H), bx = base.getContext("2d", { willReadFrequently: true });
+  bx.drawImage(im, 0, 0);
+  let people = 0, skipped = 0;
+  for (const [i, f] of sheet.cells.entries()) {
+    const co = cut(so, i), cr = cut(sr, i);
+    // The face nearest the middle of each square (where the sheet put it).
+    const near = (fs) => fs.map((g) => [g, dist(mean(FACE.oval.map((j) => g[j])), [0.5, 0.5])]).filter(([, d]) => d < 0.2).sort((a, b) => a[1] - b[1])[0]?.[0];
+    const key = "rt" + sheet.data.length + sheet.data.slice(-40) + "|" + i;
+    const Po = near(await findFaces(key + "o", co).catch(() => [])), Pr = Po && near(await findFaces(key + "r" + rtUrl.length + rtUrl.slice(-40), cr).catch(() => []));
+    const ch = Po && Pr ? retouchSpots(co.getContext("2d").getImageData(0, 0, C, C).data, cr.getContext("2d").getImageData(0, 0, C, C).data, C, Po, Pr) : null;
+    if (!ch) { skipped++; continue; }
+    people++;
+    // The square back at the photo's size, exactly where it was cut from.
+    const S = f.side * W, x0 = f.cx * W - S / 2, y0 = f.cy * H - S / 2;
+    const ax0 = Math.max(0, Math.floor(x0)), ay0 = Math.max(0, Math.floor(y0)), ax1 = Math.min(W, Math.ceil(x0 + S)), ay1 = Math.min(H, Math.ceil(y0 + S));
+    const rw = ax1 - ax0, rh = ay1 - ay0;
+    if (rw < 2 || rh < 2) continue;
+    const tex = newCanvas(C, C), alpha = newCanvas(C, C);
+    const td = new Uint8ClampedArray(ch.data), ad = new Uint8ClampedArray(ch.data.length);
+    for (let j = 0; j < td.length; j += 4) { ad[j] = ad[j + 1] = ad[j + 2] = td[j + 3]; ad[j + 3] = 255; td[j + 3] = 255; }
+    tex.getContext("2d").putImageData(new ImageData(td, C, C), 0, 0); alpha.getContext("2d").putImageData(new ImageData(ad, C, C), 0, 0);
+    const at = (cv) => { const c = newCanvas(rw, rh), x = c.getContext("2d", { willReadFrequently: true }); x.fillStyle = "rgb(128,128,128)"; x.fillRect(0, 0, rw, rh); x.imageSmoothingQuality = "high"; x.drawImage(cv, x0 - ax0, y0 - ay0, S, S); return x.getImageData(0, 0, rw, rh).data; };
+    const T = at(tex), A = at(alpha);
+    // The photo's own skin around each spot: the region blurred at about twice a spot's size.
+    const sig = Math.max(1.5, ch.s * 2 * S / C), region = bx.getImageData(ax0, ay0, rw, rh), rd = region.data, bl = new Uint8ClampedArray(rd);
+    boxBlurRGBA(bl, rw, rh, sig);
+    for (let j = 0; j < rd.length; j += 4) {
+      const t = (A[j] - 128 * 0) / 255;
+      if (t < 0.004) continue;
+      for (let k = 0; k < 3; k++) rd[j + k] += t * (bl[j + k] + (T[j + k] - 128) - rd[j + k]);
+    }
+    bx.putImageData(region, ax0, ay0);
+  }
+  return { data: people ? base.toDataURL("image/jpeg", 0.94) : src, people, skipped };
 }
 
 // Edge-preserving skin smoothing for still photos, using the camera's beauty shader.
