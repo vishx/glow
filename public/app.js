@@ -3381,6 +3381,7 @@ function ensureSession(force) {
 // The enhance function can run ~150s (its wall clock) before answering; past that the connection is stuck.
 const AI_POST_TIMEOUT = 170000;
 async function call(path, opts = {}, retried) {
+  if (location.hostname !== "app.test") path = path.replace(/^enhance(?=$|\?)/, "enhance-next");   // PREVIEW ONLY: the Pro Retouch preview server. Never release.
   const s = await ensureSession();
   let res;
   // opts.timeout (ms): a stalled connection gives up instead of holding the screen forever. AI calls
