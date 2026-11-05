@@ -1591,7 +1591,7 @@ async function proFinish(src, aiSrc) {
 // mark), where the retouched picture is smoother than the photo by a clear margin. Anything it
 // added, anything big, and anything on the eyes, brows, lips and nostrils is left as it was, and
 // a square whose face moved at all is skipped. Pores and fine texture stay the photo's own.
-const PRO_RETOUCH = { moved: 0.025, spot: 1 / 22, minDrop: 0.8, fullDrop: 2.6, maxArea: 0.45, thick: 0.08, edge: 0.04 };
+const PRO_RETOUCH = { moved: 0.02, spot: 1 / 22, minDrop: 0.8, fullDrop: 2.6, maxArea: 0.45, thick: 0.08, edge: 0.04 };
 // A float box blur (three passes ≈ Gaussian) of one channel.
 function blurF(a, W, H, sigma) {
   const out = new Float32Array(a), r = Math.max(1, Math.round((Math.sqrt(4 * sigma * sigma + 1) - 1) / 2)), tmp = new Float32Array(Math.max(W, H));
@@ -1617,7 +1617,9 @@ function retouchSpots(O, R, C, Po, Pr) {
   const faceW = dist(P[234], P[454]);
   if (faceW < 40) return { skip: "small" };
   const pts = [...FACE.oval, ...FACE.eyeL, ...FACE.eyeR, ...FACE.lipsOut, 1, 4, 6];
-  const shift = pts.reduce((s, i) => s + dist(P[i], Q[i]), 0) / pts.length;
+  // How far the features moved once lined up: the 90th percentile point, so a reshaped jaw or eye
+  // counts even when the rest of the face stayed.
+  const moves = pts.map((i) => dist(P[i], Q[i])).sort((x, y) => x - y), shift = moves[Math.floor(moves.length * 0.9)];
   if (shift > faceW * PRO_RETOUCH.moved) return { skip: "moved", shift: +(shift / faceW).toFixed(3) };
   const n = C * C, s = Math.max(1.5, faceW * PRO_RETOUCH.spot);
   // Detail at a spot's size: brightness, and redness (a red spot can be as bright as the skin).
@@ -1641,9 +1643,12 @@ function retouchSpots(O, R, C, Po, Pr) {
   tracePoly(g, FACE.lipsOut.map((i) => P[i])); g.fill(); g.lineWidth = faceW / 40; g.stroke();
   g.beginPath(); g.ellipse(P[2][0], P[2][1] - faceW * 0.02, faceW * 0.11, faceW * 0.06, 0, 0, 7); g.fill();
   const gd = g.getImageData(0, 0, C, C).data, edge = C * PRO_RETOUCH.edge;
+  // Where the lined-up retouched square doesn't reach (and a margin as wide as the detail's reach).
+  const cover = new Float32Array(n); for (let p = 0; p < n; p++) cover[p] = R[p * 4 + 3] > 250 ? 1 : 0;
+  const coverB = blurF(cover, C, C, s * 2.5);
   for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) {
     const p = y * C + x, b = Math.min(x, y, C - 1 - x, C - 1 - y);
-    w[p] *= (1 - gd[p * 4 + 3] / 255) * smoothstep(edge, edge * 2, b);
+    w[p] *= (1 - gd[p * 4 + 3] / 255) * smoothstep(edge, edge * 2, b) * smoothstep(0.97, 0.999, coverB[p]);
   }
   // Only small things: a patch of change bigger than a spot is something else (a mole, an earring,
   // a shadow), so it stays as it was, unless it's thin (stray hairs). Checked on a quarter-size grid.
@@ -1688,6 +1693,27 @@ function retouchSpots(O, R, C, Po, Pr) {
   for (let p = 0; p < n; p++) { out[p * 4 + 3] = Math.round(255 * Math.min(1, wf[p] * 1.15)); if (wf[p] > 0.3) used++; }
   return { data: out, used: used / n, s, shift: +(shift / faceW).toFixed(3) };
 }
+// The retouched square drawn so its face lands on the photo's face: the best scale, turn and move
+// (least squares) from the retouched landmarks Q to the photo's P (both 0–1 of the square). Where
+// the moved picture leaves a gap, the photo's own square shows (no change there). Returns the
+// aligned pixels and the moved landmarks, or null if the model changed the face's size too much.
+function alignTo(cr, C, P, Q) {
+  const idx = [...FACE.oval, ...FACE.eyeL, ...FACE.eyeR, 1, 4, 6, 168];
+  const p = idx.map((i) => [P[i][0] * C, P[i][1] * C]), q = idx.map((i) => [Q[i][0] * C, Q[i][1] * C]);
+  const mp = mean(p), mq = mean(q);
+  let sxx = 0, sxy = 0, qq = 0;
+  for (let i = 0; i < p.length; i++) {
+    const ax = q[i][0] - mq[0], ay = q[i][1] - mq[1], bx = p[i][0] - mp[0], by = p[i][1] - mp[1];
+    sxx += ax * bx + ay * by; sxy += ax * by - ay * bx; qq += ax * ax + ay * ay;
+  }
+  const a = sxx / qq, b = sxy / qq, k = Math.hypot(a, b);
+  if (!(k > 0.75 && k < 1.33)) return null;
+  const tx = mp[0] - (a * mq[0] - b * mq[1]), ty = mp[1] - (b * mq[0] + a * mq[1]);
+  const c = newCanvas(C, C), x = c.getContext("2d", { willReadFrequently: true });
+  x.imageSmoothingQuality = "high"; x.setTransform(a, b, -b, a, tx, ty); x.drawImage(cr, 0, 0); x.setTransform(1, 0, 0, 1, 0, 0);
+  const d = x.getImageData(0, 0, C, C).data;
+  return { data: d, P: Q.map(([u, v]) => { const X = u * C, Y = v * C; return [(a * X - b * Y + tx) / C, (b * X + a * Y + ty) / C]; }), k };
+}
 // Puts the retouched spots of every square of the face sheet onto `src` (a data URL, the photo
 // at full size). `sheet` is the face sheet as sent ({ data, cells, cols, w, cell }); `rtUrl` is
 // the model's retouched sheet. Anything going wrong leaves `src` as it was.
@@ -1712,7 +1738,10 @@ async function proRetouch(src, sheet, rtUrl) {
     const near = (fs) => fs.map((g) => [g, dist(mean(FACE.oval.map((j) => g[j])), [0.5, 0.5])]).filter(([, d]) => d < 0.2).sort((a, b) => a[1] - b[1])[0]?.[0];
     const key = "rt" + sheet.data.length + sheet.data.slice(-40) + "|" + i;
     const Po = near(await findFaces(key + "o", co).catch(() => [])), Pr = Po && near(await findFaces(key + "r" + rtUrl.length + rtUrl.slice(-40), cr).catch(() => []));
-    const ch = Po && Pr ? retouchSpots(co.getContext("2d").getImageData(0, 0, C, C).data, cr.getContext("2d").getImageData(0, 0, C, C).data, C, Po, Pr) : null;
+    // The model often answers a little zoomed or shifted: line its face up with the photo's (scale,
+    // turn and move only, from the face's outline, eyes and nose), so what's left is real change.
+    const al = Po && Pr ? alignTo(cr, C, Po, Pr) : null;
+    const ch = al ? retouchSpots(co.getContext("2d").getImageData(0, 0, C, C).data, al.data, C, Po, al.P) : Po && Pr ? { skip: "scale" } : null;
     if (!ch || ch.skip) { skipped++; why.push(ch ? ch.skip + (ch.shift ? " " + ch.shift : "") : Po ? "no face on retouched" : "no face"); continue; }
     why.push("ok " + ch.shift);
     people++;

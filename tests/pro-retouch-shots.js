@@ -48,8 +48,10 @@ const real = process.env.GLOW_TEST_RETOUCH_SHEET, realSrc = process.env.GLOW_TES
       f && f(x, c); return c.toDataURL('image/jpeg', 0.9);
     };
     const C = sheet.cell, cases = { clean: await variant() };
-    // The model reshaped the face (the eyes and jaw moved): the person must be skipped.
-    cases.reshaped = await variant((x, c) => { const t = newCanvas(c.width, c.height); t.getContext('2d').drawImage(c, 0, 0); x.clearRect(0, 0, c.width, c.height); x.drawImage(t, 0, 0, C, C, -C * 0.03, -C * 0.05, C * 1.06, C * 1.08); });
+    // The model answered zoomed in and shifted (common): lined up, the person is still retouched.
+    cases.zoomed = await variant((x, c) => { const t = newCanvas(c.width, c.height); t.getContext('2d').drawImage(c, 0, 0); x.clearRect(0, 0, c.width, c.height); x.drawImage(t, 0, 0, C, C, -C * 0.04, -C * 0.06, C * 1.08, C * 1.08); });
+    // The model reshaped the face (a slimmer jaw and lower face): the person must be skipped.
+    cases.reshaped = await variant((x, c) => { const t = newCanvas(c.width, c.height); t.getContext('2d').drawImage(c, 0, 0); x.drawImage(t, 0, C * 0.52, C, C * 0.48, C * 0.06, C * 0.52, C * 0.88, C * 0.48); });
     // The model added things (a dark mark on the cheek, darker lips): none of it may come in.
     cases.added = await variant((x) => {
       const sx = (pt) => [(pt[0] - (sheet.cells[0].cx * W - sheet.cells[0].side * W / 2)) / (sheet.cells[0].side * W) * C, (pt[1] - (sheet.cells[0].cy * Hh - sheet.cells[0].side * W / 2)) / (sheet.cells[0].side * W) * C];
