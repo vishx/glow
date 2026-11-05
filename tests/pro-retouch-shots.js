@@ -74,7 +74,7 @@ const real = process.env.GLOW_TEST_RETOUCH_SHEET, realSrc = process.env.GLOW_TES
     const result = { before: score(Fd), sheet: sheet.data, flawed: flawedUrl, cases: {} };
     for (const [k, rt] of Object.entries(cases)) {
       const t0 = performance.now(), r2 = await proRetouch(flawedUrl, sheet, rt);
-      result.cases[k] = { out: r2.data, rt, people: r2.people, skipped: r2.skipped, ms: Math.round(performance.now() - t0), ...score(await px(r2.data)) };
+      result.cases[k] = { out: r2.data, rt, people: r2.people, skipped: r2.skipped, why: r2.why, ms: Math.round(performance.now() - t0), ...score(await px(r2.data)) };
     }
     return result;
   }, { realSheet: toUrl(real), realPhoto: toUrl(realSrc) });
@@ -83,7 +83,7 @@ const real = process.env.GLOW_TEST_RETOUCH_SHEET, realSrc = process.env.GLOW_TES
   console.log('before', JSON.stringify(res.before));
   for (const [k, r] of Object.entries(res.cases)) {
     fs.writeFileSync(path.join(out, `${k}-out.jpg`), Buffer.from(r.out.split(',')[1], 'base64'));
-    console.log(k, JSON.stringify({ people: r.people, skipped: r.skipped, ms: r.ms, flawLeft: r.flawLeft, changedElsewhere: r.changedElsewhere }));
+    console.log(k, JSON.stringify({ people: r.people, skipped: r.skipped, why: r.why, ms: r.ms, flawLeft: r.flawLeft, changedElsewhere: r.changedElsewhere }));
   }
   if (state.errs.length) console.log('errors', state.errs);
   await browser.close();

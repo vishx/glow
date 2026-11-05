@@ -1615,10 +1615,10 @@ function blurF(a, W, H, sigma) {
 function retouchSpots(O, R, C, Po, Pr) {
   const P = Po.map(([x, y]) => [x * C, y * C]), Q = Pr.map(([x, y]) => [x * C, y * C]);
   const faceW = dist(P[234], P[454]);
-  if (faceW < 40) return null;
+  if (faceW < 40) return { skip: "small" };
   const pts = [...FACE.oval, ...FACE.eyeL, ...FACE.eyeR, ...FACE.lipsOut, 1, 4, 6];
   const shift = pts.reduce((s, i) => s + dist(P[i], Q[i]), 0) / pts.length;
-  if (shift > faceW * PRO_RETOUCH.moved) return null;
+  if (shift > faceW * PRO_RETOUCH.moved) return { skip: "moved", shift: +(shift / faceW).toFixed(3) };
   const n = C * C, s = Math.max(1.5, faceW * PRO_RETOUCH.spot);
   // Detail at a spot's size: brightness, and redness (a red spot can be as bright as the skin).
   const bands = (d) => {
@@ -1686,7 +1686,7 @@ function retouchSpots(O, R, C, Po, Pr) {
     for (let p = 0; p < n; p++) out[p * 4 + k] = 128 + (r[p] - rb[p]);
   }
   for (let p = 0; p < n; p++) { out[p * 4 + 3] = Math.round(255 * Math.min(1, wf[p] * 1.15)); if (wf[p] > 0.3) used++; }
-  return { data: out, used: used / n, s };
+  return { data: out, used: used / n, s, shift: +(shift / faceW).toFixed(3) };
 }
 // Puts the retouched spots of every square of the face sheet onto `src` (a data URL, the photo
 // at full size). `sheet` is the face sheet as sent ({ data, cells, cols, w, cell }); `rtUrl` is
@@ -1694,7 +1694,7 @@ function retouchSpots(O, R, C, Po, Pr) {
 async function proRetouch(src, sheet, rtUrl) {
   const [im, so, sr] = await Promise.all([loadImg(src), loadImg(sheet.data), loadImg(rtUrl)]);
   const SW = so.naturalWidth, SH = so.naturalHeight;
-  if (Math.abs(sr.naturalWidth / sr.naturalHeight - SW / SH) > 0.02) return { data: src, people: 0, skipped: sheet.cells.length };
+  if (Math.abs(sr.naturalWidth / sr.naturalHeight - SW / SH) > 0.02) return { data: src, people: 0, skipped: sheet.cells.length, why: ["shape"] };
   const C = sheet.cell, W = im.naturalWidth, H = im.naturalHeight;
   const cut = (img, i) => {
     const k = img.naturalWidth / SW, c = newCanvas(C, C), x = c.getContext("2d", { willReadFrequently: true });
@@ -1705,6 +1705,7 @@ async function proRetouch(src, sheet, rtUrl) {
   const base = newCanvas(W, H), bx = base.getContext("2d", { willReadFrequently: true });
   bx.drawImage(im, 0, 0);
   let people = 0, skipped = 0;
+  const why = [];
   for (const [i, f] of sheet.cells.entries()) {
     const co = cut(so, i), cr = cut(sr, i);
     // The face nearest the middle of each square (where the sheet put it).
@@ -1712,7 +1713,8 @@ async function proRetouch(src, sheet, rtUrl) {
     const key = "rt" + sheet.data.length + sheet.data.slice(-40) + "|" + i;
     const Po = near(await findFaces(key + "o", co).catch(() => [])), Pr = Po && near(await findFaces(key + "r" + rtUrl.length + rtUrl.slice(-40), cr).catch(() => []));
     const ch = Po && Pr ? retouchSpots(co.getContext("2d").getImageData(0, 0, C, C).data, cr.getContext("2d").getImageData(0, 0, C, C).data, C, Po, Pr) : null;
-    if (!ch) { skipped++; continue; }
+    if (!ch || ch.skip) { skipped++; why.push(ch ? ch.skip + (ch.shift ? " " + ch.shift : "") : Po ? "no face on retouched" : "no face"); continue; }
+    why.push("ok " + ch.shift);
     people++;
     // The square back at the photo's size, exactly where it was cut from.
     const S = f.side * W, x0 = f.cx * W - S / 2, y0 = f.cy * H - S / 2;
@@ -1735,7 +1737,7 @@ async function proRetouch(src, sheet, rtUrl) {
     }
     bx.putImageData(region, ax0, ay0);
   }
-  return { data: people ? base.toDataURL("image/jpeg", 0.94) : src, people, skipped };
+  return { data: people ? base.toDataURL("image/jpeg", 0.94) : src, people, skipped, why };
 }
 
 // Edge-preserving skin smoothing for still photos, using the camera's beauty shader.

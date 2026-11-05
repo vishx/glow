@@ -355,7 +355,7 @@ async function runEnhance() {
         let retouched = false;
         if (retouchUrl && enh.sheet) {
           setSheetWorking(true, "Retouching…");
-          try { const t = await proRetouch(full, enh.sheet, retouchUrl); full = t.data; retouched = t.people > 0; track("pro_retouch", { people: t.people, skipped: t.skipped }); }
+          try { const t = await proRetouch(full, enh.sheet, retouchUrl); full = t.data; retouched = t.people > 0; track("pro_retouch", { people: t.people, skipped: t.skipped, why: (t.why || []).join(",").slice(0, 80) }); }
           catch (e) { reportError("Pro Retouch failed: " + (e && e.message)); }
         }
         enh.changes = await proChanges(enh.src, full, r.faces, { restored: detail !== enh.src, retouched }).catch(() => []);
