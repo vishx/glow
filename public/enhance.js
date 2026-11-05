@@ -648,7 +648,7 @@ function showEnhResult() {
   if (!enh.faces.length) { enh.lv.face = 2; enh.lv.retouch = 0; }
   enh.strength = 100;   // Pro Edit opens at full strength (renderProPanel sets the slider)
   enh.cache.clear(); enh.cache.set(enhAIKey(), enh.ai); enh.current = enh.ai; enh.saved = null;
-  enh.thumb = null; enh.lookThumbs = {}; enh.levelPics = {}; enh.levelRun = (enh.levelRun || 0) + 1;   // a small copy for the level pictures (ten full-size copies would weigh on a phone)
+  enh.thumb = null; enh.lookThumbs = {}; enh.levelPics = {}; enh.levelRun = (enh.levelRun || 0) + 1; enh.blurKeep = null;   // a small copy for the level pictures (ten full-size copies would weigh on a phone)
   loadImg(enh.ai).then((im) => { const k = 200 / Math.max(im.naturalWidth, im.naturalHeight), c = newCanvas(Math.round(im.naturalWidth * k), Math.round(im.naturalHeight * k));
     c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); enh.thumb = c.toDataURL("image/jpeg", 0.8); return lookThumbs(); }).catch(() => {});
   closeLevels(true); fillLevels("face");
@@ -950,7 +950,7 @@ const enhAIKey = () => (enh.faces.length && enh.style !== PRO_MODE ? "ai" : "220
 const enhKey = (lv = enh.lv) => ENH_TOGGLES.map(([k]) => lv[k]).join("") + proKey(enh.strength);
 async function updateComposite() {
   const key = enhKey(), token = ++enh.token;
-  if (enh.cache.has(key)) { showComposite(enh.cache.get(key)); return; }
+  if (enh.cache.has(key)) { showComposite(enh.cache.get(key)); $("enhWorking").classList.remove("on"); return; }   // (an older, slower level may have shown it)
   const slow = setTimeout(() => { if (token === enh.token) $("enhWorking").classList.add("on"); }, 120);
   try {
     const lv = { ...enh.lv }, out = await enhQueue(() => enh.cache.get(key) || composeEnhanced(lv));
@@ -992,7 +992,7 @@ async function composeEnhanced(lv) {
   const rt = ENH_RETOUCH[lv.retouch];
   if (rt && faces) out = await glowUp(out, { face: rt }, { faces: enh.faces });   // the faces found on the photo: same framing as the result
   if (lv.colors) out = await enhColors(out, lv.colors);
-  if (lv.blur) out = await portraitBlur(out, lv.blur);
+  if (lv.blur) out = await portraitBlur(out, lv.blur, enh.blurKeep ||= {});
   return out;
 }
 // Natural texture: the photo's own fine detail (the original minus a blurred copy: pores, fine hair,

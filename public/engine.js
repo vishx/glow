@@ -1837,17 +1837,23 @@ async function backdrop(src, bg, o = {}) {
 // softer toward the horizon, and everything above that is the far background. Levels 1–3 are
 // Low, Medium and High, and even High keeps the room recognizable.
 const BLUR_LEVELS = [0, 0.0018, 0.0038, 0.0068, 0.0095];   // blur radius, as a share of the photo's width (4: the editor's Strong); each level clearly stronger
-async function portraitBlur(src, level = 2) {
+// `keep` (optional, an object kept by the caller): the faces and cutout found the first time are
+// reused for the same photo at another level or look, so a second level is quick.
+async function portraitBlur(src, level = 2, keep = null) {
   const img = await loadImg(src), c = canvasFor(img), cx = c.getContext("2d", { willReadFrequently: true });
   cx.drawImage(img, 0, 0, c.width, c.height);
   const W = c.width, H = c.height, R = W * (BLUR_LEVELS[level] ?? BLUR_LEVELS[2]);
   if (!R) return c.toDataURL("image/jpeg", 0.92);
-  let faces = [];
-  try { faces = await findFaces(src, c); } catch { /* no face model: blur around the whole-picture cutout */ }
-  const bx = faces.map(boxOf).map(([x, y, w, h]) => [x * W, y * H, w * W, h * H]);
-  const big = Math.max(0, ...bx.map((b) => b[2]));
-  const main = bx.filter((b) => b[2] >= 0.55 * big);
-  const alpha = main.length ? await peopleMatte(c, main) : await matte(src, c);
+  let faces = [], main, alpha;
+  if (keep && keep.alpha && keep.W === W && keep.H === H) ({ alpha, main } = keep);
+  else {
+    try { faces = await findFaces(src, c); } catch { /* no face model: blur around the whole-picture cutout */ }
+    const bx = faces.map(boxOf).map(([x, y, w, h]) => [x * W, y * H, w * W, h * H]);
+    const big = Math.max(0, ...bx.map((b) => b[2]));
+    main = bx.filter((b) => b[2] >= 0.55 * big);
+    alpha = main.length ? await peopleMatte(c, main) : await matte(src, c);
+    if (keep) Object.assign(keep, { alpha, main, W, H });
+  }
   // Where they stand: the lowest row of the cutout, and whether their whole body is in the picture.
   let feet = 0;
   for (let y = H - 1; y >= 0 && !feet; y--) for (let x = 0; x < W; x += 2) if (alpha[y * W + x] > 0.5) { feet = y; break; }
