@@ -1591,7 +1591,9 @@ async function proFinish(src, aiSrc) {
 // mark), where the retouched picture is smoother than the photo by a clear margin. Anything it
 // added, anything big, and anything on the eyes, brows, lips and nostrils is left as it was, and
 // a square whose face moved at all is skipped. Pores and fine texture stay the photo's own.
-const PRO_RETOUCH = { moved: 0.02, spot: 1 / 22, minDrop: 0.8, fullDrop: 2.6, maxArea: 0.45, thick: 0.08, edge: 0.04 };
+// even: how much of the model's evener skin tone (blotches, redness, dark patches, bigger than a
+// spot) is taken, at most `evenMax` levels, with the skin's overall tone kept the photo's own.
+const PRO_RETOUCH = { moved: 0.02, spot: 1 / 22, minDrop: 0.45, fullDrop: 1.6, maxArea: 0.45, thick: 0.08, edge: 0.04, even: 0.85, evenMax: 22 };
 // A float box blur (three passes ≈ Gaussian) of one channel.
 function blurF(a, W, H, sigma) {
   const out = new Float32Array(a), r = Math.max(1, Math.round((Math.sqrt(4 * sigma * sigma + 1) - 1) / 2)), tmp = new Float32Array(Math.max(W, H));
@@ -1633,12 +1635,12 @@ function retouchSpots(O, R, C, Po, Pr) {
   const eO = bands(O), eR = bands(R);
   // Kept: clearly smoother than the photo (something taken away), by a margin pores never reach.
   const w = new Float32Array(n);
-  for (let p = 0; p < n; p++) { const fall = eO[p] - eR[p]; w[p] = smoothstep(PRO_RETOUCH.minDrop, PRO_RETOUCH.fullDrop, fall) * smoothstep(0.05, 0.18, fall / (eO[p] + 1)); }
+  for (let p = 0; p < n; p++) { const fall = eO[p] - eR[p]; w[p] = smoothstep(PRO_RETOUCH.minDrop, PRO_RETOUCH.fullDrop, fall) * smoothstep(0.03, 0.12, fall / (eO[p] + 1)); }
   // Never on the features themselves, and not at the square's edge (the model can bleed there).
   const guard = newCanvas(C, C), g = guard.getContext("2d", { willReadFrequently: true });
   g.fillStyle = "#fff"; g.filter = `blur(${Math.max(1, Math.round(faceW / 60))}px)`;
   for (const eye of [FACE.eyeL, FACE.eyeR]) { const e = eye.map((i) => P[i]), c = mean(e), ew = dist(P[eye[0]], P[eye[8]]); g.beginPath(); g.ellipse(c[0], c[1], ew * 0.68, ew * 0.42, Math.atan2(P[eye[8]][1] - P[eye[0]][1], P[eye[8]][0] - P[eye[0]][0]), 0, 7); g.fill(); }
-  g.lineWidth = faceW / 18; g.strokeStyle = "#fff"; g.lineJoin = "round";
+  g.lineWidth = faceW / 40; g.strokeStyle = "#fff"; g.lineJoin = "round";
   for (const br of [FACE.browL, FACE.browR]) { tracePoly(g, br.map((i) => P[i])); g.fill(); g.stroke(); }
   tracePoly(g, FACE.lipsOut.map((i) => P[i])); g.fill(); g.lineWidth = faceW / 40; g.stroke();
   g.beginPath(); g.ellipse(P[2][0], P[2][1] - faceW * 0.02, faceW * 0.11, faceW * 0.06, 0, 0, 7); g.fill();
@@ -1691,7 +1693,28 @@ function retouchSpots(O, R, C, Po, Pr) {
     for (let p = 0; p < n; p++) out[p * 4 + k] = 128 + (r[p] - rb[p]);
   }
   for (let p = 0; p < n; p++) { out[p * 4 + 3] = Math.round(255 * Math.min(1, wf[p] * 1.15)); if (wf[p] > 0.3) used++; }
-  return { data: out, used: used / n, s, shift: +(shift / faceW).toFixed(3) };
+  // Even skin: on the skin only (inside the face's outline, off the features), the model's smoother
+  // tone at a patch's size, less its overall shift (so the skin's own color and brightness stay).
+  // Returned as a change to add (128 = none), with how much is taken already in it.
+  const sk = newCanvas(C, C), sx = sk.getContext("2d", { willReadFrequently: true });
+  sx.filter = `blur(${Math.max(1, Math.round(faceW / 30))}px)`; sx.fillStyle = "#fff";
+  tracePoly(sx, FACE.oval.map((i) => P[i])); sx.fill();
+  const skd = sx.getImageData(0, 0, C, C).data, sm = new Float32Array(n);
+  for (let y = 0; y < C; y++) for (let x = 0; x < C; x++) {
+    const p = y * C + x, b = Math.min(x, y, C - 1 - x, C - 1 - y);
+    sm[p] = (skd[p * 4 + 3] / 255) * (1 - gd[p * 4 + 3] / 255) * smoothstep(edge, edge * 2, b) * smoothstep(0.97, 0.999, coverB[p]);
+  }
+  const se = faceW / 14, even = new Uint8ClampedArray(n * 4), Mx = PRO_RETOUCH.evenMax;
+  for (let k = 0; k < 3; k++) {
+    const o = new Float32Array(n), r = new Float32Array(n);
+    for (let p = 0; p < n; p++) { o[p] = O[p * 4 + k]; r[p] = R[p * 4 + k]; }
+    const ob = blurF(o, C, C, se), rb = blurF(r, C, C, se), d = new Float32Array(n);
+    let sum = 0, wsum = 0;
+    for (let p = 0; p < n; p++) { d[p] = rb[p] - ob[p]; sum += d[p] * sm[p]; wsum += sm[p]; }
+    const shiftK = wsum ? sum / wsum : 0;
+    for (let p = 0; p < n; p++) { even[p * 4 + k] = 128 + Math.max(-Mx, Math.min(Mx, d[p] - shiftK)) * sm[p] * PRO_RETOUCH.even; even[p * 4 + 3] = 255; }
+  }
+  return { data: out, even, used: used / n, s, shift: +(shift / faceW).toFixed(3) };
 }
 // The retouched square drawn so its face lands on the photo's face: the best scale, turn and move
 // (least squares) from the retouched landmarks Q to the photo's P (both 0–1 of the square). Where
@@ -1756,11 +1779,15 @@ async function proRetouch(src, sheet, rtUrl) {
     tex.getContext("2d").putImageData(new ImageData(td, C, C), 0, 0); alpha.getContext("2d").putImageData(new ImageData(ad, C, C), 0, 0);
     const at = (cv) => { const c = newCanvas(rw, rh), x = c.getContext("2d", { willReadFrequently: true }); x.fillStyle = "rgb(128,128,128)"; x.fillRect(0, 0, rw, rh); x.imageSmoothingQuality = "high"; x.drawImage(cv, x0 - ax0, y0 - ay0, S, S); return x.getImageData(0, 0, rw, rh).data; };
     const T = at(tex), A = at(alpha);
+    const ev = newCanvas(C, C); ev.getContext("2d").putImageData(new ImageData(ch.even, C, C), 0, 0);
+    const E = at(ev);
     // The photo's own skin around each spot: the region blurred at about twice a spot's size.
-    const sig = Math.max(1.5, ch.s * 2 * S / C), region = bx.getImageData(ax0, ay0, rw, rh), rd = region.data, bl = new Uint8ClampedArray(rd);
+    const sig = Math.max(1.5, ch.s * 2 * S / C), region = bx.getImageData(ax0, ay0, rw, rh), rd = region.data;
+    for (let j = 0; j < rd.length; j += 4) for (let k = 0; k < 3; k++) rd[j + k] += E[j + k] - 128;   // even skin tone first
+    const bl = new Uint8ClampedArray(rd);
     boxBlurRGBA(bl, rw, rh, sig);
     for (let j = 0; j < rd.length; j += 4) {
-      const t = (A[j] - 128 * 0) / 255;
+      const t = A[j] / 255;
       if (t < 0.004) continue;
       for (let k = 0; k < 3; k++) rd[j + k] += t * (bl[j + k] + (T[j + k] - 128) - rd[j + k]);
     }

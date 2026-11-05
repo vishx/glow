@@ -186,11 +186,12 @@ export const FACE_SHEET: Mode = { model: "tencentarc/gfpgan", input: { version: 
 // hair, a mark taken away) and never a change of shape, so identity stays the person's own.
 // The brief depends on how many people are on the sheet: told "a grid" for a single face, the model
 // drew a 3 x 3 grid of the same face (test 2026-11-05), so one face is just "this close-up portrait".
-const RETOUCH_FIXES = "Retouch it the way a professional portrait retoucher does, with small local fixes only: " +
-  "remove temporary blemishes, pimples, acne, small red spots, scratches and dry flakes; remove stray and flyaway hairs that cross the face, forehead, neck and the outline of the hair; " +
-  "remove lint, dust and small marks on skin and clothes; soften dark under-eye circles a little; clean red veins from the whites of the eyes; keep real skin pores and texture everywhere. " +
+const RETOUCH_FIXES = "Retouch it the way a high-end beauty retoucher does, so the skin looks clear, even and flawless while still real: " +
+  "remove every blemish, pimple, acne spot, acne mark, red spot, dark spot, scratch, dry flake and broken vein; even out redness, blotches and uneven skin tone; soften dark under-eye circles and under-eye bags; " +
+  "remove stray and flyaway hairs that cross the face, forehead, neck and the outline of the hair; remove lint, dust and small marks on skin and clothes; clean red veins from the whites of the eyes; " +
+  "keep fine natural skin texture so it never looks plastic or airbrushed. " +
   "Do not change anything else: keep the face shape, eyes, eyelids, eyebrows, nose, lips, teeth, ears, expression, age, makeup, skin tone, hairstyle, hair color, glasses and jewelry exactly the same. " +
-  "Keep moles, freckles, birthmarks, scars and wrinkles. Keep the same lighting, colors, sharpness and background. ";
+  "Keep moles, freckles and birthmarks. Keep the same lighting, colors, sharpness and background. ";
 export function retouchSheet(people: number): Mode {
   const n = Math.max(1, Math.min(4, Math.round(people) || 1)), cols = Math.ceil(Math.sqrt(n)), rows = Math.ceil(n / cols);
   const prompt = n === 1
